@@ -1,0 +1,88 @@
+{
+  "placeholderImages": [
+    {
+      "id": "slider-1",
+      "description": "Futuristic cyborg walking through a glowing portal",
+      "imageUrl": "https://images.unsplash.com/photo-1690367353911-33276ff1667b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw3fHxjeWJvcmclMjB3YWxraW5nfGVufDB8fHx8MTc2NTI3NjYwOHww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "cyborg walking"
+    },
+    {
+      "id": "slider-2",
+      "description": "Neon-lit cyberpunk city alley",
+      "imageUrl": "https://images.unsplash.com/photo-1601042879364-f3947d3f9c16?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwxfHxjeWJlcnB1bmslMjBjaXR5fGVufDB8fHx8MTc2NTIwNTA0OHww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "cyberpunk city"
+    },
+    {
+      "id": "slider-3",
+      "description": "Vast alien landscape with strange rock formations",
+      "imageUrl": "https://images.unsplash.com/photo-1530937027413-adadcf3ed719?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw0fHxhbGllbiUyMGxhbmRzY2FwZXxlbnwwfHx8fDE3NjUyNjA3NTZ8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "alien landscape"
+    },
+    {
+      "id": "card-1",
+      "description": "Charizard holographic card",
+      "imageUrl": "https://images.unsplash.com/photo-1737998243639-26c2c1da9b32?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw1fHxob2xvZ3JhcGhpYyUyMGRyYWdvbnxlbnwwfHx8fDE3NjUyNTk1MjN8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "holographic dragon"
+    },
+    {
+      "id": "card-2",
+      "description": "Lionel Messi rookie soccer card",
+      "imageUrl": "https://images.unsplash.com/photo-1517466787929-bc90951d0974?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwxfHxzb2NjZXIlMjBwbGF5ZXJ8ZW58MHx8fHwxNzY1MjUzNjA0fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "soccer player"
+    },
+    {
+      "id": "card-3",
+      "description": "Black Lotus magic the gathering card",
+      "imageUrl": "https://images.unsplash.com/photo-1605799919616-cce57afc06e2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw4fHxsb3R1cyUyMGZsb3dlcnxlbnwwfHx8fDE3NjUxNzg3Mjd8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "lotus flower"
+    },
+    {
+      "id": "card-4",
+      "description": "Pikachu illustrator pokemon card",
+      "imageUrl": "https://images.unsplash.com/photo-1707734250622-46ab4db80b77?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwyfHxjdXRlJTIwbW9uc3RlcnxlbnwwfHx8fDE3NjUyNDk0ODR8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "cute monster"
+    },
+    {
+      "id": "card-5",
+      "description": "Blastoise base set pokemon card",
+      "imageUrl": "https://images.unsplash.com/photo-1565060821531-5619092ea6ba?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw1fHx3YXRlciUyMHR1cnRsZXxlbnwwfHx8fDE3NjUyNTk1MjN8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "water turtle"
+    },
+    {
+      "id": "card-6",
+      "description": "Cristiano Ronaldo signed soccer card",
+      "imageUrl": "https://images.unsplash.com/photo-1695918428860-a3bc6a2f1d4b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw3fHxhY3Rpb24lMjBwbGF5ZXJ8ZW58MHx8fHwxNzY1MjU5NTIzfDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "action player"
+    },
+    {
+      "id": "card-7",
+      "description": "Jace the mind sculptor magic card",
+      "imageUrl": "https://images.unsplash.com/photo-1602174286405-c0b06500baac?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw0fHxibHVlJTIwbWFnaWN8ZW58MHx8fHwxNzY1MjU5NTIzfDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "blue magic"
+    },
+    {
+      "id": "card-8",
+      "description": "Honus Wagner baseball card",
+      "imageUrl": "https://images.unsplash.com/photo-1557422758-e50d123a39b7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw1fHx2aW50YWdlJTIwYmFzZWJhbGx8ZW58MHx8fHwxNzY1MjU5NTIzfDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "vintage baseball"
+    },
+    {
+      "id": "hero-1",
+      "description": "Magic trading card",
+      "imageUrl": "https://images.unsplash.com/photo-1691213426024-ab6eb6f33d64?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwyfHxtYWdpYyUyMGNhcmR8ZW58MHx8fHwxNzY1NTQ5MjAyfDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "magic card"
+    },
+    {
+      "id": "hero-2",
+      "description": "Soccer trading card",
+      "imageUrl": "https://images.unsplash.com/photo-1587103365297-77661edc549d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw5fHxzb2NjZXIlMjBjYXJkfGVufDB8fHx8MTc2NTU0OTIwMnww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "soccer card"
+    },
+    {
+      "id": "hero-3",
+      "description": "Holographic trading card",
+      "imageUrl": "https://images.unsplash.com/photo-1687720106084-d6e235ad226c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw2fHxob2xvZ3JhcGhpYyUyMGNhcmR8ZW58MHx8fHwxNzY1NTQ5MjAzfDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "holographic card"
+    }
+  ]
+}
