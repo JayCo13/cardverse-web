@@ -26,10 +26,7 @@ const nextConfig: NextConfig = {
     poweredByHeader: false,
     reactStrictMode: true,
     productionBrowserSourceMaps: false,
-    // Ignore ESLint and TypeScript errors during build for deployment
-    eslint: {
-        ignoreDuringBuilds: true,
-    },
+    // Ignore TypeScript errors during build for deployment
     typescript: {
         ignoreBuildErrors: true,
     },
