@@ -159,6 +159,12 @@ const en = {
   auth_required_title: 'Authentication Required',
   auth_required_desc: 'Please log in or create an account to create a new listing. Your collection awaits!',
   auth_required_desc_forum: 'Please log in or create an account to join the discussion. Your community awaits!',
+  // Crop Image Dialog
+  crop_image_title: 'Crop Image',
+  crop_image_instructions: 'Drag to adjust the crop area. Focus on the card for best results.',
+  crop_cancel: 'Cancel',
+  crop_use_original: 'Use Original',
+  crop_scan_cropped: 'Scan Cropped',
   // Feature Teasers - Coming Soon
   coming_soon: 'Coming Soon',
   live_auctions_title: 'Live Auctions & Marketplace',
@@ -419,6 +425,12 @@ const vi = {
   market_price: 'Giá thị trường',
   low_price: 'Thấp',
   high_price: 'Cao',
+  // Crop Image Dialog
+  crop_image_title: 'Cắt ảnh',
+  crop_image_instructions: 'Kéo để điều chỉnh vùng cắt. Tập trung vào thẻ để có kết quả tốt nhất.',
+  crop_cancel: 'Hủy',
+  crop_use_original: 'Dùng ảnh gốc',
+  crop_scan_cropped: 'Quét ảnh đã cắt',
   // Feature Teasers - Coming Soon
   live_auctions_title: 'Đấu giá trực tuyến & mua bán thẻ',
   live_auctions_desc: 'Đấu giá thẻ hiếm theo thời gian thực hoặc đăng bán bộ sưu tập của bạn trên chợ an toàn của chúng tôi.',
@@ -660,6 +672,12 @@ const ja = {
   auth_required_title: '認証が必要です',
   auth_required_desc: '出品するにはログインまたはアカウント作成が必要です',
   auth_required_desc_forum: '議論に参加するにはログインまたはアカウント作成が必要です',
+  // Crop Image Dialog
+  crop_image_title: '画像をトリミング',
+  crop_image_instructions: '切り取り範囲をドラッグして調整してください。カードに焦点を当てると最良の結果が得られます。',
+  crop_cancel: 'キャンセル',
+  crop_use_original: '元の画像を使用',
+  crop_scan_cropped: 'トリミングしてスキャン',
   // Feature Teasers - Coming Soon
   coming_soon: '近日公開',
   live_auctions_title: 'ライブオークション & マーケット',

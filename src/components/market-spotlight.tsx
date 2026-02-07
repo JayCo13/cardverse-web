@@ -1078,7 +1078,24 @@ export function MarketSpotlight() {
         console.log('Cropped image, preprocessing for AI...');
         const enhancedBase64 = await preprocessImage(base64Data);
         processScannedImage(enhancedBase64);
-    }, [crop]);
+    }, [crop, processScannedImage]);
+
+    // Use original image without cropping
+    const handleUseOriginal = useCallback(async () => {
+        if (!cropImageSrc) return;
+
+        // Extract base64 data from the data URL
+        const base64Data = cropImageSrc.split(',')[1];
+
+        // Close modal
+        setShowCropModal(false);
+        setCropImageSrc('');
+
+        // Preprocess and scan original image
+        console.log('Using original image, preprocessing for AI...');
+        const enhancedBase64 = await preprocessImage(base64Data);
+        processScannedImage(enhancedBase64);
+    }, [cropImageSrc, processScannedImage]);
 
     // Trigger camera input click
     const handleScanClick = () => {
@@ -1648,7 +1665,7 @@ export function MarketSpotlight() {
                     <div className="w-full max-w-2xl flex items-center justify-between mb-4">
                         <h3 className="text-white text-lg font-semibold flex items-center gap-2">
                             <CropIcon className="w-5 h-5" />
-                            Crop Image
+                            {t('crop_image_title')}
                         </h3>
                         <Button
                             onClick={() => {
@@ -1684,11 +1701,11 @@ export function MarketSpotlight() {
 
                     {/* Instructions */}
                     <p className="text-gray-400 text-sm mt-4 text-center">
-                        Drag to adjust the crop area. Focus on the card for best results.
+                        {t('crop_image_instructions')}
                     </p>
 
                     {/* Actions */}
-                    <div className="flex gap-3 mt-6">
+                    <div className="flex flex-wrap gap-3 mt-6 justify-center">
                         <Button
                             onClick={() => {
                                 setShowCropModal(false);
@@ -1697,7 +1714,15 @@ export function MarketSpotlight() {
                             variant="outline"
                             className="bg-transparent border-white/20 text-white hover:bg-white/10"
                         >
-                            Cancel
+                            {t('crop_cancel')}
+                        </Button>
+                        <Button
+                            onClick={handleUseOriginal}
+                            variant="outline"
+                            className="bg-transparent border-blue-500/50 text-blue-400 hover:bg-blue-500/10"
+                        >
+                            <Camera className="w-4 h-4 mr-2" />
+                            {t('crop_use_original')}
                         </Button>
                         <Button
                             onClick={handleCropComplete}
@@ -1705,7 +1730,7 @@ export function MarketSpotlight() {
                             disabled={!crop}
                         >
                             <CropIcon className="w-4 h-4 mr-2" />
-                            Scan Cropped Image
+                            {t('crop_scan_cropped')}
                         </Button>
                     </div>
                 </div>
