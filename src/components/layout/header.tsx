@@ -94,7 +94,7 @@ export function Header() {
               href="/"
               className="flex items-center gap-2 text-lg font-semibold md:text-base"
             >
-              <Image src="/assets/logo-verse.png" width={140} height={35} className="w-[120px] md:w-[170px] h-auto" alt="CardVerse logo" />
+              <Image src="/assets/logo-verse.png" width={160} height={40} className="w-[150px] md:w-[170px] h-auto" alt="CardVerse logo" />
             </Link>
           </div>
 
@@ -129,7 +129,7 @@ export function Header() {
                     href="/"
                     className="flex items-center gap-2 text-2xl font-semibold"
                   >
-                    <Image src="/assets/logo-verse.png" width={120} height={30} alt="CardVerse logo" />
+                    <Image src="/assets/logo-verse.png" width={140} height={35} alt="CardVerse logo" />
                   </Link>
                   <div className="flex flex-col gap-4 py-4 border-b border-t">
                     <div className="flex items-center justify-between">

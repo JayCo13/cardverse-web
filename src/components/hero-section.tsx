@@ -17,11 +17,11 @@ export function HeroSection() {
 
 
   return (
-    <div className="relative w-full h-[80vh] min-h-[600px] background-grid-scan">
+    <div className="relative w-full min-h-[900px] md:h-[80vh] md:min-h-[600px] background-grid-scan flex flex-col justify-center">
       <div className="absolute inset-0 bg-gradient-to-b from-background via-background/80 to-transparent z-10" />
 
       <div className="absolute inset-0 container mx-auto px-4 flex items-center z-20">
-        <div className="grid md:grid-cols-2 gap-8 items-center w-full">
+        <div className="grid md:grid-cols-2 gap-12 md:gap-8 items-center w-full py-20 md:py-0">
           <div className="max-w-2xl animate-fade-in-up space-y-6 text-left will-change-transform">
             <h1
               className="text-4xl sm:text-5xl md:text-7xl font-extrabold !leading-tight tracking-tighter uppercase glitch-text"
@@ -61,9 +61,9 @@ export function HeroSection() {
               </Button>
             </div>
           </div>
-          <div className="relative h-[300px] md:h-[500px] w-full flex items-center justify-center animate-fade-in-up will-change-transform mt-8 md:mt-0" style={{ animationDelay: '200ms' }}>
+          <div className="relative h-[400px] md:h-[500px] w-full flex items-center justify-center animate-fade-in-up will-change-transform mt-0 md:mt-0 order-first md:order-last" style={{ animationDelay: '200ms' }}>
             {mainImage3 && <div
-              className="absolute w-[180px] h-[250px] md:w-[250px] md:h-[350px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:rotate-[-5deg] hover:scale-105 will-change-transform"
+              className="absolute w-[200px] h-[280px] md:w-[250px] md:h-[350px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:rotate-[-5deg] hover:scale-105 will-change-transform"
               style={{ transform: 'rotate(-10deg) translate(40px, -40px)', zIndex: 10 }}
             >
               <Image
@@ -76,7 +76,7 @@ export function HeroSection() {
               />
             </div>}
             {mainImage2 && <div
-              className="absolute w-[180px] h-[250px] md:w-[250px] md:h-[350px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:rotate-[10deg] hover:scale-105 will-change-transform"
+              className="absolute w-[200px] h-[280px] md:w-[250px] md:h-[350px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:rotate-[10deg] hover:scale-105 will-change-transform"
               style={{ transform: 'rotate(5deg) translate(-60px, 10px)', zIndex: 20 }}
             >
               <Image
@@ -89,7 +89,7 @@ export function HeroSection() {
               />
             </div>}
             {mainImage1 && <div
-              className="absolute w-[180px] h-[250px] md:w-[250px] md:h-[350px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:rotate-[20deg] hover:scale-105 will-change-transform"
+              className="absolute w-[200px] h-[280px] md:w-[250px] md:h-[350px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:rotate-[20deg] hover:scale-105 will-change-transform"
               style={{ transform: 'rotate(15deg) translate(80px, 30px)', zIndex: 30 }}
             >
               <Image
