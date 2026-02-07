@@ -24,7 +24,7 @@ export function HeroSection() {
         <div className="grid md:grid-cols-2 gap-8 items-center w-full">
           <div className="max-w-2xl animate-fade-in-up space-y-6 text-left will-change-transform">
             <h1
-              className="text-5xl md:text-7xl font-extrabold !leading-tight tracking-tighter uppercase glitch-text"
+              className="text-4xl sm:text-5xl md:text-7xl font-extrabold !leading-tight tracking-tighter uppercase glitch-text"
               style={{ fontFamily: "'Orbitron', sans-serif" }}
               data-text="CardVerse"
             >
@@ -61,10 +61,10 @@ export function HeroSection() {
               </Button>
             </div>
           </div>
-          <div className="relative h-[500px] w-full hidden md:flex items-center justify-center animate-fade-in-up will-change-transform" style={{ animationDelay: '200ms', transform: 'translateY(-40px)' }}>
+          <div className="relative h-[300px] md:h-[500px] w-full flex items-center justify-center animate-fade-in-up will-change-transform mt-8 md:mt-0" style={{ animationDelay: '200ms' }}>
             {mainImage3 && <div
-              className="absolute w-[250px] h-[350px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:rotate-[-5deg] hover:scale-105 will-change-transform"
-              style={{ transform: 'rotate(-10deg) translate(80px, -80px)', zIndex: 10 }}
+              className="absolute w-[180px] h-[250px] md:w-[250px] md:h-[350px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:rotate-[-5deg] hover:scale-105 will-change-transform"
+              style={{ transform: 'rotate(-10deg) translate(40px, -40px)', zIndex: 10 }}
             >
               <Image
                 src="/assets/imgmain3.jpg"
@@ -76,8 +76,8 @@ export function HeroSection() {
               />
             </div>}
             {mainImage2 && <div
-              className="absolute w-[250px] h-[350px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:rotate-[10deg] hover:scale-105 will-change-transform"
-              style={{ transform: 'rotate(5deg) translate(-120px, 20px)', zIndex: 20 }}
+              className="absolute w-[180px] h-[250px] md:w-[250px] md:h-[350px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:rotate-[10deg] hover:scale-105 will-change-transform"
+              style={{ transform: 'rotate(5deg) translate(-60px, 10px)', zIndex: 20 }}
             >
               <Image
                 src="/assets/imgmain2.jpg"
@@ -89,8 +89,8 @@ export function HeroSection() {
               />
             </div>}
             {mainImage1 && <div
-              className="absolute w-[250px] h-[350px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:rotate-[20deg] hover:scale-105 will-change-transform"
-              style={{ transform: 'rotate(15deg) translate(150px, 60px)', zIndex: 30 }}
+              className="absolute w-[180px] h-[250px] md:w-[250px] md:h-[350px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:rotate-[20deg] hover:scale-105 will-change-transform"
+              style={{ transform: 'rotate(15deg) translate(80px, 30px)', zIndex: 30 }}
             >
               <Image
                 src="/assets/imgmain.jpg"

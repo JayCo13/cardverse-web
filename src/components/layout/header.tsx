@@ -84,24 +84,26 @@ export function Header() {
     <header className="sticky top-0 z-50 flex flex-col border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center">
-          <div className="flex-1 flex items-center gap-4 text-sm text-muted-foreground">
+          <div className="hidden md:flex flex-1 items-center gap-4 text-sm text-muted-foreground">
             <Headphones className="h-4 w-4" />
             <span>24/7 037-2339-9874</span>
           </div>
 
-          <div className="flex-1 flex justify-center">
+          <div className="flex-1 flex justify-start md:justify-center">
             <Link
               href="/"
               className="flex items-center gap-2 text-lg font-semibold md:text-base"
             >
-              <Image src="/assets/logo-verse.png" width={170} height={40} alt="CardVerse logo" />
+              <Image src="/assets/logo-verse.png" width={140} height={35} className="w-[120px] md:w-[170px] h-auto" alt="CardVerse logo" />
             </Link>
           </div>
 
-          <div className="flex-1 flex items-center justify-end gap-2 text-sm font-medium">
-            <CurrencySelector />
-            <LanguageSelector />
-            <div className="mx-2 h-6 w-px bg-white/50" />
+          <div className="flex-1 flex items-center justify-end gap-1 md:gap-2 text-sm font-medium">
+            <div className="hidden md:flex items-center gap-2">
+              <CurrencySelector />
+              <LanguageSelector />
+              <div className="mx-2 h-6 w-px bg-white/50" />
+            </div>
             <NotificationBell />
             {renderUserAuth()}
           </div>
@@ -129,6 +131,15 @@ export function Header() {
                   >
                     <Image src="/assets/logo-verse.png" width={120} height={30} alt="CardVerse logo" />
                   </Link>
+                  <div className="flex flex-col gap-4 py-4 border-b border-t">
+                    <div className="flex items-center justify-between">
+                      <span>{t('settings')}</span>
+                      <div className="flex gap-2">
+                        <CurrencySelector />
+                        <LanguageSelector />
+                      </div>
+                    </div>
+                  </div>
                   <div className="relative group">
                     <span className="hover:text-foreground opacity-50 cursor-not-allowed flex items-center gap-1">
                       {t('nav_buy')}
@@ -150,9 +161,11 @@ export function Header() {
                   <Link href="/forum" className="text-muted-foreground hover:text-foreground">
                     {t('nav_forum')}
                   </Link>
+                  <Button onClick={handleListCardClick} className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold mt-4">
+                    {t('list_a_card')}
+                  </Button>
                 </nav>
               </SheetContent>
-            </Sheet>
           </div>
           <div className="flex-1 flex items-center justify-center">
             <nav className="hidden md:flex flex-row items-center gap-6 lg:gap-8 whitespace-nowrap text-sm font-medium">
