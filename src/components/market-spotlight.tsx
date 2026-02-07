@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -1055,7 +1055,7 @@ export function MarketSpotlight() {
     }, []);
 
     // Use centralized currency formatting from context
-    const { formatPrice } = useCurrency();
+    const { formatPrice, convertPrice, currency } = useCurrency();
     const { t } = useLocalization();
 
     // Get display image - use TCG image or fallback
@@ -1457,11 +1457,16 @@ export function MarketSpotlight() {
                                 </div>
                             ) : (
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <AreaChart data={chartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                                    <AreaChart data={useMemo(() => {
+                                        return chartData.map(d => ({
+                                            ...d,
+                                            price: convertPrice(d.price)
+                                        }));
+                                    }, [chartData, convertPrice])} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
                                         <defs>
                                             <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
                                                 <stop offset="5%" stopColor="#F97316" stopOpacity={0.3} />
-                                                <stop offset="95%" stopColor="#F97316" stopOpacity={0} />
+                                                <stop offset="95%" stopColor="#F97316" stopOpacity={0.05} />
                                             </linearGradient>
                                         </defs>
                                         <XAxis
@@ -1479,13 +1484,25 @@ export function MarketSpotlight() {
                                             tick={{ fill: '#666', fontSize: 12 }}
                                             axisLine={false}
                                             tickLine={false}
-                                            tickFormatter={(val) => `$${val} `}
+                                            tickFormatter={(val) => {
+                                                try {
+                                                    return new Intl.NumberFormat(currency === 'VND' ? 'vi-VN' : 'en-US', {
+                                                        style: 'currency',
+                                                        currency: currency,
+                                                        notation: 'compact',
+                                                        maximumFractionDigits: 1
+                                                    }).format(val);
+                                                } catch {
+                                                    return `${val}`;
+                                                }
+                                            }}
                                             dx={10}
+                                            width={60}
                                         />
                                         <Tooltip
                                             contentStyle={{ backgroundColor: '#111', borderColor: '#333', borderRadius: '8px', color: '#fff' }}
                                             itemStyle={{ color: '#F97316' }}
-                                            formatter={(value: number) => [`$${value.toLocaleString()} `, 'Price']}
+                                            formatter={(value: number) => [formatPrice(value), t('market_price') || 'Price']}
                                         />
                                         <Area
                                             type="monotone"
