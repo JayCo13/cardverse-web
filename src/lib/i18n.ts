@@ -244,6 +244,9 @@ const en = {
   post_category_connect: 'Connect',
   post_category_showcase: 'Showcase',
   enter_location: 'Enter your location...',
+  market_spotlight: 'Market Spotlight',
+  price_change: 'Change',
+  chart_demo: 'Chart: Demo',
 };
 
 const vi = {
@@ -490,6 +493,9 @@ const vi = {
   go_home: 'Về trang chủ',
   product_load_error: 'Không thể tải sản phẩm này.',
   card_load_error: 'Không thể tải thẻ này.',
+  market_spotlight: 'Tiêu điểm thị trường',
+  price_change: 'Thay đổi',
+  chart_demo: 'Biểu đồ: Demo',
 };
 
 // Japanese translations
@@ -729,6 +735,9 @@ const ja = {
   go_home: 'ホームへ',
   product_load_error: 'この商品を読み込めませんでした。',
   card_load_error: 'このカードを読み込めませんでした。',
+  market_spotlight: 'マーケット注目',
+  price_change: '変動',
+  chart_demo: 'チャート: デモ',
 };
 
 export const translations = {

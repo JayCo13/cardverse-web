@@ -1087,11 +1087,11 @@ export function MarketSpotlight() {
 
             <div className="container mx-auto px-4">
                 {/* Search Section */}
-                <div className="text-center mb-16 md:mb-24">
-                    <h2 className="text-3xl md:text-5xl font-bold mb-3 text-white tracking-tight" style={{ fontFamily: "'Orbitron', sans-serif" }}>
+                <div className="text-center mb-16 md:mb-24 px-2">
+                    <h2 className="text-2xl md:text-5xl font-bold mb-3 text-white tracking-tight break-words" style={{ fontFamily: "'Orbitron', sans-serif" }}>
                         {t('collection_worth_pokemon_title')}
                     </h2>
-                    <p className="text-xl md:text-2xl font-normal text-orange-500 font-sans mb-8">
+                    <p className="text-lg md:text-2xl font-normal text-orange-500 font-sans mb-8 break-words">
                         {t('collection_worth_pokemon_subtitle')}
                     </p>
 
@@ -1227,9 +1227,9 @@ export function MarketSpotlight() {
                         {/* Info Header */}
                         <div className="space-y-3 w-full">
                             <div className="flex items-center gap-2 flex-wrap">
-                                <Badge variant="outline" className="text-green-400 border-green-400/30 px-3 py-1 w-fit">Market Spotlight</Badge>
+                                <Badge variant="outline" className="text-green-400 border-green-400/30 px-3 py-1 w-fit whitespace-normal h-auto text-center">{t('market_spotlight')}</Badge>
                                 {useMockData && (
-                                    <Badge variant="outline" className="text-orange-400 border-orange-400/30 px-2 py-0.5 text-[10px]">Chart: Demo</Badge>
+                                    <Badge variant="outline" className="text-orange-400 border-orange-400/30 px-2 py-0.5 text-[10px] whitespace-normal h-auto text-center">{t('chart_demo')}</Badge>
                                 )}
                                 <Button
                                     variant="ghost"
@@ -1423,10 +1423,10 @@ export function MarketSpotlight() {
                                     </div>
                                 ) : (
                                     <>
-                                        <span className="text-3xl font-bold text-white font-mono tracking-tighter">
+                                        <span className="text-2xl md:text-3xl font-bold text-white font-mono tracking-tighter">
                                             {formatPrice(currentPrice || 0)}
                                         </span>
-                                        <span className={`text-lg font-bold font-mono ${(priceChange || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                        <span className={`text-base md:text-lg font-bold font-mono ${(priceChange || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                             {(priceChange || 0) >= 0 ? '▲' : '▼'} {Math.abs(priceChange || 0).toFixed(1)}%
                                         </span>
                                     </>
@@ -1504,7 +1504,7 @@ export function MarketSpotlight() {
                         <div className="grid grid-cols-3 gap-4">
                             <Card className="bg-white/5 border-white/10 p-4 flex flex-col items-start hover:border-orange-500/30 transition-colors group">
                                 <span className="text-gray-500 text-[10px] uppercase tracking-wider mb-1 flex items-center gap-1">
-                                    <CurrencyDollar className="w-3 h-3" /> Low Price
+                                    <CurrencyDollar className="w-3 h-3" /> {t('low_price')}
                                 </span>
                                 {isLoading ? (
                                     <div className="h-7 w-20 bg-white/10 rounded animate-pulse" />
@@ -1516,7 +1516,7 @@ export function MarketSpotlight() {
                             </Card>
                             <Card className="bg-white/5 border-white/10 p-4 flex flex-col items-start hover:border-orange-500/30 transition-colors group">
                                 <span className="text-gray-500 text-[10px] uppercase tracking-wider mb-1 flex items-center gap-1">
-                                    <TrendUp className="w-3 h-3" /> Change
+                                    <TrendUp className="w-3 h-3" /> {t('price_change')}
                                 </span>
                                 {isLoading ? (
                                     <div className="h-7 w-20 bg-white/10 rounded animate-pulse" />
@@ -1528,7 +1528,7 @@ export function MarketSpotlight() {
                             </Card>
                             <Card className="bg-white/5 border-white/10 p-4 flex flex-col items-start hover:border-orange-500/30 transition-colors group">
                                 <span className="text-gray-500 text-[10px] uppercase tracking-wider mb-1 flex items-center gap-1">
-                                    <Pulse className="w-3 h-3" /> High Price
+                                    <Pulse className="w-3 h-3" /> {t('high_price')}
                                 </span>
                                 {isLoading ? (
                                     <div className="h-7 w-20 bg-white/10 rounded animate-pulse" />
