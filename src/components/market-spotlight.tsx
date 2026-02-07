@@ -1268,13 +1268,13 @@ export function MarketSpotlight() {
                         </div>
 
                         {/* Card + Info Row */}
-                        <div className="flex flex-col md:flex-row items-center justify-center gap-6 md:gap-8 w-full">
+                        <div className="flex flex-row items-center justify-center gap-4 md:gap-8 w-full">
                             {/* Card Image */}
                             <div className="relative perspective-1000 group shrink-0">
                                 {/* Ambient Glow */}
-                                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[200px] h-[300px] bg-white/5 rounded-full blur-[60px] pointer-events-none" />
+                                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[150px] md:w-[200px] h-[220px] md:h-[300px] bg-white/5 rounded-full blur-[40px] md:blur-[60px] pointer-events-none" />
 
-                                <div className="relative w-[220px] md:w-[280px] aspect-[3/4] transition-transform duration-500 ease-out transform group-hover:rotate-y-6 group-hover:scale-105 preserve-3d">
+                                <div className="relative w-[140px] xs:w-[160px] md:w-[280px] aspect-[3/4] transition-transform duration-500 ease-out transform group-hover:rotate-y-6 group-hover:scale-105 preserve-3d">
                                     {/* Card Glow */}
                                     <div className="absolute inset-0 bg-gradient-to-tr from-green-500/40 to-blue-500/40 rounded-xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
@@ -1296,14 +1296,14 @@ export function MarketSpotlight() {
                             </div>
 
                             {/* Product Details (Right of Image) */}
-                            <div className="flex flex-col gap-3 text-center md:text-left w-full max-w-[280px] md:max-w-none">
+                            <div className="flex flex-col gap-2 md:gap-3 text-left w-full max-w-[160px] xs:max-w-[180px] md:max-w-none">
                                 {/* Market Price */}
                                 <div className="space-y-0.5">
-                                    <span className="text-gray-500 text-[10px] uppercase font-bold tracking-wider block">Market Price</span>
+                                    <span className="text-gray-500 text-[9px] md:text-[10px] uppercase font-bold tracking-wider block">Market Price</span>
                                     {isLoading ? (
-                                        <div className="h-8 w-32 bg-white/10 rounded animate-pulse mx-auto md:mx-0" />
+                                        <div className="h-6 md:h-8 w-24 md:w-32 bg-white/10 rounded animate-pulse" />
                                     ) : (
-                                        <span className="text-green-400 text-2xl font-bold font-mono">
+                                        <span className="text-green-400 text-xl md:text-2xl font-bold font-mono">
                                             {formatPrice(currentPrice || 0)}
                                         </span>
                                     )}
@@ -1311,11 +1311,11 @@ export function MarketSpotlight() {
 
                                 {/* Card Number */}
                                 <div className="space-y-0.5">
-                                    <span className="text-gray-500 text-[10px] uppercase font-bold tracking-wider block">Card Number</span>
+                                    <span className="text-gray-500 text-[9px] md:text-[10px] uppercase font-bold tracking-wider block">Card Number</span>
                                     {isLoading ? (
-                                        <div className="h-4 w-24 bg-white/10 rounded animate-pulse mx-auto md:mx-0" />
+                                        <div className="h-3 md:h-4 w-16 md:w-24 bg-white/10 rounded animate-pulse" />
                                     ) : (
-                                        <span className="text-white text-sm font-medium">
+                                        <span className="text-white text-xs md:text-sm font-medium break-words">
                                             {product?.number || '-'}
                                         </span>
                                     )}
@@ -1323,11 +1323,11 @@ export function MarketSpotlight() {
 
                                 {/* Rarity */}
                                 <div className="space-y-0.5">
-                                    <span className="text-gray-500 text-[10px] uppercase font-bold tracking-wider block">Rarity</span>
+                                    <span className="text-gray-500 text-[9px] md:text-[10px] uppercase font-bold tracking-wider block">Rarity</span>
                                     {isLoading ? (
-                                        <div className="h-4 w-24 bg-white/10 rounded animate-pulse mx-auto md:mx-0" />
+                                        <div className="h-3 md:h-4 w-16 md:w-24 bg-white/10 rounded animate-pulse" />
                                     ) : (
-                                        <span className="text-white text-sm font-medium">
+                                        <span className="text-white text-xs md:text-sm font-medium break-words">
                                             {product?.rarity || '-'}
                                         </span>
                                     )}
@@ -1335,11 +1335,11 @@ export function MarketSpotlight() {
 
                                 {/* Card Type / HP / Stage */}
                                 <div className="space-y-0.5">
-                                    <span className="text-gray-500 text-[10px] uppercase font-bold tracking-wider block">Card Type / HP / Stage</span>
+                                    <span className="text-gray-500 text-[9px] md:text-[10px] uppercase font-bold tracking-wider block">Type / HP / Stage</span>
                                     {isLoading ? (
-                                        <div className="h-4 w-48 bg-white/10 rounded animate-pulse mx-auto md:mx-0" />
+                                        <div className="h-3 md:h-4 w-32 md:w-48 bg-white/10 rounded animate-pulse" />
                                     ) : (
-                                        <span className="text-white text-sm font-medium">
+                                        <span className="text-white text-xs md:text-sm font-medium break-words leading-tight block">
                                             {product?.cardType || '-'} / {product?.hp || '-'} / {product?.stage || '-'}
                                         </span>
                                     )}
@@ -1348,14 +1348,14 @@ export function MarketSpotlight() {
                                 {/* Attack - Only show when loaded or if loading (placeholder) */}
                                 {(isLoading || product?.attack1) && (
                                     <div className="space-y-0.5">
-                                        <span className="text-gray-500 text-[10px] uppercase font-bold tracking-wider block">Attack</span>
+                                        <span className="text-gray-500 text-[9px] md:text-[10px] uppercase font-bold tracking-wider block">Attack</span>
                                         {isLoading ? (
                                             <div className="space-y-1">
-                                                <div className="h-3 w-full bg-white/10 rounded animate-pulse" />
-                                                <div className="h-3 w-5/6 bg-white/10 rounded animate-pulse" />
+                                                <div className="h-2.5 md:h-3 w-full bg-white/10 rounded animate-pulse" />
+                                                <div className="h-2.5 md:h-3 w-5/6 bg-white/10 rounded animate-pulse" />
                                             </div>
                                         ) : (
-                                            <span className="text-white text-xs font-medium leading-relaxed block"
+                                            <span className="text-white text-[10px] md:text-xs font-medium leading-relaxed block line-clamp-2 md:line-clamp-none"
                                                 dangerouslySetInnerHTML={{
                                                     __html: product?.attack1?.replace(/\\r\\n/g, ' ').replace(/<br>/g, ' ') || ''
                                                 }}
@@ -1364,16 +1364,14 @@ export function MarketSpotlight() {
                                     </div>
                                 )}
 
-
-
                                 {/* Artist */}
                                 {(isLoading || product?.artist) && (
                                     <div className="space-y-0.5">
-                                        <span className="text-gray-500 text-[10px] uppercase font-bold tracking-wider block">Artist</span>
+                                        <span className="text-gray-500 text-[9px] md:text-[10px] uppercase font-bold tracking-wider block">Artist</span>
                                         {isLoading ? (
-                                            <div className="h-4 w-24 bg-white/10 rounded animate-pulse mx-auto md:mx-0" />
+                                            <div className="h-3 md:h-4 w-16 md:w-24 bg-white/10 rounded animate-pulse" />
                                         ) : (
-                                            <span className="text-white text-sm font-medium">{product?.artist}</span>
+                                            <span className="text-white text-xs md:text-sm font-medium truncate">{product?.artist}</span>
                                         )}
                                     </div>
                                 )}
