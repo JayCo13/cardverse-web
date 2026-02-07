@@ -1501,7 +1501,7 @@ export function MarketSpotlight() {
                         </div>
 
                         {/* Data Grid */}
-                        <div className="grid grid-cols-3 gap-2 md:gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-4">
                             <Card className="bg-white/5 border-white/10 p-2 md:p-4 flex flex-col items-start hover:border-orange-500/30 transition-colors group">
                                 <span className="text-gray-500 text-[10px] uppercase tracking-wider mb-1 flex items-center gap-1">
                                     <CurrencyDollar className="w-3 h-3" /> {t('low_price')}
