@@ -1220,10 +1220,10 @@ export function MarketSpotlight() {
                     </p>
                 </div>
 
-                <div className="grid lg:grid-cols-2 gap-8 items-center">
+                <div className="grid lg:grid-cols-2 gap-8 items-center overflow-hidden">
 
                     {/* Left Column: The Asset */}
-                    <div className="flex flex-col space-y-6 items-start text-left w-full">
+                    <div className="flex flex-col space-y-6 items-start text-left w-full min-w-0 overflow-hidden">
                         {/* Info Header */}
                         <div className="space-y-3 w-full">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -1450,7 +1450,7 @@ export function MarketSpotlight() {
                         </div>
 
                         {/* Main Chart Area */}
-                        <div className="w-full bg-white/5 rounded-xl p-2 md:p-4 border border-white/10 backdrop-blur-sm relative h-[250px] md:h-[350px]">
+                        <div className="w-full bg-white/5 rounded-xl p-2 md:p-4 border border-white/10 backdrop-blur-sm relative h-[250px] md:h-[350px] overflow-hidden">
                             {isLoading ? (
                                 <div className="w-full h-full flex items-center justify-center">
                                     <SpinnerGap className="w-8 h-8 animate-spin text-orange-500" weight="bold" />
