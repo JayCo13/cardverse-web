@@ -1415,7 +1415,7 @@ export function MarketSpotlight() {
                     <div className="space-y-6 h-full flex flex-col justify-center">
                         {/* Chart Controls Row */}
                         <div className="flex flex-wrap items-center justify-between gap-4 w-full border-b border-white/5 pb-4">
-                            <div className="flex flex-wrap items-baseline gap-2 md:gap-4">
+                            <div className="flex flex-col items-start md:flex-row md:items-baseline gap-1 md:gap-4">
                                 {isLoading ? (
                                     <div className="flex items-center gap-4">
                                         <div className="h-9 w-40 bg-white/10 rounded animate-pulse" />
@@ -1426,7 +1426,7 @@ export function MarketSpotlight() {
                                         <span className="text-2xl md:text-3xl font-bold text-white font-mono tracking-tighter">
                                             {formatPrice(currentPrice || 0)}
                                         </span>
-                                        <span className={`text-base md:text-lg font-bold font-mono ${(priceChange || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                        <span className={`text-sm md:text-lg font-bold font-mono ${(priceChange || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                             {(priceChange || 0) >= 0 ? '▲' : '▼'} {Math.abs(priceChange || 0).toFixed(1)}%
                                         </span>
                                     </>
@@ -1501,7 +1501,7 @@ export function MarketSpotlight() {
                         </div>
 
                         {/* Data Grid */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
                             <Card className="bg-white/5 border-white/10 p-4 flex flex-col items-start hover:border-orange-500/30 transition-colors group">
                                 <span className="text-gray-500 text-[10px] uppercase tracking-wider mb-1 flex items-center gap-1">
                                     <CurrencyDollar className="w-3 h-3" /> {t('low_price')}
@@ -1509,7 +1509,7 @@ export function MarketSpotlight() {
                                 {isLoading ? (
                                     <div className="h-7 w-20 bg-white/10 rounded animate-pulse" />
                                 ) : (
-                                    <span className="text-xl font-bold text-white group-hover:text-orange-400 transition-colors">
+                                    <span className="text-sm md:text-lg font-bold text-white font-mono group-hover:text-orange-400 transition-colors">
                                         {product?.low_price ? formatPrice(product.low_price) : '-'}
                                     </span>
                                 )}
