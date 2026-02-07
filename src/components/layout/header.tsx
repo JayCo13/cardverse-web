@@ -111,7 +111,7 @@ export function Header() {
       </div>
       <div className="border-t">
         <div className="container mx-auto px-4 flex h-16 items-center">
-          <div className="md:hidden">
+          <div className="md:hidden w-full flex items-center justify-between">
             <Sheet>
               <SheetTrigger asChild>
                 <Button
