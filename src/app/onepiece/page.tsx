@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { OnePieceCardItem, type OnePieceCard } from "@/components/onepiece-card-item";
@@ -14,13 +15,29 @@ import Image from "next/image";
 
 export default function OnePiecePage() {
     const { t } = useLocalization();
+    const searchParams = useSearchParams();
+    const router = useRouter();
+
+    // Initialize state from URL params
     const [cards, setCards] = useState<OnePieceCard[]>([]);
     const [sets, setSets] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
-    const [searchTerm, setSearchTerm] = useState("");
-    const [priceFilter, setPriceFilter] = useState("all");
-    const [rarityFilter, setRarityFilter] = useState("all");
-    const [setFilter, setSetFilter] = useState("all");
+    const [searchTerm, setSearchTerm] = useState(searchParams.get('q') || "");
+    const [priceFilter, setPriceFilter] = useState(searchParams.get('price') || "all");
+    const [rarityFilter, setRarityFilter] = useState(searchParams.get('rarity') || "all");
+    const [setFilter, setSetFilter] = useState(searchParams.get('set') || "all");
+
+    // Update URL when filters change
+    useEffect(() => {
+        const params = new URLSearchParams();
+        if (searchTerm) params.set('q', searchTerm);
+        if (priceFilter !== 'all') params.set('price', priceFilter);
+        if (rarityFilter !== 'all') params.set('rarity', rarityFilter);
+        if (setFilter !== 'all') params.set('set', setFilter);
+
+        const newUrl = params.toString() ? `?${params.toString()}` : '/onepiece';
+        router.replace(newUrl, { scroll: false });
+    }, [searchTerm, priceFilter, rarityFilter, setFilter, router]);
 
     // Fetch available sets
     useEffect(() => {

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { PokemonCardItem } from "@/components/pokemon-card-item";
@@ -15,18 +16,36 @@ import type { PokemonCard } from "@/lib/types";
 
 export default function PokemonPage() {
     const { t } = useLocalization();
+    const searchParams = useSearchParams();
+    const router = useRouter();
+
+    // Initialize state from URL params
     const [cards, setCards] = useState<PokemonCard[]>([]);
     const [sets, setSets] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
-    const [searchTerm, setSearchTerm] = useState("");
-    const [priceFilter, setPriceFilter] = useState("all");
-    const [rarityFilter, setRarityFilter] = useState("all");
-    const [setFilter, setSetFilter] = useState("all");
-    const [sortBy, setSortBy] = useState("price_desc");
-    const [categoryFilter, setCategoryFilter] = useState("3"); // 3 = English, 85 = Japanese
+    const [searchTerm, setSearchTerm] = useState(searchParams.get('q') || "");
+    const [priceFilter, setPriceFilter] = useState(searchParams.get('price') || "all");
+    const [rarityFilter, setRarityFilter] = useState(searchParams.get('rarity') || "all");
+    const [setFilter, setSetFilter] = useState(searchParams.get('set') || "all");
+    const [sortBy, setSortBy] = useState(searchParams.get('sort') || "price_desc");
+    const [categoryFilter, setCategoryFilter] = useState(searchParams.get('cat') || "3"); // 3 = English, 85 = Japanese
     const [showFilters, setShowFilters] = useState(false);
     const [showSetDropdown, setShowSetDropdown] = useState(false);
     const hasFetched = useRef(false);
+
+    // Update URL when filters change
+    useEffect(() => {
+        const params = new URLSearchParams();
+        if (searchTerm) params.set('q', searchTerm);
+        if (priceFilter !== 'all') params.set('price', priceFilter);
+        if (rarityFilter !== 'all') params.set('rarity', rarityFilter);
+        if (setFilter !== 'all') params.set('set', setFilter);
+        if (sortBy !== 'price_desc') params.set('sort', sortBy);
+        if (categoryFilter !== '3') params.set('cat', categoryFilter);
+
+        const newUrl = params.toString() ? `?${params.toString()}` : '/pokemon';
+        router.replace(newUrl, { scroll: false });
+    }, [searchTerm, priceFilter, rarityFilter, setFilter, sortBy, categoryFilter, router]);
 
     // Fetch available sets from materialized view
     useEffect(() => {

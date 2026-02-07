@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { SoccerCardItem, type SoccerCard } from "@/components/soccer-card-item";
@@ -26,16 +26,19 @@ interface EbayItem {
 
 export default function SoccerPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { t } = useLocalization();
     const { currency, formatPrice } = useCurrency();
+
+    // Initialize state from URL params
     const [cards, setCards] = useState<SoccerCard[]>([]);
     const [ebayResults, setEbayResults] = useState<EbayItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchLoading, setSearchLoading] = useState(false);
-    const [searchTerm, setSearchTerm] = useState("");
-    const [yearFilter, setYearFilter] = useState("all");
-    const [graderFilter, setGraderFilter] = useState("all");
-    const [searchMode, setSearchMode] = useState<"database" | "ebay">("database");
+    const [searchTerm, setSearchTerm] = useState(searchParams.get('q') || "");
+    const [yearFilter, setYearFilter] = useState(searchParams.get('year') || "all");
+    const [graderFilter, setGraderFilter] = useState(searchParams.get('grader') || "all");
+    const [searchMode, setSearchMode] = useState<"database" | "ebay">(searchParams.get('mode') as "database" | "ebay" || "database");
     const [originalQuery, setOriginalQuery] = useState<string | null>(null);
 
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -43,6 +46,18 @@ export default function SoccerPage() {
     // Ref for aborting pending eBay requests
     const abortControllerRef = useRef<AbortController | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Update URL when filters change
+    useEffect(() => {
+        const params = new URLSearchParams();
+        if (searchTerm) params.set('q', searchTerm);
+        if (yearFilter !== 'all') params.set('year', yearFilter);
+        if (graderFilter !== 'all') params.set('grader', graderFilter);
+        if (searchMode !== 'database') params.set('mode', searchMode);
+
+        const newUrl = params.toString() ? `?${params.toString()}` : '/soccer';
+        router.replace(newUrl, { scroll: false });
+    }, [searchTerm, yearFilter, graderFilter, searchMode, router]);
 
     // Fetch from local database
     const fetchCards = useCallback(async () => {
@@ -280,8 +295,15 @@ export default function SoccerPage() {
     };
 
     useEffect(() => {
-        fetchCards();
-    }, [fetchCards]);
+        // If there's a search term in URL, trigger the search
+        const initialQuery = searchParams.get('q');
+        if (initialQuery) {
+            handleSmartSearch(initialQuery);
+        } else {
+            fetchCards();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
