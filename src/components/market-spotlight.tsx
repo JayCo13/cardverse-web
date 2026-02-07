@@ -505,10 +505,10 @@ export function MarketSpotlight() {
         setSearchError(null);
 
         try {
-            // Single API call with 10 second timeout
+            // Single API call with 15 second timeout (AI vision models can be slow)
             console.log('Identifying card with AI...');
             const aiController = new AbortController();
-            const aiTimeoutId = setTimeout(() => aiController.abort(), 10000);
+            const aiTimeoutId = setTimeout(() => aiController.abort(), 15000);
 
             const identifyResponse = await fetch(
                 `${SUPABASE_URL}/functions/v1/identify-card`,
@@ -568,9 +568,9 @@ export function MarketSpotlight() {
                 const isJapanese = language?.toLowerCase() === 'japanese';
                 const categoryId = isJapanese ? CATEGORY_POKEMON_JAPANESE : CATEGORY_POKEMON_ENGLISH;
 
-                // 5 second timeout
+                // 10 second timeout (increased from 5s to handle slow queries/cold starts)
                 const searchController = new AbortController();
-                const searchTimeoutId = setTimeout(() => searchController.abort(), 5000);
+                const searchTimeoutId = setTimeout(() => searchController.abort(), 10000);
 
                 try {
                     // PRIORITY 1: Search by card_id (number) + set_code
