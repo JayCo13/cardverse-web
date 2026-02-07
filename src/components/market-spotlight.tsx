@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { TrendUp, Pulse, CurrencyDollar, SpinnerGap, ArrowsClockwise, MagnifyingGlass, Camera, Plus, Check, SoccerBall, Skull } from '@phosphor-icons/react';
+import { TrendUp, Pulse, CurrencyDollar, SpinnerGap, ArrowsClockwise, MagnifyingGlass, Camera, Plus, Check, SoccerBall, Skull, UploadSimple, Crop as CropIcon, X } from '@phosphor-icons/react';
+import ReactCrop, { type Crop, centerCrop, makeAspectCrop } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -169,8 +171,15 @@ export function MarketSpotlight() {
     const [searchTerm, setSearchTerm] = useState('');
     const [isScanning, setIsScanning] = useState(false);
     const [searchError, setSearchError] = useState<string | null>(null);
-    const fileInputRef = React.useRef<HTMLInputElement>(null);
+    const fileInputRef = React.useRef<HTMLInputElement>(null); // Camera capture
+    const galleryInputRef = React.useRef<HTMLInputElement>(null); // Gallery upload
     const scanInProgressRef = React.useRef(false); // Sync flag to prevent concurrent scans
+
+    // Crop modal state
+    const [showCropModal, setShowCropModal] = useState(false);
+    const [cropImageSrc, setCropImageSrc] = useState<string>('');
+    const [crop, setCrop] = useState<Crop>();
+    const cropImgRef = useRef<HTMLImageElement>(null);
 
     // Collection state
     const [isAddingToCollection, setIsAddingToCollection] = useState(false);
@@ -974,7 +983,7 @@ export function MarketSpotlight() {
         });
     };
 
-    // Handle file selection for scan
+    // Handle file selection for CAMERA capture (direct scan, no crop)
     const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -994,9 +1003,91 @@ export function MarketSpotlight() {
         reader.readAsDataURL(file);
     };
 
-    // Trigger file input click
+    // Handle file selection for GALLERY upload (opens crop modal)
+    const handleGallerySelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64 = reader.result as string;
+            setCropImageSrc(base64);
+            setShowCropModal(true);
+            // Reset crop to undefined so a new one is created on image load
+            setCrop(undefined);
+        };
+        reader.readAsDataURL(file);
+        // Reset input so same file can be selected again
+        e.target.value = '';
+    };
+
+    // Initialize crop when image loads in crop modal
+    const onCropImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+        const { width, height } = e.currentTarget;
+        // Create a centered crop with 3:4 aspect ratio (card portrait)
+        const newCrop = centerCrop(
+            makeAspectCrop({ unit: '%', width: 80 }, 3 / 4, width, height),
+            width,
+            height
+        );
+        setCrop(newCrop);
+    }, []);
+
+    // Complete crop and process the cropped image
+    const handleCropComplete = useCallback(async () => {
+        if (!crop || !cropImgRef.current) return;
+
+        const image = cropImgRef.current;
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        // Calculate crop dimensions in pixels
+        const scaleX = image.naturalWidth / image.width;
+        const scaleY = image.naturalHeight / image.height;
+
+        const cropX = (crop.x / 100) * image.width * scaleX;
+        const cropY = (crop.y / 100) * image.height * scaleY;
+        const cropWidth = (crop.width / 100) * image.width * scaleX;
+        const cropHeight = (crop.height / 100) * image.height * scaleY;
+
+        canvas.width = cropWidth;
+        canvas.height = cropHeight;
+
+        ctx.drawImage(
+            image,
+            cropX,
+            cropY,
+            cropWidth,
+            cropHeight,
+            0,
+            0,
+            cropWidth,
+            cropHeight
+        );
+
+        // Convert to base64
+        const croppedBase64 = canvas.toDataURL('image/jpeg', 0.95);
+        const base64Data = croppedBase64.split(',')[1];
+
+        // Close modal
+        setShowCropModal(false);
+        setCropImageSrc('');
+
+        // Preprocess and scan
+        console.log('Cropped image, preprocessing for AI...');
+        const enhancedBase64 = await preprocessImage(base64Data);
+        processScannedImage(enhancedBase64);
+    }, [crop]);
+
+    // Trigger camera input click
     const handleScanClick = () => {
         fileInputRef.current?.click();
+    };
+
+    // Trigger gallery input click
+    const handleUploadClick = () => {
+        galleryInputRef.current?.click();
     };
 
     useEffect(() => {
@@ -1173,7 +1264,7 @@ export function MarketSpotlight() {
                                 className="w-full bg-transparent border-none text-white text-base md:text-lg px-6 py-2 focus:outline-none placeholder:text-gray-500 font-medium rounded-l-full"
                                 disabled={isLoading || isScanning}
                             />
-                            {/* Hidden file input for scan */}
+                            {/* Hidden file input for camera capture */}
                             <input
                                 ref={fileInputRef}
                                 type="file"
@@ -1182,18 +1273,35 @@ export function MarketSpotlight() {
                                 onChange={handleFileSelect}
                                 className="hidden"
                             />
-                            {/* Scan button */}
+                            {/* Hidden file input for gallery upload (no capture - opens gallery) */}
+                            <input
+                                ref={galleryInputRef}
+                                type="file"
+                                accept="image/*"
+                                onChange={handleGallerySelect}
+                                className="hidden"
+                            />
+                            {/* Camera scan button */}
                             <Button
                                 onClick={handleScanClick}
                                 disabled={isLoading || isScanning}
-                                className="rounded-full bg-white/10 hover:bg-white/20 text-white h-10 w-10 md:h-11 md:w-11 p-0 flex items-center justify-center shrink-0 mr-2 transition-all"
-                                title="Scan card with camera"
+                                className="rounded-full bg-white/10 hover:bg-white/20 text-white h-10 w-10 md:h-11 md:w-11 p-0 flex items-center justify-center shrink-0 mr-1 md:mr-2 transition-all"
+                                title="Take photo with camera"
                             >
                                 {isScanning ? (
                                     <SpinnerGap className="h-5 w-5 animate-spin" weight="bold" />
                                 ) : (
                                     <Camera className="h-5 w-5" />
                                 )}
+                            </Button>
+                            {/* Gallery upload button */}
+                            <Button
+                                onClick={handleUploadClick}
+                                disabled={isLoading || isScanning}
+                                className="rounded-full bg-white/10 hover:bg-white/20 text-white h-10 w-10 md:h-11 md:w-11 p-0 flex items-center justify-center shrink-0 mr-2 transition-all"
+                                title="Upload from gallery"
+                            >
+                                <UploadSimple className="h-5 w-5" />
                             </Button>
                             {/* Search button */}
                             <Button
@@ -1550,6 +1658,75 @@ export function MarketSpotlight() {
                     </div>
                 )}
             </div>
+
+            {/* Image Crop Modal */}
+            {showCropModal && (
+                <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4">
+                    {/* Header */}
+                    <div className="w-full max-w-2xl flex items-center justify-between mb-4">
+                        <h3 className="text-white text-lg font-semibold flex items-center gap-2">
+                            <CropIcon className="w-5 h-5" />
+                            Crop Image
+                        </h3>
+                        <Button
+                            onClick={() => {
+                                setShowCropModal(false);
+                                setCropImageSrc('');
+                            }}
+                            variant="ghost"
+                            className="text-white hover:bg-white/10 rounded-full h-10 w-10 p-0"
+                        >
+                            <X className="w-5 h-5" />
+                        </Button>
+                    </div>
+
+                    {/* Crop area */}
+                    <div className="relative max-h-[60vh] max-w-full overflow-auto rounded-lg">
+                        <ReactCrop
+                            crop={crop}
+                            onChange={(_, percentCrop) => setCrop(percentCrop)}
+                            aspect={3 / 4}
+                            minWidth={50}
+                        >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                                ref={cropImgRef}
+                                src={cropImageSrc}
+                                alt="Crop preview"
+                                onLoad={onCropImageLoad}
+                                className="max-h-[60vh] max-w-full object-contain"
+                            />
+                        </ReactCrop>
+                    </div>
+
+                    {/* Instructions */}
+                    <p className="text-gray-400 text-sm mt-4 text-center">
+                        Drag to adjust the crop area. Focus on the card for best results.
+                    </p>
+
+                    {/* Actions */}
+                    <div className="flex gap-3 mt-6">
+                        <Button
+                            onClick={() => {
+                                setShowCropModal(false);
+                                setCropImageSrc('');
+                            }}
+                            variant="outline"
+                            className="bg-transparent border-white/20 text-white hover:bg-white/10"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleCropComplete}
+                            className="bg-orange-500 hover:bg-orange-600 text-white"
+                            disabled={!crop}
+                        >
+                            <CropIcon className="w-4 h-4 mr-2" />
+                            Scan Cropped Image
+                        </Button>
+                    </div>
+                </div>
+            )}
         </section>
     );
 }
