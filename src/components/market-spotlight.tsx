@@ -1450,14 +1450,14 @@ export function MarketSpotlight() {
                         </div>
 
                         {/* Main Chart Area */}
-                        <div className="w-full bg-white/5 rounded-xl p-2 md:p-4 border border-white/10 backdrop-blur-sm relative h-[250px] md:h-[350px] overflow-hidden">
+                        <div className="w-full bg-white/5 rounded-xl p-1 md:p-4 border border-white/10 backdrop-blur-sm relative h-[250px] md:h-[350px] overflow-hidden">
                             {isLoading ? (
                                 <div className="w-full h-full flex items-center justify-center">
                                     <SpinnerGap className="w-8 h-8 animate-spin text-orange-500" weight="bold" />
                                 </div>
                             ) : (
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <AreaChart data={chartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                                    <AreaChart data={chartData} margin={{ top: 10, right: 40, left: -20, bottom: 0 }}>
                                         <defs>
                                             <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
                                                 <stop offset="5%" stopColor="#F97316" stopOpacity={0.3} />
@@ -1467,7 +1467,7 @@ export function MarketSpotlight() {
                                         <XAxis
                                             dataKey="date"
                                             stroke="#333"
-                                            tick={{ fill: '#666', fontSize: 12 }}
+                                            tick={{ fill: '#666', fontSize: 10 }}
                                             axisLine={false}
                                             tickLine={false}
                                             dy={10}
@@ -1476,14 +1476,15 @@ export function MarketSpotlight() {
                                             orientation="right"
                                             domain={['auto', 'auto']}
                                             stroke="#333"
-                                            tick={{ fill: '#666', fontSize: 12 }}
+                                            tick={{ fill: '#666', fontSize: 10 }}
                                             axisLine={false}
                                             tickLine={false}
                                             tickFormatter={(val) => `$${val} `}
-                                            dx={10}
+                                            dx={0}
+                                            width={40}
                                         />
                                         <Tooltip
-                                            contentStyle={{ backgroundColor: '#111', borderColor: '#333', borderRadius: '8px', color: '#fff' }}
+                                            contentStyle={{ backgroundColor: '#111', borderColor: '#333', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
                                             itemStyle={{ color: '#F97316' }}
                                             formatter={(value: number) => [`$${value.toLocaleString()} `, 'Price']}
                                         />
