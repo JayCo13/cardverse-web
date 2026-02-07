@@ -1412,7 +1412,7 @@ export function MarketSpotlight() {
                     </div>
 
                     {/* Right Column: The Data */}
-                    <div className="space-y-6 h-full flex flex-col justify-center">
+                    <div className="space-y-6 h-full flex flex-col justify-center min-w-0">
                         {/* Chart Controls Row */}
                         <div className="flex flex-wrap items-center justify-between gap-4 w-full border-b border-white/5 pb-4">
                             <div className="flex flex-col md:flex-row items-start md:items-center gap-1 md:gap-4">
@@ -1450,7 +1450,7 @@ export function MarketSpotlight() {
                         </div>
 
                         {/* Main Chart Area */}
-                        <div className="w-full bg-white/5 rounded-xl p-4 border border-white/10 backdrop-blur-sm relative h-[350px]">
+                        <div className="w-full bg-white/5 rounded-xl p-2 md:p-4 border border-white/10 backdrop-blur-sm relative h-[250px] md:h-[350px]">
                             {isLoading ? (
                                 <div className="w-full h-full flex items-center justify-center">
                                     <SpinnerGap className="w-8 h-8 animate-spin text-orange-500" weight="bold" />
