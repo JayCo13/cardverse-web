@@ -1264,16 +1264,7 @@ export function MarketSpotlight() {
                                 className="w-full bg-transparent border-none text-white text-base md:text-lg px-6 py-2 focus:outline-none placeholder:text-gray-500 font-medium rounded-l-full"
                                 disabled={isLoading || isScanning}
                             />
-                            {/* Hidden file input for camera capture */}
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept="image/*"
-                                capture="environment"
-                                onChange={handleFileSelect}
-                                className="hidden"
-                            />
-                            {/* Hidden file input for gallery upload (no capture - opens gallery) */}
+                            {/* Hidden file input for image selection (camera or gallery) */}
                             <input
                                 ref={galleryInputRef}
                                 type="file"
@@ -1281,27 +1272,18 @@ export function MarketSpotlight() {
                                 onChange={handleGallerySelect}
                                 className="hidden"
                             />
-                            {/* Camera scan button */}
+                            {/* Upload/Camera button - opens image picker with crop */}
                             <Button
-                                onClick={handleScanClick}
+                                onClick={handleUploadClick}
                                 disabled={isLoading || isScanning}
-                                className="rounded-full bg-white/10 hover:bg-white/20 text-white h-10 w-10 md:h-11 md:w-11 p-0 flex items-center justify-center shrink-0 mr-1 md:mr-2 transition-all"
-                                title="Take photo with camera"
+                                className="rounded-full bg-white/10 hover:bg-white/20 text-white h-10 w-10 md:h-11 md:w-11 p-0 flex items-center justify-center shrink-0 mr-2 transition-all"
+                                title="Upload or take photo"
                             >
                                 {isScanning ? (
                                     <SpinnerGap className="h-5 w-5 animate-spin" weight="bold" />
                                 ) : (
                                     <Camera className="h-5 w-5" />
                                 )}
-                            </Button>
-                            {/* Gallery upload button */}
-                            <Button
-                                onClick={handleUploadClick}
-                                disabled={isLoading || isScanning}
-                                className="rounded-full bg-white/10 hover:bg-white/20 text-white h-10 w-10 md:h-11 md:w-11 p-0 flex items-center justify-center shrink-0 mr-2 transition-all"
-                                title="Upload from gallery"
-                            >
-                                <UploadSimple className="h-5 w-5" />
                             </Button>
                             {/* Search button */}
                             <Button
@@ -1661,7 +1643,7 @@ export function MarketSpotlight() {
 
             {/* Image Crop Modal */}
             {showCropModal && (
-                <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4">
+                <div className="fixed inset-0 z-[60] bg-black/95 flex flex-col items-center justify-center p-4 overflow-hidden">
                     {/* Header */}
                     <div className="w-full max-w-2xl flex items-center justify-between mb-4">
                         <h3 className="text-white text-lg font-semibold flex items-center gap-2">
@@ -1680,13 +1662,14 @@ export function MarketSpotlight() {
                         </Button>
                     </div>
 
-                    {/* Crop area */}
-                    <div className="relative max-h-[60vh] max-w-full overflow-auto rounded-lg">
+                    {/* Crop area - improved sizing for full image display */}
+                    <div className="relative w-full max-w-2xl flex-1 flex items-center justify-center overflow-hidden rounded-lg">
                         <ReactCrop
                             crop={crop}
                             onChange={(_, percentCrop) => setCrop(percentCrop)}
                             aspect={3 / 4}
                             minWidth={50}
+                            className="max-h-full"
                         >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
@@ -1694,7 +1677,7 @@ export function MarketSpotlight() {
                                 src={cropImageSrc}
                                 alt="Crop preview"
                                 onLoad={onCropImageLoad}
-                                className="max-h-[60vh] max-w-full object-contain"
+                                style={{ maxHeight: '60vh', maxWidth: '100%', objectFit: 'contain' }}
                             />
                         </ReactCrop>
                     </div>
