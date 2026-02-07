@@ -143,20 +143,36 @@ export function Header() {
                       <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('beta')}</Badge>
                     </span>
                   </div>
-                  <Link href="/bid" className="text-muted-foreground hover:text-foreground">
+                  <Link href="/bid" className="text-muted-foreground hover:text-foreground flex items-center gap-1">
                     {t('nav_bid')}
+                    <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('beta')}</Badge>
                   </Link>
-                  <Link href="/razz" className="text-muted-foreground hover:text-foreground">
+                  <Link href="/razz" className="text-muted-foreground hover:text-foreground flex items-center gap-1">
                     {t('nav_razz')}
+                    <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('soon')}</Badge>
                   </Link>
                   <Link href="/forum" className="text-muted-foreground hover:text-foreground">
                     {t('nav_forum')}
                   </Link>
+                  <div className="border-t my-2 pt-2 grid gap-4">
+                    <Link href="/pokemon" className="text-muted-foreground hover:text-foreground flex items-center gap-2">
+                      <Image src="/assets/pok-logo.png" width={24} height={24} alt="Pokemon" className="object-contain" />
+                      {t('nav_pokemon')}
+                    </Link>
+                    <Link href="/onepiece" className="text-muted-foreground hover:text-foreground flex items-center gap-2">
+                      <Image src="/assets/one-logo.png" width={24} height={24} alt="One Piece" className="object-contain" />
+                      {t('nav_onepiece')}
+                    </Link>
+                    <Link href="/soccer" className="text-muted-foreground hover:text-foreground flex items-center gap-2">
+                      <Image src="/assets/soc-logo.png" width={24} height={24} alt="Soccer" className="object-contain" />
+                      {t('nav_soccer')}
+                    </Link>
+                  </div>
                 </nav>
               </SheetContent>
             </Sheet>
             <div className="flex items-center gap-2 flex-1 justify-end ml-2">
-              <Button onClick={handleListCardClick} size="sm" className="bg-orange-500 hover:bg-orange-600 text-white font-bold whitespace-nowrap px-3 h-9 text-xs sm:text-sm flex items-center gap-2 flex-1 md:flex-none justify-center">
+              <Button onClick={handleListCardClick} size="sm" className="bg-orange-500 hover:bg-orange-600 text-white font-bold whitespace-nowrap px-3 h-9 text-xs sm:text-sm flex items-center gap-2 justify-center">
                 <Camera className="h-4 w-4" />
                 <span className="md:hidden">{t('scan_short')}</span>
                 <span className="hidden md:inline">{t('scan_pokemon_card')}</span>
