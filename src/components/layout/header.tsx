@@ -3,7 +3,7 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { CircleUser, Menu, Search, Headphones } from "lucide-react"
+import { CircleUser, Menu, Search, Headphones, Camera } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { NotificationBell } from "@/components/notification-bell"
 import { LanguageSelector } from "@/components/language-selector"
@@ -156,10 +156,12 @@ export function Header() {
               </SheetContent>
             </Sheet>
             <div className="flex items-center gap-2 flex-1 justify-end ml-2">
-              <Button onClick={handleListCardClick} size="sm" className="bg-orange-500 hover:bg-orange-600 text-white font-bold whitespace-nowrap px-2 h-9 text-xs sm:text-sm">
-                {t('scan_pokemon_card')}
+              <Button onClick={handleListCardClick} size="sm" className="bg-orange-500 hover:bg-orange-600 text-white font-bold whitespace-nowrap px-3 h-9 text-xs sm:text-sm flex items-center gap-2 flex-1 md:flex-none justify-center">
+                <Camera className="h-4 w-4" />
+                <span className="md:hidden">{t('scan_short')}</span>
+                <span className="hidden md:inline">{t('scan_pokemon_card')}</span>
               </Button>
-              <div className="flex gap-1">
+              <div className="flex gap-1 shrink-0">
                 <CurrencySelector />
                 <LanguageSelector />
               </div>

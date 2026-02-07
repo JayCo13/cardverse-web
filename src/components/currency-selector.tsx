@@ -26,7 +26,7 @@ export function CurrencySelector() {
                     <span className="font-display font-bold text-lg text-white/90 group-hover:text-white relative z-10 transition-colors drop-shadow-sm group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]">
                         {currentCurrency?.symbol}
                     </span>
-                    <span className="font-display font-medium text-muted-foreground group-hover:text-white/80 transition-colors uppercase tracking-wider text-xs relative z-10">
+                    <span className="font-display font-medium text-muted-foreground group-hover:text-white/80 transition-colors uppercase tracking-wider text-xs relative z-10 hidden md:inline">
                         {currentCurrency?.value}
                     </span>
                 </Button>

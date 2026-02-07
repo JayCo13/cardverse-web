@@ -27,7 +27,7 @@ export function LanguageSelector() {
                     <span className="text-xl relative z-10 filter drop-shadow-md group-hover:drop-shadow-[0_0_8px_rgba(59,130,246,0.5)] transition-all">
                         {currentLanguage?.flag}
                     </span>
-                    <span className="font-display font-medium text-muted-foreground group-hover:text-blue-200 transition-colors uppercase tracking-wider text-xs relative z-10">
+                    <span className="font-display font-medium text-muted-foreground group-hover:text-blue-200 transition-colors uppercase tracking-wider text-xs relative z-10 hidden md:inline">
                         {currentLanguage?.value.split('-')[0].toUpperCase()}
                     </span>
                 </Button>
