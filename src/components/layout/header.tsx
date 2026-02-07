@@ -166,6 +166,7 @@ export function Header() {
                   </Button>
                 </nav>
               </SheetContent>
+            </Sheet>
           </div>
           <div className="flex-1 flex items-center justify-center">
             <nav className="hidden md:flex flex-row items-center gap-6 lg:gap-8 whitespace-nowrap text-sm font-medium">
