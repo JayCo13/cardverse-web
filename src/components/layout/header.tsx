@@ -207,29 +207,7 @@ export function Header() {
               </Link>
             </nav>
           </div>
-          <div className="flex-1 flex items-center justify-center hidden md:flex">
-            <nav className="flex flex-row items-center gap-6 lg:gap-8 whitespace-nowrap text-sm font-medium">
-              <Link href="/buy" className="text-muted-foreground transition-colors hover:text-foreground">
-                {t('nav_buy')}
-              </Link>
-              <div className="relative group">
-                <span className="text-muted-foreground opacity-50 cursor-not-allowed flex items-center gap-1">
-                  {t('nav_sell')}
-                  <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('beta')}</Badge>
-                </span>
-              </div>
-              <Link href="/bid" className="text-muted-foreground hover:text-foreground flex items-center gap-1">
-                {t('nav_bid')}
-                <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('beta')}</Badge>
-              </Link>
-              <Link href="/razz" className="text-muted-foreground hover:text-foreground">
-                {t('nav_razz')}
-              </Link>
-              <Link href="/forum" className="text-muted-foreground hover:text-foreground">
-                {t('nav_forum')}
-              </Link>
-            </nav>
-          </div>
+
           <div className="flex-1 flex w-full items-center gap-4 md:ml-auto justify-end hidden md:flex">
             <nav className="hidden md:flex items-center gap-2 text-sm font-medium">
               <Link
