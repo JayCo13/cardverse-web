@@ -131,15 +131,6 @@ export function Header() {
                   >
                     <Image src="/assets/logo-verse.png" width={140} height={35} alt="CardVerse logo" />
                   </Link>
-                  <div className="flex flex-col gap-4 py-4 border-b border-t">
-                    <div className="flex items-center justify-between">
-                      <span>{t('settings')}</span>
-                      <div className="flex gap-2">
-                        <CurrencySelector />
-                        <LanguageSelector />
-                      </div>
-                    </div>
-                  </div>
                   <div className="relative group">
                     <span className="hover:text-foreground opacity-50 cursor-not-allowed flex items-center gap-1">
                       {t('nav_buy')}
@@ -161,9 +152,15 @@ export function Header() {
                   <Link href="/forum" className="text-muted-foreground hover:text-foreground">
                     {t('nav_forum')}
                   </Link>
-                  <Button onClick={handleListCardClick} className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold mt-4">
-                    {t('list_a_card')}
-                  </Button>
+                  <div className="flex items-center gap-2 mt-4 w-full">
+                    <Button onClick={handleListCardClick} className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold whitespace-nowrap">
+                      {t('scan_pokemon_card')}
+                    </Button>
+                    <div className="flex gap-1 shrink-0">
+                      <CurrencySelector />
+                      <LanguageSelector />
+                    </div>
+                  </div>
                 </nav>
               </SheetContent>
             </Sheet>

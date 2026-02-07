@@ -61,9 +61,9 @@ export function HeroSection() {
               </Button>
             </div>
           </div>
-          <div className="relative h-[400px] md:h-[500px] w-full flex items-center justify-center animate-fade-in-up will-change-transform mt-0 md:mt-0 order-first md:order-last" style={{ animationDelay: '200ms' }}>
+          <div className="relative h-[400px] md:h-[500px] w-full flex items-center justify-center animate-fade-in-up will-change-transform mt-0 md:mt-0" style={{ animationDelay: '200ms' }}>
             {mainImage3 && <div
-              className="absolute w-[200px] h-[280px] md:w-[250px] md:h-[350px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:rotate-[-5deg] hover:scale-105 will-change-transform"
+              className="absolute w-[150px] h-[210px] md:w-[250px] md:h-[350px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:rotate-[-5deg] hover:scale-105 will-change-transform"
               style={{ transform: 'rotate(-10deg) translate(40px, -40px)', zIndex: 10 }}
             >
               <Image
@@ -76,7 +76,7 @@ export function HeroSection() {
               />
             </div>}
             {mainImage2 && <div
-              className="absolute w-[200px] h-[280px] md:w-[250px] md:h-[350px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:rotate-[10deg] hover:scale-105 will-change-transform"
+              className="absolute w-[150px] h-[210px] md:w-[250px] md:h-[350px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:rotate-[10deg] hover:scale-105 will-change-transform"
               style={{ transform: 'rotate(5deg) translate(-60px, 10px)', zIndex: 20 }}
             >
               <Image
@@ -89,7 +89,7 @@ export function HeroSection() {
               />
             </div>}
             {mainImage1 && <div
-              className="absolute w-[200px] h-[280px] md:w-[250px] md:h-[350px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:rotate-[20deg] hover:scale-105 will-change-transform"
+              className="absolute w-[150px] h-[210px] md:w-[250px] md:h-[350px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:rotate-[20deg] hover:scale-105 will-change-transform"
               style={{ transform: 'rotate(15deg) translate(80px, 30px)', zIndex: 30 }}
             >
               <Image
