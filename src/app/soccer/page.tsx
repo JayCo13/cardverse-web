@@ -127,12 +127,34 @@ export default function SoccerPage() {
     };
 
     // Smart search: local database first, fallback to eBay
-    const handleSmartSearch = async (overrideTerm?: string) => {
+    const handleSmartSearch = async (overrideTerm?: string, skipCache = false) => {
         const termToSearch = overrideTerm !== undefined ? overrideTerm : searchTerm;
 
         if (!termToSearch.trim()) {
             fetchCards();
             return;
+        }
+
+        // Check sessionStorage cache for eBay results first (unless skipCache is true)
+        const cacheKey = `soccer_ebay_${termToSearch.toLowerCase().trim()}`;
+        if (!skipCache) {
+            try {
+                const cachedData = sessionStorage.getItem(cacheKey);
+                if (cachedData) {
+                    const { results, timestamp } = JSON.parse(cachedData);
+                    // Use cache if less than 5 minutes old
+                    if (Date.now() - timestamp < 5 * 60 * 1000 && results.length > 0) {
+                        console.log('Using cached eBay results for:', termToSearch);
+                        setEbayResults(results);
+                        setCards([]);
+                        setSearchMode("ebay");
+                        setSearchLoading(false);
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.error('Cache read error:', e);
+            }
         }
 
         // Cancel any pending request
@@ -206,6 +228,16 @@ export default function SoccerPage() {
                 });
                 setEbayResults(validItems);
                 setCards([]);
+
+                // Cache the eBay results
+                try {
+                    sessionStorage.setItem(cacheKey, JSON.stringify({
+                        results: validItems,
+                        timestamp: Date.now()
+                    }));
+                } catch (e) {
+                    console.error('Cache write error:', e);
+                }
             }
         } catch (err) {
             if (err instanceof Error && err.name === 'AbortError') {
