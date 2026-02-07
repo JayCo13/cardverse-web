@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -1055,7 +1055,7 @@ export function MarketSpotlight() {
     }, []);
 
     // Use centralized currency formatting from context
-    const { formatPrice, convertPrice, currency } = useCurrency();
+    const { formatPrice } = useCurrency();
     const { t } = useLocalization();
 
     // Get display image - use TCG image or fallback
@@ -1415,7 +1415,7 @@ export function MarketSpotlight() {
                     <div className="space-y-6 h-full flex flex-col justify-center">
                         {/* Chart Controls Row */}
                         <div className="flex flex-wrap items-center justify-between gap-4 w-full border-b border-white/5 pb-4">
-                            <div className="flex flex-col items-start w-full md:w-auto md:flex-row md:items-baseline gap-1 md:gap-4 mb-2 md:mb-0">
+                            <div className="flex items-center gap-4">
                                 {isLoading ? (
                                     <div className="flex items-center gap-4">
                                         <div className="h-9 w-40 bg-white/10 rounded animate-pulse" />
@@ -1426,14 +1426,14 @@ export function MarketSpotlight() {
                                         <span className="text-2xl md:text-3xl font-bold text-white font-mono tracking-tighter">
                                             {formatPrice(currentPrice || 0)}
                                         </span>
-                                        <span className={`text-sm md:text-lg font-bold font-mono ${(priceChange || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                        <span className={`text-base md:text-lg font-bold font-mono ${(priceChange || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                             {(priceChange || 0) >= 0 ? '▲' : '▼'} {Math.abs(priceChange || 0).toFixed(1)}%
                                         </span>
                                     </>
                                 )}
                             </div>
 
-                            <div className="flex w-full md:w-auto justify-center bg-white/5 p-1 rounded-lg">
+                            <div className="flex bg-white/5 p-1 rounded-lg">
                                 {TIME_FRAMES.map((tf) => (
                                     <button
                                         key={tf}
@@ -1457,16 +1457,11 @@ export function MarketSpotlight() {
                                 </div>
                             ) : (
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <AreaChart data={useMemo(() => {
-                                        return chartData.map(d => ({
-                                            ...d,
-                                            price: convertPrice(d.price)
-                                        }));
-                                    }, [chartData, convertPrice])} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                                    <AreaChart data={chartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
                                         <defs>
                                             <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
                                                 <stop offset="5%" stopColor="#F97316" stopOpacity={0.3} />
-                                                <stop offset="95%" stopColor="#F97316" stopOpacity={0.05} />
+                                                <stop offset="95%" stopColor="#F97316" stopOpacity={0} />
                                             </linearGradient>
                                         </defs>
                                         <XAxis
@@ -1484,25 +1479,13 @@ export function MarketSpotlight() {
                                             tick={{ fill: '#666', fontSize: 12 }}
                                             axisLine={false}
                                             tickLine={false}
-                                            tickFormatter={(val) => {
-                                                try {
-                                                    return new Intl.NumberFormat(currency === 'VND' ? 'vi-VN' : 'en-US', {
-                                                        style: 'currency',
-                                                        currency: currency,
-                                                        notation: 'compact',
-                                                        maximumFractionDigits: 1
-                                                    }).format(val);
-                                                } catch {
-                                                    return `${val}`;
-                                                }
-                                            }}
+                                            tickFormatter={(val) => `$${val} `}
                                             dx={10}
-                                            width={60}
                                         />
                                         <Tooltip
                                             contentStyle={{ backgroundColor: '#111', borderColor: '#333', borderRadius: '8px', color: '#fff' }}
                                             itemStyle={{ color: '#F97316' }}
-                                            formatter={(value: number) => [formatPrice(value), t('market_price') || 'Price']}
+                                            formatter={(value: number) => [`$${value.toLocaleString()} `, 'Price']}
                                         />
                                         <Area
                                             type="monotone"
@@ -1518,39 +1501,39 @@ export function MarketSpotlight() {
                         </div>
 
                         {/* Data Grid */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
-                            <Card className="bg-white/5 border-white/10 p-4 flex flex-col items-start hover:border-orange-500/30 transition-colors group">
+                        <div className="grid grid-cols-3 gap-2 md:gap-4">
+                            <Card className="bg-white/5 border-white/10 p-2 md:p-4 flex flex-col items-start hover:border-orange-500/30 transition-colors group">
                                 <span className="text-gray-500 text-[10px] uppercase tracking-wider mb-1 flex items-center gap-1">
                                     <CurrencyDollar className="w-3 h-3" /> {t('low_price')}
                                 </span>
                                 {isLoading ? (
                                     <div className="h-7 w-20 bg-white/10 rounded animate-pulse" />
                                 ) : (
-                                    <span className="text-base md:text-xl font-bold text-white font-mono group-hover:text-orange-400 transition-colors">
+                                    <span className="text-sm md:text-xl font-bold text-white font-mono tracking-tighter group-hover:text-orange-400 transition-colors break-words text-wrap">
                                         {product?.low_price ? formatPrice(product.low_price) : '-'}
                                     </span>
                                 )}
                             </Card>
-                            <Card className="bg-white/5 border-white/10 p-4 flex flex-col items-start hover:border-orange-500/30 transition-colors group">
+                            <Card className="bg-white/5 border-white/10 p-2 md:p-4 flex flex-col items-start hover:border-orange-500/30 transition-colors group">
                                 <span className="text-gray-500 text-[10px] uppercase tracking-wider mb-1 flex items-center gap-1">
                                     <TrendUp className="w-3 h-3" /> {t('price_change')}
                                 </span>
                                 {isLoading ? (
                                     <div className="h-7 w-20 bg-white/10 rounded animate-pulse" />
                                 ) : (
-                                    <span className={`text-base md:text-xl font-bold flex items-center gap-1 ${(priceChange || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    <span className={`text-sm md:text-xl font-bold flex items-center gap-1 ${(priceChange || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                         {(priceChange || 0) >= 0 ? '+' : ''}{(priceChange || 0).toFixed(1)}%
                                     </span>
                                 )}
                             </Card>
-                            <Card className="bg-white/5 border-white/10 p-4 flex flex-col items-start hover:border-orange-500/30 transition-colors group">
+                            <Card className="bg-white/5 border-white/10 p-2 md:p-4 flex flex-col items-start hover:border-orange-500/30 transition-colors group">
                                 <span className="text-gray-500 text-[10px] uppercase tracking-wider mb-1 flex items-center gap-1">
                                     <Pulse className="w-3 h-3" /> {t('high_price')}
                                 </span>
                                 {isLoading ? (
                                     <div className="h-7 w-20 bg-white/10 rounded animate-pulse" />
                                 ) : (
-                                    <span className="text-base md:text-xl font-bold text-white font-mono">
+                                    <span className="text-sm md:text-xl font-bold text-blue-400 break-words text-wrap">
                                         {product?.high_price ? formatPrice(product.high_price) : '-'}
                                     </span>
                                 )}
