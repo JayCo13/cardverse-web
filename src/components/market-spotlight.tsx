@@ -1415,7 +1415,7 @@ export function MarketSpotlight() {
                     <div className="space-y-6 h-full flex flex-col justify-center">
                         {/* Chart Controls Row */}
                         <div className="flex flex-wrap items-center justify-between gap-4 w-full border-b border-white/5 pb-4">
-                            <div className="flex items-center gap-4">
+                            <div className="flex flex-col md:flex-row items-start md:items-center gap-1 md:gap-4">
                                 {isLoading ? (
                                     <div className="flex items-center gap-4">
                                         <div className="h-9 w-40 bg-white/10 rounded animate-pulse" />
