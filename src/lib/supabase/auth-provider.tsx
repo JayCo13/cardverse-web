@@ -155,26 +155,21 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
 
     // Memoized auth functions to prevent re-renders
     const signInWithGoogle = useCallback(async () => {
-        const redirectUrl = process.env.NODE_ENV === 'production'
-            ? 'https://cardversehub.com/auth/callback'
-            : `${window.location.origin}/auth/callback`;
+        // Always use current origin + /auth/callback for the redirect
         const { error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
-                redirectTo: redirectUrl,
+                redirectTo: `${window.location.origin}/auth/callback`,
             },
         });
         if (error) console.error('Google sign in error:', error);
     }, []);
 
     const signInWithFacebook = useCallback(async () => {
-        const redirectUrl = process.env.NODE_ENV === 'production'
-            ? 'https://cardversehub.com/auth/callback'
-            : `${window.location.origin}/auth/callback`;
         const { error } = await supabase.auth.signInWithOAuth({
             provider: 'facebook',
             options: {
-                redirectTo: redirectUrl,
+                redirectTo: `${window.location.origin}/auth/callback`,
             },
         });
         if (error) console.error('Facebook sign in error:', error);
