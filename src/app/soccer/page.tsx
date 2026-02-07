@@ -327,9 +327,32 @@ export default function SoccerPage() {
     };
 
     useEffect(() => {
-        // If there's a search term in URL, trigger the search
+        // If there's a search term in URL, check cache first to avoid re-searching
         const initialQuery = searchParams.get('q');
+        const mode = searchParams.get('mode');
+
         if (initialQuery) {
+            // Check for cached eBay results to prevent re-fetching
+            const cacheKey = `soccer_ebay_${initialQuery.toLowerCase().trim()}`;
+            try {
+                const cachedData = sessionStorage.getItem(cacheKey);
+                if (cachedData && mode === 'ebay') {
+                    const { results, timestamp } = JSON.parse(cachedData);
+                    // Use cache if less than 5 minutes old
+                    if (Date.now() - timestamp < 5 * 60 * 1000 && results.length > 0) {
+                        console.log('Restoring cached eBay results on initial load for:', initialQuery);
+                        setEbayResults(results);
+                        setCards([]);
+                        setSearchMode("ebay");
+                        setLoading(false);
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.error('Cache read error on load:', e);
+            }
+
+            // Cache miss or stale - run the search
             handleSmartSearch(initialQuery);
         } else {
             fetchCards();
