@@ -1101,7 +1101,7 @@ export function MarketSpotlight() {
                             <DialogTrigger asChild>
                                 <Button
                                     variant="outline"
-                                    className="bg-white/5 border-white/20 hover:bg-white/10 text-white/80 hover:text-white rounded-full px-6 py-2 h-auto text-sm md:text-base font-medium transition-all hover:scale-105 hover:border-white/40"
+                                    className="bg-white/5 border-white/20 hover:bg-white/10 text-white/80 hover:text-white rounded-full px-6 py-2 h-auto text-sm md:text-base font-medium transition-all hover:scale-105 hover:border-white/40 whitespace-normal text-center"
                                 >
                                     {t('other_tcg_button')} <ArrowsClockwise className="ml-2 w-4 h-4" />
                                 </Button>
