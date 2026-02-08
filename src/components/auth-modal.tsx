@@ -153,7 +153,7 @@ export function AuthModal() {
   };
 
   const handleVerifyOtp = async () => {
-    if (!pendingVerificationEmail || otpCode.length !== 6) return;
+    if (!pendingVerificationEmail || otpCode.length !== 8) return;
     setError(null);
     setIsVerifying(true);
     try {
@@ -281,10 +281,10 @@ export function AuthModal() {
                     <Input
                       id="otp-code"
                       type="text"
-                      placeholder="123456"
-                      maxLength={6}
+                      placeholder="12345678"
+                      maxLength={8}
                       value={otpCode}
-                      onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
                       className="text-center text-2xl tracking-widest font-mono"
                     />
                   </div>
@@ -293,7 +293,7 @@ export function AuthModal() {
                     type="button"
                     className="w-full bg-orange-500 hover:bg-orange-600"
                     onClick={handleVerifyOtp}
-                    disabled={otpCode.length !== 6 || isVerifying}
+                    disabled={otpCode.length !== 8 || isVerifying}
                   >
                     {isVerifying ? t('auth_verifying') : t('auth_verify_button')}
                   </Button>
