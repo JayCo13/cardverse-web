@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { getSupabaseClient } from '@/lib/supabase/client';
 import { useUser } from '@/lib/supabase';
 
-const ANONYMOUS_LIMIT = 1;
-const REGISTERED_LIMIT = 3;
+const ANONYMOUS_LIMIT = 2;
+const REGISTERED_LIMIT = 4;
 const LOCAL_STORAGE_KEY = 'cardverse_scan_usage';
 
 interface ScanUsage {
@@ -43,8 +43,8 @@ function getTodayString(): string {
 
 /**
  * Hook to manage scan usage limits
- * - Anonymous users: 1 scan/day (localStorage)
- * - Registered users: 3 scans/day (Supabase user_scan_usage table)
+ * - Anonymous users: 2 scans/day (localStorage)
+ * - Registered users: 4 scans/day (Supabase user_scan_usage table)
  */
 export function useScanLimit(): UseScanLimitReturn {
     const { user } = useUser();
