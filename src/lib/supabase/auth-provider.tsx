@@ -15,7 +15,7 @@ interface AuthContextType {
     signInWithGoogle: () => Promise<void>;
     signInWithFacebook: () => Promise<void>;
     signInWithEmail: (email: string, password: string) => Promise<{ error: AuthError | null }>;
-    signUpWithEmail: (email: string, password: string, displayName: string) => Promise<{ error: AuthError | null }>;
+    signUpWithEmail: (email: string, password: string, displayName: string, locale?: string) => Promise<{ error: AuthError | null }>;
     signOut: () => Promise<void>;
     refreshProfile: () => Promise<void>;
 }
@@ -180,11 +180,24 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
         return { error };
     }, []);
 
-    const signUpWithEmail = useCallback(async (email: string, password: string, displayName: string) => {
+    const signUpWithEmail = useCallback(async (email: string, password: string, displayName: string, locale: string = 'en') => {
+        // Get the current origin for email redirect
+        const redirectUrl = typeof window !== 'undefined'
+            ? `${window.location.origin}/auth/callback`
+            : process.env.NEXT_PUBLIC_SITE_URL
+                ? `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
+                : 'https://cardverse.co/auth/callback';
+
         const { data, error } = await supabase.auth.signUp({
             email,
             password,
-            options: { data: { full_name: displayName } },
+            options: {
+                data: {
+                    full_name: displayName,
+                    locale: locale, // Pass locale for email templates
+                },
+                emailRedirectTo: redirectUrl,
+            },
         });
 
         if (!error && data.user) {
