@@ -61,10 +61,14 @@ export function HeroSection() {
               </Button>
             </div>
           </div>
-          <div className="relative h-[400px] md:h-[500px] w-full flex items-center justify-center animate-fade-in-up will-change-transform mt-0 md:mt-0 gap-4" style={{ animationDelay: '200ms' }}>
+          <div className="relative h-[400px] md:h-[500px] w-full flex items-center justify-center animate-fade-in-up will-change-transform mt-8 md:mt-0" style={{ animationDelay: '200ms' }}>
+            {/* Left Card */}
             {mainImage3 && <div
-              className="relative w-[120px] h-[168px] md:w-[220px] md:h-[308px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:-translate-y-4 hover:rotate-[-2deg] will-change-transform"
-              style={{ zIndex: 10 }}
+              className="absolute w-[140px] h-[196px] md:w-[240px] md:h-[336px] rounded-2xl overflow-hidden shadow-2xl transition-all duration-500 hover:z-40 hover:scale-110 hover:-rotate-12 will-change-transform"
+              style={{
+                transform: 'translate(-35%, 10%) rotate(-12deg)',
+                zIndex: 10
+              }}
             >
               <Image
                 src="/assets/imgmain3.jpg"
@@ -72,25 +76,17 @@ export function HeroSection() {
                 data-ai-hint={mainImage3.imageHint}
                 fill
                 loading="lazy"
-                className="object-cover rounded-2xl"
+                className="object-cover rounded-2xl border-[6px] border-white/10"
               />
             </div>}
-            {mainImage2 && <div
-              className="relative w-[130px] h-[182px] md:w-[240px] md:h-[336px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:-translate-y-4 will-change-transform -mt-8 md:-mt-12"
-              style={{ zIndex: 20 }}
-            >
-              <Image
-                src="/assets/imgmain2.jpg"
-                alt={mainImage2.description}
-                data-ai-hint={mainImage2.imageHint}
-                fill
-                priority
-                className="object-cover rounded-2xl"
-              />
-            </div>}
+
+            {/* Right Card */}
             {mainImage1 && <div
-              className="relative w-[120px] h-[168px] md:w-[220px] md:h-[308px] rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:-translate-y-4 hover:rotate-[2deg] will-change-transform"
-              style={{ zIndex: 10 }}
+              className="absolute w-[140px] h-[196px] md:w-[240px] md:h-[336px] rounded-2xl overflow-hidden shadow-2xl transition-all duration-500 hover:z-40 hover:scale-110 hover:rotate-12 will-change-transform"
+              style={{
+                transform: 'translate(35%, 10%) rotate(12deg)',
+                zIndex: 10
+              }}
             >
               <Image
                 src="/assets/imgmain.jpg"
@@ -98,8 +94,28 @@ export function HeroSection() {
                 data-ai-hint={mainImage1.imageHint}
                 fill
                 priority
-                className="object-cover rounded-2xl"
+                className="object-cover rounded-2xl border-[6px] border-white/10"
               />
+            </div>}
+
+            {/* Center Card (Top) */}
+            {mainImage2 && <div
+              className="absolute w-[160px] h-[224px] md:w-[260px] md:h-[364px] rounded-2xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)] transition-all duration-500 hover:scale-105 will-change-transform"
+              style={{
+                transform: 'translate(0, -5%)',
+                zIndex: 30
+              }}
+            >
+              <Image
+                src="/assets/imgmain2.jpg"
+                alt={mainImage2.description}
+                data-ai-hint={mainImage2.imageHint}
+                fill
+                priority
+                className="object-cover rounded-2xl border-[8px] border-white/20"
+              />
+              {/* Shine effect overlay */}
+              <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 opacity-0 hover:opacity-100 transition-opacity duration-500" />
             </div>}
           </div>
         </div>
