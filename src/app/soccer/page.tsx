@@ -85,7 +85,9 @@ export default function SoccerPage() {
                 .from('crawled_cards')
                 .select('*')
                 .ilike('category', '%soccer%')  // Use ilike to match 'Soccer Cards'
-                .not('year', 'is', null);
+                .not('year', 'is', null)
+                // Only show numbered (/99, /50, /25, /10, /5, /1) or autograph cards
+                .or('name.ilike.%auto%,name.ilike.%autograph%,name.ilike.%/99%,name.ilike.%/75%,name.ilike.%/50%,name.ilike.%/25%,name.ilike.%/10%,name.ilike.%/5%,name.ilike.%/1%,name.ilike.%numbered%');
 
             // Apply search
             if (searchTerm) {
