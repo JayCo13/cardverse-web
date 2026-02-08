@@ -186,6 +186,11 @@ export function MarketSpotlight() {
     const [crop, setCrop] = useState<Crop>();
     const cropImgRef = useRef<HTMLImageElement>(null);
 
+    // Retry state for scan confirmation
+    const [showScanConfirmation, setShowScanConfirmation] = useState(false);
+    const [canRetry, setCanRetry] = useState(false);
+    const [lastScannedImage, setLastScannedImage] = useState<string | null>(null);
+
     // Collection state
     const [isAddingToCollection, setIsAddingToCollection] = useState(false);
     const [addedToCollection, setAddedToCollection] = useState(false);
@@ -803,7 +808,28 @@ export function MarketSpotlight() {
             scanInProgressRef.current = false;
             setIsScanning(false);
             setIsLoading(false);
+
+            // Show confirmation on error too (allow retry)
+            if (searchError) {
+                setShowScanConfirmation(true);
+            }
         }
+    };
+
+    // Handle retry scan with the same image
+    const handleRetry = useCallback(async () => {
+        if (!lastScannedImage || !canRetry) return;
+
+        setCanRetry(false); // Only allow 1 retry
+        setShowScanConfirmation(false);
+        processScannedImage(lastScannedImage);
+    }, [lastScannedImage, canRetry]);
+
+    // Handle confirmation - user said result is correct
+    const handleConfirmCorrect = () => {
+        setShowScanConfirmation(false);
+        setCanRetry(false);
+        setLastScannedImage(null);
     };
 
     // Helper function to display a product result (extracted from fetchFeaturedProduct)
@@ -858,6 +884,9 @@ export function MarketSpotlight() {
         setProduct(productData);
         setCurrentPrice(featured.market_price);
         setSearchError(null);
+
+        // Show scan confirmation after displaying result
+        setShowScanConfirmation(true);
 
         // Fetch price history using REST API (faster than Supabase client)
         try {
@@ -1010,6 +1039,8 @@ export function MarketSpotlight() {
             }
 
             await incrementUsage();
+            setLastScannedImage(enhancedBase64);
+            setCanRetry(true);
             processScannedImage(enhancedBase64);
         };
         reader.readAsDataURL(file);
@@ -1096,6 +1127,8 @@ export function MarketSpotlight() {
         }
 
         await incrementUsage();
+        setLastScannedImage(enhancedBase64);
+        setCanRetry(true);
         processScannedImage(enhancedBase64);
     }, [crop, processScannedImage, canScan, incrementUsage]);
 
@@ -1120,6 +1153,8 @@ export function MarketSpotlight() {
         }
 
         await incrementUsage();
+        setLastScannedImage(enhancedBase64);
+        setCanRetry(true);
         processScannedImage(enhancedBase64);
     }, [cropImageSrc, processScannedImage, canScan, incrementUsage]);
 
@@ -1315,17 +1350,30 @@ export function MarketSpotlight() {
                                 onChange={handleGallerySelect}
                                 className="hidden"
                             />
+                            {/* Remaining scans badge for logged-in users */}
+                            {user && (
+                                <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 text-white/80 text-xs font-medium mr-2">
+                                    <Pulse className="w-3.5 h-3.5 text-orange-400" />
+                                    <span>{scansRemaining}/{scansLimit} scans</span>
+                                </div>
+                            )}
                             {/* Upload/Camera button - opens image picker with crop */}
                             <Button
                                 onClick={handleUploadClick}
                                 disabled={isLoading || isScanning}
-                                className="rounded-full bg-white/10 hover:bg-white/20 text-white h-10 w-10 md:h-11 md:w-11 p-0 flex items-center justify-center shrink-0 mr-2 transition-all"
+                                className="relative rounded-full bg-white/10 hover:bg-white/20 text-white h-10 w-10 md:h-11 md:w-11 p-0 flex items-center justify-center shrink-0 mr-2 transition-all"
                                 title="Upload or take photo"
                             >
                                 {isScanning ? (
                                     <SpinnerGap className="h-5 w-5 animate-spin" weight="bold" />
                                 ) : (
                                     <Camera className="h-5 w-5" />
+                                )}
+                                {/* Mobile: Show remaining scans as badge on button */}
+                                {user && (
+                                    <span className="sm:hidden absolute -top-1 -right-1 bg-orange-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                                        {scansRemaining}
+                                    </span>
                                 )}
                             </Button>
                             {/* Search button */}
@@ -1538,6 +1586,69 @@ export function MarketSpotlight() {
                                     </>
                                 )}
                             </Button>
+                        )}
+
+                        {/* Scan Confirmation - Ask if result is correct */}
+                        {showScanConfirmation && product && (
+                            <div className="mt-4 p-4 rounded-xl bg-gradient-to-r from-orange-500/10 to-amber-500/10 border border-orange-500/30 max-w-[400px] mx-auto">
+                                <p className="text-white text-sm font-medium text-center mb-3">
+                                    Is this the correct card?
+                                </p>
+                                <div className="flex gap-3 justify-center">
+                                    <Button
+                                        onClick={handleConfirmCorrect}
+                                        className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm py-2"
+                                    >
+                                        <Check className="w-4 h-4 mr-1.5" />
+                                        Yes, correct
+                                    </Button>
+                                    {canRetry && (
+                                        <Button
+                                            onClick={handleRetry}
+                                            disabled={isScanning}
+                                            className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-sm py-2"
+                                        >
+                                            <ArrowsClockwise className={`w-4 h-4 mr-1.5 ${isScanning ? 'animate-spin' : ''}`} />
+                                            Retry scan
+                                        </Button>
+                                    )}
+                                </div>
+                                {!canRetry && (
+                                    <p className="text-gray-400 text-xs text-center mt-2">
+                                        Retry limit reached. Try a different photo angle.
+                                    </p>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Error with retry option */}
+                        {showScanConfirmation && searchError && canRetry && (
+                            <div className="mt-4 p-4 rounded-xl bg-red-500/10 border border-red-500/30 max-w-[400px] mx-auto">
+                                <p className="text-white text-sm font-medium text-center mb-3">
+                                    Scan failed. Would you like to retry?
+                                </p>
+                                <div className="flex gap-3 justify-center">
+                                    <Button
+                                        onClick={() => {
+                                            setShowScanConfirmation(false);
+                                            setCanRetry(false);
+                                            setLastScannedImage(null);
+                                        }}
+                                        variant="outline"
+                                        className="flex-1 text-sm py-2"
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        onClick={handleRetry}
+                                        disabled={isScanning}
+                                        className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-sm py-2"
+                                    >
+                                        <ArrowsClockwise className={`w-4 h-4 mr-1.5 ${isScanning ? 'animate-spin' : ''}`} />
+                                        Retry
+                                    </Button>
+                                </div>
+                            </div>
                         )}
                     </div>
 
