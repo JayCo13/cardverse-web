@@ -1188,7 +1188,7 @@ export function MarketSpotlight() {
     };
 
     return (
-        <section className="py-16 md:py-24 bg-[#111111] relative overflow-hidden border-y border-white/5">
+        <section id="market-spotlight" className="py-16 md:py-24 bg-[#111111] relative overflow-hidden border-y border-white/5">
             {/* Ambient Background Glows */}
             <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-green-500/10 rounded-full blur-[120px] pointer-events-none" />
             <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-blue-500/10 rounded-full blur-[120px] pointer-events-none" />
@@ -1214,7 +1214,7 @@ export function MarketSpotlight() {
                                     {t('other_tcg_button')} <ArrowsClockwise className="ml-2 w-4 h-4" />
                                 </Button>
                             </DialogTrigger>
-                            <DialogContent className="sm:max-w-lg bg-[#0a0a0a] border-white/10 text-white p-0 overflow-hidden shadow-2xl">
+                            <DialogContent className="sm:max-w-lg w-[95vw] max-w-[500px] bg-[#0a0a0a] border-white/10 text-white p-0 overflow-hidden shadow-2xl [&>button]:w-10 [&>button]:h-10 [&>button]:bg-white/10 [&>button]:text-white [&>button]:hover:bg-white/20 [&>button]:rounded-full [&>button]:z-50 [&>button]:top-4 [&>button]:right-4">
                                 <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent pointer-events-none" />
                                 <DialogHeader className="px-6 pt-6 pb-2 relative z-10">
                                     <DialogTitle className="text-2xl font-bold text-center tracking-tight font-display">{t('select_category_title')}</DialogTitle>

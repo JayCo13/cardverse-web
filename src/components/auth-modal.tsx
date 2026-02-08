@@ -147,7 +147,7 @@ export function AuthModal() {
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[425px] w-[95vw] max-w-[425px] max-h-[90vh] overflow-y-auto rounded-xl">
         <DialogHeader>
           <DialogTitle>{t('auth_modal_title')}</DialogTitle>
           <DialogDescription>{t('auth_modal_description')}</DialogDescription>

@@ -31,11 +31,13 @@ export function Header() {
   const { setOpen } = useAuthModal();
   const router = useRouter();
 
-  const handleListCardClick = () => {
-    if (!user) {
-      setOpen(true);
+  // Scroll to market spotlight section
+  const handleScanClick = () => {
+    const element = document.getElementById('market-spotlight');
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
     } else {
-      router.push('/sell/create');
+      router.push('/#market-spotlight');
     }
   };
 
@@ -45,11 +47,14 @@ export function Header() {
     }
 
     if (user) {
+      const initial = user.email ? user.email.charAt(0).toUpperCase() : "A";
       return (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="gap-2 px-2">
-              <CircleUser className="h-5 w-5" />
+              <div className="h-7 w-7 rounded-full bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-500 font-bold text-xs">
+                {initial}
+              </div>
               <span className="hidden md:inline">{user.email || "Account"}</span>
             </Button>
           </DropdownMenuTrigger>
@@ -172,7 +177,7 @@ export function Header() {
               </SheetContent>
             </Sheet>
             <div className="flex items-center gap-2 flex-1 justify-end ml-2">
-              <Button onClick={handleListCardClick} size="sm" className="bg-orange-500 hover:bg-orange-600 text-white font-bold whitespace-nowrap px-3 h-9 text-xs sm:text-sm flex items-center gap-2 justify-center">
+              <Button onClick={handleScanClick} size="sm" className="bg-orange-500 hover:bg-orange-600 text-white font-bold whitespace-nowrap px-3 h-9 text-xs sm:text-sm flex items-center gap-2 justify-center">
                 <Camera className="h-4 w-4" />
                 <span className="md:hidden">{t('scan_short')}</span>
                 <span className="hidden md:inline">{t('scan_pokemon_card')}</span>
@@ -260,7 +265,7 @@ export function Header() {
                 <span className="hidden group-hover:block whitespace-nowrap">{t('nav_soccer_price')}</span>
               </Link>
             </nav>
-            <Button onClick={handleListCardClick} className="bg-orange-500 hover:bg-orange-600 text-white font-bold whitespace-nowrap px-6">
+            <Button onClick={handleScanClick} className="bg-orange-500 hover:bg-orange-600 text-white font-bold whitespace-nowrap px-6">
               {t('scan_pokemon_card')}
             </Button>
           </div>
