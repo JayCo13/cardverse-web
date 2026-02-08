@@ -66,11 +66,15 @@ export function HeroSection() {
   }, []);
 
   return (
-    <div className="relative w-full min-h-[800px] md:h-[80vh] md:min-h-[600px] background-grid-scan flex flex-col justify-center overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-b from-background via-background/80 to-transparent z-10" />
+    <div className="relative w-full min-h-[600px] md:h-[80vh] md:min-h-[600px] background-grid-scan flex flex-col justify-center overflow-hidden">
+      {/* Background Gradient - adjusted to be more transparent at top/center to show grid */}
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/60 to-background z-10 pointer-events-none" />
+
+      {/* Radial gradient to highlight the center */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-orange-500/10 via-transparent to-transparent z-10 pointer-events-none" />
 
       <div className="absolute inset-0 container mx-auto px-4 flex items-center z-20">
-        <div className="grid md:grid-cols-2 gap-12 md:gap-8 items-center w-full py-10 md:py-0">
+        <div className="grid md:grid-cols-2 gap-6 md:gap-8 items-center w-full py-10 md:py-0">
           <div className="max-w-2xl animate-fade-in-up space-y-6 text-left will-change-transform">
             <h1
               className="text-4xl sm:text-5xl md:text-7xl font-extrabold !leading-tight tracking-tighter uppercase glitch-text"
@@ -112,7 +116,7 @@ export function HeroSection() {
           </div>
 
           {/* Interactive Card Fan */}
-          <div className="relative h-[300px] md:h-[500px] w-full flex items-center justify-center animate-fade-in-up will-change-transform mt-4 md:mt-0" style={{ animationDelay: '200ms' }}>
+          <div className="relative h-[300px] md:h-[500px] w-full flex items-center justify-center animate-fade-in-up will-change-transform mt-0 md:mt-0" style={{ animationDelay: '200ms' }}>
             {images.map((img, index) => {
               if (!img) return null;
               const style = getCardStyle(index);
