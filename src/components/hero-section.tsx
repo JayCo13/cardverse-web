@@ -1,6 +1,6 @@
-
 "use client";
 
+import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -10,19 +10,60 @@ import { PlaceHolderImages } from '@/lib/placeholder-images';
 
 export function HeroSection() {
   const { t } = useLocalization();
+  const [activeIndex, setActiveIndex] = React.useState(1);
 
-  const mainImage1 = PlaceHolderImages.find(p => p.id === 'hero-1');
-  const mainImage2 = PlaceHolderImages.find(p => p.id === 'hero-2');
-  const mainImage3 = PlaceHolderImages.find(p => p.id === 'hero-3');
+  const images = [
+    { ...PlaceHolderImages.find(p => p.id === 'hero-3'), id: 'hero-3' }, // Left
+    { ...PlaceHolderImages.find(p => p.id === 'hero-2'), id: 'hero-2' }, // Center
+    { ...PlaceHolderImages.find(p => p.id === 'hero-1'), id: 'hero-1' }, // Right
+  ].filter(Boolean); // Ensure strictly defined images
 
+  const getCardStyle = (index: number) => {
+    // Calculate relative position: 0 (active), 1 (right), -1 (left)
+    // For 3 items: 
+    // If active is 0: 0->0, 1->1 (right), 2->-1 (left)
+    // If active is 1: 0->-1 (left), 1->0, 2->1 (right)
+    // If active is 2: 0->1 (right), 1->-1 (left), 2->0
+
+    let diff = (index - activeIndex);
+    // Adjust for circular wraparound
+    if (diff > 1) diff -= 3;
+    if (diff < -1) diff += 3;
+
+    if (diff === 0) {
+      // Center (Active)
+      return {
+        zIndex: 30,
+        transform: 'translateX(0) scale(1.1)',
+        opacity: 1,
+        filter: 'brightness(1.1)'
+      };
+    } else if (diff === -1) {
+      // Left
+      return {
+        zIndex: 20,
+        transform: 'translateX(-60%) scale(0.9) rotate(-15deg)',
+        opacity: 0.9,
+        filter: 'brightness(0.7)'
+      };
+    } else {
+      // Right (diff === 1)
+      return {
+        zIndex: 20,
+        transform: 'translateX(60%) scale(0.9) rotate(15deg)',
+        opacity: 0.9,
+        filter: 'brightness(0.7)'
+      };
+    }
+  };
 
   return (
-    <div className="relative w-full min-h-[900px] md:h-[80vh] md:min-h-[600px] background-grid-scan flex flex-col justify-center">
+    <div className="relative w-full min-h-[800px] md:h-[80vh] md:min-h-[600px] background-grid-scan flex flex-col justify-center overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-b from-background via-background/80 to-transparent z-10" />
 
       <div className="absolute inset-0 container mx-auto px-4 flex items-center z-20">
-        <div className="grid md:grid-cols-2 gap-12 md:gap-8 items-center w-full py-20 md:py-0">
-          <div className="max-w-2xl animate-fade-in-up space-y-6 text-left will-change-transform">
+        <div className="grid md:grid-cols-2 gap-12 md:gap-8 items-center w-full py-10 md:py-0">
+          <div className="max-w-2xl animate-fade-in-up space-y-6 text-left will-change-transform order-2 md:order-1">
             <h1
               className="text-4xl sm:text-5xl md:text-7xl font-extrabold !leading-tight tracking-tighter uppercase glitch-text"
               style={{ fontFamily: "'Orbitron', sans-serif" }}
@@ -61,62 +102,43 @@ export function HeroSection() {
               </Button>
             </div>
           </div>
-          <div className="relative h-[400px] md:h-[500px] w-full flex items-center justify-center animate-fade-in-up will-change-transform mt-8 md:mt-0" style={{ animationDelay: '200ms' }}>
-            {/* Left Card */}
-            {mainImage3 && <div
-              className="absolute w-[140px] h-[196px] md:w-[240px] md:h-[336px] rounded-2xl overflow-hidden shadow-2xl transition-all duration-500 hover:z-40 hover:scale-110 hover:-rotate-12 will-change-transform"
-              style={{
-                transform: 'translate(-35%, 10%) rotate(-12deg)',
-                zIndex: 10
-              }}
-            >
-              <Image
-                src="/assets/imgmain3.jpg"
-                alt={mainImage3.description}
-                data-ai-hint={mainImage3.imageHint}
-                fill
-                loading="lazy"
-                className="object-cover rounded-2xl border-[6px] border-white/10"
-              />
-            </div>}
 
-            {/* Right Card */}
-            {mainImage1 && <div
-              className="absolute w-[140px] h-[196px] md:w-[240px] md:h-[336px] rounded-2xl overflow-hidden shadow-2xl transition-all duration-500 hover:z-40 hover:scale-110 hover:rotate-12 will-change-transform"
-              style={{
-                transform: 'translate(35%, 10%) rotate(12deg)',
-                zIndex: 10
-              }}
-            >
-              <Image
-                src="/assets/imgmain.jpg"
-                alt={mainImage1.description}
-                data-ai-hint={mainImage1.imageHint}
-                fill
-                priority
-                className="object-cover rounded-2xl border-[6px] border-white/10"
-              />
-            </div>}
+          {/* Interactive Card Fan */}
+          <div className="relative h-[300px] md:h-[500px] w-full flex items-center justify-center animate-fade-in-up will-change-transform mt-4 md:mt-0 order-1 md:order-2" style={{ animationDelay: '200ms' }}>
+            {images.map((img, index) => {
+              if (!img) return null;
+              const style = getCardStyle(index);
+              const isActive = index === activeIndex;
 
-            {/* Center Card (Top) */}
-            {mainImage2 && <div
-              className="absolute w-[160px] h-[224px] md:w-[260px] md:h-[364px] rounded-2xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)] transition-all duration-500 hover:scale-105 will-change-transform"
-              style={{
-                transform: 'translate(0, -5%)',
-                zIndex: 30
-              }}
-            >
-              <Image
-                src="/assets/imgmain2.jpg"
-                alt={mainImage2.description}
-                data-ai-hint={mainImage2.imageHint}
-                fill
-                priority
-                className="object-cover rounded-2xl border-[8px] border-white/20"
-              />
-              {/* Shine effect overlay */}
-              <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 opacity-0 hover:opacity-100 transition-opacity duration-500" />
-            </div>}
+              return (
+                <div
+                  key={img.id}
+                  onClick={() => setActiveIndex(index)}
+                  className={`absolute w-[160px] h-[224px] md:w-[260px] md:h-[364px] rounded-2xl overflow-hidden shadow-2xl transition-all duration-500 ease-out cursor-pointer will-change-transform ${isActive ? 'hover:scale-115' : 'hover:scale-95'}`}
+                  style={{
+                    ...style,
+                    zIndex: style.zIndex // Explicitly set zIndex
+                  }}
+                >
+                  <Image
+                    src={img.id === 'hero-3' ? "/assets/imgmain3.jpg" : img.id === 'hero-2' ? "/assets/imgmain2.jpg" : "/assets/imgmain.jpg"}
+                    alt={img.description || "Hero Card"}
+                    data-ai-hint={img.imageHint}
+                    fill
+                    priority={isActive}
+                    className={`object-cover rounded-2xl transition-all duration-500 ${isActive ? 'border-[8px] border-white/20' : 'border-[4px] border-white/10 grayscale-[0.3]'}`}
+                  />
+                  {/* Highlight overlay for inactive cards */}
+                  {!isActive && (
+                    <div className="absolute inset-0 bg-black/20 hover:bg-transparent transition-colors duration-300" />
+                  )}
+                  {/* Shine effect for active card */}
+                  {isActive && (
+                    <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 opacity-0 hover:opacity-100 transition-opacity duration-500" />
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
