@@ -57,13 +57,21 @@ export function HeroSection() {
     }
   };
 
+  // Auto-cycle images
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      setActiveIndex((prev) => (prev + 1) % 3);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div className="relative w-full min-h-[800px] md:h-[80vh] md:min-h-[600px] background-grid-scan flex flex-col justify-center overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-b from-background via-background/80 to-transparent z-10" />
 
       <div className="absolute inset-0 container mx-auto px-4 flex items-center z-20">
         <div className="grid md:grid-cols-2 gap-12 md:gap-8 items-center w-full py-10 md:py-0">
-          <div className="max-w-2xl animate-fade-in-up space-y-6 text-left will-change-transform order-2 md:order-1">
+          <div className="max-w-2xl animate-fade-in-up space-y-6 text-left will-change-transform">
             <h1
               className="text-4xl sm:text-5xl md:text-7xl font-extrabold !leading-tight tracking-tighter uppercase glitch-text"
               style={{ fontFamily: "'Orbitron', sans-serif" }}
@@ -104,7 +112,7 @@ export function HeroSection() {
           </div>
 
           {/* Interactive Card Fan */}
-          <div className="relative h-[300px] md:h-[500px] w-full flex items-center justify-center animate-fade-in-up will-change-transform mt-4 md:mt-0 order-1 md:order-2" style={{ animationDelay: '200ms' }}>
+          <div className="relative h-[300px] md:h-[500px] w-full flex items-center justify-center animate-fade-in-up will-change-transform mt-4 md:mt-0" style={{ animationDelay: '200ms' }}>
             {images.map((img, index) => {
               if (!img) return null;
               const style = getCardStyle(index);
@@ -126,7 +134,7 @@ export function HeroSection() {
                     data-ai-hint={img.imageHint}
                     fill
                     priority={isActive}
-                    className={`object-cover rounded-2xl transition-all duration-500 ${isActive ? 'border-[8px] border-white/20' : 'border-[4px] border-white/10 grayscale-[0.3]'}`}
+                    className={`object-cover rounded-2xl transition-all duration-500 ${isActive ? 'border-[4px] border-white/20' : 'border-[2px] border-white/10 grayscale-[0.3]'}`}
                   />
                   {/* Highlight overlay for inactive cards */}
                   {!isActive && (
