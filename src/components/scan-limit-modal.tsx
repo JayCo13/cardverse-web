@@ -1,97 +1,127 @@
-import React, { useEffect, useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+"use client";
+
+import React, { useState, useEffect } from 'react';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Clock, UserPlus, Warning } from '@phosphor-icons/react';
 import { useLocalization } from '@/context/localization-context';
-import { useRouter } from 'next/navigation';
-import { Clock, LockKey } from '@phosphor-icons/react';
+import { useAuthModal } from '@/components/auth-modal';
 
 interface ScanLimitModalProps {
     isOpen: boolean;
     onClose: () => void;
-    type: 'guest' | 'user';
-    resetTime?: Date;
+    resetTime: Date;
+    scansUsed: number;
+    scansLimit: number;
+    isAnonymous: boolean;
 }
 
-export function ScanLimitModal({ isOpen, onClose, type, resetTime }: ScanLimitModalProps) {
+/**
+ * Format remaining time as HH:MM:SS
+ */
+function formatCountdown(ms: number): string {
+    if (ms <= 0) return '00:00:00';
+
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+export function ScanLimitModal({
+    isOpen,
+    onClose,
+    resetTime,
+    scansUsed,
+    scansLimit,
+    isAnonymous,
+}: ScanLimitModalProps) {
     const { t } = useLocalization();
-    const router = useRouter();
-    const [timeLeft, setTimeLeft] = useState('');
+    const { openModal: openAuthModal } = useAuthModal();
+    const [countdown, setCountdown] = useState('');
 
+    // Update countdown every second
     useEffect(() => {
-        if (type === 'user' && resetTime && isOpen) {
-            const timer = setInterval(() => {
-                const now = new Date();
-                const diff = resetTime.getTime() - now.getTime();
+        if (!isOpen) return;
 
-                if (diff <= 0) {
-                    setTimeLeft('00:00:00');
-                    clearInterval(timer);
-                    onClose(); // Auto-close when time is up? Or let user refresh
-                } else {
-                    const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
-                    const minutes = Math.floor((diff / (1000 * 60)) % 60);
-                    const seconds = Math.floor((diff / 1000) % 60);
-                    setTimeLeft(`${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
-                }
-            }, 1000);
+        const updateCountdown = () => {
+            const now = new Date();
+            const remaining = resetTime.getTime() - now.getTime();
+            setCountdown(formatCountdown(remaining));
+        };
 
-            return () => clearInterval(timer);
-        }
-    }, [type, resetTime, isOpen, onClose]);
+        updateCountdown();
+        const interval = setInterval(updateCountdown, 1000);
+
+        return () => clearInterval(interval);
+    }, [isOpen, resetTime]);
 
     const handleRegister = () => {
         onClose();
-        // Assuming auth modal triggering is handled via URL hash or global state, 
-        // but for now redirect to home with hash or just use existing auth trigger if available.
-        // Since this is likely inside a component that can trigger auth, we might need a prop.
-        // For now, let's assume we can trigger the auth modal via a URL hash change which the layout listens to,
-        // or we just redirect to a login page if that exists.
-        // The previous code in header.tsx uses `window.dispatchEvent(new Event('open-auth-modal'))` or similar pattern?
-        // Let's check `header.tsx` or `auth-modal.tsx` usage.
-        // Just pushing hash usually works if checking hash.
-        router.push('/#auth-signup');
-        // Or if there's a global event.
-        window.dispatchEvent(new CustomEvent('open-auth-modal', { detail: { tab: 'signup' } }));
+        openAuthModal('signup');
     };
 
     return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="sm:max-w-[425px] w-[95vw] rounded-xl border-white/10 bg-black/90 backdrop-blur-xl text-white">
-                <DialogHeader>
-                    <div className="mx-auto bg-white/10 p-4 rounded-full mb-4 w-16 h-16 flex items-center justify-center">
-                        {type === 'guest' ? <LockKey size={32} weight="fill" className="text-orange-500" /> : <Clock size={32} weight="fill" className="text-blue-500" />}
+        <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+            <DialogContent className="w-[95vw] max-w-[400px] rounded-xl bg-gradient-to-br from-slate-900 to-slate-800 border-orange-500/30">
+                <DialogHeader className="text-center">
+                    <div className="mx-auto w-16 h-16 rounded-full bg-orange-500/20 flex items-center justify-center mb-4">
+                        <Warning className="w-8 h-8 text-orange-500" weight="fill" />
                     </div>
-                    <DialogTitle className="text-center text-xl font-bold">
-                        {type === 'guest' ? t('scan_limit_guest_title') : t('scan_limit_user_title')}
+                    <DialogTitle className="text-xl font-bold text-white">
+                        {t('scan_limit_reached')}
                     </DialogTitle>
-                    <DialogDescription className="text-center text-gray-400 mt-2">
-                        {type === 'guest' ? t('scan_limit_guest_desc') : t('scan_limit_user_desc')}
+                    <DialogDescription className="text-white/70">
+                        {t('scan_limit_used', { used: scansUsed.toString(), limit: scansLimit.toString() })}
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="py-4">
-                    {type === 'user' && (
-                        <div className="text-center">
-                            <div className="text-sm text-gray-500 mb-1">{t('scan_limit_resets_in')}</div>
-                            <div className="text-3xl font-mono font-bold text-blue-400 tracking-wider">
-                                {timeLeft || '--:--:--'}
-                            </div>
-                        </div>
-                    )}
+                {/* Countdown Timer */}
+                <div className="mt-6 p-4 rounded-lg bg-black/30 border border-white/10">
+                    <div className="flex items-center justify-center gap-2 text-white/60 mb-2">
+                        <Clock className="w-4 h-4" />
+                        <span className="text-sm">{t('scan_limit_resets_in')}</span>
+                    </div>
+                    <div className="text-3xl font-mono font-bold text-center text-orange-400">
+                        {countdown}
+                    </div>
                 </div>
 
-                <DialogFooter className="flex flex-col gap-2 sm:gap-0">
-                    {type === 'guest' ? (
-                        <Button onClick={handleRegister} className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold h-12 rounded-full">
-                            {t('auth_signup_button')}
+                {/* Register CTA for anonymous users */}
+                {isAnonymous && (
+                    <div className="mt-4 p-4 rounded-lg bg-gradient-to-r from-orange-500/20 to-yellow-500/20 border border-orange-500/30">
+                        <p className="text-sm text-white/80 text-center mb-3">
+                            {t('scan_limit_register_prompt')}
+                        </p>
+                        <Button
+                            onClick={handleRegister}
+                            className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold"
+                        >
+                            <UserPlus className="w-4 h-4 mr-2" />
+                            {t('scan_limit_register_button')}
                         </Button>
-                    ) : (
-                        <Button onClick={onClose} variant="outline" className="w-full border-white/20 hover:bg-white/10 text-white h-12 rounded-full">
-                            {t('close')}
-                        </Button>
-                    )}
-                </DialogFooter>
+                    </div>
+                )}
+
+                {/* Close button */}
+                <Button
+                    variant="ghost"
+                    onClick={onClose}
+                    className="mt-2 text-white/60 hover:text-white hover:bg-white/10"
+                >
+                    {t('close')}
+                </Button>
             </DialogContent>
         </Dialog>
     );
 }
+
+export default ScanLimitModal;

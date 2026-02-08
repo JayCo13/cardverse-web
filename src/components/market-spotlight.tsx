@@ -23,6 +23,7 @@ import { useAuthModal } from '@/components/auth-modal';
 import { useCurrency } from '@/contexts/currency-context';
 import { useLocalization } from '@/context/localization-context';
 import { PSAGradedPrices } from '@/components/psa-graded-prices';
+import { useScanLimit } from '@/hooks/useScanLimit';
 import { ScanLimitModal } from '@/components/scan-limit-modal';
 
 // Fallback mock data for when no real data exists
@@ -176,130 +177,18 @@ export function MarketSpotlight() {
     const galleryInputRef = React.useRef<HTMLInputElement>(null); // Gallery upload
     const scanInProgressRef = React.useRef(false); // Sync flag to prevent concurrent scans
 
-    // Crop modal state
     const [showCropModal, setShowCropModal] = useState(false);
     const [cropImageSrc, setCropImageSrc] = useState<string>('');
+
+    // Scan limit tracking
+    const { canScan, scansUsed, scansLimit, scansRemaining, resetTime, incrementUsage, isLoading: scanLimitLoading } = useScanLimit();
+    const [showLimitModal, setShowLimitModal] = useState(false);
     const [crop, setCrop] = useState<Crop>();
     const cropImgRef = useRef<HTMLImageElement>(null);
 
     // Collection state
     const [isAddingToCollection, setIsAddingToCollection] = useState(false);
     const [addedToCollection, setAddedToCollection] = useState(false);
-
-    // Scan limit state
-    const [showLimitModal, setShowLimitModal] = useState(false);
-    const [limitType, setLimitType] = useState<'guest' | 'user'>('guest');
-    const [resetTime, setResetTime] = useState<Date | undefined>(undefined);
-
-    // Scan limit constants
-    const GUEST_SCAN_KEY = 'cardverse_guest_scan_count';
-    const USER_DAILY_LIMIT = 3;
-
-    // Check and update scan limits
-    const checkScanLimit = async (): Promise<boolean> => {
-        if (!user) {
-            // Guest user - check localStorage
-            const guestCount = parseInt(localStorage.getItem(GUEST_SCAN_KEY) || '0', 10);
-            if (guestCount >= 1) {
-                setLimitType('guest');
-                setShowLimitModal(true);
-                return false;
-            }
-            return true;
-        } else {
-            // Logged-in user - check database
-            try {
-                const { data, error } = await supabase
-                    .from('user_scan_usage')
-                    .select('scan_count, last_reset_date')
-                    .eq('user_id', user.id)
-                    .single();
-
-                if (error && error.code !== 'PGRST116') { // PGRST116 = not found
-                    console.error('Error fetching scan usage:', error);
-                    return true; // Allow on error
-                }
-
-                if (!data) {
-                    // No record yet, create one
-                    return true;
-                }
-
-                const lastReset = new Date(data.last_reset_date);
-                const now = new Date();
-
-                // Check if it's a new day (reset at midnight UTC)
-                const isSameDay = lastReset.toISOString().split('T')[0] === now.toISOString().split('T')[0];
-
-                if (!isSameDay) {
-                    // New day, reset count
-                    return true;
-                }
-
-                if (data.scan_count >= USER_DAILY_LIMIT) {
-                    // Hit daily limit
-                    setLimitType('user');
-                    // Calculate next midnight UTC
-                    const tomorrow = new Date(now);
-                    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-                    tomorrow.setUTCHours(0, 0, 0, 0);
-                    setResetTime(tomorrow);
-                    setShowLimitModal(true);
-                    return false;
-                }
-
-                return true;
-            } catch (err) {
-                console.error('Error checking scan limit:', err);
-                return true; // Allow on error
-            }
-        }
-    };
-
-    // Increment scan count after successful scan
-    const incrementScanCount = async () => {
-        if (!user) {
-            // Guest - increment localStorage
-            const current = parseInt(localStorage.getItem(GUEST_SCAN_KEY) || '0', 10);
-            localStorage.setItem(GUEST_SCAN_KEY, String(current + 1));
-        } else {
-            // User - upsert to database
-            try {
-                const now = new Date().toISOString();
-                const { data: existing } = await supabase
-                    .from('user_scan_usage')
-                    .select('scan_count, last_reset_date')
-                    .eq('user_id', user.id)
-                    .single();
-
-                if (!existing) {
-                    // Insert new record
-                    await supabase.from('user_scan_usage').insert({
-                        user_id: user.id,
-                        scan_count: 1,
-                        last_reset_date: now,
-                    });
-                } else {
-                    const lastReset = new Date(existing.last_reset_date);
-                    const isSameDay = lastReset.toISOString().split('T')[0] === now.split('T')[0];
-
-                    if (isSameDay) {
-                        // Same day, increment
-                        await supabase.from('user_scan_usage')
-                            .update({ scan_count: existing.scan_count + 1 })
-                            .eq('user_id', user.id);
-                    } else {
-                        // New day, reset count
-                        await supabase.from('user_scan_usage')
-                            .update({ scan_count: 1, last_reset_date: now })
-                            .eq('user_id', user.id);
-                    }
-                }
-            } catch (err) {
-                console.error('Error incrementing scan count:', err);
-            }
-        }
-    };
 
     // Add to collection function using Supabase client
     const addToCollection = async () => {
@@ -615,13 +504,6 @@ export function MarketSpotlight() {
     const processScannedImage = async (imageBase64: string) => {
         if (!SUPABASE_URL) {
             console.log('Supabase URL not configured');
-            return;
-        }
-
-        // Check scan limits before processing
-        const canScan = await checkScanLimit();
-        if (!canScan) {
-            console.log('Scan limit reached');
             return;
         }
 
@@ -977,9 +859,6 @@ export function MarketSpotlight() {
         setCurrentPrice(featured.market_price);
         setSearchError(null);
 
-        // Track successful scan
-        await incrementScanCount();
-
         // Fetch price history using REST API (faster than Supabase client)
         try {
             const historyUrl = `${SUPABASE_URL}/rest/v1/tcgcsv_price_history?product_id=eq.${featured.product_id}&order=recorded_at.asc&select=recorded_at,market_price&limit=30`;
@@ -1124,6 +1003,13 @@ export function MarketSpotlight() {
             console.log('Preprocessing image for AI...');
             const enhancedBase64 = await preprocessImage(base64Data);
 
+            // Check scan limit before processing
+            if (!canScan) {
+                setShowLimitModal(true);
+                return;
+            }
+
+            await incrementUsage();
             processScannedImage(enhancedBase64);
         };
         reader.readAsDataURL(file);
@@ -1203,8 +1089,15 @@ export function MarketSpotlight() {
         // Preprocess and scan
         console.log('Cropped image, preprocessing for AI...');
         const enhancedBase64 = await preprocessImage(base64Data);
+        // Check scan limit before processing
+        if (!canScan) {
+            setShowLimitModal(true);
+            return;
+        }
+
+        await incrementUsage();
         processScannedImage(enhancedBase64);
-    }, [crop, processScannedImage]);
+    }, [crop, processScannedImage, canScan, incrementUsage]);
 
     // Use original image without cropping
     const handleUseOriginal = useCallback(async () => {
@@ -1220,8 +1113,15 @@ export function MarketSpotlight() {
         // Preprocess and scan original image
         console.log('Using original image, preprocessing for AI...');
         const enhancedBase64 = await preprocessImage(base64Data);
+        // Check scan limit before processing
+        if (!canScan) {
+            setShowLimitModal(true);
+            return;
+        }
+
+        await incrementUsage();
         processScannedImage(enhancedBase64);
-    }, [cropImageSrc, processScannedImage]);
+    }, [cropImageSrc, processScannedImage, canScan, incrementUsage]);
 
     // Trigger camera input click
     const handleScanClick = () => {
@@ -1866,8 +1766,10 @@ export function MarketSpotlight() {
             <ScanLimitModal
                 isOpen={showLimitModal}
                 onClose={() => setShowLimitModal(false)}
-                type={limitType}
                 resetTime={resetTime}
+                scansUsed={scansUsed}
+                scansLimit={scansLimit}
+                isAnonymous={!user}
             />
         </section>
     );

@@ -101,6 +101,22 @@ CREATE TABLE public.forum_likes (
   CONSTRAINT forum_likes_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.forum_posts(id),
   CONSTRAINT forum_likes_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
 );
+CREATE TABLE public.forum_notifications (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  actor_id uuid NOT NULL,
+  type character varying NOT NULL CHECK (type::text = ANY (ARRAY['post_like'::character varying, 'comment'::character varying, 'comment_reply'::character varying]::text[])),
+  post_id uuid,
+  comment_id uuid,
+  email_sent boolean DEFAULT false,
+  email_sent_at timestamp with time zone,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT forum_notifications_pkey PRIMARY KEY (id),
+  CONSTRAINT forum_notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
+  CONSTRAINT forum_notifications_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.profiles(id),
+  CONSTRAINT forum_notifications_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.forum_posts(id),
+  CONSTRAINT forum_notifications_comment_id_fkey FOREIGN KEY (comment_id) REFERENCES public.forum_comments(id)
+);
 CREATE TABLE public.forum_posts (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
@@ -269,4 +285,12 @@ CREATE TABLE public.user_profiles (
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT user_profiles_pkey PRIMARY KEY (id),
   CONSTRAINT user_profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.user_scan_usage (
+  user_id uuid NOT NULL,
+  scan_count integer DEFAULT 0,
+  last_reset_date timestamp with time zone DEFAULT now(),
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT user_scan_usage_pkey PRIMARY KEY (user_id),
+  CONSTRAINT user_scan_usage_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );
