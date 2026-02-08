@@ -12,9 +12,14 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { SpinnerGap, SoccerBall, MagnifyingGlass, ArrowsClockwise, ArrowSquareOut, Camera } from "@phosphor-icons/react";
+import { SpinnerGap, SoccerBall, MagnifyingGlass, ArrowsClockwise, ArrowSquareOut, Camera, UploadSimple, Crop as CropIcon, X } from "@phosphor-icons/react";
 import Image from "next/image";
+import ReactCrop, { type Crop, centerCrop, makeAspectCrop } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
 import { useCurrency } from "@/contexts/currency-context";
+import { useScanLimit } from "@/hooks/useScanLimit";
+import { ScanLimitModal } from "@/components/scan-limit-modal";
+import { useUser } from "@/lib/supabase/auth-provider";
 
 interface EbayItem {
     itemId: string;
@@ -29,6 +34,11 @@ export default function SoccerPage() {
     const searchParams = useSearchParams();
     const { t } = useLocalization();
     const { currency, formatPrice } = useCurrency();
+    const { user } = useUser();
+
+    // Scan limit tracking
+    const { canScan, scansUsed, scansLimit, scansRemaining, resetTime, incrementUsage, isLoading: scanLimitLoading } = useScanLimit();
+    const [showLimitModal, setShowLimitModal] = useState(false);
 
     // Initialize state from URL params
     const [cards, setCards] = useState<SoccerCard[]>([]);
@@ -46,6 +56,13 @@ export default function SoccerPage() {
     // Ref for aborting pending eBay requests
     const abortControllerRef = useRef<AbortController | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const galleryInputRef = useRef<HTMLInputElement>(null);
+    const cropImgRef = useRef<HTMLImageElement>(null);
+
+    // Image crop state
+    const [showCropModal, setShowCropModal] = useState(false);
+    const [cropImageSrc, setCropImageSrc] = useState<string>('');
+    const [crop, setCrop] = useState<Crop>();
 
     // Update URL when filters change
     useEffect(() => {
@@ -274,57 +291,148 @@ export default function SoccerPage() {
         router.push(`/soccer/${item.itemId}`);
     };
 
+    // Helper function to process scanned image with AI
+    const processScannedCard = async (base64String: string) => {
+        setIsAnalyzing(true);
+        try {
+            const supabase = getSupabaseClient();
+            const { data, error } = await supabase.functions.invoke('identify-soccer-card', {
+                body: { image: base64String },
+            });
+
+            if (error) throw error;
+            if (data?.error) throw new Error(data.error);
+
+            // Construct search query
+            const queryParts = [];
+            if (data.cardName && data.cardName !== "Unknown") queryParts.push(data.cardName);
+            if (data.year) queryParts.push(data.year);
+            if (data.brand) queryParts.push(data.brand);
+            if (data.cardSet) queryParts.push(data.cardSet);
+            if (data.variant && data.variant !== "Base") queryParts.push(data.variant);
+
+            const query = queryParts.join(" ");
+            console.log("AI Identified:", data);
+            console.log("Search Query:", query);
+
+            setSearchTerm(query);
+            handleSmartSearch(query);
+        } catch (error) {
+            console.error("Identification failed:", error);
+            alert("Could not identify card. Please try again.");
+        } finally {
+            setIsAnalyzing(false);
+        }
+    };
+
+    // Handle camera capture (direct scan, no crop)
     const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
 
-        setIsAnalyzing(true);
+        // Check scan limit before processing
+        if (!canScan) {
+            setShowLimitModal(true);
+            if (fileInputRef.current) fileInputRef.current.value = "";
+            return;
+        }
+
         try {
-            // Convert to base64
             const reader = new FileReader();
             reader.readAsDataURL(file);
             reader.onload = async () => {
                 const base64String = (reader.result as string).split(',')[1];
-
-                try {
-                    const supabase = getSupabaseClient();
-                    const { data, error } = await supabase.functions.invoke('identify-soccer-card', {
-                        body: { image: base64String },
-                    });
-
-                    if (error) throw error;
-                    if (data?.error) throw new Error(data.error);
-
-                    // Construct search query
-                    // Format: Player Name + Year + Set + Brand
-                    const queryParts = [];
-                    if (data.cardName && data.cardName !== "Unknown") queryParts.push(data.cardName);
-                    if (data.year) queryParts.push(data.year);
-                    if (data.brand) queryParts.push(data.brand);
-                    if (data.cardSet) queryParts.push(data.cardSet);
-                    if (data.variant && data.variant !== "Base") queryParts.push(data.variant);
-
-                    const query = queryParts.join(" ");
-                    console.log("AI Identified:", data);
-                    console.log("Search Query:", query);
-
-                    setSearchTerm(query);
-                    handleSmartSearch(query);
-
-                } catch (error) {
-                    console.error("Identification failed:", error);
-                    alert("Could not identify card. Please try again.");
-                } finally {
-                    setIsAnalyzing(false);
-                    // Reset input
-                    if (fileInputRef.current) fileInputRef.current.value = "";
-                }
+                await incrementUsage();
+                processScannedCard(base64String);
             };
         } catch (error) {
             console.error("Error reading file:", error);
-            setIsAnalyzing(false);
+        } finally {
+            if (fileInputRef.current) fileInputRef.current.value = "";
         }
     };
+
+    // Handle gallery upload (opens crop modal)
+    const handleGallerySelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64 = reader.result as string;
+            setCropImageSrc(base64);
+            setShowCropModal(true);
+            setCrop(undefined);
+        };
+        reader.readAsDataURL(file);
+        e.target.value = '';
+    };
+
+    // Initialize crop when image loads
+    const onCropImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+        const { width, height } = e.currentTarget;
+        const newCrop = centerCrop(
+            makeAspectCrop({ unit: '%', width: 80 }, 3 / 4, width, height),
+            width,
+            height
+        );
+        setCrop(newCrop);
+    }, []);
+
+    // Complete crop and process
+    const handleCropComplete = useCallback(async () => {
+        if (!crop || !cropImgRef.current) return;
+
+        const image = cropImgRef.current;
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const scaleX = image.naturalWidth / image.width;
+        const scaleY = image.naturalHeight / image.height;
+
+        const cropX = (crop.x / 100) * image.width * scaleX;
+        const cropY = (crop.y / 100) * image.height * scaleY;
+        const cropWidth = (crop.width / 100) * image.width * scaleX;
+        const cropHeight = (crop.height / 100) * image.height * scaleY;
+
+        canvas.width = cropWidth;
+        canvas.height = cropHeight;
+
+        ctx.drawImage(image, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+
+        const croppedBase64 = canvas.toDataURL('image/jpeg', 0.95);
+        const base64Data = croppedBase64.split(',')[1];
+
+        setShowCropModal(false);
+        setCropImageSrc('');
+
+        if (!canScan) {
+            setShowLimitModal(true);
+            return;
+        }
+
+        await incrementUsage();
+        processScannedCard(base64Data);
+    }, [crop, canScan, incrementUsage]);
+
+    // Use original without cropping
+    const handleUseOriginal = useCallback(async () => {
+        if (!cropImageSrc) return;
+
+        const base64Data = cropImageSrc.split(',')[1];
+
+        setShowCropModal(false);
+        setCropImageSrc('');
+
+        if (!canScan) {
+            setShowLimitModal(true);
+            return;
+        }
+
+        await incrementUsage();
+        processScannedCard(base64Data);
+    }, [cropImageSrc, canScan, incrementUsage]);
 
     useEffect(() => {
         // If there's a search term in URL, check cache first to avoid re-searching
@@ -413,6 +521,14 @@ export default function SoccerPage() {
                                     ref={fileInputRef}
                                     onChange={handleImageUpload}
                                     accept="image/*"
+                                    capture="environment"
+                                    className="hidden"
+                                />
+                                <input
+                                    type="file"
+                                    ref={galleryInputRef}
+                                    onChange={handleGallerySelect}
+                                    accept="image/*"
                                     className="hidden"
                                 />
                             </div>
@@ -421,13 +537,22 @@ export default function SoccerPage() {
                                 onClick={() => fileInputRef.current?.click()}
                                 disabled={isAnalyzing}
                                 className="h-12 w-12 px-0 bg-white/10 hover:bg-white/20 border border-white/10"
-                                title="Search by Image"
+                                title="Scan with Camera"
                             >
                                 {isAnalyzing ? (
                                     <SpinnerGap className="w-5 h-5 animate-spin" />
                                 ) : (
                                     <Camera className="w-5 h-5 text-white/70" />
                                 )}
+                            </Button>
+                            <Button
+                                type="button"
+                                onClick={() => galleryInputRef.current?.click()}
+                                disabled={isAnalyzing}
+                                className="h-12 w-12 px-0 bg-white/10 hover:bg-white/20 border border-white/10"
+                                title="Upload from Gallery"
+                            >
+                                <UploadSimple className="w-5 h-5 text-white/70" />
                             </Button>
                             <Button type="submit" className="h-12 px-6 bg-green-600 hover:bg-green-700 font-bold tracking-wide">
                                 {t('search_button')}
@@ -551,6 +676,94 @@ export default function SoccerPage() {
                 </div>
             </main>
             <Footer />
+
+            {/* Image Crop Modal */}
+            {showCropModal && (
+                <div className="fixed inset-0 z-[60] bg-black/95 flex flex-col items-center justify-center p-4 overflow-hidden">
+                    {/* Header */}
+                    <div className="w-full max-w-2xl flex items-center justify-between mb-4">
+                        <h3 className="text-white text-lg font-semibold flex items-center gap-2">
+                            <CropIcon className="w-5 h-5" />
+                            {t('crop_image_title')}
+                        </h3>
+                        <Button
+                            onClick={() => {
+                                setShowCropModal(false);
+                                setCropImageSrc('');
+                            }}
+                            variant="ghost"
+                            className="text-white hover:bg-white/10 rounded-full h-10 w-10 p-0"
+                        >
+                            <X className="w-5 h-5" />
+                        </Button>
+                    </div>
+
+                    {/* Crop area */}
+                    <div className="relative w-full max-w-2xl flex-1 flex items-center justify-center overflow-hidden rounded-lg">
+                        <ReactCrop
+                            crop={crop}
+                            onChange={(_, percentCrop) => setCrop(percentCrop)}
+                            aspect={3 / 4}
+                            minWidth={50}
+                            className="max-h-full"
+                        >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                                ref={cropImgRef}
+                                src={cropImageSrc}
+                                alt="Crop preview"
+                                onLoad={onCropImageLoad}
+                                style={{ maxHeight: '60vh', maxWidth: '100%', objectFit: 'contain' }}
+                            />
+                        </ReactCrop>
+                    </div>
+
+                    {/* Instructions */}
+                    <p className="text-gray-400 text-sm mt-4 text-center">
+                        {t('crop_image_instructions')}
+                    </p>
+
+                    {/* Actions */}
+                    <div className="flex flex-wrap gap-3 mt-6 justify-center">
+                        <Button
+                            onClick={() => {
+                                setShowCropModal(false);
+                                setCropImageSrc('');
+                            }}
+                            variant="outline"
+                            className="bg-transparent border-white/20 text-white hover:bg-white/10"
+                        >
+                            {t('crop_cancel')}
+                        </Button>
+                        <Button
+                            onClick={handleUseOriginal}
+                            variant="outline"
+                            className="bg-transparent border-blue-500/50 text-blue-400 hover:bg-blue-500/10"
+                        >
+                            <Camera className="w-4 h-4 mr-2" />
+                            {t('crop_use_original')}
+                        </Button>
+                        <Button
+                            onClick={handleCropComplete}
+                            className="bg-green-600 hover:bg-green-700 text-white"
+                            disabled={!crop}
+                        >
+                            <CropIcon className="w-4 h-4 mr-2" />
+                            {t('crop_scan_cropped')}
+                        </Button>
+                    </div>
+                </div>
+            )}
+
+            {/* Scan Limit Modal */}
+            <ScanLimitModal
+                isOpen={showLimitModal}
+                onClose={() => setShowLimitModal(false)}
+                resetTime={resetTime}
+                scansUsed={scansUsed}
+                scansLimit={scansLimit}
+                isAnonymous={!user}
+            />
         </div>
     );
 }
