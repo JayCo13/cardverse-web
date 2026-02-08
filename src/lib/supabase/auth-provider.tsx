@@ -16,6 +16,8 @@ interface AuthContextType {
     signInWithFacebook: () => Promise<void>;
     signInWithEmail: (email: string, password: string) => Promise<{ error: AuthError | null }>;
     signUpWithEmail: (email: string, password: string, displayName: string, locale?: string) => Promise<{ error: AuthError | null }>;
+    verifyOtp: (email: string, token: string) => Promise<{ error: AuthError | null; session: Session | null }>;
+    resendOtp: (email: string) => Promise<{ error: AuthError | null }>;
     signOut: () => Promise<void>;
     refreshProfile: () => Promise<void>;
 }
@@ -234,6 +236,23 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
         return { error };
     }, []);
 
+    const verifyOtp = useCallback(async (email: string, token: string) => {
+        const { data, error } = await supabase.auth.verifyOtp({
+            email,
+            token,
+            type: 'email',
+        });
+        return { error, session: data.session };
+    }, []);
+
+    const resendOtp = useCallback(async (email: string) => {
+        const { error } = await supabase.auth.resend({
+            type: 'signup',
+            email,
+        });
+        return { error };
+    }, []);
+
     const signOut = useCallback(async () => {
         try {
             // Clear local state first for immediate UI feedback
@@ -271,9 +290,11 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
         signInWithFacebook,
         signInWithEmail,
         signUpWithEmail,
+        verifyOtp,
+        resendOtp,
         signOut,
         refreshProfile,
-    }), [user, profile, session, isLoading, signInWithGoogle, signInWithFacebook, signInWithEmail, signUpWithEmail, signOut, refreshProfile]);
+    }), [user, profile, session, isLoading, signInWithGoogle, signInWithFacebook, signInWithEmail, signUpWithEmail, verifyOtp, resendOtp, signOut, refreshProfile]);
 
     return (
         <AuthContext.Provider value={value}>

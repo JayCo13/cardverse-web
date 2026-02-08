@@ -58,9 +58,13 @@ export function AuthModalProvider({ children }: { children: React.ReactNode }) {
 export function AuthModal() {
   const { t, locale } = useLocalization();
   const { isOpen, setOpen, activeTab, setActiveTab } = useAuthModal();
-  const { signInWithGoogle, signInWithFacebook, signInWithEmail, signUpWithEmail } = useAuth();
+  const { signInWithGoogle, signInWithFacebook, signInWithEmail, signUpWithEmail, verifyOtp, resendOtp } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
+  const [otpCode, setOtpCode] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isResending, setIsResending] = useState(false);
 
   // Dynamic schemas with translations
   const loginSchema = z.object({
@@ -140,12 +144,55 @@ export function AuthModal() {
         setError(authError.message);
         return;
       }
-      // Show success message for email verification
-      setSuccessMessage(t('auth_check_email'));
+      // Show OTP verification form
+      setPendingVerificationEmail(data.email);
       signupForm.reset();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('auth_error_generic'));
     }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!pendingVerificationEmail || otpCode.length !== 6) return;
+    setError(null);
+    setIsVerifying(true);
+    try {
+      const { error: verifyError, session } = await verifyOtp(pendingVerificationEmail, otpCode);
+      if (verifyError) {
+        setError(t('auth_otp_invalid'));
+        setIsVerifying(false);
+        return;
+      }
+      // Success - user is now logged in
+      setSuccessMessage(t('auth_verification_success'));
+      setPendingVerificationEmail(null);
+      setOtpCode('');
+      setTimeout(() => {
+        setOpen(false);
+        setSuccessMessage(null);
+      }, 1500);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : t('auth_error_generic'));
+    }
+    setIsVerifying(false);
+  };
+
+  const handleResendOtp = async () => {
+    if (!pendingVerificationEmail) return;
+    setError(null);
+    setIsResending(true);
+    try {
+      const { error: resendError } = await resendOtp(pendingVerificationEmail);
+      if (resendError) {
+        setError(resendError.message);
+      } else {
+        setSuccessMessage(t('auth_otp_resent'));
+        setTimeout(() => setSuccessMessage(null), 3000);
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : t('auth_error_generic'));
+    }
+    setIsResending(false);
   };
 
   const handleOpenChange = (open: boolean) => {
@@ -153,6 +200,8 @@ export function AuthModal() {
     if (!open) {
       setError(null);
       setSuccessMessage(null);
+      setPendingVerificationEmail(null);
+      setOtpCode('');
       loginForm.reset();
       signupForm.reset();
     }
@@ -220,16 +269,54 @@ export function AuthModal() {
               {successMessage ? (
                 <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/30 text-center">
                   <p className="text-green-500 font-medium">{successMessage}</p>
+                </div>
+              ) : pendingVerificationEmail ? (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/30 text-center">
+                    <p className="text-blue-400 text-sm">{t('auth_otp_sent')}</p>
+                    <p className="text-muted-foreground text-xs mt-1">{pendingVerificationEmail}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="otp-code">{t('auth_otp_label')}</Label>
+                    <Input
+                      id="otp-code"
+                      type="text"
+                      placeholder="123456"
+                      maxLength={6}
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      className="text-center text-2xl tracking-widest font-mono"
+                    />
+                  </div>
+                  {error && <p className="text-destructive text-sm text-center">{error}</p>}
+                  <Button
+                    type="button"
+                    className="w-full bg-orange-500 hover:bg-orange-600"
+                    onClick={handleVerifyOtp}
+                    disabled={otpCode.length !== 6 || isVerifying}
+                  >
+                    {isVerifying ? t('auth_verifying') : t('auth_verify_button')}
+                  </Button>
                   <Button
                     type="button"
                     variant="ghost"
-                    className="mt-2 text-green-500 hover:text-green-600"
+                    className="w-full"
+                    onClick={handleResendOtp}
+                    disabled={isResending}
+                  >
+                    {isResending ? t('auth_resending') : t('auth_resend_code')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="w-full text-muted-foreground"
                     onClick={() => {
-                      setSuccessMessage(null);
-                      setActiveTab('login');
+                      setPendingVerificationEmail(null);
+                      setOtpCode('');
+                      setError(null);
                     }}
                   >
-                    {t('auth_go_to_login')}
+                    {t('auth_use_different_email')}
                   </Button>
                 </div>
               ) : (
