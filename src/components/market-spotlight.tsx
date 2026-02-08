@@ -199,7 +199,7 @@ export function MarketSpotlight() {
             setShowScanConfirmation(false);
             setCanRetry(false);
             setLastScannedImage(null);
-        }, 30000); // 30 seconds
+        }, 60000); // 30 seconds
 
         return () => clearTimeout(timer);
     }, [showScanConfirmation]);
@@ -797,14 +797,17 @@ export function MarketSpotlight() {
                     }
 
                     setSearchError(`No cards found for "${cardName}"`);
+                    setShowScanConfirmation(true);
                 } catch (searchErr: unknown) {
                     clearTimeout(searchTimeoutId);
                     if (searchErr instanceof Error && searchErr.name === 'AbortError') {
                         console.log('Search timed out');
                         setSearchError('Search timed out. Please try again.');
+                        setShowScanConfirmation(true);
                     } else {
                         console.error('Search error:', searchErr);
                         setSearchError('Search failed. Please try again.');
+                        setShowScanConfirmation(true);
                     }
                 }
             }
@@ -813,19 +816,17 @@ export function MarketSpotlight() {
             if (error instanceof Error && error.name === 'AbortError') {
                 console.log('AI identification timed out');
                 setSearchError('AI identification timed out. Please try again.');
+                setShowScanConfirmation(true);
             } else {
                 console.error('Error processing scanned image:', error);
                 setSearchError('Failed to scan card. Please try again.');
+                setShowScanConfirmation(true);
             }
         } finally {
             scanInProgressRef.current = false;
             setIsScanning(false);
             setIsLoading(false);
 
-            // Show confirmation on error too (allow retry)
-            if (searchError) {
-                setShowScanConfirmation(true);
-            }
         }
     };
 
