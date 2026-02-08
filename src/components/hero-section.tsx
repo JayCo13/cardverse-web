@@ -100,25 +100,15 @@ export function HeroSection() {
               <p>{t('hero_subtitle_5')}</p>
             </div>
             <div className="pt-4 flex gap-4">
-              <Button
-                asChild
-                size="lg"
-                className="bg-orange-500 hover:bg-orange-600 text-white border-none font-bold text-lg px-8 py-6 h-auto shadow-[0_0_15px_rgba(249,115,22,0.5)] hover:shadow-[0_0_25px_rgba(249,115,22,0.7)] transition-all duration-300 transform hover:scale-105"
-              >
-                <Link href="/buy">
-                  {t('hero_cta')}
-                  <div className="ml-2 bg-white/90 text-black rounded-full p-1">
-                    <ArrowRight className="h-4 w-4" />
-                  </div>
-                </Link>
-              </Button>
               <Link href="/forum">
                 <Button
                   size="lg"
-                  variant="outline"
-                  className="border-white/20 hover:bg-white/10 text-white font-semibold px-8 h-12 rounded-full backdrop-blur-sm transition-all hover:scale-105"
+                  className="bg-orange-500 hover:bg-orange-600 text-white border-none font-bold text-lg px-8 py-6 h-auto shadow-[0_0_15px_rgba(249,115,22,0.5)] hover:shadow-[0_0_25px_rgba(249,115,22,0.7)] transition-all duration-300 transform hover:scale-105 rounded-full"
                 >
                   {t('explore_community')}
+                  <div className="ml-2 bg-white/20 text-white rounded-full p-1">
+                    <ArrowRight className="h-4 w-4" />
+                  </div>
                 </Button>
               </Link>
             </div>

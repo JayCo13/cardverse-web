@@ -149,7 +149,7 @@ export function PopularCards() {
   const renderCarouselContent = () => {
     if (isLoading) {
       return [...Array(6)].map((_, index) => (
-        <CarouselItem key={index} className="basis-full sm:basis-1/2 md:basis-1/3 lg:basis-1/4">
+        <CarouselItem key={index} className="basis-1/2 sm:basis-1/3 md:basis-1/4 lg:basis-1/5 xl:basis-1/6">
           <div className="p-1 h-full">
             <Card className="overflow-hidden h-full flex flex-col group">
               <Skeleton className="aspect-[3/4] w-full" />
@@ -161,7 +161,7 @@ export function PopularCards() {
 
     if (cards.length > 0) {
       return cards.map((card, index) => (
-        <CarouselItem key={`${card.category}-${card.id}`} className="basis-full sm:basis-1/2 md:basis-1/3 lg:basis-1/4">
+        <CarouselItem key={`${card.category}-${card.id}`} className="basis-1/2 sm:basis-1/3 md:basis-1/4 lg:basis-1/5 xl:basis-1/6">
           <div className="p-3 sm:p-4 h-full">
             <div className="animated-border-card h-full">
               <Card className="card-inner overflow-hidden h-full flex flex-col group border-0 shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer bg-card">
