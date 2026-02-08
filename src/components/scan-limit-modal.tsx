@@ -80,7 +80,7 @@ export function ScanLimitModal({
                         {t('scan_limit_reached')}
                     </DialogTitle>
                     <DialogDescription className="text-white/70">
-                        {t('scan_limit_used', { used: scansUsed.toString(), limit: scansLimit.toString() })}
+                        {t('scan_limit_used').replace('{used}', scansUsed.toString()).replace('{limit}', scansLimit.toString())}
                     </DialogDescription>
                 </DialogHeader>
 
