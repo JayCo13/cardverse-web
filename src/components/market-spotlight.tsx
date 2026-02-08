@@ -1214,7 +1214,7 @@ export function MarketSpotlight() {
                                     {t('other_tcg_button')} <ArrowsClockwise className="ml-2 w-4 h-4" />
                                 </Button>
                             </DialogTrigger>
-                            <DialogContent className="sm:max-w-lg w-[95vw] max-w-[500px] bg-[#0a0a0a] border-white/10 text-white p-0 overflow-hidden shadow-2xl [&>button]:w-10 [&>button]:h-10 [&>button]:bg-white/10 [&>button]:text-white [&>button]:hover:bg-white/20 [&>button]:rounded-full [&>button]:z-50 [&>button]:top-4 [&>button]:right-4">
+                            <DialogContent className="sm:max-w-lg w-[95vw] max-w-[500px] bg-[#0a0a0a] border-white/10 text-white p-0 overflow-hidden shadow-2xl [&>button]:w-10 [&>button]:h-10 [&>button]:bg-transparent [&>button]:text-white/80 [&>button]:hover:text-red-500 [&>button]:hover:bg-transparent [&>button]:rounded-full [&>button]:z-50 [&>button]:top-4 [&>button]:right-4 [&>button_svg]:w-6 [&>button_svg]:h-6 [&>button_svg]:stroke-[3]">
                                 <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent pointer-events-none" />
                                 <DialogHeader className="px-6 pt-6 pb-2 relative z-10">
                                     <DialogTitle className="text-2xl font-bold text-center tracking-tight font-display">{t('select_category_title')}</DialogTitle>

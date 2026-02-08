@@ -99,7 +99,7 @@ export function HeroSection() {
               </p>
               <p>{t('hero_subtitle_5')}</p>
             </div>
-            <div className="pt-4">
+            <div className="pt-4 flex gap-4">
               <Button
                 asChild
                 size="lg"
@@ -112,6 +112,15 @@ export function HeroSection() {
                   </div>
                 </Link>
               </Button>
+              <Link href="/forum">
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="border-white/20 hover:bg-white/10 text-white font-semibold px-8 h-12 rounded-full backdrop-blur-sm transition-all hover:scale-105"
+                >
+                  {t('explore_community')}
+                </Button>
+              </Link>
             </div>
           </div>
 
