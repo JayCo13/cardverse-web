@@ -433,6 +433,13 @@ const vi = {
   crop_cancel: 'Hủy',
   crop_use_original: 'Dùng ảnh gốc',
   crop_scan_cropped: 'Quét ảnh đã cắt',
+  // Scan Limits
+  scan_limit_guest_title: 'Mở khóa sức mạnh!',
+  scan_limit_guest_desc: 'Bạn đã dùng lượt quét khách. Đăng ký ngay để nhận 3 lượt quét MIỄN PHÍ mỗi ngày!',
+  scan_limit_user_title: 'Đạt giới hạn ngày',
+  scan_limit_user_desc: 'Bạn đã dùng hết 3 lượt quét hôm nay! Quay lại vào ngày mai để tiếp tục.',
+  scan_limit_resets_in: 'Đặt lại sau:',
+  close: 'Đóng',
   // Feature Teasers - Coming Soon
   live_auctions_title: 'Đấu giá trực tuyến & mua bán thẻ',
   live_auctions_desc: 'Đấu giá thẻ hiếm theo thời gian thực hoặc đăng bán bộ sưu tập của bạn trên chợ an toàn của chúng tôi.',
@@ -681,6 +688,13 @@ const ja = {
   crop_cancel: 'キャンセル',
   crop_use_original: '元の画像を使用',
   crop_scan_cropped: 'トリミングしてスキャン',
+  // Scan Limits
+  scan_limit_guest_title: '力を解き放て！',
+  scan_limit_guest_desc: 'ゲストスキャンを使用しました。登録して毎日3回の無料スキャンを手に入れましょう！',
+  scan_limit_user_title: '1日の制限に達しました',
+  scan_limit_user_desc: '今日の3回スキャンを使い切りました！また明日お越しください。',
+  scan_limit_resets_in: 'リセットまで:',
+  close: '閉じる',
   // Feature Teasers - Coming Soon
   coming_soon: '近日公開',
   live_auctions_title: 'ライブオークション & マーケット',
