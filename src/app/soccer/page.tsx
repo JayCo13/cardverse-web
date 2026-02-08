@@ -55,7 +55,6 @@ export default function SoccerPage() {
 
     // Ref for aborting pending eBay requests
     const abortControllerRef = useRef<AbortController | null>(null);
-    const fileInputRef = useRef<HTMLInputElement>(null);
     const galleryInputRef = useRef<HTMLInputElement>(null);
     const cropImgRef = useRef<HTMLImageElement>(null);
 
@@ -325,33 +324,6 @@ export default function SoccerPage() {
         }
     };
 
-    // Handle camera capture (direct scan, no crop)
-    const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-
-        // Check scan limit before processing
-        if (!canScan) {
-            setShowLimitModal(true);
-            if (fileInputRef.current) fileInputRef.current.value = "";
-            return;
-        }
-
-        try {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = async () => {
-                const base64String = (reader.result as string).split(',')[1];
-                await incrementUsage();
-                processScannedCard(base64String);
-            };
-        } catch (error) {
-            console.error("Error reading file:", error);
-        } finally {
-            if (fileInputRef.current) fileInputRef.current.value = "";
-        }
-    };
-
     // Handle gallery upload (opens crop modal)
     const handleGallerySelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -518,14 +490,6 @@ export default function SoccerPage() {
                                 />
                                 <input
                                     type="file"
-                                    ref={fileInputRef}
-                                    onChange={handleImageUpload}
-                                    accept="image/*"
-                                    capture="environment"
-                                    className="hidden"
-                                />
-                                <input
-                                    type="file"
                                     ref={galleryInputRef}
                                     onChange={handleGallerySelect}
                                     accept="image/*"
@@ -534,25 +498,16 @@ export default function SoccerPage() {
                             </div>
                             <Button
                                 type="button"
-                                onClick={() => fileInputRef.current?.click()}
+                                onClick={() => galleryInputRef.current?.click()}
                                 disabled={isAnalyzing}
                                 className="h-12 w-12 px-0 bg-white/10 hover:bg-white/20 border border-white/10"
-                                title="Scan with Camera"
+                                title="Scan Image"
                             >
                                 {isAnalyzing ? (
                                     <SpinnerGap className="w-5 h-5 animate-spin" />
                                 ) : (
-                                    <Camera className="w-5 h-5 text-white/70" />
+                                    <UploadSimple className="w-5 h-5 text-white/70" />
                                 )}
-                            </Button>
-                            <Button
-                                type="button"
-                                onClick={() => galleryInputRef.current?.click()}
-                                disabled={isAnalyzing}
-                                className="h-12 w-12 px-0 bg-white/10 hover:bg-white/20 border border-white/10"
-                                title="Upload from Gallery"
-                            >
-                                <UploadSimple className="w-5 h-5 text-white/70" />
                             </Button>
                             <Button type="submit" className="h-12 px-6 bg-green-600 hover:bg-green-700 font-bold tracking-wide">
                                 {t('search_button')}
