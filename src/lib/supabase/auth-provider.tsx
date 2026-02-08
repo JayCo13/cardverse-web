@@ -98,17 +98,26 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
                 const { data: { session: currentSession } } = await supabase.auth.getSession();
 
                 if (currentSession?.user && mounted) {
-                    setSession(currentSession);
-                    setUser(currentSession.user);
-                    // Set loading false early so UI shows user
-                    setIsLoading(false);
+                    // Check if email is confirmed (OAuth users have confirmed_at set automatically)
+                    const isEmailConfirmed = currentSession.user.email_confirmed_at != null;
+                    const isOAuthUser = currentSession.user.app_metadata?.provider !== 'email';
 
-                    // Fetch/create profile in background (non-blocking)
-                    ensureProfile(currentSession.user).then((profileData) => {
-                        if (mounted && profileData) {
-                            setProfile(profileData);
-                        }
-                    });
+                    if (isEmailConfirmed || isOAuthUser) {
+                        setSession(currentSession);
+                        setUser(currentSession.user);
+                        // Set loading false early so UI shows user
+                        setIsLoading(false);
+
+                        // Fetch/create profile in background (non-blocking)
+                        ensureProfile(currentSession.user).then((profileData) => {
+                            if (mounted && profileData) {
+                                setProfile(profileData);
+                            }
+                        });
+                    } else {
+                        // User exists but email not confirmed - don't log them in
+                        if (mounted) setIsLoading(false);
+                    }
                 } else {
                     if (mounted) setIsLoading(false);
                 }
@@ -130,16 +139,29 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
                     return;
                 }
 
-                setSession(currentSession);
-                setUser(currentSession?.user ?? null);
-
                 if (currentSession?.user) {
-                    // Ensure profile exists (with deduplication guard)
-                    const profileData = await ensureProfile(currentSession.user);
-                    if (mounted && profileData) {
-                        setProfile(profileData);
+                    // Check if email is confirmed (OAuth users have confirmed_at set automatically)
+                    const isEmailConfirmed = currentSession.user.email_confirmed_at != null;
+                    const isOAuthUser = currentSession.user.app_metadata?.provider !== 'email';
+
+                    if (isEmailConfirmed || isOAuthUser) {
+                        setSession(currentSession);
+                        setUser(currentSession.user);
+
+                        // Ensure profile exists (with deduplication guard)
+                        const profileData = await ensureProfile(currentSession.user);
+                        if (mounted && profileData) {
+                            setProfile(profileData);
+                        }
+                    } else {
+                        // User exists but email not confirmed - don't log them in
+                        setSession(null);
+                        setUser(null);
+                        setProfile(null);
                     }
                 } else {
+                    setSession(null);
+                    setUser(null);
                     setProfile(null);
                 }
 
@@ -213,11 +235,20 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
     }, []);
 
     const signOut = useCallback(async () => {
-        const { error } = await supabase.auth.signOut();
-        if (error) console.error('Sign out error:', error);
-        setUser(null);
-        setProfile(null);
-        setSession(null);
+        try {
+            // Clear local state first for immediate UI feedback
+            setUser(null);
+            setProfile(null);
+            setSession(null);
+
+            // Then sign out from Supabase (scope: 'global' signs out all sessions)
+            const { error } = await supabase.auth.signOut({ scope: 'global' });
+            if (error) {
+                console.error('Sign out error:', error);
+            }
+        } catch (err) {
+            console.error('Sign out exception:', err);
+        }
     }, []);
 
     const refreshProfile = useCallback(async () => {

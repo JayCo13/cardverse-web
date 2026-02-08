@@ -69,7 +69,13 @@ export function Header() {
             </DropdownMenuItem>
             <DropdownMenuItem>{t('settings')}</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => signOut()}>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                signOut();
+              }}
+            >
               {t('logout')}
             </DropdownMenuItem>
           </DropdownMenuContent>
