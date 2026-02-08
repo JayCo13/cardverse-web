@@ -1399,6 +1399,69 @@ export function MarketSpotlight() {
                     <p className="text-sm md:text-base text-gray-400 max-w-xl mx-auto">
                         Access comprehensive price history from major global marketplaces including eBay, TCGPlayer, and PWCC.
                     </p>
+
+                    {/* Scan Confirmation - Ask if result is correct */}
+                    {showScanConfirmation && product && (
+                        <div className="mt-6 p-4 rounded-xl bg-gradient-to-r from-orange-500/10 to-amber-500/10 border border-orange-500/30 max-w-[400px] mx-auto animate-in fade-in slide-in-from-top-4 duration-300">
+                            <p className="text-white text-sm font-medium text-center mb-3">
+                                {t('scan_is_correct_card')}
+                            </p>
+                            <div className="flex gap-3 justify-center">
+                                <Button
+                                    onClick={handleConfirmCorrect}
+                                    className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm py-2 h-9"
+                                >
+                                    <Check className="w-4 h-4 mr-1.5" />
+                                    {t('scan_yes_correct')}
+                                </Button>
+                                {canRetry && (
+                                    <Button
+                                        onClick={handleRetry}
+                                        disabled={isScanning}
+                                        className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-sm py-2 h-9"
+                                    >
+                                        <ArrowsClockwise className={`w-4 h-4 mr-1.5 ${isScanning ? 'animate-spin' : ''}`} />
+                                        {t('scan_retry')}
+                                    </Button>
+                                )}
+                            </div>
+                            {!canRetry && (
+                                <p className="text-gray-400 text-xs text-center mt-2">
+                                    {t('scan_retry_limit_reached')}
+                                </p>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Error with retry option */}
+                    {showScanConfirmation && searchError && canRetry && (
+                        <div className="mt-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 max-w-[400px] mx-auto animate-in fade-in slide-in-from-top-4 duration-300">
+                            <p className="text-white text-sm font-medium text-center mb-3">
+                                {t('scan_failed_retry')}
+                            </p>
+                            <div className="flex gap-3 justify-center">
+                                <Button
+                                    onClick={() => {
+                                        setShowScanConfirmation(false);
+                                        setCanRetry(false);
+                                        setLastScannedImage(null);
+                                    }}
+                                    variant="outline"
+                                    className="flex-1 text-sm py-2 h-9"
+                                >
+                                    {t('scan_cancel')}
+                                </Button>
+                                <Button
+                                    onClick={handleRetry}
+                                    disabled={isScanning}
+                                    className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-sm py-2 h-9"
+                                >
+                                    <ArrowsClockwise className={`w-4 h-4 mr-1.5 ${isScanning ? 'animate-spin' : ''}`} />
+                                    {t('scan_retry')}
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="grid lg:grid-cols-2 gap-8 items-center">
@@ -1588,68 +1651,6 @@ export function MarketSpotlight() {
                             </Button>
                         )}
 
-                        {/* Scan Confirmation - Ask if result is correct */}
-                        {showScanConfirmation && product && (
-                            <div className="mt-4 p-4 rounded-xl bg-gradient-to-r from-orange-500/10 to-amber-500/10 border border-orange-500/30 max-w-[400px] mx-auto">
-                                <p className="text-white text-sm font-medium text-center mb-3">
-                                    Is this the correct card?
-                                </p>
-                                <div className="flex gap-3 justify-center">
-                                    <Button
-                                        onClick={handleConfirmCorrect}
-                                        className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm py-2"
-                                    >
-                                        <Check className="w-4 h-4 mr-1.5" />
-                                        Yes, correct
-                                    </Button>
-                                    {canRetry && (
-                                        <Button
-                                            onClick={handleRetry}
-                                            disabled={isScanning}
-                                            className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-sm py-2"
-                                        >
-                                            <ArrowsClockwise className={`w-4 h-4 mr-1.5 ${isScanning ? 'animate-spin' : ''}`} />
-                                            Retry scan
-                                        </Button>
-                                    )}
-                                </div>
-                                {!canRetry && (
-                                    <p className="text-gray-400 text-xs text-center mt-2">
-                                        Retry limit reached. Try a different photo angle.
-                                    </p>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Error with retry option */}
-                        {showScanConfirmation && searchError && canRetry && (
-                            <div className="mt-4 p-4 rounded-xl bg-red-500/10 border border-red-500/30 max-w-[400px] mx-auto">
-                                <p className="text-white text-sm font-medium text-center mb-3">
-                                    Scan failed. Would you like to retry?
-                                </p>
-                                <div className="flex gap-3 justify-center">
-                                    <Button
-                                        onClick={() => {
-                                            setShowScanConfirmation(false);
-                                            setCanRetry(false);
-                                            setLastScannedImage(null);
-                                        }}
-                                        variant="outline"
-                                        className="flex-1 text-sm py-2"
-                                    >
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        onClick={handleRetry}
-                                        disabled={isScanning}
-                                        className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-sm py-2"
-                                    >
-                                        <ArrowsClockwise className={`w-4 h-4 mr-1.5 ${isScanning ? 'animate-spin' : ''}`} />
-                                        Retry
-                                    </Button>
-                                </div>
-                            </div>
-                        )}
                     </div>
 
                     {/* Right Column: The Data */}

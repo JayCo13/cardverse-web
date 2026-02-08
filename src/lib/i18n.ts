@@ -261,6 +261,13 @@ const en = {
   market_spotlight: 'Market Spotlight',
   price_change: 'Change',
   chart_demo: 'Chart: Demo',
+  // Scan Confirmation
+  scan_is_correct_card: 'Is this the correct card?',
+  scan_yes_correct: 'Yes, correct',
+  scan_retry: 'Retry scan',
+  scan_retry_limit_reached: 'Retry limit reached. Try a different photo angle.',
+  scan_failed_retry: 'Scan failed. Would you like to retry?',
+  scan_cancel: 'Cancel',
 };
 
 const vi = {
@@ -524,6 +531,13 @@ const vi = {
   market_spotlight: 'Tiêu điểm thị trường',
   price_change: 'Thay đổi',
   chart_demo: 'Biểu đồ: Demo',
+  // Scan Confirmation
+  scan_is_correct_card: 'Đây có phải là thẻ đúng không?',
+  scan_yes_correct: 'Đúng, chính xác',
+  scan_retry: 'Quét lại',
+  scan_retry_limit_reached: 'Đã hết lượt thử lại. Hãy thử góc chụp khác.',
+  scan_failed_retry: 'Quét thất bại. Bạn có muốn thử lại không?',
+  scan_cancel: 'Hủy',
 };
 
 // Japanese translations
@@ -780,6 +794,13 @@ const ja = {
   market_spotlight: 'マーケット注目',
   price_change: '変動',
   chart_demo: 'チャート: デモ',
+  // Scan Confirmation
+  scan_is_correct_card: 'これは正しいカードですか？',
+  scan_yes_correct: 'はい、正しいです',
+  scan_retry: '再スキャン',
+  scan_retry_limit_reached: '再試行の上限に達しました。別の角度で試してください。',
+  scan_failed_retry: 'スキャンに失敗しました。再試行しますか？',
+  scan_cancel: 'キャンセル',
 };
 
 export const translations = {
