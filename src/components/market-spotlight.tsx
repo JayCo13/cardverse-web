@@ -683,6 +683,7 @@ export function MarketSpotlight() {
                                         if (nameMatches) {
                                             console.log(`Exact number + name match: ${exactMatch.name} #${exactMatch.number}`);
                                             await displayProductResult(exactMatch);
+                                            setShowScanConfirmation(true);
                                             return;
                                         }
                                     }
@@ -719,6 +720,7 @@ export function MarketSpotlight() {
                                     if (setMatch) {
                                         console.log(`Matched by set: ${setMatch.name} (${setMatch.set_name})`);
                                         await displayProductResult(setMatch);
+                                        setShowScanConfirmation(true);
                                         return;
                                     }
                                 }
@@ -761,6 +763,7 @@ export function MarketSpotlight() {
                                     if (match) {
                                         console.log(`Matched by name: ${match.name}`);
                                         await displayProductResult(match);
+                                        setShowScanConfirmation(true);
                                         return;
                                     }
                                 }
@@ -768,6 +771,7 @@ export function MarketSpotlight() {
                                 // Use first result if only one or no filters matched
                                 console.log(`Using first result: ${products[0].name}`);
                                 await displayProductResult(products[0]);
+                                setShowScanConfirmation(true);
                                 return;
                             }
                         }
@@ -792,6 +796,7 @@ export function MarketSpotlight() {
                         if (nameProducts && nameProducts.length > 0) {
                             console.log(`Found ${nameProducts.length} cards by name`);
                             await displayProductResult(nameProducts[0]);
+                            setShowScanConfirmation(true);
                             return;
                         }
                     }
@@ -898,9 +903,6 @@ export function MarketSpotlight() {
         setProduct(productData);
         setCurrentPrice(featured.market_price);
         setSearchError(null);
-
-        // Show scan confirmation after displaying result
-        setShowScanConfirmation(true);
 
         // Fetch price history using REST API (faster than Supabase client)
         try {
