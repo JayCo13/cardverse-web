@@ -1416,8 +1416,8 @@ export function MarketSpotlight() {
                         Access comprehensive price history from major global marketplaces including eBay, TCGPlayer, and PWCC.
                     </p>
 
-                    {/* Scan Confirmation - Ask if result is correct */}
-                    {showScanConfirmation && product && (
+                    {/* Scan Confirmation - Ask if result is correct (only when no error) */}
+                    {showScanConfirmation && product && !searchError && (
                         <div className="mt-6 p-4 rounded-xl bg-gradient-to-r from-orange-500/10 to-amber-500/10 border border-orange-500/30 max-w-[400px] mx-auto animate-in fade-in slide-in-from-top-4 duration-300">
                             <p className="text-white text-sm font-medium text-center mb-3">
                                 {t('scan_is_correct_card')}
