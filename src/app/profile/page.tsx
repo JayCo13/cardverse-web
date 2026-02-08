@@ -313,9 +313,11 @@ export default function ProfilePage() {
                         </div>
 
                         {/* Edit Profile Button */}
-                        <Button variant="outline" className="shrink-0">
-                            Chỉnh sửa hồ sơ
-                        </Button>
+                        <Link href="/profile/edit">
+                            <Button variant="outline" className="shrink-0">
+                                Chỉnh sửa hồ sơ
+                            </Button>
+                        </Link>
                     </div>
                 </div>
 

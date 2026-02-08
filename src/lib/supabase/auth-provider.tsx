@@ -20,6 +20,8 @@ interface AuthContextType {
     resendOtp: (email: string) => Promise<{ error: AuthError | null }>;
     signOut: () => Promise<void>;
     refreshProfile: () => Promise<void>;
+    resetPasswordForEmail: (email: string) => Promise<{ error: AuthError | null }>;
+    updatePassword: (newPassword: string) => Promise<{ error: AuthError | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -280,6 +282,24 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
         setProfile(data);
     }, [user]);
 
+    const resetPasswordForEmail = useCallback(async (email: string) => {
+        const redirectUrl = typeof window !== 'undefined'
+            ? `${window.location.origin}/update-password`
+            : process.env.NEXT_PUBLIC_SITE_URL
+                ? `${process.env.NEXT_PUBLIC_SITE_URL}/update-password`
+                : 'https://cardversehub.com/update-password';
+
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: redirectUrl,
+        });
+        return { error };
+    }, []);
+
+    const updatePassword = useCallback(async (newPassword: string) => {
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        return { error };
+    }, []);
+
     // Memoize the entire context value to prevent re-renders
     const value = useMemo<AuthContextType>(() => ({
         user,
@@ -294,7 +314,9 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
         resendOtp,
         signOut,
         refreshProfile,
-    }), [user, profile, session, isLoading, signInWithGoogle, signInWithFacebook, signInWithEmail, signUpWithEmail, verifyOtp, resendOtp, signOut, refreshProfile]);
+        resetPasswordForEmail,
+        updatePassword,
+    }), [user, profile, session, isLoading, signInWithGoogle, signInWithFacebook, signInWithEmail, signUpWithEmail, verifyOtp, resendOtp, signOut, refreshProfile, resetPasswordForEmail, updatePassword]);
 
     return (
         <AuthContext.Provider value={value}>
