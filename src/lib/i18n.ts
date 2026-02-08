@@ -166,6 +166,13 @@ const en = {
   crop_cancel: 'Cancel',
   crop_use_original: 'Use Original',
   crop_scan_cropped: 'Scan Cropped',
+  // Scan Limits
+  scan_limit_guest_title: 'Unleash Your Power!',
+  scan_limit_guest_desc: "You've used your guest scan. Register now to get 3 FREE daily scans and unlock market prices!",
+  scan_limit_user_title: 'Daily Limit Reached',
+  scan_limit_user_desc: "You've mastered your 3 daily scans! Come back tomorrow to discover more treasures.",
+  scan_limit_resets_in: 'Resets in:',
+  close: 'Close',
   // Feature Teasers - Coming Soon
   coming_soon: 'Coming Soon',
   live_auctions_title: 'Live Auctions & Marketplace',
