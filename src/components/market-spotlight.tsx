@@ -191,6 +191,19 @@ export function MarketSpotlight() {
     const [canRetry, setCanRetry] = useState(false);
     const [lastScannedImage, setLastScannedImage] = useState<string | null>(null);
 
+    // Auto-dismiss scan confirmation after 30 seconds
+    useEffect(() => {
+        if (!showScanConfirmation) return;
+
+        const timer = setTimeout(() => {
+            setShowScanConfirmation(false);
+            setCanRetry(false);
+            setLastScannedImage(null);
+        }, 30000); // 30 seconds
+
+        return () => clearTimeout(timer);
+    }, [showScanConfirmation]);
+
     // Collection state
     const [isAddingToCollection, setIsAddingToCollection] = useState(false);
     const [addedToCollection, setAddedToCollection] = useState(false);
