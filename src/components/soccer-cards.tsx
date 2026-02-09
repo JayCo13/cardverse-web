@@ -23,12 +23,14 @@ export function SoccerCards() {
         id: item.id,
         name: item.name,
         image_url: item.image_url,
-        price: item.price,
-        category: item.category,
+        price: item.price ?? 0,
+        category: item.category ?? '',
         year: item.year,
         grader: item.grader,
         grade: item.grade,
-        ebay_id: item.ebay_id,
+        set_name: null,
+        player_name: null,
+        ebay_id: item.ebay_id ?? '',
     }));
 
     if (soccerLoading && cards.length === 0) {
@@ -91,18 +93,6 @@ export function SoccerCards() {
                                 {t("soccer_cards_desc")}
                             </p>
                         </div>
-                    </div>
-
-                    <div className="flex justify-end md:justify-start">
-                        <Button
-                            onClick={() => fetchSoccer(true)}
-                            variant="ghost"
-                            size="sm"
-                            className="text-green-400 hover:text-green-300 hover:bg-green-500/10 font-body tracking-wide"
-                        >
-                            <ArrowsClockwise className="w-4 h-4 mr-2" />
-                            {t("refresh")}
-                        </Button>
                     </div>
                 </div>
 

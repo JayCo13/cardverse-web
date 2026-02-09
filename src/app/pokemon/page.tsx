@@ -369,11 +369,6 @@ export default function PokemonPage() {
                                 Clear
                             </Button>
                         )}
-
-                        {/* Refresh */}
-                        <Button onClick={fetchCards} variant="ghost" size="icon" className="text-yellow-400 hover:bg-yellow-500/10 ml-auto">
-                            <ArrowsClockwise className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-                        </Button>
                     </div>
 
                     {/* Active Filters Display */}

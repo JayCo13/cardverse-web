@@ -24,8 +24,11 @@ export function OnePieceCards() {
         name: item.name,
         image_url: item.image_url,
         set_name: item.set_name,
+        number: null,
+        rarity: null,
         market_price: item.market_price,
         low_price: item.low_price,
+        tcgplayer_url: null,
     }));
 
     if (onepieceLoading && cards.length === 0) {
@@ -88,18 +91,6 @@ export function OnePieceCards() {
                                 {t("one_piece_tcg_desc")}
                             </p>
                         </div>
-                    </div>
-
-                    <div className="flex justify-end md:justify-start">
-                        <Button
-                            onClick={() => fetchOnepiece(true)}
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-400 hover:text-red-300 hover:bg-red-500/10 font-body tracking-wide"
-                        >
-                            <ArrowsClockwise className="w-4 h-4 mr-2" />
-                            {t("refresh")}
-                        </Button>
                     </div>
                 </div>
 

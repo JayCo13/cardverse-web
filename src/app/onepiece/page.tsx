@@ -206,10 +206,6 @@ export default function OnePiecePage() {
                                     <SelectItem value="Common">Common</SelectItem>
                                 </SelectContent>
                             </Select>
-
-                            <Button onClick={fetchCards} variant="outline" className="h-12 px-4 border-red-500/30 text-red-400">
-                                <ArrowsClockwise className="w-5 h-5" />
-                            </Button>
                         </div>
                     </div>
 

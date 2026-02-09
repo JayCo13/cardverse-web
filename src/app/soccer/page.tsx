@@ -543,10 +543,6 @@ export default function SoccerPage() {
                                     <SelectItem value="CGC">CGC</SelectItem>
                                 </SelectContent>
                             </Select>
-
-                            <Button onClick={handleReset} variant="outline" className="h-12 px-4 border-green-500/30 text-green-400">
-                                <ArrowsClockwise className="w-5 h-5" />
-                            </Button>
                         </div>
                     </div>
 

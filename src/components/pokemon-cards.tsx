@@ -98,18 +98,6 @@ export function PokemonCards() {
                             </p>
                         </div>
                     </div>
-
-                    <div className="flex justify-end md:justify-start">
-                        <Button
-                            onClick={() => fetchPokemon(true)}
-                            variant="ghost"
-                            size="sm"
-                            className="text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/10 font-body tracking-wide"
-                        >
-                            <ArrowsClockwise className="w-4 h-4 mr-2" />
-                            {t("refresh")}
-                        </Button>
-                    </div>
                 </div>
 
                 {/* Cards Grid */}
