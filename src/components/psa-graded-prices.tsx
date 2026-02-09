@@ -20,6 +20,7 @@ interface PsaPrice {
 interface PsaGradedPricesProps {
     productId: number;
     productName?: string;
+    isScanned?: boolean;
 }
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -47,7 +48,7 @@ function getGradeBgColor(grade: string): string {
     return 'bg-gray-500/20 border-gray-500/30';
 }
 
-export function PSAGradedPrices({ productId, productName }: PsaGradedPricesProps) {
+export function PSAGradedPrices({ productId, productName, isScanned = false }: PsaGradedPricesProps) {
     const [psaPrices, setPsaPrices] = useState<PsaPrice[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -55,6 +56,8 @@ export function PSAGradedPrices({ productId, productName }: PsaGradedPricesProps
 
     useEffect(() => {
         async function fetchPsaPrices() {
+            if (!isScanned) return;
+
             if (!productId || !SUPABASE_URL) {
                 setIsLoading(false);
                 return;
@@ -85,7 +88,7 @@ export function PSAGradedPrices({ productId, productName }: PsaGradedPricesProps
         }
 
         fetchPsaPrices();
-    }, [productId]);
+    }, [productId, isScanned]);
 
     // Group prices by grade
     const groupedPrices = React.useMemo(() => {
@@ -140,6 +143,20 @@ export function PSAGradedPrices({ productId, productName }: PsaGradedPricesProps
 
     if (error) {
         return null;
+    }
+
+    if (!isScanned) {
+        return (
+            <div className="mt-4 p-6 bg-white/5 rounded-xl border border-white/10 w-full max-w-full overflow-hidden flex flex-col items-center justify-center text-center group transition-colors hover:bg-white/10">
+                <div className="w-12 h-12 rounded-full bg-orange-500/20 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                    <Medal className="w-6 h-6 text-orange-500" weight="fill" />
+                </div>
+                <h3 className="text-white font-bold text-lg">Scan to see PSA grades</h3>
+                <p className="text-gray-400 text-sm mt-1 max-w-[200px]">
+                    Scan this card using the camera to unlock detailed graded price history.
+                </p>
+            </div>
+        );
     }
 
     const grades = Object.keys(groupedPrices).sort((a, b) => parseFloat(b) - parseFloat(a));

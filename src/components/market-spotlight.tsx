@@ -130,6 +130,7 @@ export function MarketSpotlight() {
     const [priceChange, setPriceChange] = useState<number | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [useMockData, setUseMockData] = useState(false);
+    const [isScannedResult, setIsScannedResult] = useState(false);
 
     // Filter chart data based on selected timeframe
     const filterChartDataByTimeframe = React.useCallback((data: Array<{ date: string; price: number; dateObj: Date }>, tf: string) => {
@@ -558,6 +559,7 @@ export function MarketSpotlight() {
         setSearchError(null);
 
         try {
+            setIsScannedResult(true);
             // Single API call with 15 second timeout (AI vision models can be slow)
             console.log('Identifying card with AI...');
             const aiController = new AbortController();
@@ -1292,6 +1294,7 @@ export function MarketSpotlight() {
 
     const handleSearch = () => {
         if (searchTerm.trim()) {
+            setIsScannedResult(false);
             fetchFeaturedProduct(searchTerm.trim());
         }
     };
@@ -1432,7 +1435,10 @@ export function MarketSpotlight() {
                             </Button>
                             {/* Search button */}
                             <Button
-                                onClick={handleSearch}
+                                onClick={() => {
+                                    setIsScannedResult(false);
+                                    handleSearch();
+                                }}
                                 disabled={isLoading}
                                 className="rounded-full bg-orange-500 hover:bg-orange-600 text-white h-10 w-10 md:h-11 md:w-11 p-0 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(249,115,22,0.5)] transition-transform active:scale-95 disabled:opacity-50"
                             >
@@ -1843,6 +1849,7 @@ export function MarketSpotlight() {
                             <PSAGradedPrices
                                 productId={product.product_id}
                                 productName={product.name}
+                                isScanned={isScannedResult}
                             />
                         )}
                     </div>
