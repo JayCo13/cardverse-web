@@ -51,7 +51,7 @@ export function PSAGradedPrices({ productId, productName }: PsaGradedPricesProps
     const [psaPrices, setPsaPrices] = useState<PsaPrice[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [isExpanded, setIsExpanded] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(true);
 
     useEffect(() => {
         async function fetchPsaPrices() {
@@ -146,7 +146,7 @@ export function PSAGradedPrices({ productId, productName }: PsaGradedPricesProps
     const displayCount = isExpanded ? psaPrices.length : 3;
 
     return (
-        <div className="mt-4 p-4 bg-white/5 rounded-xl border border-white/10">
+        <div className="mt-4 p-4 bg-white/5 rounded-xl border border-white/10 w-full max-w-full overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">

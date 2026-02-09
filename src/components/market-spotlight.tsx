@@ -503,7 +503,7 @@ export function MarketSpotlight() {
                     dateObj: new Date(now.getTime() - (MOCK_DATA.length - i) * 2 * 24 * 60 * 60 * 1000),
                 }));
                 setFullChartData(adjustedMock);
-                setChartData(adjustedMock.map(d => ({ date: d.date, price: d.price })));
+                setChartData(adjustedMock.map((d: { date: string; price: number }) => ({ date: d.date, price: d.price })));
                 setPriceChange(0);
                 setUseMockData(true);
             }
@@ -984,7 +984,7 @@ export function MarketSpotlight() {
                         dateObj: new Date(now.getTime() - (MOCK_DATA.length - i) * 2 * 24 * 60 * 60 * 1000),
                     }));
                     setFullChartData(adjustedMock);
-                    setChartData(adjustedMock.map(d => ({ date: d.date, price: d.price })));
+                    setChartData(adjustedMock.map((d: { date: string; price: number }) => ({ date: d.date, price: d.price })));
                     setPriceChange(0);
                     setUseMockData(true);
                     // Cache removed
@@ -1004,7 +1004,7 @@ export function MarketSpotlight() {
                     dateObj: new Date(now.getTime() - (MOCK_DATA.length - i) * 2 * 24 * 60 * 60 * 1000),
                 }));
                 setFullChartData(adjustedMock);
-                setChartData(adjustedMock.map(d => ({ date: d.date, price: d.price })));
+                setChartData(adjustedMock.map((d: { date: string; price: number }) => ({ date: d.date, price: d.price })));
                 setPriceChange(0);
                 setUseMockData(true);
             }
@@ -1676,13 +1676,7 @@ export function MarketSpotlight() {
                             </div>
                         </div>
 
-                        {/* PSA Graded Prices Section - Only for Pokemon (category 3 or 85) */}
-                        {!isLoading && product && (product.category_id === 3 || product.category_id === 85) && (
-                            <PSAGradedPrices
-                                productId={product.product_id}
-                                productName={product.name}
-                            />
-                        )}
+
 
                         {/* Add to Collection Button - Below Card Area */}
                         {!isLoading && product && (
@@ -1843,6 +1837,14 @@ export function MarketSpotlight() {
                                 )}
                             </Card>
                         </div>
+
+                        {/* PSA Graded Prices Section - Only for Pokemon (category 3 or 85) */}
+                        {!isLoading && product && (product.category_id === 3 || product.category_id === 85) && (
+                            <PSAGradedPrices
+                                productId={product.product_id}
+                                productName={product.name}
+                            />
+                        )}
                     </div>
                 </div>
             </div>
