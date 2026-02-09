@@ -147,7 +147,7 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
 
     if (!isScanned) {
         return (
-            <div className="mt-4 p-6 bg-white/5 rounded-xl border border-white/10 w-full max-w-full overflow-hidden flex flex-col items-center justify-center text-center group transition-colors hover:bg-white/10">
+            <div className="mt-4 p-4 lg:p-6 bg-white/5 rounded-xl border border-white/10 w-full max-w-full overflow-hidden flex flex-col items-center justify-center text-center group transition-colors hover:bg-white/10">
                 <div className="w-12 h-12 rounded-full bg-orange-500/20 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                     <Medal className="w-6 h-6 text-orange-500" weight="fill" />
                 </div>
@@ -163,7 +163,7 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
     const displayCount = isExpanded ? psaPrices.length : 3;
 
     return (
-        <div className="mt-4 p-4 bg-white/5 rounded-xl border border-white/10 w-full max-w-full overflow-hidden">
+        <div className="mt-4 p-3 md:p-4 bg-white/5 rounded-xl border border-white/10 w-full max-w-full overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
@@ -181,8 +181,8 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
                     return (
                         <div
                             key={grade}
-                            className={`p-3 rounded-xl border ${getGradeBgColor(grade)} 
-                                flex items-center justify-between sm:block sm:text-center
+                            className={`p-2.5 sm:p-3 rounded-xl border ${getGradeBgColor(grade)} 
+                                flex items-center justify-between sm:block sm:text-center w-full
                                 transition-all duration-200 hover:bg-opacity-30 group/card`}
                         >
                             <div className={`text-lg font-bold ${getGradeColor(grade)}`}>
@@ -210,7 +210,7 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
                             href={psa.ebay_url || '#'}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center gap-3 p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors group"
+                            className="flex items-center gap-2.5 sm:gap-3 p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors group w-full max-w-full overflow-hidden"
                         >
                             {/* Image */}
                             {psa.image_url && (
