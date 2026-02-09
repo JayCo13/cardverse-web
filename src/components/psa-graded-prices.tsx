@@ -163,7 +163,7 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
     const displayCount = isExpanded ? psaPrices.length : 3;
 
     return (
-        <div className="mt-4 p-3 md:p-4 bg-white/5 rounded-xl border border-white/10 w-full max-w-full overflow-hidden">
+        <div className="mt-4 p-3 md:p-4 bg-white/5 rounded-xl border border-white/10 w-full max-w-full min-w-0 overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">

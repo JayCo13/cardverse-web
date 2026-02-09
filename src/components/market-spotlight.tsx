@@ -955,7 +955,7 @@ export function MarketSpotlight() {
 
                     // Initial filtering based on current timeframe
                     const filteredData = filterChartDataByTimeframe(chartDataWithDates, timeFrame);
-                    setChartData(filteredData.length > 0 ? filteredData : chartDataWithDates.map(d => ({ date: d.date, price: d.price })));
+                    setChartData(filteredData.length > 0 ? filteredData : chartDataWithDates.map((d: { date: string; price: number; dateObj: Date }) => ({ date: d.date, price: d.price })));
 
                     // Calculate price change
                     const dataToUse = filteredData.length > 0 ? filteredData : chartDataWithDates;
@@ -1846,11 +1846,13 @@ export function MarketSpotlight() {
 
                         {/* PSA Graded Prices Section - Only for Pokemon (category 3 or 85) */}
                         {!isLoading && product && (product.category_id === 3 || product.category_id === 85) && (
-                            <PSAGradedPrices
-                                productId={product.product_id}
-                                productName={product.name}
-                                isScanned={isScannedResult}
-                            />
+                            <div className="w-full min-w-0">
+                                <PSAGradedPrices
+                                    productId={product.product_id}
+                                    productName={product.name}
+                                    isScanned={isScannedResult}
+                                />
+                            </div>
                         )}
                     </div>
                 </div>
