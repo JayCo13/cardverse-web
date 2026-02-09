@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Medal, ArrowSquareOut, CaretDown, CaretUp } from '@phosphor-icons/react';
+import { useLocalization } from '@/context/localization-context';
 
 interface PsaPrice {
     id: number;
@@ -49,6 +50,7 @@ function getGradeBgColor(grade: string): string {
 }
 
 export function PSAGradedPrices({ productId, productName, isScanned = false }: PsaGradedPricesProps) {
+    const { t } = useLocalization();
     const [psaPrices, setPsaPrices] = useState<PsaPrice[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -119,18 +121,28 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
         return lowest;
     }, [groupedPrices]);
 
-    // Don't show if no data
-    if (!isLoading && psaPrices.length === 0) {
-        return null;
+    // 1. Scan Prompt (Highest priority if not scanned)
+    if (!isScanned) {
+        return (
+            <div className="mt-4 p-4 lg:p-6 bg-white/5 rounded-xl border border-white/10 w-full max-w-full overflow-hidden flex flex-col items-center justify-center text-center group transition-colors hover:bg-white/10">
+                <div className="w-12 h-12 rounded-full bg-orange-500/20 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                    <Medal className="w-6 h-6 text-orange-500" weight="fill" />
+                </div>
+                <h3 className="text-white font-bold text-lg">{t('psa_scan_to_see')}</h3>
+                <p className="text-gray-400 text-sm mt-1 max-w-[200px]">
+                    {t('psa_scan_description')}
+                </p>
+            </div>
+        );
     }
 
-    // Loading state
+    // 2. Loading State
     if (isLoading) {
         return (
             <div className="mt-4 p-4 bg-white/5 rounded-xl border border-white/10">
                 <div className="flex items-center gap-2 mb-3">
                     <Medal className="w-5 h-5 text-yellow-400" weight="fill" />
-                    <span className="text-white font-semibold">PSA Graded Prices</span>
+                    <span className="text-white font-semibold">{t('psa_graded_prices')}</span>
                 </div>
                 <div className="space-y-2">
                     {[1, 2, 3].map(i => (
@@ -141,19 +153,20 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
         );
     }
 
+    // 3. Error State
     if (error) {
-        return null;
+        return null; // Or show error message if desired
     }
 
-    if (!isScanned) {
+    // 4. No Data State (Scanned but no results)
+    if (psaPrices.length === 0) {
         return (
-            <div className="mt-4 p-4 lg:p-6 bg-white/5 rounded-xl border border-white/10 w-full max-w-full overflow-hidden flex flex-col items-center justify-center text-center group transition-colors hover:bg-white/10">
-                <div className="w-12 h-12 rounded-full bg-orange-500/20 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Medal className="w-6 h-6 text-orange-500" weight="fill" />
+            <div className="mt-4 p-4 bg-white/5 rounded-xl border border-white/10 w-full max-w-full overflow-hidden flex flex-col items-center justify-center text-center">
+                <div className="w-12 h-12 rounded-full bg-gray-500/20 flex items-center justify-center mb-3">
+                    <Medal className="w-6 h-6 text-gray-500" weight="fill" />
                 </div>
-                <h3 className="text-white font-bold text-lg">Scan to see PSA grades</h3>
-                <p className="text-gray-400 text-sm mt-1 max-w-[200px]">
-                    Scan this card using the camera to unlock detailed graded price history.
+                <p className="text-gray-400 text-sm">
+                    {t('psa_no_data')}
                 </p>
             </div>
         );
@@ -168,8 +181,8 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
             <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                     <Medal className="w-5 h-5 text-yellow-400" weight="fill" />
-                    <span className="text-white font-semibold text-sm">PSA Graded Prices</span>
-                    <span className="text-gray-500 text-xs">({psaPrices.length} listings)</span>
+                    <span className="text-white font-semibold text-sm">{t('psa_graded_prices')}</span>
+                    <span className="text-gray-500 text-xs">({t('psa_listings_count').replace('{count}', psaPrices.length.toString())})</span>
                 </div>
             </div>
 
@@ -193,7 +206,7 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
                                     {formatPrice(lowest.price)}
                                 </div>
                                 <div className="text-gray-400 text-xs sm:mt-0.5">
-                                    {count} listing{count > 1 ? 's' : ''}
+                                    {t('psa_listings_count').replace('{count}', count.toString())}
                                 </div>
                             </div>
                         </div>
@@ -255,12 +268,12 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
                 {isExpanded ? (
                     <>
                         <CaretUp className="w-4 h-4" />
-                        Show Less
+                        {t('psa_show_less')}
                     </>
                 ) : (
                     <>
                         <CaretDown className="w-4 h-4" />
-                        View Details
+                        {t('psa_view_details')}
                     </>
                 )}
             </button>

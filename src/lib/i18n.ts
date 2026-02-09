@@ -296,6 +296,14 @@ const en = {
   scan_retry_limit_reached: 'Retry limit reached. Try a different photo angle.',
   scan_failed_retry: 'Scan failed. Would you like to retry?',
   scan_cancel: 'Cancel',
+  // PSA Section
+  psa_graded_prices: 'PSA Graded Prices',
+  psa_listings_count: '{count} listings',
+  psa_scan_to_see: 'Scan to see PSA grades',
+  psa_scan_description: 'Scan this card using the camera to unlock detailed graded price history.',
+  psa_view_details: 'View Details',
+  psa_show_less: 'Show Less',
+  psa_no_data: 'This card currently doesn\'t have PSA data',
 };
 
 const vi = {
@@ -594,6 +602,14 @@ const vi = {
   scan_retry_limit_reached: 'Đã hết lượt thử lại. Hãy thử góc chụp khác.',
   scan_failed_retry: 'Quét thất bại. Bạn có muốn thử lại không?',
   scan_cancel: 'Hủy',
+  // PSA Section
+  psa_graded_prices: 'Giá PSA',
+  psa_listings_count: '{count} tin đăng',
+  psa_scan_to_see: 'Quét để xem điểm PSA',
+  psa_scan_description: 'Quét thẻ này bằng camera để mở khóa lịch sử giá chi tiết.',
+  psa_view_details: 'Xem chi tiết',
+  psa_show_less: 'Thu gọn',
+  psa_no_data: 'Thẻ này hiện chưa có dữ liệu PSA',
 };
 
 // Japanese translations
@@ -885,6 +901,14 @@ const ja = {
   scan_retry_limit_reached: '再試行の上限に達しました。別の角度で試してください。',
   scan_failed_retry: 'スキャンに失敗しました。再試行しますか？',
   scan_cancel: 'キャンセル',
+  // PSA Section
+  psa_graded_prices: 'PSA鑑定価格',
+  psa_listings_count: '{count}件の出品',
+  psa_scan_to_see: 'スキャンしてPSAグレードを表示',
+  psa_scan_description: 'カメラでカードをスキャンして、詳細な価格履歴をアンロックしましょう。',
+  psa_view_details: '詳細を見る',
+  psa_show_less: '表示を減らす',
+  psa_no_data: 'このカードには現在PSAデータがありません',
 };
 
 export const translations = {
