@@ -1,339 +1,246 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Medal, ArrowSquareOut, TrendUp, ShoppingCart, Storefront, SpinnerGap, X, MagnifyingGlassPlus } from "@phosphor-icons/react";
-import { useCurrency } from "@/contexts/currency-context";
-import Image from "next/image";
+import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
+import { Medal, ArrowSquareOut, CaretDown, CaretUp } from '@phosphor-icons/react';
 
-interface PSACardResult {
-    id: string;
+interface PsaPrice {
+    id: number;
+    product_id: number;
+    ebay_id: string;
     name: string;
     image_url: string | null;
-    price: number;
-    grader: string | null;
-    grade: string | null;
-    ebay_id: string | null;
+    grader: string;
+    grade: string;
+    price: number; // in cents
+    ebay_url: string | null;
     created_at: string;
 }
 
-interface PSAGradedPricesProps {
-    cardNumber: string | null;
-    setName: string | null;
-    cardName: string;
+interface PsaGradedPricesProps {
+    productId: number;
+    productName?: string;
 }
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-export function PSAGradedPrices({ cardNumber, setName, cardName }: PSAGradedPricesProps) {
-    const [psaCards, setPsaCards] = useState<PSACardResult[]>([]);
+// Format price from cents to dollars
+function formatPrice(cents: number): string {
+    return `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// Grade color mapping
+function getGradeColor(grade: string): string {
+    const gradeNum = parseFloat(grade);
+    if (gradeNum >= 10) return 'text-yellow-400';
+    if (gradeNum >= 9) return 'text-emerald-400';
+    if (gradeNum >= 8) return 'text-blue-400';
+    return 'text-gray-400';
+}
+
+function getGradeBgColor(grade: string): string {
+    const gradeNum = parseFloat(grade);
+    if (gradeNum >= 10) return 'bg-yellow-500/20 border-yellow-500/30';
+    if (gradeNum >= 9) return 'bg-emerald-500/20 border-emerald-500/30';
+    if (gradeNum >= 8) return 'bg-blue-500/20 border-blue-500/30';
+    return 'bg-gray-500/20 border-gray-500/30';
+}
+
+export function PSAGradedPrices({ productId, productName }: PsaGradedPricesProps) {
+    const [psaPrices, setPsaPrices] = useState<PsaPrice[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [hasData, setHasData] = useState(false);
-    const [selectedImage, setSelectedImage] = useState<{ url: string; name: string } | null>(null);
-    const { formatPrice, currency } = useCurrency();
-
-    // Get grader color
-    const getGraderColor = (grader: string | null) => {
-        switch (grader?.toUpperCase()) {
-            case 'PSA': return 'bg-red-500 border-red-400';
-            case 'BGS': return 'bg-blue-500 border-blue-400';
-            case 'SGC': return 'bg-green-600 border-green-500';
-            case 'CGC': return 'bg-purple-500 border-purple-400';
-            default: return 'bg-gray-500 border-gray-400';
-        }
-    };
-
-    // Upgrade eBay thumbnail URL to high resolution
-    const getHighResImageUrl = (url: string | null) => {
-        if (!url) return null;
-        // eBay images often have size suffixes like s-l300, s-l500, s-l1600
-        return url.replace(/s-l\d+/, 's-l1600').replace(/\$_\d+/, '$_57');
-    };
+    const [error, setError] = useState<string | null>(null);
+    const [isExpanded, setIsExpanded] = useState(false);
 
     useEffect(() => {
-        const fetchPSAPrices = async () => {
-            // Reset state when props change
-            setPsaCards([]);
-            setHasData(false);
-            setIsLoading(true);
-
-            // Build search query - match by card number or partial name
-            if (!cardNumber && !cardName) {
+        async function fetchPsaPrices() {
+            if (!productId || !SUPABASE_URL) {
                 setIsLoading(false);
                 return;
             }
 
             try {
-                let url = `${SUPABASE_URL}/rest/v1/crawled_cards?`;
-
-                // Search by card number if available
-                if (cardNumber) {
-                    // Remove any "/" and format variations
-                    const cleanNumber = cardNumber.replace(/[^0-9]/g, '');
-                    url += `card_number=ilike.*${cleanNumber}*&`;
-                }
-
-                // Filter for graded cards only
-                url += `grader=not.is.null&grade=not.is.null&`;
-                url += `category=in.(pokemon,onepiece,pokemon_psa,onepiece_psa)&`;
-                url += `order=grade.desc,created_at.desc&`;
-                url += `limit=10`;
+                const url = `${SUPABASE_URL}/rest/v1/pokemon_psa_prices?` +
+                    `product_id=eq.${productId}&` +
+                    `order=grade.desc,price.asc&` +
+                    `limit=20`;
 
                 const response = await fetch(url, {
-                    headers: {
-                        'apikey': SUPABASE_KEY,
-                    }
+                    headers: { 'apikey': SUPABASE_KEY }
                 });
 
-                if (response.ok) {
-                    const data = await response.json();
-
-                    if (data && data.length > 0) {
-                        setPsaCards(data);
-                        setHasData(true);
-                    } else {
-                        // Fallback: search by name if no card number matches
-                        const nameWords = cardName.split(' ').slice(0, 2).join(' ');
-                        const nameUrl = `${SUPABASE_URL}/rest/v1/crawled_cards?name=ilike.*${encodeURIComponent(nameWords)}*&grader=not.is.null&grade=not.is.null&order=grade.desc,created_at.desc&limit=10`;
-
-                        const nameResponse = await fetch(nameUrl, {
-                            headers: { 'apikey': SUPABASE_KEY }
-                        });
-
-                        if (nameResponse.ok) {
-                            const nameData = await nameResponse.json();
-                            if (nameData && nameData.length > 0) {
-                                setPsaCards(nameData);
-                                setHasData(true);
-                            }
-                        }
-                    }
+                if (!response.ok) {
+                    throw new Error('Failed to fetch PSA prices');
                 }
-            } catch (error) {
-                console.error('Error fetching PSA prices:', error);
+
+                const data = await response.json();
+                setPsaPrices(data);
+            } catch (err) {
+                console.error('Error fetching PSA prices:', err);
+                setError('Failed to load graded prices');
             } finally {
                 setIsLoading(false);
             }
-        };
+        }
 
-        fetchPSAPrices();
-    }, [cardNumber, cardName, setName]);
+        fetchPsaPrices();
+    }, [productId]);
 
-    // Calculate average prices by grade
-    const calculateGradePrices = () => {
-        const gradeMap = new Map<string, { total: number; count: number }>();
-
-        psaCards.forEach(card => {
-            const key = `${card.grader} ${card.grade}`;
-            const existing = gradeMap.get(key) || { total: 0, count: 0 };
-            gradeMap.set(key, {
-                total: existing.total + (card.price || 0),
-                count: existing.count + 1
-            });
+    // Group prices by grade
+    const groupedPrices = React.useMemo(() => {
+        const groups: { [grade: string]: PsaPrice[] } = {};
+        psaPrices.forEach(p => {
+            if (!groups[p.grade]) groups[p.grade] = [];
+            groups[p.grade].push(p);
         });
+        return groups;
+    }, [psaPrices]);
 
-        return Array.from(gradeMap.entries())
-            .map(([grade, { total, count }]) => ({
-                grade,
-                avgPrice: Math.round(total / count),
-                count
-            }))
-            .sort((a, b) => {
-                // Sort by grade number descending
-                const aNum = parseInt(a.grade.split(' ')[1]) || 0;
-                const bNum = parseInt(b.grade.split(' ')[1]) || 0;
-                return bNum - aNum;
-            });
-    };
+    // Calculate average price per grade
+    const avgPriceByGrade = React.useMemo(() => {
+        const avgs: { [grade: string]: number } = {};
+        Object.entries(groupedPrices).forEach(([grade, prices]) => {
+            const total = prices.reduce((sum, p) => sum + p.price, 0);
+            avgs[grade] = Math.round(total / prices.length);
+        });
+        return avgs;
+    }, [groupedPrices]);
 
-    const gradePrices = calculateGradePrices();
+    // Get lowest price per grade
+    const lowestPriceByGrade = React.useMemo(() => {
+        const lowest: { [grade: string]: PsaPrice } = {};
+        Object.entries(groupedPrices).forEach(([grade, prices]) => {
+            lowest[grade] = prices.reduce((min, p) => p.price < min.price ? p : min, prices[0]);
+        });
+        return lowest;
+    }, [groupedPrices]);
 
-    // Generate external links
-    const buildEbaySearchUrl = () => {
-        const query = `${cardName} ${cardNumber || ''} PSA`.trim();
-        return `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&LH_Sold=1&LH_Complete=1`;
-    };
+    // Don't show if no data
+    if (!isLoading && psaPrices.length === 0) {
+        return null;
+    }
 
-    const buildTcgplayerUrl = () => {
-        return `https://www.tcgplayer.com/search/pokemon/product?q=${encodeURIComponent(cardName)}`;
-    };
-
-    const buildPwccUrl = () => {
-        return `https://www.pwccmarketplace.com/search?q=${encodeURIComponent(cardName)}`;
-    };
-
+    // Loading state
     if (isLoading) {
         return (
-            <Card className="border-white/10 mt-6">
-                <CardHeader className="pb-3">
-                    <div className="flex items-center gap-2">
-                        <SpinnerGap className="h-5 w-5 animate-spin text-orange-500" weight="bold" />
-                        <span className="text-sm text-muted-foreground">Loading PSA prices...</span>
-                    </div>
-                </CardHeader>
-            </Card>
+            <div className="mt-4 p-4 bg-white/5 rounded-xl border border-white/10">
+                <div className="flex items-center gap-2 mb-3">
+                    <Medal className="w-5 h-5 text-yellow-400" weight="fill" />
+                    <span className="text-white font-semibold">PSA Graded Prices</span>
+                </div>
+                <div className="space-y-2">
+                    {[1, 2, 3].map(i => (
+                        <div key={i} className="h-12 bg-white/10 rounded-lg animate-pulse" />
+                    ))}
+                </div>
+            </div>
         );
     }
 
+    if (error) {
+        return null;
+    }
+
+    const grades = Object.keys(groupedPrices).sort((a, b) => parseFloat(b) - parseFloat(a));
+    const displayCount = isExpanded ? psaPrices.length : 3;
+
     return (
-        <>
-            <Card className="border-white/10 mt-6 bg-gradient-to-br from-white/5 to-transparent">
-                <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                        <Medal className="h-5 w-5 text-red-500" weight="fill" />
-                        Graded Card Prices
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    {/* Price by Grade Table */}
-                    {hasData && gradePrices.length > 0 ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {gradePrices.map(({ grade, avgPrice, count }) => (
-                                <div
-                                    key={grade}
-                                    className="bg-white/5 rounded-lg p-3 border border-white/10 hover:border-red-500/30 transition-colors"
-                                >
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <Badge className={`${getGraderColor(grade.split(' ')[0])} text-white text-[10px] px-1.5 py-0`}>
-                                            {grade}
-                                        </Badge>
-                                    </div>
-                                    <p className="text-lg font-bold text-white">
-                                        {formatPrice(currency === 'VND' ? avgPrice / 2 : avgPrice)}
-                                    </p>
-                                    <p className="text-[10px] text-muted-foreground">
-                                        {count} sale{count > 1 ? 's' : ''}
-                                    </p>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="text-center py-4 text-muted-foreground text-sm">
-                            <p>No graded sales data available yet</p>
-                            <p className="text-xs mt-1">Check marketplaces below for current prices</p>
-                        </div>
-                    )}
+        <div className="mt-4 p-4 bg-white/5 rounded-xl border border-white/10">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                    <Medal className="w-5 h-5 text-yellow-400" weight="fill" />
+                    <span className="text-white font-semibold text-sm">PSA Graded Prices</span>
+                    <span className="text-gray-500 text-xs">({psaPrices.length} listings)</span>
+                </div>
+            </div>
 
-                    {/* Recent Sold Cards */}
-                    {hasData && psaCards.length > 0 && (
-                        <div className="space-y-2">
-                            <p className="text-xs text-muted-foreground uppercase tracking-wider">Recent Sales</p>
-                            <div className="space-y-2 max-h-40 overflow-y-auto">
-                                {psaCards.slice(0, 5).map((card) => (
-                                    <div
-                                        key={card.id}
-                                        className="flex items-center gap-3 bg-white/5 rounded-lg p-2 hover:bg-white/10 transition-colors"
-                                    >
-                                        {card.image_url && (
-                                            <div
-                                                className="flex flex-col items-center gap-1 cursor-pointer group"
-                                                onClick={() => setSelectedImage({ url: getHighResImageUrl(card.image_url) || card.image_url!, name: card.name })}
-                                            >
-                                                <div className="w-14 h-20 relative rounded overflow-hidden shrink-0 ring-2 ring-transparent group-hover:ring-orange-500/50 transition-all">
-                                                    <Image src={getHighResImageUrl(card.image_url) || card.image_url} alt="" fill className="object-cover" />
-                                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                                                        <MagnifyingGlassPlus className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" weight="bold" />
-                                                    </div>
-                                                </div>
-                                                <span className="text-[8px] text-muted-foreground group-hover:text-orange-400 transition-colors">Click to view</span>
-                                            </div>
-                                        )}
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-xs font-medium truncate">{card.name}</p>
-                                            <div className="flex items-center gap-2 mt-0.5">
-                                                <Badge className={`${getGraderColor(card.grader)} text-white text-[9px] px-1 py-0`}>
-                                                    {card.grader} {card.grade}
-                                                </Badge>
-                                                <span className="text-xs text-muted-foreground">
-                                                    {new Date(card.created_at).toLocaleDateString()}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <p className="text-sm font-bold text-green-400 shrink-0">
-                                            {formatPrice(currency === 'VND' ? card.price / 2 : card.price)}
-                                        </p>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Marketplace Links */}
-                    <div className="pt-2 border-t border-white/10">
-                        <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">View on Marketplaces</p>
-                        <div className="flex flex-wrap gap-2">
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                className="gap-1.5 text-xs h-8 border-red-500/30 text-red-400 hover:bg-red-500/10"
-                                onClick={() => window.open(buildEbaySearchUrl(), '_blank')}
-                            >
-                                <ShoppingCart className="h-3.5 w-3.5" weight="fill" />
-                                eBay Sold
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                className="gap-1.5 text-xs h-8 border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
-                                onClick={() => window.open(buildTcgplayerUrl(), '_blank')}
-                            >
-                                <Storefront className="h-3.5 w-3.5" weight="fill" />
-                                TCGPlayer
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                className="gap-1.5 text-xs h-8 border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
-                                onClick={() => window.open(buildPwccUrl(), '_blank')}
-                            >
-                                <TrendUp className="h-3.5 w-3.5" weight="bold" />
-                                PWCC
-                            </Button>
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
-
-            {/* Image Modal */}
-            {
-                selectedImage && (
-                    <div
-                        className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-                        onClick={() => setSelectedImage(null)}
-                    >
+            {/* Grade Summary Cards */}
+            <div className="grid grid-cols-3 gap-2 mb-3">
+                {grades.slice(0, 3).map(grade => {
+                    const lowest = lowestPriceByGrade[grade];
+                    const count = groupedPrices[grade].length;
+                    return (
                         <div
-                            className="relative max-w-2xl w-full bg-zinc-900 rounded-2xl p-4 border border-white/10"
-                            onClick={(e) => e.stopPropagation()}
+                            key={grade}
+                            className={`p-2 rounded-lg border ${getGradeBgColor(grade)} text-center`}
                         >
-                            <button
-                                type="button"
-                                className="absolute top-3 right-3 z-10 p-2 rounded-full bg-white/20 hover:bg-white/40 transition-colors cursor-pointer"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedImage(null);
-                                }}
-                            >
-                                <X className="w-5 h-5 text-white" weight="bold" />
-                            </button>
-                            <div className="relative aspect-[3/4] w-full max-h-[70vh] rounded-xl overflow-hidden">
-                                <Image
-                                    src={selectedImage.url}
-                                    alt={selectedImage.name}
-                                    fill
-                                    className="object-contain"
-                                />
+                            <div className={`text-lg font-bold ${getGradeColor(grade)}`}>
+                                PSA {grade}
                             </div>
-                            <p className="text-center text-sm text-muted-foreground mt-3 truncate px-8">
-                                {selectedImage.name}
-                            </p>
+                            <div className="text-white font-semibold text-sm">
+                                {formatPrice(lowest.price)}
+                            </div>
+                            <div className="text-gray-400 text-xs">{count} listing{count > 1 ? 's' : ''}</div>
                         </div>
-                    </div>
-                )
-            }
-        </>
+                    );
+                })}
+            </div>
+
+            {/* Detailed Listings (Expandable) */}
+            {isExpanded && (
+                <div className="space-y-2 mt-3 max-h-64 overflow-y-auto">
+                    {psaPrices.slice(0, displayCount).map(psa => (
+                        <a
+                            key={psa.ebay_id}
+                            href={psa.ebay_url || '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-3 p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors group"
+                        >
+                            {/* Image */}
+                            {psa.image_url && (
+                                <div className="w-12 h-12 relative rounded overflow-hidden flex-shrink-0 bg-gray-800">
+                                    <Image
+                                        src={psa.image_url}
+                                        alt={psa.name}
+                                        fill
+                                        className="object-contain"
+                                        sizes="48px"
+                                    />
+                                </div>
+                            )}
+
+                            {/* Info */}
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                    <span className={`font-bold ${getGradeColor(psa.grade)}`}>
+                                        PSA {psa.grade}
+                                    </span>
+                                    <span className="text-white font-semibold">
+                                        {formatPrice(psa.price)}
+                                    </span>
+                                </div>
+                                <div className="text-gray-400 text-xs truncate">
+                                    {psa.name.slice(0, 50)}...
+                                </div>
+                            </div>
+
+                            {/* Link Icon */}
+                            <ArrowSquareOut className="w-4 h-4 text-gray-500 group-hover:text-white transition-colors flex-shrink-0" />
+                        </a>
+                    ))}
+                </div>
+            )}
+
+            {/* Toggle Button */}
+            <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="w-full mt-3 py-2 text-sm text-gray-400 hover:text-white flex items-center justify-center gap-1 transition-colors"
+            >
+                {isExpanded ? (
+                    <>
+                        <CaretUp className="w-4 h-4" />
+                        Show Less
+                    </>
+                ) : (
+                    <>
+                        <CaretDown className="w-4 h-4" />
+                        View Details
+                    </>
+                )}
+            </button>
+        </div>
     );
 }

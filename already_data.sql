@@ -68,6 +68,7 @@ CREATE TABLE public.crawled_cards (
   player_name text,
   metadata jsonb DEFAULT '{}'::jsonb,
   fts tsvector DEFAULT to_tsvector('english'::regconfig, ((name || ' '::text) || COALESCE(description, ''::text))),
+  product_id integer,
   CONSTRAINT crawled_cards_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.forum_comment_reactions (

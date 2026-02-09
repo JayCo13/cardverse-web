@@ -22,10 +22,10 @@ import { useUser, useSupabase } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useCurrency } from '@/contexts/currency-context';
 import { useLocalization } from '@/context/localization-context';
-import { PSAGradedPrices } from '@/components/psa-graded-prices';
 import { useScanLimit } from '@/hooks/useScanLimit';
 import { ScanLimitModal } from '@/components/scan-limit-modal';
 import { useCardCache } from '@/contexts/card-cache-context';
+import { PSAGradedPrices } from '@/components/psa-graded-prices';
 
 // Fallback mock data for when no real data exists
 const MOCK_DATA = [
@@ -76,6 +76,7 @@ interface ProductData {
     resistance: string | null;
     retreatCost: string | null;
     artist: string | null;
+    category_id?: number; // For PSA price lookup (3=EN, 85=JP Pokemon)
 }
 
 interface FeaturedResponse {
@@ -922,6 +923,7 @@ export function MarketSpotlight() {
             resistance: cardDetails['Resistance'] || null,
             retreatCost: cardDetails['RetreatCost'] || null,
             artist: cardDetails['Artist'] || null,
+            category_id: featured.category_id,
         };
 
         setProduct(productData);
@@ -1678,6 +1680,14 @@ export function MarketSpotlight() {
                             </div>
                         </div>
 
+                        {/* PSA Graded Prices Section - Only for Pokemon (category 3 or 85) */}
+                        {!isLoading && product && (product.category_id === 3 || product.category_id === 85) && (
+                            <PSAGradedPrices
+                                productId={product.product_id}
+                                productName={product.name}
+                            />
+                        )}
+
                         {/* Add to Collection Button - Below Card Area */}
                         {!isLoading && product && (
                             <Button
@@ -1839,17 +1849,6 @@ export function MarketSpotlight() {
                         </div>
                     </div>
                 </div>
-
-                {/* PSA Graded Prices - Full width below chart and image */}
-                {product && (
-                    <div className="mt-6">
-                        <PSAGradedPrices
-                            cardNumber={product.number}
-                            setName={product.set_name}
-                            cardName={product.name}
-                        />
-                    </div>
-                )}
             </div>
 
             {/* Image Crop Modal */}
