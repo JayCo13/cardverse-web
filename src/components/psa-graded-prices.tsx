@@ -236,7 +236,7 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
                                     </span>
                                 </div>
                                 <div className="text-gray-400 text-xs truncate">
-                                    {psa.name.slice(0, 50)}...
+                                    {psa.name.slice(0, 30)}...
                                 </div>
                             </div>
 
