@@ -8,6 +8,7 @@ import { SupabaseAuthProvider } from '@/lib/supabase';
 import { AuthModal, AuthModalProvider } from '@/components/auth-modal';
 import { TransactionLockProvider } from '@/components/transaction-lock-provider';
 import { CurrencyProvider } from '@/contexts/currency-context';
+import { CardCacheProvider } from '@/contexts/card-cache-context';
 
 // Force dynamic rendering for all pages - prevents static export errors
 export const dynamic = 'force-dynamic';
@@ -68,7 +69,9 @@ export default function RootLayout({
             <CurrencyProvider>
               <LocalizationProvider>
                 <TransactionLockProvider>
-                  {children}
+                  <CardCacheProvider>
+                    {children}
+                  </CardCacheProvider>
                 </TransactionLockProvider>
                 <AuthModal />
               </LocalizationProvider>

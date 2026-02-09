@@ -1,53 +1,37 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect } from "react";
 import { SoccerCardItem, type SoccerCard } from "./soccer-card-item";
-import { getSupabaseClient } from "@/lib/supabase/client";
 import { SpinnerGap, ArrowsClockwise } from "@phosphor-icons/react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { useLocalization } from "@/context/localization-context";
+import { useCardCache } from "@/contexts/card-cache-context";
 
 export function SoccerCards() {
-    const [cards, setCards] = useState<SoccerCard[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const hasFetched = useRef(false);
     const { t } = useLocalization();
-
-    const fetchCards = async () => {
-        if (hasFetched.current) return;
-        hasFetched.current = true;
-        setLoading(true);
-        setError(null);
-
-        try {
-            const supabase = getSupabaseClient();
-            // Query the materialized view for instant results
-            const { data, error: fetchError } = await supabase
-                .from('featured_soccer_cards')
-                .select('*');
-
-            if (fetchError) throw fetchError;
-            setCards(data || []);
-        } catch (err) {
-            console.error('Soccer fetch error:', err);
-            setError('Failed to load');
-        } finally {
-            setLoading(false);
-        }
-    };
+    const { soccer, soccerLoading, soccerError, fetchSoccer } = useCardCache();
 
     useEffect(() => {
         // Stagger load - wait 400ms before fetching (after Pokemon)
-        const timer = setTimeout(fetchCards, 400);
-        return () => {
-            clearTimeout(timer);
-            hasFetched.current = false; // Reset on cleanup so data reloads on navigation
-        };
-    }, []);
+        const timer = setTimeout(() => fetchSoccer(), 400);
+        return () => clearTimeout(timer);
+    }, [fetchSoccer]);
 
-    if (loading) {
+    // Transform cached data to component format
+    const cards: SoccerCard[] = soccer.map(item => ({
+        id: item.id,
+        name: item.name,
+        image_url: item.image_url,
+        price: item.price,
+        category: item.category,
+        year: item.year,
+        grader: item.grader,
+        grade: item.grade,
+        ebay_id: item.ebay_id,
+    }));
+
+    if (soccerLoading && cards.length === 0) {
         return (
             <section className="py-12 px-4">
                 <div className="max-w-7xl mx-auto">
@@ -60,13 +44,13 @@ export function SoccerCards() {
         );
     }
 
-    if (error) {
+    if (soccerError && cards.length === 0) {
         return (
             <section className="py-12 px-4">
                 <div className="max-w-7xl mx-auto">
                     <div className="flex flex-col items-center justify-center py-20 text-center">
-                        <p className="text-red-400 mb-4">{error}</p>
-                        <Button onClick={fetchCards} variant="outline" className="gap-2">
+                        <p className="text-red-400 mb-4">{soccerError}</p>
+                        <Button onClick={() => fetchSoccer(true)} variant="outline" className="gap-2">
                             <ArrowsClockwise className="w-4 h-4" />
                             Retry
                         </Button>
@@ -111,7 +95,7 @@ export function SoccerCards() {
 
                     <div className="flex justify-end md:justify-start">
                         <Button
-                            onClick={fetchCards}
+                            onClick={() => fetchSoccer(true)}
                             variant="ghost"
                             size="sm"
                             className="text-green-400 hover:text-green-300 hover:bg-green-500/10 font-body tracking-wide"

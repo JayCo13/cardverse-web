@@ -1,81 +1,43 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect } from "react";
 import { PokemonCardItem } from "./pokemon-card-item";
-import { getSupabaseClient } from "@/lib/supabase/client";
 import { SpinnerGap, ArrowsClockwise } from "@phosphor-icons/react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { useLocalization } from "@/context/localization-context";
+import { useCardCache } from "@/contexts/card-cache-context";
 import type { PokemonCard } from "@/lib/types";
 
 export function PokemonCards() {
-    const [cards, setCards] = useState<PokemonCard[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const hasFetched = useRef(false);
     const { t } = useLocalization();
-
-    const fetchCards = async () => {
-        if (hasFetched.current) return;
-        hasFetched.current = true;
-        setLoading(true);
-        setError(null);
-
-        try {
-            const supabase = getSupabaseClient();
-            // Query the materialized view for instant results
-            const { data, error: fetchError } = await supabase
-                .from('featured_pokemon_cards')
-                .select('*');
-
-            if (fetchError) throw fetchError;
-
-            type ProductRow = {
-                product_id: number;
-                name: string;
-                image_url: string | null;
-                set_name: string | null;
-                market_price: number | null;
-                low_price: number | null;
-            };
-
-            const transformedCards: PokemonCard[] = ((data || []) as ProductRow[]).map(item => ({
-                id: item.product_id,
-                productId: item.product_id,
-                name: item.name,
-                imageUrl: item.image_url || '',
-                setName: item.set_name || '',
-                number: '',
-                rarity: '',
-                marketPrice: item.market_price,
-                lowPrice: item.low_price,
-                midPrice: null,
-                highPrice: null,
-                tcgplayerUrl: null,
-                categoryId: 3,
-                groupId: 0,
-            }));
-
-            setCards(transformedCards);
-        } catch (err) {
-            console.error('Pokemon fetch error:', err);
-            setError('Failed to load');
-        } finally {
-            setLoading(false);
-        }
-    };
+    const { pokemon, pokemonLoading, pokemonError, fetchPokemon } = useCardCache();
 
     useEffect(() => {
         // Stagger load - wait 200ms before fetching
-        const timer = setTimeout(fetchCards, 200);
-        return () => {
-            clearTimeout(timer);
-            hasFetched.current = false; // Reset on cleanup so data reloads on navigation
-        };
-    }, []);
+        const timer = setTimeout(() => fetchPokemon(), 200);
+        return () => clearTimeout(timer);
+    }, [fetchPokemon]);
 
-    if (loading) {
+    // Transform cached data to component format
+    const cards: PokemonCard[] = pokemon.map(item => ({
+        id: item.product_id,
+        productId: item.product_id,
+        name: item.name,
+        imageUrl: item.image_url || '',
+        setName: item.set_name || '',
+        number: '',
+        rarity: '',
+        marketPrice: item.market_price,
+        lowPrice: item.low_price,
+        midPrice: null,
+        highPrice: null,
+        tcgplayerUrl: null,
+        categoryId: 3,
+        groupId: 0,
+    }));
+
+    if (pokemonLoading && cards.length === 0) {
         return (
             <section className="py-12 px-4">
                 <div className="max-w-7xl mx-auto">
@@ -88,13 +50,13 @@ export function PokemonCards() {
         );
     }
 
-    if (error) {
+    if (pokemonError && cards.length === 0) {
         return (
             <section className="py-12 px-4">
                 <div className="max-w-7xl mx-auto">
                     <div className="flex flex-col items-center justify-center py-20 text-center">
-                        <p className="text-red-400 mb-4">{error}</p>
-                        <Button onClick={fetchCards} variant="outline" className="gap-2">
+                        <p className="text-red-400 mb-4">{pokemonError}</p>
+                        <Button onClick={() => fetchPokemon(true)} variant="outline" className="gap-2">
                             <ArrowsClockwise className="w-4 h-4" />
                             Retry
                         </Button>
@@ -139,7 +101,7 @@ export function PokemonCards() {
 
                     <div className="flex justify-end md:justify-start">
                         <Button
-                            onClick={fetchCards}
+                            onClick={() => fetchPokemon(true)}
                             variant="ghost"
                             size="sm"
                             className="text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/10 font-body tracking-wide"

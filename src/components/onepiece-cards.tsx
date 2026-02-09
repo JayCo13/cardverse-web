@@ -1,54 +1,34 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect } from "react";
 import { OnePieceCardItem, type OnePieceCard } from "./onepiece-card-item";
-import { getSupabaseClient } from "@/lib/supabase/client";
 import { SpinnerGap, ArrowsClockwise } from "@phosphor-icons/react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { useLocalization } from "@/context/localization-context";
-import { StrawHatIcon, JollyRogerIcon } from "@/components/icons/onepiece-icons";
+import { useCardCache } from "@/contexts/card-cache-context";
 
 export function OnePieceCards() {
-    const [cards, setCards] = useState<OnePieceCard[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const hasFetched = useRef(false);
     const { t } = useLocalization();
-
-    const fetchCards = async () => {
-        if (hasFetched.current) return;
-        hasFetched.current = true;
-        setLoading(true);
-        setError(null);
-
-        try {
-            const supabase = getSupabaseClient();
-            // Query the materialized view for instant results
-            const { data, error: fetchError } = await supabase
-                .from('featured_onepiece_cards')
-                .select('*');
-
-            if (fetchError) throw fetchError;
-            setCards(data || []);
-        } catch (err) {
-            console.error('One Piece fetch error:', err);
-            setError('Failed to load');
-        } finally {
-            setLoading(false);
-        }
-    };
+    const { onepiece, onepieceLoading, onepieceError, fetchOnepiece } = useCardCache();
 
     useEffect(() => {
         // Stagger load - wait 600ms before fetching (after Soccer)
-        const timer = setTimeout(fetchCards, 600);
-        return () => {
-            clearTimeout(timer);
-            hasFetched.current = false; // Reset on cleanup so data reloads on navigation
-        };
-    }, []);
+        const timer = setTimeout(() => fetchOnepiece(), 600);
+        return () => clearTimeout(timer);
+    }, [fetchOnepiece]);
 
-    if (loading) {
+    // Transform cached data to component format
+    const cards: OnePieceCard[] = onepiece.map(item => ({
+        product_id: item.product_id,
+        name: item.name,
+        image_url: item.image_url,
+        set_name: item.set_name,
+        market_price: item.market_price,
+        low_price: item.low_price,
+    }));
+
+    if (onepieceLoading && cards.length === 0) {
         return (
             <section className="py-12 px-4">
                 <div className="max-w-7xl mx-auto">
@@ -61,13 +41,13 @@ export function OnePieceCards() {
         );
     }
 
-    if (error) {
+    if (onepieceError && cards.length === 0) {
         return (
             <section className="py-12 px-4">
                 <div className="max-w-7xl mx-auto">
                     <div className="flex flex-col items-center justify-center py-20 text-center">
-                        <p className="text-red-400 mb-4">{error}</p>
-                        <Button onClick={fetchCards} variant="outline" className="gap-2">
+                        <p className="text-red-400 mb-4">{onepieceError}</p>
+                        <Button onClick={() => fetchOnepiece(true)} variant="outline" className="gap-2">
                             <ArrowsClockwise className="w-4 h-4" />
                             Retry
                         </Button>
@@ -112,7 +92,7 @@ export function OnePieceCards() {
 
                     <div className="flex justify-end md:justify-start">
                         <Button
-                            onClick={fetchCards}
+                            onClick={() => fetchOnepiece(true)}
                             variant="ghost"
                             size="sm"
                             className="text-red-400 hover:text-red-300 hover:bg-red-500/10 font-body tracking-wide"
