@@ -34,6 +34,41 @@ interface OnePieceCard {
     low_price: number | null;
 }
 
+// Market Spotlight scan result (export for use in MarketSpotlight component)
+export interface SpotlightProduct {
+    product_id: number;
+    name: string;
+    displayName: string;
+    image_url: string | null;
+    set_name: string | null;
+    rarity: string | null;
+    market_price: number;
+    low_price: number | null;
+    high_price: number | null;
+    number: string | null;
+    isFirstEdition: boolean;
+    isHolo: boolean;
+    tcgplayer_url: string | null;
+    cardType: string | null;
+    hp: string | null;
+    stage: string | null;
+    attack1: string | null;
+    attack2: string | null;
+    attack3: string | null;
+    weakness: string | null;
+    resistance: string | null;
+    retreatCost: string | null;
+    artist: string | null;
+}
+
+export interface SpotlightCache {
+    product: SpotlightProduct | null;
+    chartData: Array<{ date: string; price: number; dateObj: Date }>;
+    currentPrice: number | null;
+    priceChange: number | null;
+    timestamp: number;
+}
+
 interface CardCacheState {
     pokemon: PokemonCard[];
     soccer: SoccerCard[];
@@ -47,12 +82,17 @@ interface CardCacheState {
     pokemonLastFetch: number;
     soccerLastFetch: number;
     onepieceLastFetch: number;
+    // Market Spotlight cache
+    spotlight: SpotlightCache | null;
 }
 
 interface CardCacheContextType extends CardCacheState {
     fetchPokemon: (force?: boolean) => Promise<void>;
     fetchSoccer: (force?: boolean) => Promise<void>;
     fetchOnepiece: (force?: boolean) => Promise<void>;
+    // Market Spotlight cache functions
+    setSpotlightCache: (data: Omit<SpotlightCache, 'timestamp'>) => void;
+    clearSpotlightCache: () => void;
 }
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache
@@ -73,6 +113,7 @@ export function CardCacheProvider({ children }: { children: ReactNode }) {
         pokemonLastFetch: 0,
         soccerLastFetch: 0,
         onepieceLastFetch: 0,
+        spotlight: null,
     });
 
     // Prevent concurrent fetches
@@ -169,12 +210,29 @@ export function CardCacheProvider({ children }: { children: ReactNode }) {
         }
     }, [state.onepiece.length, state.onepieceLastFetch]);
 
+    // Market Spotlight cache functions
+    const setSpotlightCache = useCallback((data: Omit<SpotlightCache, 'timestamp'>) => {
+        setState(s => ({
+            ...s,
+            spotlight: {
+                ...data,
+                timestamp: Date.now(),
+            },
+        }));
+    }, []);
+
+    const clearSpotlightCache = useCallback(() => {
+        setState(s => ({ ...s, spotlight: null }));
+    }, []);
+
     return (
         <CardCacheContext.Provider value={{
             ...state,
             fetchPokemon,
             fetchSoccer,
             fetchOnepiece,
+            setSpotlightCache,
+            clearSpotlightCache,
         }}>
             {children}
         </CardCacheContext.Provider>

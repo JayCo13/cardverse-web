@@ -25,6 +25,7 @@ import { useLocalization } from '@/context/localization-context';
 import { PSAGradedPrices } from '@/components/psa-graded-prices';
 import { useScanLimit } from '@/hooks/useScanLimit';
 import { ScanLimitModal } from '@/components/scan-limit-modal';
+import { useCardCache } from '@/contexts/card-cache-context';
 
 // Fallback mock data for when no real data exists
 const MOCK_DATA = [
@@ -116,14 +117,21 @@ export function MarketSpotlight() {
     const { user } = useUser();
     const supabase = useSupabase();
     const { setOpen: setAuthModalOpen } = useAuthModal();
+    const { spotlight, setSpotlightCache } = useCardCache();
 
     const [timeFrame, setTimeFrame] = useState('1M');
-    const [product, setProduct] = useState<ProductData | null>(null);
-    const [chartData, setChartData] = useState<Array<{ date: string; price: number }>>([]);
-    const [fullChartData, setFullChartData] = useState<Array<{ date: string; price: number; dateObj: Date }>>([]);
-    const [currentPrice, setCurrentPrice] = useState<number | null>(null);
-    const [priceChange, setPriceChange] = useState<number | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
+    // Initialize from cache if available
+    const [product, setProduct] = useState<ProductData | null>(() => spotlight?.product as ProductData | null ?? null);
+    const [chartData, setChartData] = useState<Array<{ date: string; price: number }>>(() =>
+        spotlight?.chartData?.map(d => ({ date: d.date, price: d.price })) ?? []
+    );
+    const [fullChartData, setFullChartData] = useState<Array<{ date: string; price: number; dateObj: Date }>>(() =>
+        spotlight?.chartData ?? []
+    );
+    const [currentPrice, setCurrentPrice] = useState<number | null>(() => spotlight?.currentPrice ?? null);
+    const [priceChange, setPriceChange] = useState<number | null>(() => spotlight?.priceChange ?? null);
+    // Only show loading if no cached data
+    const [isLoading, setIsLoading] = useState(!spotlight?.product);
     const [useMockData, setUseMockData] = useState(false);
 
     // Filter chart data based on selected timeframe
@@ -501,6 +509,22 @@ export function MarketSpotlight() {
                 setChartData(adjustedMock.map(d => ({ date: d.date, price: d.price })));
                 setPriceChange(0);
                 setUseMockData(true);
+            }
+            // Save to cache for persistence across navigation
+            if (history && history.length > 0) {
+                const chartDataWithDates = history.map(h => ({
+                    date: new Date(h.recorded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                    price: h.market_price || 0,
+                    dateObj: new Date(h.recorded_at),
+                }));
+                setSpotlightCache({
+                    product: productData,
+                    chartData: chartDataWithDates,
+                    currentPrice: featured.market_price,
+                    priceChange: chartDataWithDates.length >= 2
+                        ? parseFloat((((chartDataWithDates[chartDataWithDates.length - 1]?.price || 0) - (chartDataWithDates[0]?.price || 0)) / (chartDataWithDates[0]?.price || 1) * 100).toFixed(1))
+                        : 0,
+                });
             }
 
         } catch (error) {
@@ -944,6 +968,15 @@ export function MarketSpotlight() {
                         setPriceChange(0);
                     }
                     setUseMockData(false);
+                    // Save to cache
+                    setSpotlightCache({
+                        product: productData,
+                        chartData: chartDataWithDates,
+                        currentPrice: featured.market_price,
+                        priceChange: chartDataWithDates.length >= 2
+                            ? parseFloat((((chartDataWithDates[chartDataWithDates.length - 1]?.price || 0) - (chartDataWithDates[0]?.price || 0)) / (chartDataWithDates[0]?.price || 1) * 100).toFixed(1))
+                            : 0,
+                    });
                 } else {
                     // Use mock data if no history
                     const now = new Date();
@@ -956,6 +989,13 @@ export function MarketSpotlight() {
                     setChartData(adjustedMock.map(d => ({ date: d.date, price: d.price })));
                     setPriceChange(0);
                     setUseMockData(true);
+                    // Save to cache even with mock data
+                    setSpotlightCache({
+                        product: productData,
+                        chartData: adjustedMock,
+                        currentPrice: featured.market_price,
+                        priceChange: 0,
+                    });
                 }
             } else {
                 // Fallback to mock data on error
