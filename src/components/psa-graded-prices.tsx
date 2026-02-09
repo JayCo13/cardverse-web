@@ -157,22 +157,28 @@ export function PSAGradedPrices({ productId, productName }: PsaGradedPricesProps
             </div>
 
             {/* Grade Summary Cards */}
-            <div className="grid grid-cols-3 gap-2 mb-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
                 {grades.slice(0, 3).map(grade => {
                     const lowest = lowestPriceByGrade[grade];
                     const count = groupedPrices[grade].length;
                     return (
                         <div
                             key={grade}
-                            className={`p-2 rounded-lg border ${getGradeBgColor(grade)} text-center`}
+                            className={`p-3 rounded-xl border ${getGradeBgColor(grade)} 
+                                flex items-center justify-between sm:block sm:text-center
+                                transition-all duration-200 hover:bg-opacity-30 group/card`}
                         >
                             <div className={`text-lg font-bold ${getGradeColor(grade)}`}>
                                 PSA {grade}
                             </div>
-                            <div className="text-white font-semibold text-sm">
-                                {formatPrice(lowest.price)}
+                            <div className="flex flex-col items-end sm:items-center">
+                                <div className="text-white font-bold text-base sm:text-lg sm:mt-1">
+                                    {formatPrice(lowest.price)}
+                                </div>
+                                <div className="text-gray-400 text-xs sm:mt-0.5">
+                                    {count} listing{count > 1 ? 's' : ''}
+                                </div>
                             </div>
-                            <div className="text-gray-400 text-xs">{count} listing{count > 1 ? 's' : ''}</div>
                         </div>
                     );
                 })}
