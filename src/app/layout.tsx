@@ -42,6 +42,10 @@ export const metadata: Metadata = {
   description: 'Buy, sell, bid, and razz your favorite trading cards. Discover rare Pokemon, One Piece, and Soccer cards.',
   keywords: ['trading cards', 'Pokemon cards', 'One Piece cards', 'Soccer cards', 'buy cards', 'sell cards'],
   authors: [{ name: 'CardVerse' }],
+  icons: {
+    icon: '/assets/brow-logo.png',
+    apple: '/assets/brow-logo.png',
+  },
   openGraph: {
     title: 'CardVerse - The Universe of Trading Cards',
     description: 'Buy, sell, bid, and razz your favorite trading cards.',

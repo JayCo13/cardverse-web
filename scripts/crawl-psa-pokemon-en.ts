@@ -5,7 +5,7 @@
  * Gets top 10 most expensive cards per set and searches for PSA 10, 9, 8.
  * Uses card number for precise matching (e.g., "Charizard ex 110/025").
  * 
- * Usage: npx tsx scripts/crawl-psa-pokemon-en.ts [--sets=10] [--cards-per-set=10]
+ * Usage: npx tsx scripts/crawl-psa-pokemon-en.ts [--sets=10] [--cards-per-set=10] [--max-api-calls=500]
  * 
  * Requires environment variables:
  * - EBAY_APP_ID
@@ -32,6 +32,10 @@ const getArg = (name: string, defaultVal: number) => {
 const MAX_SETS = getArg('sets', 10);
 const CARDS_PER_SET = getArg('cards-per-set', 10);
 const SKIP_SETS = getArg('skip-sets', 0); // Skip first N sets (for resume)
+const MAX_API_CALLS = getArg('max-api-calls', 500); // Safety limit for eBay API calls
+
+// Global API call counter
+let apiCallCount = 0;
 
 // Category ID for English Pokemon
 const CATEGORY_ID = 3;
@@ -168,7 +172,21 @@ async function fetchTopCardsForSet(groupId: number, setName: string): Promise<Ta
     }));
 }
 
+function hasReachedApiLimit(): boolean {
+    if (apiCallCount >= MAX_API_CALLS) {
+        return true;
+    }
+    return false;
+}
+
 async function searchEbay(token: string, query: string): Promise<EbayItem[]> {
+    // Safety check: stop before hitting quota
+    if (hasReachedApiLimit()) {
+        console.warn(`   🛑 API call limit reached (${apiCallCount}/${MAX_API_CALLS}). Skipping search.`);
+        return [];
+    }
+
+    apiCallCount++;
     const searchUrl = new URL('https://api.ebay.com/buy/browse/v1/item_summary/search');
     searchUrl.searchParams.append('q', query);
     searchUrl.searchParams.append('limit', '5');
@@ -276,7 +294,8 @@ function buildSearchQuery(card: TargetCard, grade: string): string {
 
 async function main() {
     console.log('🚀 PSA Pokemon English Cards Crawler (Set-Based)');
-    console.log('=================================================\n');
+    console.log('=================================================');
+    console.log(`   Max API calls: ${MAX_API_CALLS}\n`);
 
     if (!EBAY_APP_ID || !EBAY_CLIENT_SECRET) {
         console.error('❌ Missing EBAY_APP_ID or EBAY_CLIENT_SECRET');
@@ -325,12 +344,22 @@ async function main() {
 
             // Step 3: Process each card in the set
             for (const card of cards) {
-                console.log(`   🃏 ${card.name.slice(0, 40)}... #${card.number || 'N/A'} ($${card.market_price})`);
+                // Check API limit before processing card
+                if (hasReachedApiLimit()) {
+                    console.warn(`\n🛑 Stopping: API call limit reached (${apiCallCount}/${MAX_API_CALLS})`);
+                    console.log(`   Use --max-api-calls=<N> to increase the limit.`);
+                    console.log(`   Use --skip-sets=${setsProcessed - 1} to resume from this set.`);
+                    break;
+                }
+
+                console.log(`   🃏 ${card.name.slice(0, 40)}... #${card.number || 'N/A'} ($${card.market_price}) [API: ${apiCallCount}/${MAX_API_CALLS}]`);
 
                 const allPrices: PsaPrice[] = [];
 
                 // Search for each PSA grade
                 for (const grade of PSA_GRADES) {
+                    if (hasReachedApiLimit()) break;
+
                     const query = buildSearchQuery(card, grade);
 
                     const items = await searchEbay(token, query);
@@ -354,10 +383,14 @@ async function main() {
 
                 await new Promise(resolve => setTimeout(resolve, 300));
             }
+
+            // Break outer set loop too if limit reached
+            if (hasReachedApiLimit()) break;
         }
 
         console.log(`\n=================================================`);
         console.log(`✅ Done! Processed ${setsProcessed} sets, saved ${totalSaved} PSA prices`);
+        console.log(`📊 Total eBay API calls used: ${apiCallCount}/${MAX_API_CALLS}`);
 
     } catch (error) {
         console.error('❌ Error:', error);
