@@ -694,9 +694,25 @@ export function MarketSpotlight() {
                 const isJapanese = language?.toLowerCase() === 'japanese';
                 const categoryId = isJapanese ? CATEGORY_POKEMON_JAPANESE : CATEGORY_POKEMON_ENGLISH;
 
-                // 10 second timeout (increased from 5s to handle slow queries/cold starts)
+                // 15 second timeout (supports multi-fallback search)
                 const searchController = new AbortController();
-                const searchTimeoutId = setTimeout(() => searchController.abort(), 10000);
+                const searchTimeoutId = setTimeout(() => searchController.abort(), 15000);
+
+                // Helper: fetch from Supabase REST with shared abort signal
+                const searchFetch = (url: string) => fetch(url, {
+                    headers: {
+                        'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+                        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+                    },
+                    signal: searchController.signal,
+                });
+
+                // Helper: build name search URL for a given category
+                const buildNameUrl = (name: string, catId: number) =>
+                    `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&name=ilike.*${encodeURIComponent(name)}*&market_price=not.is.null&order=market_price.desc&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=5`;
+
+                // Opposite category for cross-category fallback
+                const altCategoryId = isJapanese ? CATEGORY_POKEMON_ENGLISH : CATEGORY_POKEMON_JAPANESE;
 
                 try {
                     // PRIORITY 1: Search by card_id (number) + set_code
@@ -708,32 +724,26 @@ export function MarketSpotlight() {
                         }
 
                         // Generate ALL number format variations (with/without leading zeros)
-                        // Handles: 004/094, 4/94, 4/094, 004/94, 064/123, 64/123, etc.
                         const parts = cleanNumber.split('/');
-                        const altFormats = new Set<string>([cleanNumber]); // Use Set to avoid duplicates
+                        const altFormats = new Set<string>([cleanNumber]);
 
                         if (parts.length === 2) {
-                            const collectorNum = parts[0]; // e.g., "004" or "64"
-                            const setTotal = parts[1];     // e.g., "094" or "123"
-
-                            // Parse to numbers
+                            const collectorNum = parts[0];
+                            const setTotal = parts[1];
                             const collectorInt = parseInt(collectorNum, 10);
                             const setTotalInt = parseInt(setTotal, 10);
 
-                            // Generate all padding variations
                             const collectorVariations = [
-                                collectorInt.toString(),                    // No padding: "4" or "64"
-                                collectorInt.toString().padStart(2, '0'),   // 2-digit: "04" or "64"
-                                collectorInt.toString().padStart(3, '0'),   // 3-digit: "004" or "064"
+                                collectorInt.toString(),
+                                collectorInt.toString().padStart(2, '0'),
+                                collectorInt.toString().padStart(3, '0'),
                             ];
-
                             const setTotalVariations = [
-                                setTotalInt.toString(),                     // No padding: "94" or "123"
-                                setTotalInt.toString().padStart(2, '0'),    // 2-digit: "94" or "123" (unchanged if already 3+)
-                                setTotalInt.toString().padStart(3, '0'),    // 3-digit: "094" or "123"
+                                setTotalInt.toString(),
+                                setTotalInt.toString().padStart(2, '0'),
+                                setTotalInt.toString().padStart(3, '0'),
                             ];
 
-                            // Generate all combinations
                             for (const col of collectorVariations) {
                                 for (const total of setTotalVariations) {
                                     altFormats.add(col + '/' + total);
@@ -742,159 +752,169 @@ export function MarketSpotlight() {
                         }
 
                         const altFormatsArray = Array.from(altFormats);
-
                         console.log(`TCGCSV: Searching by number formats: ${altFormatsArray.join(', ')} (category: ${categoryId})`);
                         if (setCode) console.log(`Set code: ${setCode}`);
 
-                        // Build OR clause for all number formats
                         const numberClauses = altFormatsArray.map((n: string) => `number.eq.${encodeURIComponent(n)}`).join(',');
-                        const restUrl = `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${categoryId}&or=(${numberClauses})&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=20`;
 
-                        const response = await fetch(restUrl, {
-                            headers: {
-                                'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-                                'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
-                            },
-                            signal: searchController.signal,
-                        });
+                        // Search BOTH categories by number (primary first, then alt)
+                        for (const searchCatId of [categoryId, altCategoryId]) {
+                            const restUrl = `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${searchCatId}&or=(${numberClauses})&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=20`;
 
-                        if (response.ok) {
-                            const products = await response.json();
-                            if (products && products.length > 0) {
-                                clearTimeout(searchTimeoutId);
-                                console.log(`Found ${products.length} cards by number`);
+                            const response = await searchFetch(restUrl);
 
-                                // PRIORITY 1.5: Exact number match using any format variation
-                                if (products.length > 1) {
-                                    // Find exact match for any of our generated format variations
-                                    const exactMatch = products.find((p: { number: string }) =>
-                                        altFormatsArray.includes(p.number)
-                                    );
-                                    if (exactMatch && cardName) {
-                                        // Verify with name match too
-                                        const firstWord = cardName.toLowerCase().split(/[\s']/)[0];
-                                        const nameMatches = exactMatch.name.toLowerCase().includes(firstWord);
-                                        if (nameMatches) {
-                                            console.log(`Exact number + name match: ${exactMatch.name} #${exactMatch.number}`);
-                                            await displayProductResult(exactMatch);
+                            if (response.ok) {
+                                const products = await response.json();
+                                if (products && products.length > 0) {
+                                    clearTimeout(searchTimeoutId);
+                                    console.log(`Found ${products.length} cards by number (category: ${searchCatId})`);
+
+                                    // PRIORITY 1.5: Exact number match using any format variation
+                                    if (products.length > 1) {
+                                        const exactMatch = products.find((p: { number: string }) =>
+                                            altFormatsArray.includes(p.number)
+                                        );
+                                        if (exactMatch && cardName) {
+                                            const firstWord = cardName.toLowerCase().split(/[\s']/)[0];
+                                            const nameMatches = exactMatch.name.toLowerCase().includes(firstWord);
+                                            if (nameMatches) {
+                                                console.log(`Exact number + name match: ${exactMatch.name} #${exactMatch.number}`);
+                                                await displayProductResult(exactMatch);
+                                                setShowScanConfirmation(true);
+                                                return;
+                                            }
+                                        }
+                                    }
+
+                                    // PRIORITY 2: Filter by set_code if provided
+                                    if (setCode && products.length > 1) {
+                                        const setLower = setCode.toLowerCase();
+                                        let setMatch = products.find((p: { set_name: string }) =>
+                                            p.set_name?.toLowerCase().includes(setLower)
+                                        );
+
+                                        if (!setMatch) {
+                                            const fuzzySet = setLower
+                                                .replace(/5/g, 's').replace(/0/g, 'o').replace(/1/g, 'i')
+                                                .replace(/s/g, '5').replace(/o/g, '0').replace(/i/g, '1').replace(/l/g, '1');
+                                            const specificFix = setLower.replace('m15', 'm1s');
+
+                                            setMatch = products.find((p: { set_name: string }) => {
+                                                const dbSet = p.set_name?.toLowerCase() || '';
+                                                return dbSet.includes(fuzzySet) || dbSet.includes(specificFix) ||
+                                                    fuzzySet.includes(dbSet) || specificFix.includes(dbSet);
+                                            });
+                                            if (setMatch) console.log(`Fuzzy set match: "${setCode}" -> matched "${setMatch.set_name}"`);
+                                        }
+
+                                        if (setMatch) {
+                                            console.log(`Matched by set: ${setMatch.name} (${setMatch.set_name})`);
+                                            await displayProductResult(setMatch);
                                             setShowScanConfirmation(true);
                                             return;
                                         }
                                     }
+
+                                    // PRIORITY 3: Filter by name if multiple results
+                                    if (cardName && products.length > 1) {
+                                        console.log(`Multiple results, filtering by name: "${cardName}"`);
+
+                                        let match = products.find((p: { name: string }) =>
+                                            p.name.toLowerCase().includes(cardName.toLowerCase())
+                                        );
+
+                                        if (!match) {
+                                            const firstWord = cardName.split(/['s\s]/)[0].toLowerCase();
+                                            const ownerAliases: Record<string, string[]> = {
+                                                'mc': ['emcee', 'mc'],
+                                                'emcee': ['emcee', 'mc'],
+                                            };
+                                            const searchTerms = ownerAliases[firstWord] || [firstWord];
+
+                                            match = products.find((p: { name: string }) => {
+                                                const pFirstWord = p.name.split(/['s\s]/)[0].toLowerCase();
+                                                return searchTerms.some(term => pFirstWord.includes(term) || term.includes(pFirstWord));
+                                            });
+                                        }
+
+                                        if (!match && cardName.includes("'s ")) {
+                                            const pokemonName = cardName.split("'s ").pop();
+                                            match = products.find((p: { name: string }) => {
+                                                const dbPokemonName = p.name.includes("'s ")
+                                                    ? p.name.split("'s ").pop()?.split(' - ')[0]
+                                                    : p.name.split(' - ')[0];
+                                                return dbPokemonName?.toLowerCase().includes(pokemonName?.toLowerCase() || '');
+                                            });
+                                        }
+
+                                        if (match) {
+                                            console.log(`Matched by name: ${match.name}`);
+                                            await displayProductResult(match);
+                                            setShowScanConfirmation(true);
+                                            return;
+                                        }
+                                    }
+
+                                    // Use first result
+                                    console.log(`Using first result: ${products[0].name}`);
+                                    await displayProductResult(products[0]);
+                                    setShowScanConfirmation(true);
+                                    return;
                                 }
-
-                                // PRIORITY 2: Filter by set_code if provided
-                                if (setCode && products.length > 1) {
-                                    const setLower = setCode.toLowerCase();
-
-                                    // Try exact/partial match first
-                                    let setMatch = products.find((p: { set_name: string }) =>
-                                        p.set_name?.toLowerCase().includes(setLower)
-                                    );
-
-                                    // If no match, try fuzzy match (common OCR errors)
-                                    if (!setMatch) {
-                                        // Create variations: 5 <-> s, 0 <-> o, 1 <-> i/l
-                                        const fuzzySet = setLower
-                                            .replace(/5/g, 's').replace(/0/g, 'o').replace(/1/g, 'i') // Number to letter
-                                            .replace(/s/g, '5').replace(/o/g, '0').replace(/i/g, '1').replace(/l/g, '1'); // Letter to number
-
-                                        // Also try specific known issue: m15 -> m1s
-                                        const specificFix = setLower.replace('m15', 'm1s'); // Fix specific user reported issue
-
-                                        setMatch = products.find((p: { set_name: string }) => {
-                                            const dbSet = p.set_name?.toLowerCase() || '';
-                                            return dbSet.includes(fuzzySet) || dbSet.includes(specificFix) ||
-                                                fuzzySet.includes(dbSet) || specificFix.includes(dbSet);
-                                        });
-
-                                        if (setMatch) console.log(`Fuzzy set match: "${setCode}" -> matched "${setMatch.set_name}"`);
-                                    }
-
-                                    if (setMatch) {
-                                        console.log(`Matched by set: ${setMatch.name} (${setMatch.set_name})`);
-                                        await displayProductResult(setMatch);
-                                        setShowScanConfirmation(true);
-                                        return;
-                                    }
-                                }
-
-                                // PRIORITY 3: Filter by name if multiple results
-                                if (cardName && products.length > 1) {
-                                    console.log(`Multiple results, filtering by name: "${cardName}"`);
-
-                                    // Try exact name match
-                                    let match = products.find((p: { name: string }) =>
-                                        p.name.toLowerCase().includes(cardName.toLowerCase())
-                                    );
-
-                                    // Try matching the first word/owner
-                                    if (!match) {
-                                        const firstWord = cardName.split(/['s\s]/)[0].toLowerCase();
-                                        const ownerAliases: Record<string, string[]> = {
-                                            'mc': ['emcee', 'mc'],
-                                            'emcee': ['emcee', 'mc'],
-                                        };
-                                        const searchTerms = ownerAliases[firstWord] || [firstWord];
-
-                                        match = products.find((p: { name: string }) => {
-                                            const pFirstWord = p.name.split(/['s\s]/)[0].toLowerCase();
-                                            return searchTerms.some(term => pFirstWord.includes(term) || term.includes(pFirstWord));
-                                        });
-                                    }
-
-                                    // Try matching Pokemon name after "'s "
-                                    if (!match && cardName.includes("'s ")) {
-                                        const pokemonName = cardName.split("'s ").pop();
-                                        match = products.find((p: { name: string }) => {
-                                            const dbPokemonName = p.name.includes("'s ")
-                                                ? p.name.split("'s ").pop()?.split(' - ')[0]
-                                                : p.name.split(' - ')[0];
-                                            return dbPokemonName?.toLowerCase().includes(pokemonName?.toLowerCase() || '');
-                                        });
-                                    }
-
-                                    if (match) {
-                                        console.log(`Matched by name: ${match.name}`);
-                                        await displayProductResult(match);
-                                        setShowScanConfirmation(true);
-                                        return;
-                                    }
-                                }
-
-                                // Use first result if only one or no filters matched
-                                console.log(`Using first result: ${products[0].name}`);
-                                await displayProductResult(products[0]);
-                                setShowScanConfirmation(true);
-                                return;
                             }
                         }
                     }
 
-                    // FALLBACK: Search by name
-                    console.log(`TCGCSV: Searching by name: ${cardName}`);
-                    const nameUrl = `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${categoryId}&name=ilike.*${encodeURIComponent(cardName)}*&market_price=not.is.null&order=market_price.desc&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=5`;
-
-                    const nameResponse = await fetch(nameUrl, {
-                        headers: {
-                            'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-                            'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
-                        },
-                        signal: searchController.signal,
-                    });
-
-                    clearTimeout(searchTimeoutId);
+                    // FALLBACK 1: Search by name in PRIMARY category
+                    console.log(`TCGCSV: Searching by name "${cardName}" in category ${categoryId}`);
+                    const nameResponse = await searchFetch(buildNameUrl(cardName, categoryId));
 
                     if (nameResponse.ok) {
                         const nameProducts = await nameResponse.json();
                         if (nameProducts && nameProducts.length > 0) {
-                            console.log(`Found ${nameProducts.length} cards by name`);
+                            console.log(`Found ${nameProducts.length} cards by name (primary category)`);
                             await displayProductResult(nameProducts[0]);
                             setShowScanConfirmation(true);
+                            clearTimeout(searchTimeoutId);
                             return;
                         }
                     }
 
+                    // FALLBACK 2: Search by name in OPPOSITE category
+                    console.log(`TCGCSV: Cross-category search "${cardName}" in category ${altCategoryId}`);
+                    const altNameResponse = await searchFetch(buildNameUrl(cardName, altCategoryId));
+
+                    if (altNameResponse.ok) {
+                        const altProducts = await altNameResponse.json();
+                        if (altProducts && altProducts.length > 0) {
+                            console.log(`Found ${altProducts.length} cards by name (cross-category)`);
+                            await displayProductResult(altProducts[0]);
+                            setShowScanConfirmation(true);
+                            clearTimeout(searchTimeoutId);
+                            return;
+                        }
+                    }
+
+                    // FALLBACK 3: Simplified base name search (strip ex/EX/V/GX/VMAX etc.)
+                    const baseName = cardName.replace(/\s*(ex|EX|Ex|V|GX|Gx|VMAX|Vmax|VSTAR|Vstar)\s*$/i, '').trim();
+                    if (baseName && baseName !== cardName) {
+                        console.log(`TCGCSV: Simplified name search "${baseName}" across both categories`);
+                        for (const catId of [categoryId, altCategoryId]) {
+                            const baseResponse = await searchFetch(buildNameUrl(baseName, catId));
+                            if (baseResponse.ok) {
+                                const baseProducts = await baseResponse.json();
+                                if (baseProducts && baseProducts.length > 0) {
+                                    console.log(`Found ${baseProducts.length} cards by base name "${baseName}" (category: ${catId})`);
+                                    await displayProductResult(baseProducts[0]);
+                                    setShowScanConfirmation(true);
+                                    clearTimeout(searchTimeoutId);
+                                    return;
+                                }
+                            }
+                        }
+                    }
+
+                    clearTimeout(searchTimeoutId);
                     setSearchError(`No cards found for "${cardName}"`);
                     setShowScanConfirmation(true);
                 } catch (searchErr: unknown) {
