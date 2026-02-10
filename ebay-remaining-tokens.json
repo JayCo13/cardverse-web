@@ -1,0 +1,1967 @@
+{
+    "rateLimits": [
+        {
+            "apiContext": "Buy",
+            "apiName": "Feed",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "buy.feed",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 10000,
+                            "remaining": 10000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "Sell ",
+            "apiName": "ProductResearch",
+            "apiVersion": "V1",
+            "resources": [
+                {
+                    "name": "sell.research.product_insight",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "Sell",
+            "apiName": "Marketing",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "sell.marketing.ads.campaign",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 100000,
+                            "remaining": 100000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "TradingAPI",
+            "apiName": "TradingAPI",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "AddSecondChanceItem",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "VeROReportItems",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "AddMemberMessageAAQToPartner",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetItemShipping",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetFeedback",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "AddOrder",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetItemTransactions",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "AddItem",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 100000,
+                            "remaining": 100000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "EndItem",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "RespondToBestOffer",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "FetchToken",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "VerifyAddFixedPriceItem",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetTokenStatus",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "RelistItem",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 50000,
+                            "remaining": 50000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetMessagePreferences",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "SetTaxTable",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "CompleteSale",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "ExtendSiteHostedPictures",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetUser",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetMyMessages",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetTaxTable",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "RevokeToken",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "SetShippingDiscountProfiles",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "SetMessagePreferences",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "VerifyAddSecondChanceItem",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetDescriptionTemplates",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetCategoryFeatures",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetMemberMessages",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetCategoryMappings",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetUserContactDetails",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "PlaceOffer",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "EndItems",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "RelistFixedPriceItem",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "SetUserPreferences",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetAllBidders",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetBidderList",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetMyeBayBuying",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "SetUserNotes",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetNotificationsUsage",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "AddItems",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetStore",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetSellerTransactions",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "DeleteMyMessages",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "RespondToFeedback",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "AddToItemDescription",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetItem",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetAdFormatLeads",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetSellerList",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "LeaveFeedback",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetOrders",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "VerifyRelistItem",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "AddFixedPriceItem",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetCategories",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "RemoveFromWatchList",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "SetNotificationPreferences",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetMyeBaySelling",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "ReviseInventoryStatus",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "ReviseMyMessages",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "AddMemberMessageRTQ",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GeteBayDetails",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetStoreCategoryUpdateStatus",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetBestOffers",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "DisableUnpaidItemAssistance",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "UploadSiteHostedPictures",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetAccount",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetContextualKeywords",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetVeROReportStatus",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "ReviseItem",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetSessionID",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetItemsAwaitingFeedback",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetShippingDiscountProfiles",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "AddToWatchList",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetVeROReasonCodeDetails",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "ConfirmIdentity",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "SendInvoice",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "SetStoreCategories",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "EndFixedPriceItem",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "AddMemberMessagesAAQToBidder",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetUserPreferences",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "ReviseMyMessagesFolders",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetNotificationPreferences",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "VerifyAddItem",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "ReviseFixedPriceItem",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "GetSellerEvents",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "buy",
+            "apiName": "Browse",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "buy.browse",
+                    "rates": [
+                        {
+                            "count": 6410,
+                            "limit": 5000,
+                            "remaining": 0,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "buy.browse.item.bulk",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "buy",
+            "apiName": "Feed",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "buy.feed.v1",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 75000,
+                            "remaining": 75000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "buy",
+            "apiName": "Feed",
+            "apiVersion": "v1_beta",
+            "resources": [
+                {
+                    "name": "buy.feed.snapshot",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 75000,
+                            "remaining": 75000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "buy",
+            "apiName": "Marketing",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "buy.marketing.similar_items",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "buy.marketing.most_watched_items",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "buy",
+            "apiName": "Order",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "buy.order",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "buy",
+            "apiName": "deal",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "buy.deal.event"
+                },
+                {
+                    "name": "buy.deal.event_item"
+                },
+                {
+                    "name": "buy.deal.deal_item"
+                }
+            ]
+        },
+        {
+            "apiContext": "buy",
+            "apiName": "marketplace insights",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "buy.marketplaceinsight",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "buy",
+            "apiName": "offer",
+            "apiVersion": "v1_beta",
+            "resources": [
+                {
+                    "name": "buy.offer.bidding",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "commerce",
+            "apiName": "Catalog",
+            "apiVersion": "v1_beta",
+            "resources": [
+                {
+                    "name": "commerce.catalog",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 10000,
+                            "remaining": 10000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "commerce",
+            "apiName": "Image",
+            "apiVersion": "v1_beta",
+            "resources": [
+                {
+                    "name": "commerce.media.image",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 1000000,
+                            "remaining": 1000000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "commerce",
+            "apiName": "Media",
+            "apiVersion": "v1_beta",
+            "resources": [
+                {
+                    "name": "commerce.media.post_order.document",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "commerce",
+            "apiName": "Taxonomy",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "commerce.taxonomy",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "commerce.taxonomy.bulk",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 100,
+                            "remaining": 100,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "commerce",
+            "apiName": "VeRO",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "commerce.vero",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 10000,
+                            "remaining": 10000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "commerce",
+            "apiName": "charity",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "commerce.charity.charity_org",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "commerce",
+            "apiName": "document",
+            "apiVersion": "v1_beta",
+            "resources": [
+                {
+                    "name": "commerce.media.document",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 1000000,
+                            "remaining": 1000000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "commerce",
+            "apiName": "media",
+            "apiVersion": "v1_beta",
+            "resources": [
+                {
+                    "name": "commerce.media.video",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "commerce",
+            "apiName": "notification",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "commerce.notification",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 10000,
+                            "remaining": 10000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "commerce",
+            "apiName": "translation",
+            "apiVersion": "v1_beta",
+            "resources": [
+                {
+                    "name": "commerce.translation.translate",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "developer",
+            "apiName": "Analytics",
+            "apiVersion": "v1_beta",
+            "resources": [
+                {
+                    "name": "developer.analytics.app_rate_limit",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "developer",
+            "apiName": "Registration",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "developer.registration.v1",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 3000,
+                            "remaining": 3000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "finances",
+            "apiName": "sell",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "payoutapi.sell.finances",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 15000,
+                            "remaining": 15000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "post-order",
+            "apiName": "Cancellation",
+            "apiVersion": "v2",
+            "resources": [
+                {
+                    "name": "post-order.cancellation",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "post-order",
+            "apiName": "Casemanagement",
+            "apiVersion": "v2",
+            "resources": [
+                {
+                    "name": "post-order.casemanagement",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "post-order",
+            "apiName": "Inquiry",
+            "apiVersion": "v2",
+            "resources": [
+                {
+                    "name": "post-order.inquiry",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "post-order",
+            "apiName": "Return",
+            "apiVersion": "v2",
+            "resources": [
+                {
+                    "name": "post-order.return",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "sell.analytics",
+            "apiName": "sell.analytics",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "sell.analytics.traffic_report",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 100,
+                            "remaining": 100,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "sell.analytics.customer_service_metric",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 400,
+                            "remaining": 400,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "sell.analytics.seller_standards_profile",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 100,
+                            "remaining": 100,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "sell.fulfillment",
+            "apiName": "sell.fulfillment",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "sell.fulfillment",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 100000,
+                            "remaining": 100000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "sell.metadata",
+            "apiName": "compatibilities",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "sell.metadata.compatibilities",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "sell",
+            "apiName": "Account",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "sell.account",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 25000,
+                            "remaining": 25000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "sell",
+            "apiName": "Compliance",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "sell.compliance.violation_summary",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                },
+                {
+                    "name": "sell.compliance.violation",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "sell",
+            "apiName": "Feed",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "sell.feed",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 100000,
+                            "remaining": 100000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "sell",
+            "apiName": "Inventory ",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "sell.inventory",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 2000000,
+                            "remaining": 2000000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "sell",
+            "apiName": "Marketing",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "sell.marketing",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 10000,
+                            "remaining": 10000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "sell",
+            "apiName": "Metadata",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "sell.metadata",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "sell",
+            "apiName": "Negotiation",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "sell.negotiation"
+                }
+            ]
+        },
+        {
+            "apiContext": "sell",
+            "apiName": "Recommendation",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "sell.recommendation",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5400,
+                            "remaining": 5400,
+                            "reset": "2026-02-10T04:27:00.000Z",
+                            "timeWindow": 60
+                        },
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "sell",
+            "apiName": "Reputation",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "sell.reputation",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "sell",
+            "apiName": "fulfillment",
+            "apiVersion": "V1",
+            "resources": [
+                {
+                    "name": "sell.fulfillment.refund",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 100000,
+                            "remaining": 100000,
+                            "reset": "2026-02-11T02:23:58.000Z",
+                            "timeWindow": 86399
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "sell",
+            "apiName": "fulfillment",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "sell.fulfillment.payment_dispute_detail",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 250000,
+                            "remaining": 250000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        },
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T04:30:00.000Z",
+                            "timeWindow": 300
+                        }
+                    ]
+                },
+                {
+                    "name": "sell.fulfillment.payment_dispute_summary",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 250000,
+                            "remaining": 250000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        },
+                        {
+                            "count": 0,
+                            "limit": 1000,
+                            "remaining": 1000,
+                            "reset": "2026-02-10T04:30:00.000Z",
+                            "timeWindow": 300
+                        }
+                    ]
+                },
+                {
+                    "name": "sell.fulfillment.payment_dispute",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 250000,
+                            "remaining": 250000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        },
+                        {
+                            "count": 0,
+                            "limit": 5000,
+                            "remaining": 5000,
+                            "reset": "2026-02-10T04:30:00.000Z",
+                            "timeWindow": 300
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "sell",
+            "apiName": "logistics",
+            "apiVersion": "v1_beta",
+            "resources": [
+                {
+                    "name": "sell.logistics",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 2500000,
+                            "remaining": 2500000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "apiContext": "sell",
+            "apiName": "marketing.promotions",
+            "apiVersion": "v1",
+            "resources": [
+                {
+                    "name": "sell.marketing.promotions",
+                    "rates": [
+                        {
+                            "count": 0,
+                            "limit": 10000,
+                            "remaining": 10000,
+                            "reset": "2026-02-10T08:00:00.000Z",
+                            "timeWindow": 86400
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

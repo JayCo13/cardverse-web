@@ -168,28 +168,48 @@ async function fetchTopCardsForSet(groupId: number, setName: string): Promise<Ta
     }));
 }
 
-async function searchEbay(token: string, query: string): Promise<EbayItem[]> {
+async function searchEbay(token: string, query: string, retries = 3): Promise<EbayItem[]> {
     const searchUrl = new URL('https://api.ebay.com/buy/browse/v1/item_summary/search');
     searchUrl.searchParams.append('q', query);
     searchUrl.searchParams.append('limit', '5');
     searchUrl.searchParams.append('sort', 'price');
     searchUrl.searchParams.append('category_ids', '183454'); // Trading cards
 
-    const response = await fetch(searchUrl.toString(), {
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        const response = await fetch(searchUrl.toString(), {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
+            }
+        });
+
+        // Handle rate limiting with exponential backoff
+        if (response.status === 429) {
+            const backoffMs = Math.min(5000 * Math.pow(2, attempt), 60000); // 5s, 10s, 20s, max 60s
+            console.warn(`   ⏳ Rate limited. Retrying in ${backoffMs / 1000}s... (attempt ${attempt + 1}/${retries})`);
+            await new Promise(resolve => setTimeout(resolve, backoffMs));
+            continue;
         }
-    });
 
-    const data = await response.json();
+        const data = await response.json();
 
-    if (data.errors) {
-        console.error('   eBay API error:', data.errors[0]?.message);
-        return [];
+        if (data.errors) {
+            const msg = data.errors[0]?.message || 'Unknown error';
+            if (msg.includes('Too many requests') && attempt < retries) {
+                const backoffMs = Math.min(5000 * Math.pow(2, attempt), 60000);
+                console.warn(`   ⏳ Rate limited (body). Retrying in ${backoffMs / 1000}s... (attempt ${attempt + 1}/${retries})`);
+                await new Promise(resolve => setTimeout(resolve, backoffMs));
+                continue;
+            }
+            console.error('   eBay API error:', msg);
+            return [];
+        }
+
+        return data.itemSummaries || [];
     }
 
-    return data.itemSummaries || [];
+    console.error('   ❌ Max retries exceeded for query:', query.slice(0, 60));
+    return [];
 }
 
 async function saveToSupabase(prices: PsaPrice[], retries = 3): Promise<number> {
@@ -342,7 +362,7 @@ async function main() {
                         allPrices.push(...prices);
                     }
 
-                    await new Promise(resolve => setTimeout(resolve, 150));
+                    await new Promise(resolve => setTimeout(resolve, 1500));
                 }
 
                 if (allPrices.length > 0) {
@@ -351,7 +371,7 @@ async function main() {
                     console.log(`      ✅ PSA 10/9/8: ${saved} listings saved`);
                 }
 
-                await new Promise(resolve => setTimeout(resolve, 300));
+                await new Promise(resolve => setTimeout(resolve, 3000));
             }
         }
 
