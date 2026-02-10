@@ -656,6 +656,11 @@ export function MarketSpotlight() {
 
             setScanStatus('Card identified! Searching database...');
 
+            // Count scan usage now that AI identification succeeded
+            if (shouldIncrementUsage) {
+                await incrementUsage();
+            }
+
             // Get category from identification response (default to pokemon)
             const category = (identification.category || 'pokemon').toLowerCase();
 
@@ -904,11 +909,6 @@ export function MarketSpotlight() {
                         setShowScanConfirmation(true);
                     }
                 }
-            }
-
-            // SUCCESS: Only count scan usage if we got a valid AI identification
-            if (shouldIncrementUsage) {
-                await incrementUsage();
             }
 
         } catch (error: unknown) {
