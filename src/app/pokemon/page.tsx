@@ -228,27 +228,27 @@ export default function PokemonPage() {
                         {/* Category - English/Japanese */}
                         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                             <SelectTrigger className="w-[130px] bg-white/5 border-white/10 h-10 text-sm">
-                                <SelectValue placeholder="Language" />
+                                <SelectValue placeholder={t('filter_language')} />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="3">🇺🇸 English</SelectItem>
-                                <SelectItem value="85">🇯🇵 Japanese</SelectItem>
+                                <SelectItem value="3">{t('lang_english')}</SelectItem>
+                                <SelectItem value="85">{t('lang_japanese')}</SelectItem>
                             </SelectContent>
                         </Select>
 
                         {/* Price Filter - More granular */}
                         <Select value={priceFilter} onValueChange={setPriceFilter}>
                             <SelectTrigger className="w-[130px] bg-white/5 border-white/10 h-10 text-sm">
-                                <SelectValue placeholder="Price" />
+                                <SelectValue placeholder={t('filter_price')} />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="all">All Prices</SelectItem>
-                                <SelectItem value="under5">Under $5</SelectItem>
-                                <SelectItem value="5to20">$5 - $20</SelectItem>
-                                <SelectItem value="20to50">$20 - $50</SelectItem>
-                                <SelectItem value="50to100">$50 - $100</SelectItem>
-                                <SelectItem value="100to500">$100 - $500</SelectItem>
-                                <SelectItem value="over500">Over $500</SelectItem>
+                                <SelectItem value="all">{t('price_all')}</SelectItem>
+                                <SelectItem value="under5">{t('price_under5')}</SelectItem>
+                                <SelectItem value="5to20">{t('price_5to20')}</SelectItem>
+                                <SelectItem value="20to50">{t('price_20to50')}</SelectItem>
+                                <SelectItem value="50to100">{t('price_50to100')}</SelectItem>
+                                <SelectItem value="100to500">{t('price_100to500')}</SelectItem>
+                                <SelectItem value="over500">{t('price_over500')}</SelectItem>
                             </SelectContent>
                         </Select>
 
@@ -256,7 +256,7 @@ export default function PokemonPage() {
                         <div className="relative w-[220px]">
                             <Input
                                 type="text"
-                                placeholder="Search sets..."
+                                placeholder={t('filter_search_sets')}
                                 value={setFilter === "all" ? "" : setFilter}
                                 onChange={(e) => {
                                     const value = e.target.value;
@@ -298,7 +298,7 @@ export default function PokemonPage() {
                                                 setShowSetDropdown(false);
                                             }}
                                         >
-                                            All Sets
+                                            {t('filter_all_sets')}
                                         </div>
                                         {sets
                                             .filter(set =>
@@ -327,10 +327,10 @@ export default function PokemonPage() {
                         {/* Rarity Filter */}
                         <Select value={rarityFilter} onValueChange={setRarityFilter}>
                             <SelectTrigger className="w-[150px] bg-white/5 border-white/10 h-10 text-sm">
-                                <SelectValue placeholder="Rarity" />
+                                <SelectValue placeholder={t('filter_rarity')} />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="all">All Rarities</SelectItem>
+                                <SelectItem value="all">{t('rarity_all')}</SelectItem>
                                 <SelectItem value="Special Art">Special Art Rare</SelectItem>
                                 <SelectItem value="Illustration">Illustration Rare</SelectItem>
                                 <SelectItem value="Ultra Rare">Ultra Rare</SelectItem>
@@ -346,14 +346,14 @@ export default function PokemonPage() {
                         <Select value={sortBy} onValueChange={setSortBy}>
                             <SelectTrigger className="w-[150px] bg-white/5 border-white/10 h-10 text-sm">
                                 <SortAscending className="w-4 h-4 mr-1" />
-                                <SelectValue placeholder="Sort" />
+                                <SelectValue placeholder={t('sort_by_placeholder')} />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="price_desc">Price: High → Low</SelectItem>
-                                <SelectItem value="price_asc">Price: Low → High</SelectItem>
-                                <SelectItem value="name_asc">Name: A → Z</SelectItem>
-                                <SelectItem value="name_desc">Name: Z → A</SelectItem>
-                                <SelectItem value="newest">Newest First</SelectItem>
+                                <SelectItem value="price_desc">{t('sort_price_desc')}</SelectItem>
+                                <SelectItem value="price_asc">{t('sort_price_asc')}</SelectItem>
+                                <SelectItem value="name_asc">{t('sort_name_asc')}</SelectItem>
+                                <SelectItem value="name_desc">{t('sort_name_desc')}</SelectItem>
+                                <SelectItem value="newest">{t('sort_newest')}</SelectItem>
                             </SelectContent>
                         </Select>
 
@@ -366,7 +366,7 @@ export default function PokemonPage() {
                                 className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
                             >
                                 <X className="w-4 h-4 mr-1" />
-                                Clear
+                                {t('filter_clear')}
                             </Button>
                         )}
                     </div>
@@ -381,7 +381,8 @@ export default function PokemonPage() {
                             )}
                             {priceFilter !== "all" && (
                                 <span className="px-3 py-1 text-xs bg-green-500/20 text-green-400 rounded-full border border-green-500/30">
-                                    {priceFilter.replace(/([a-z])([A-Z])/g, '$1 $2').replace('to', ' - $').replace('under', 'Under $').replace('over', 'Over $')}
+                                    {/* @ts-ignore */}
+                                    {t(`price_${priceFilter}`)}
                                 </span>
                             )}
                             {rarityFilter !== "all" && (
@@ -391,7 +392,7 @@ export default function PokemonPage() {
                             )}
                             {setFilter !== "all" && (
                                 <span className="px-3 py-1 text-xs bg-blue-500/20 text-blue-400 rounded-full border border-blue-500/30">
-                                    Set: {setFilter.length > 20 ? setFilter.slice(0, 20) + '...' : setFilter}
+                                    {t('filter_sets')}: {setFilter.length > 20 ? setFilter.slice(0, 20) + '...' : setFilter}
                                 </span>
                             )}
                         </div>

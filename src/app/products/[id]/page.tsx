@@ -224,7 +224,7 @@ export default function ProductDetailsPage() {
                             <div className="mb-6 text-center">
                                 <div className="flex flex-wrap justify-center gap-2 mb-3">
                                     {card.rarity && (
-                                        <Badge className="bg-gradient-to-r from-yellow-500/20 to-orange-500/20 text-yellow-500 border-yellow-500/30">
+                                        <Badge className="bg-orange-500 text-white border-orange-600">
                                             <Star className="h-3 w-3 mr-1" />{card.rarity}
                                         </Badge>
                                     )}
