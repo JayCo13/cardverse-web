@@ -194,8 +194,9 @@ export function MarketSpotlight() {
 
     // Retry state for scan confirmation
     const [showScanConfirmation, setShowScanConfirmation] = useState(false);
-    const [canRetry, setCanRetry] = useState(false);
+    const [retriesRemaining, setRetriesRemaining] = useState(0);
     const [lastScannedImage, setLastScannedImage] = useState<string | null>(null);
+    const [scanStatus, setScanStatus] = useState<string>('');
 
     // Auto-dismiss scan confirmation after 30 seconds
     useEffect(() => {
@@ -203,9 +204,9 @@ export function MarketSpotlight() {
 
         const timer = setTimeout(() => {
             setShowScanConfirmation(false);
-            setCanRetry(false);
+            setRetriesRemaining(0);
             setLastScannedImage(null);
-        }, 60000); // 30 seconds
+        }, 60000);
 
         return () => clearTimeout(timer);
     }, [showScanConfirmation]);
@@ -541,7 +542,7 @@ export function MarketSpotlight() {
      * 2. For Pokemon: search TCGCSV database with correct category
      * 3. Display results
      */
-    const processScannedImage = async (imageBase64: string) => {
+    const processScannedImage = async (imageBase64: string, shouldIncrementUsage = true) => {
         if (!SUPABASE_URL) {
             console.log('Supabase URL not configured');
             return;
@@ -557,38 +558,103 @@ export function MarketSpotlight() {
         setIsScanning(true);
         setIsLoading(true);
         setSearchError(null);
+        setScanStatus('Identifying card...');
 
         try {
             setIsScannedResult(true);
-            // Single API call with 15 second timeout (AI vision models can be slow)
-            console.log('Identifying card with AI...');
-            const aiController = new AbortController();
-            const aiTimeoutId = setTimeout(() => aiController.abort(), 15000);
 
-            const identifyResponse = await fetch(
-                `${SUPABASE_URL}/functions/v1/identify-card`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
-                    },
-                    body: JSON.stringify({ image: imageBase64 }),
-                    signal: aiController.signal,
+            // Automatic retry with exponential backoff
+            const RETRY_TIMEOUTS = [20000, 25000, 30000]; // 20s, 25s, 30s
+            const RETRY_DELAYS = [0, 1500, 2500]; // 0s, 1.5s, 2.5s delay before retry
+            const STATUS_MESSAGES = [
+                'Identifying card...',
+                'Still working... retrying...',
+                'Almost there... one more try...',
+            ];
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            let identification: any = null;
+            let lastError: Error | null = null;
+
+            for (let attempt = 0; attempt < RETRY_TIMEOUTS.length; attempt++) {
+                // Wait before retry (skip delay on first attempt)
+                if (attempt > 0) {
+                    setScanStatus(STATUS_MESSAGES[attempt]);
+                    await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS[attempt]));
                 }
-            );
 
-            clearTimeout(aiTimeoutId);
+                const timeout = RETRY_TIMEOUTS[attempt];
+                console.log(`AI identify attempt ${attempt + 1}/${RETRY_TIMEOUTS.length} (timeout: ${timeout / 1000}s)`);
 
-            if (!identifyResponse.ok) {
-                const errorText = await identifyResponse.text();
-                console.error('Identify API Error:', errorText);
-                setSearchError('Could not identify card. Please try again with better lighting.');
+                const aiController = new AbortController();
+                const aiTimeoutId = setTimeout(() => aiController.abort(), timeout);
+
+                try {
+                    const identifyResponse = await fetch(
+                        `${SUPABASE_URL}/functions/v1/identify-card`,
+                        {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+                            },
+                            body: JSON.stringify({ image: imageBase64 }),
+                            signal: aiController.signal,
+                        }
+                    );
+
+                    clearTimeout(aiTimeoutId);
+
+                    if (identifyResponse.ok) {
+                        identification = await identifyResponse.json();
+                        console.log('Identification result:', identification);
+                        break; // Success — exit retry loop
+                    }
+
+                    // Non-retryable client errors (4xx except 429)
+                    if (identifyResponse.status >= 400 && identifyResponse.status < 500 && identifyResponse.status !== 429) {
+                        const errorText = await identifyResponse.text();
+                        console.error(`Identify API client error (${identifyResponse.status}):`, errorText);
+                        lastError = new Error(`Client error: ${identifyResponse.status}`);
+                        break; // Don't retry 4xx errors
+                    }
+
+                    // Server error (5xx) or rate limit (429) — retryable
+                    const errorText = await identifyResponse.text();
+                    console.warn(`Identify API error (${identifyResponse.status}), attempt ${attempt + 1}:`, errorText);
+                    lastError = new Error(`Server error: ${identifyResponse.status}`);
+                    // Continue to next retry
+
+                } catch (fetchErr) {
+                    clearTimeout(aiTimeoutId);
+                    if (fetchErr instanceof Error && fetchErr.name === 'AbortError') {
+                        console.warn(`AI identification timed out on attempt ${attempt + 1} (${timeout / 1000}s)`);
+                        lastError = new Error('timeout');
+                        // Continue to next retry
+                    } else {
+                        console.error(`Network error on attempt ${attempt + 1}:`, fetchErr);
+                        lastError = fetchErr instanceof Error ? fetchErr : new Error('Network error');
+                        // Continue to next retry
+                    }
+                }
+            }
+
+            // All retries exhausted or non-retryable error
+            if (!identification) {
+                const errorMsg = lastError?.message || 'unknown';
+                if (errorMsg === 'timeout') {
+                    setSearchError('AI took too long. Try with a clearer, well-lit photo.');
+                } else if (errorMsg.startsWith('Server error')) {
+                    setSearchError('Server is busy. Please try again in a moment.');
+                } else if (errorMsg.startsWith('Client error')) {
+                    setSearchError('Could not process image. Try a different photo.');
+                } else {
+                    setSearchError('Connection issue. Check your internet and try again.');
+                }
                 return;
             }
 
-            const identification = await identifyResponse.json();
-            console.log('Identification result:', identification);
+            setScanStatus('Card identified! Searching database...');
 
             // Get category from identification response (default to pokemon)
             const category = (identification.category || 'pokemon').toLowerCase();
@@ -830,47 +896,47 @@ export function MarketSpotlight() {
                     clearTimeout(searchTimeoutId);
                     if (searchErr instanceof Error && searchErr.name === 'AbortError') {
                         console.log('Search timed out');
-                        setSearchError('Search timed out. Please try again.');
+                        setSearchError('Database search timed out. Please try again.');
                         setShowScanConfirmation(true);
                     } else {
                         console.error('Search error:', searchErr);
-                        setSearchError('Search failed. Please try again.');
+                        setSearchError('Database search failed. Please try again.');
                         setShowScanConfirmation(true);
                     }
                 }
             }
 
-        } catch (error: unknown) {
-            if (error instanceof Error && error.name === 'AbortError') {
-                console.log('AI identification timed out');
-                setSearchError('AI identification timed out. Please try again.');
-                setShowScanConfirmation(true);
-            } else {
-                console.error('Error processing scanned image:', error);
-                setSearchError('Failed to scan card. Please try again.');
-                setShowScanConfirmation(true);
+            // SUCCESS: Only count scan usage if we got a valid AI identification
+            if (shouldIncrementUsage) {
+                await incrementUsage();
             }
+
+        } catch (error: unknown) {
+            console.error('Error processing scanned image:', error);
+            setSearchError('Failed to scan card. Please try again.');
+            setShowScanConfirmation(true);
         } finally {
             scanInProgressRef.current = false;
             setIsScanning(false);
             setIsLoading(false);
+            setScanStatus('');
 
         }
     };
 
     // Handle retry scan with the same image
     const handleRetry = useCallback(async () => {
-        if (!lastScannedImage || !canRetry) return;
+        if (!lastScannedImage || retriesRemaining <= 0) return;
 
-        setCanRetry(false); // Only allow 1 retry
+        setRetriesRemaining(prev => prev - 1);
         setShowScanConfirmation(false);
-        processScannedImage(lastScannedImage);
-    }, [lastScannedImage, canRetry]);
+        processScannedImage(lastScannedImage, false); // Don't re-count usage on retry
+    }, [lastScannedImage, retriesRemaining]);
 
     // Handle confirmation - user said result is correct
     const handleConfirmCorrect = () => {
         setShowScanConfirmation(false);
-        setCanRetry(false);
+        setRetriesRemaining(0);
         setLastScannedImage(null);
     };
 
@@ -1094,10 +1160,9 @@ export function MarketSpotlight() {
                 return;
             }
 
-            await incrementUsage();
             setLastScannedImage(enhancedBase64);
-            setCanRetry(true);
-            processScannedImage(enhancedBase64);
+            setRetriesRemaining(2);
+            processScannedImage(enhancedBase64, true);
         };
         reader.readAsDataURL(file);
     };
@@ -1182,10 +1247,9 @@ export function MarketSpotlight() {
             return;
         }
 
-        await incrementUsage();
         setLastScannedImage(enhancedBase64);
-        setCanRetry(true);
-        processScannedImage(enhancedBase64);
+        setRetriesRemaining(2);
+        processScannedImage(enhancedBase64, true);
     }, [crop, processScannedImage, canScan, incrementUsage]);
 
     // Use original image without cropping
@@ -1208,10 +1272,9 @@ export function MarketSpotlight() {
             return;
         }
 
-        await incrementUsage();
         setLastScannedImage(enhancedBase64);
-        setCanRetry(true);
-        processScannedImage(enhancedBase64);
+        setRetriesRemaining(2);
+        processScannedImage(enhancedBase64, true);
     }, [cropImageSrc, processScannedImage, canScan, incrementUsage]);
 
     // Trigger camera input click
@@ -1426,6 +1489,7 @@ export function MarketSpotlight() {
                                 ) : (
                                     <Camera className="h-5 w-5" />
                                 )}
+                                {/* Scan status tooltip */}
                                 {/* Mobile: Show remaining scans as badge on button */}
                                 {user && (
                                     <span className="sm:hidden absolute -top-1 -right-1 bg-orange-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
@@ -1451,8 +1515,16 @@ export function MarketSpotlight() {
                         </div>
                     </div>
 
+                    {/* Scan progress status */}
+                    {isScanning && scanStatus && (
+                        <div className="flex items-center justify-center gap-2 mb-4 animate-in fade-in duration-300">
+                            <SpinnerGap className="w-4 h-4 animate-spin text-orange-400" weight="bold" />
+                            <p className="text-sm text-orange-400 font-medium">{scanStatus}</p>
+                        </div>
+                    )}
+
                     {/* Error message */}
-                    {searchError && (
+                    {searchError && !isScanning && (
                         <p className="text-sm text-red-400 mb-4">{searchError}</p>
                     )}
 
@@ -1474,18 +1546,18 @@ export function MarketSpotlight() {
                                     <Check className="w-4 h-4 mr-1.5" />
                                     {t('scan_yes_correct')}
                                 </Button>
-                                {canRetry && (
+                                {retriesRemaining > 0 && (
                                     <Button
                                         onClick={handleRetry}
                                         disabled={isScanning}
                                         className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-sm py-2 h-9"
                                     >
                                         <ArrowsClockwise className={`w-4 h-4 mr-1.5 ${isScanning ? 'animate-spin' : ''}`} />
-                                        {t('scan_retry')}
+                                        {t('scan_retry')} ({retriesRemaining})
                                     </Button>
                                 )}
                             </div>
-                            {!canRetry && (
+                            {retriesRemaining <= 0 && (
                                 <p className="text-gray-400 text-xs text-center mt-2">
                                     {t('scan_retry_limit_reached')}
                                 </p>
@@ -1494,16 +1566,16 @@ export function MarketSpotlight() {
                     )}
 
                     {/* Error with retry option */}
-                    {showScanConfirmation && searchError && canRetry && (
+                    {showScanConfirmation && searchError && retriesRemaining > 0 && (
                         <div className="mt-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 max-w-[400px] mx-auto animate-in fade-in slide-in-from-top-4 duration-300">
                             <p className="text-white text-sm font-medium text-center mb-3">
-                                {t('scan_failed_retry')}
+                                {searchError}
                             </p>
                             <div className="flex gap-3 justify-center">
                                 <Button
                                     onClick={() => {
                                         setShowScanConfirmation(false);
-                                        setCanRetry(false);
+                                        setRetriesRemaining(0);
                                         setLastScannedImage(null);
                                     }}
                                     variant="outline"
@@ -1517,9 +1589,19 @@ export function MarketSpotlight() {
                                     className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-sm py-2 h-9"
                                 >
                                     <ArrowsClockwise className={`w-4 h-4 mr-1.5 ${isScanning ? 'animate-spin' : ''}`} />
-                                    {t('scan_retry')}
+                                    {t('scan_retry')} ({retriesRemaining})
                                 </Button>
                             </div>
+                        </div>
+                    )}
+                    {showScanConfirmation && searchError && retriesRemaining <= 0 && (
+                        <div className="mt-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 max-w-[400px] mx-auto animate-in fade-in slide-in-from-top-4 duration-300">
+                            <p className="text-white text-sm font-medium text-center mb-3">
+                                {searchError}
+                            </p>
+                            <p className="text-gray-400 text-xs text-center">
+                                {t('scan_retry_limit_reached')}
+                            </p>
                         </div>
                     )}
                 </div>
