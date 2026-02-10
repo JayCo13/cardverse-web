@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, type ReactNode } from 'react';
 import { getSupabaseClient } from './client';
 import type { User, Session, AuthError } from '@supabase/supabase-js';
 import type { Tables, InsertTables } from './database.types';
@@ -38,6 +38,7 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
     const [profile, setProfile] = useState<Profile | null>(null);
     const [session, setSession] = useState<Session | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const currentUserIdRef = useRef<string | null>(null);
 
     // Initialize auth state - run once on mount
     useEffect(() => {
@@ -107,6 +108,7 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
                     const isOAuthUser = currentSession.user.app_metadata?.provider !== 'email';
 
                     if (isEmailConfirmed || isOAuthUser) {
+                        currentUserIdRef.current = currentSession.user.id;
                         setSession(currentSession);
                         setUser(currentSession.user);
                         // Set loading false early so UI shows user
@@ -138,17 +140,23 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
             async (event, currentSession) => {
                 if (!mounted) return;
 
-                // Skip processing for token refresh events
-                if (event === 'TOKEN_REFRESHED') {
+                // Skip events that initAuth already handles or that are redundant
+                if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') {
                     return;
                 }
 
                 if (currentSession?.user) {
+                    // Skip if the same user is already loaded (prevents double-processing)
+                    if (event === 'SIGNED_IN' && currentUserIdRef.current === currentSession.user.id) {
+                        return;
+                    }
+
                     // Check if email is confirmed (OAuth users have confirmed_at set automatically)
                     const isEmailConfirmed = currentSession.user.email_confirmed_at != null;
                     const isOAuthUser = currentSession.user.app_metadata?.provider !== 'email';
 
                     if (isEmailConfirmed || isOAuthUser) {
+                        currentUserIdRef.current = currentSession.user.id;
                         setSession(currentSession);
                         setUser(currentSession.user);
 
@@ -157,16 +165,27 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
                         if (mounted && profileData) {
                             setProfile(profileData);
                         }
+
+                        // Clean up OAuth code from URL
+                        if (typeof window !== 'undefined') {
+                            const url = new URL(window.location.href);
+                            if (url.searchParams.has('code')) {
+                                url.searchParams.delete('code');
+                                window.history.replaceState({}, '', url.pathname + url.search);
+                            }
+                        }
                     } else {
                         // User exists but email not confirmed - don't log them in
                         setSession(null);
                         setUser(null);
                         setProfile(null);
+                        currentUserIdRef.current = null;
                     }
                 } else {
                     setSession(null);
                     setUser(null);
                     setProfile(null);
+                    currentUserIdRef.current = null;
                 }
 
                 setIsLoading(false);

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback, useRef, type ReactNode } from "react";
+import React, { createContext, useContext, useState, useCallback, useRef, useMemo, type ReactNode } from "react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 
 // Types
@@ -116,18 +116,23 @@ export function CardCacheProvider({ children }: { children: ReactNode }) {
         spotlight: null,
     });
 
+    // Use ref to track current state for cache checks (avoids unstable useCallback deps)
+    const stateRef = useRef(state);
+    stateRef.current = state;
+
     // Prevent concurrent fetches
     const fetchingRef = useRef({ pokemon: false, soccer: false, onepiece: false });
 
+    // STABLE function references — no state in deps, uses stateRef instead
     const fetchPokemon = useCallback(async (force = false) => {
-        // Check cache validity
-        if (!force && state.pokemon.length > 0 && Date.now() - state.pokemonLastFetch < CACHE_DURATION) {
+        const s = stateRef.current;
+        if (!force && s.pokemon.length > 0 && Date.now() - s.pokemonLastFetch < CACHE_DURATION) {
             return;
         }
         if (fetchingRef.current.pokemon) return;
         fetchingRef.current.pokemon = true;
 
-        setState(s => ({ ...s, pokemonLoading: true, pokemonError: null }));
+        setState(prev => ({ ...prev, pokemonLoading: true, pokemonError: null }));
 
         try {
             const supabase = getSupabaseClient();
@@ -136,28 +141,29 @@ export function CardCacheProvider({ children }: { children: ReactNode }) {
                 .select('*');
 
             if (error) throw error;
-            setState(s => ({
-                ...s,
+            setState(prev => ({
+                ...prev,
                 pokemon: data || [],
                 pokemonLoading: false,
                 pokemonLastFetch: Date.now(),
             }));
         } catch (err) {
             console.error('Pokemon fetch error:', err);
-            setState(s => ({ ...s, pokemonLoading: false, pokemonError: 'Failed to load' }));
+            setState(prev => ({ ...prev, pokemonLoading: false, pokemonError: 'Failed to load' }));
         } finally {
             fetchingRef.current.pokemon = false;
         }
-    }, [state.pokemon.length, state.pokemonLastFetch]);
+    }, []); // Empty deps = stable reference
 
     const fetchSoccer = useCallback(async (force = false) => {
-        if (!force && state.soccer.length > 0 && Date.now() - state.soccerLastFetch < CACHE_DURATION) {
+        const s = stateRef.current;
+        if (!force && s.soccer.length > 0 && Date.now() - s.soccerLastFetch < CACHE_DURATION) {
             return;
         }
         if (fetchingRef.current.soccer) return;
         fetchingRef.current.soccer = true;
 
-        setState(s => ({ ...s, soccerLoading: true, soccerError: null }));
+        setState(prev => ({ ...prev, soccerLoading: true, soccerError: null }));
 
         try {
             const supabase = getSupabaseClient();
@@ -166,28 +172,29 @@ export function CardCacheProvider({ children }: { children: ReactNode }) {
                 .select('*');
 
             if (error) throw error;
-            setState(s => ({
-                ...s,
+            setState(prev => ({
+                ...prev,
                 soccer: data || [],
                 soccerLoading: false,
                 soccerLastFetch: Date.now(),
             }));
         } catch (err) {
             console.error('Soccer fetch error:', err);
-            setState(s => ({ ...s, soccerLoading: false, soccerError: 'Failed to load' }));
+            setState(prev => ({ ...prev, soccerLoading: false, soccerError: 'Failed to load' }));
         } finally {
             fetchingRef.current.soccer = false;
         }
-    }, [state.soccer.length, state.soccerLastFetch]);
+    }, []); // Empty deps = stable reference
 
     const fetchOnepiece = useCallback(async (force = false) => {
-        if (!force && state.onepiece.length > 0 && Date.now() - state.onepieceLastFetch < CACHE_DURATION) {
+        const s = stateRef.current;
+        if (!force && s.onepiece.length > 0 && Date.now() - s.onepieceLastFetch < CACHE_DURATION) {
             return;
         }
         if (fetchingRef.current.onepiece) return;
         fetchingRef.current.onepiece = true;
 
-        setState(s => ({ ...s, onepieceLoading: true, onepieceError: null }));
+        setState(prev => ({ ...prev, onepieceLoading: true, onepieceError: null }));
 
         try {
             const supabase = getSupabaseClient();
@@ -196,24 +203,24 @@ export function CardCacheProvider({ children }: { children: ReactNode }) {
                 .select('*');
 
             if (error) throw error;
-            setState(s => ({
-                ...s,
+            setState(prev => ({
+                ...prev,
                 onepiece: data || [],
                 onepieceLoading: false,
                 onepieceLastFetch: Date.now(),
             }));
         } catch (err) {
             console.error('One Piece fetch error:', err);
-            setState(s => ({ ...s, onepieceLoading: false, onepieceError: 'Failed to load' }));
+            setState(prev => ({ ...prev, onepieceLoading: false, onepieceError: 'Failed to load' }));
         } finally {
             fetchingRef.current.onepiece = false;
         }
-    }, [state.onepiece.length, state.onepieceLastFetch]);
+    }, []); // Empty deps = stable reference
 
     // Market Spotlight cache functions
     const setSpotlightCache = useCallback((data: Omit<SpotlightCache, 'timestamp'>) => {
-        setState(s => ({
-            ...s,
+        setState(prev => ({
+            ...prev,
             spotlight: {
                 ...data,
                 timestamp: Date.now(),
@@ -222,18 +229,21 @@ export function CardCacheProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const clearSpotlightCache = useCallback(() => {
-        setState(s => ({ ...s, spotlight: null }));
+        setState(prev => ({ ...prev, spotlight: null }));
     }, []);
 
+    // Memoize context value to prevent unnecessary re-renders of consumers
+    const value = useMemo(() => ({
+        ...state,
+        fetchPokemon,
+        fetchSoccer,
+        fetchOnepiece,
+        setSpotlightCache,
+        clearSpotlightCache,
+    }), [state, fetchPokemon, fetchSoccer, fetchOnepiece, setSpotlightCache, clearSpotlightCache]);
+
     return (
-        <CardCacheContext.Provider value={{
-            ...state,
-            fetchPokemon,
-            fetchSoccer,
-            fetchOnepiece,
-            setSpotlightCache,
-            clearSpotlightCache,
-        }}>
+        <CardCacheContext.Provider value={value}>
             {children}
         </CardCacheContext.Provider>
     );

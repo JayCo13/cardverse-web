@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
-import { Medal, ArrowSquareOut, CaretDown, CaretUp } from '@phosphor-icons/react';
+import { Medal, CaretDown, CaretUp, X } from '@phosphor-icons/react';
 import { useLocalization } from '@/context/localization-context';
 
 interface PsaPrice {
@@ -55,6 +55,22 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isExpanded, setIsExpanded] = useState(true);
+    const [selectedImage, setSelectedImage] = useState<{ url: string; name: string; grade: string; price: number } | null>(null);
+
+    // Close modal on Escape key
+    useEffect(() => {
+        const handleEsc = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setSelectedImage(null);
+        };
+        if (selectedImage) {
+            document.addEventListener('keydown', handleEsc);
+            document.body.style.overflow = 'hidden';
+        }
+        return () => {
+            document.removeEventListener('keydown', handleEsc);
+            document.body.style.overflow = '';
+        };
+    }, [selectedImage]);
 
     useEffect(() => {
         async function fetchPsaPrices() {
@@ -218,12 +234,15 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
             {isExpanded && (
                 <div className="space-y-2 mt-3 max-h-64 overflow-y-auto">
                     {psaPrices.slice(0, displayCount).map(psa => (
-                        <a
+                        <button
                             key={psa.ebay_id}
-                            href={psa.ebay_url || '#'}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-2.5 sm:gap-3 p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors group w-full max-w-full overflow-hidden"
+                            onClick={() => psa.image_url && setSelectedImage({
+                                url: psa.image_url,
+                                name: psa.name,
+                                grade: psa.grade,
+                                price: psa.price
+                            })}
+                            className={`flex items-center gap-2.5 sm:gap-3 p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors group w-full max-w-full overflow-hidden text-left ${psa.image_url ? 'cursor-pointer' : 'cursor-default'}`}
                         >
                             {/* Image */}
                             {psa.image_url && (
@@ -252,11 +271,58 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
                                     {psa.name.slice(0, 30)}...
                                 </div>
                             </div>
-
-                            {/* Link Icon */}
-                            <ArrowSquareOut className="w-4 h-4 text-gray-500 group-hover:text-white transition-colors flex-shrink-0" />
-                        </a>
+                        </button>
                     ))}
+                </div>
+            )}
+
+            {/* Image Modal */}
+            {selectedImage && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 sm:p-8"
+                    onClick={() => setSelectedImage(null)}
+                >
+                    <div
+                        className="relative w-full max-w-md sm:max-w-lg md:max-w-xl bg-gray-900/95 rounded-2xl border border-white/10 overflow-hidden shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between p-3 sm:p-4 border-b border-white/10">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <span className={`font-bold text-sm sm:text-base ${getGradeColor(selectedImage.grade)}`}>
+                                    PSA {selectedImage.grade}
+                                </span>
+                                <span className="text-white font-semibold text-sm sm:text-base">
+                                    {formatPrice(selectedImage.price)}
+                                </span>
+                            </div>
+                            <button
+                                onClick={() => setSelectedImage(null)}
+                                className="p-1.5 rounded-full hover:bg-white/10 transition-colors flex-shrink-0"
+                            >
+                                <X className="w-5 h-5 text-gray-400 hover:text-white" />
+                            </button>
+                        </div>
+
+                        {/* Modal Image */}
+                        <div className="relative w-full aspect-square sm:aspect-[4/5] bg-black">
+                            <Image
+                                src={selectedImage.url}
+                                alt={selectedImage.name}
+                                fill
+                                className="object-contain"
+                                sizes="(max-width: 640px) 100vw, (max-width: 768px) 80vw, 600px"
+                                priority
+                            />
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-3 sm:p-4 border-t border-white/10">
+                            <p className="text-gray-400 text-xs sm:text-sm truncate">
+                                {selectedImage.name}
+                            </p>
+                        </div>
+                    </div>
                 </div>
             )}
 

@@ -1,1 +1,1 @@
-https://developer.ebay.com/develop/guides-v2/marketplace-user-account-deletion/marketplace-user-account-deletion#faqs
+Delivery settings successfully saved. You can now subscribe your users to listing and order events.
