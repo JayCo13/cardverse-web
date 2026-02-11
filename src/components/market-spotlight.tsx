@@ -235,7 +235,7 @@ export function MarketSpotlight() {
                     market_price: product.market_price,
                     low_price: product.low_price,
                     high_price: product.high_price,
-                    category: product.set_name,
+                    category: 'Pokemon',
                     rarity: product.rarity,
                 });
 

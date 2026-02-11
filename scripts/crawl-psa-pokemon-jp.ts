@@ -5,7 +5,7 @@
  * Gets top 10 most expensive cards per set and searches for PSA 10, 9, 8.
  * Uses card number for precise matching.
  * 
- * Usage: npx tsx scripts/crawl-psa-pokemon-jp.ts [--sets=10] [--cards-per-set=10] [--max-api-calls=500]
+ * Usage: npx tsx scripts/crawl-psa-pokemon-jp.ts [--sets=1000] [--cards-per-set=10] [--max-api-calls=500] [--skip-sets=0]
  * 
  * Requires environment variables:
  * - EBAY_APP_ID
@@ -29,7 +29,7 @@ const getArg = (name: string, defaultVal: number) => {
     return arg ? parseInt(arg.split('=')[1]) : defaultVal;
 };
 
-const MAX_SETS = getArg('sets', 10);
+const MAX_SETS = getArg('sets', 1000); // Default to 1000 (essentially all sets)
 const CARDS_PER_SET = getArg('cards-per-set', 10);
 const SKIP_SETS = getArg('skip-sets', 0); // Skip first N sets (for resume)
 const MAX_API_CALLS = getArg('max-api-calls', 500); // Safety limit for eBay API calls

@@ -95,14 +95,11 @@ export default function CollectionPage() {
 
         // Filter by tab
         if (activeTab === "pokemon") {
-            filtered = filtered.filter(c => c.category?.toLowerCase().includes("pokemon"));
-        } else if (activeTab === "trainer") {
-            filtered = filtered.filter(c =>
-                c.category?.toLowerCase().includes("trainer") ||
-                c.title.toLowerCase().includes("trainer")
-            );
-        } else if (activeTab === "valuable") {
-            filtered = filtered.filter(c => (c.market_price || 0) >= 50);
+            filtered = filtered.filter(c => c.category === 'Pokemon');
+        } else if (activeTab === "onepiece") {
+            filtered = filtered.filter(c => c.category === 'One Piece');
+        } else if (activeTab === "soccer") {
+            filtered = filtered.filter(c => c.category === 'Soccer');
         }
 
         return filtered;
@@ -329,8 +326,8 @@ export default function CollectionPage() {
                         <TabsList className="grid grid-cols-4 w-full md:w-auto">
                             <TabsTrigger value="all">All</TabsTrigger>
                             <TabsTrigger value="pokemon">Pokemon</TabsTrigger>
-                            <TabsTrigger value="trainer">Trainer</TabsTrigger>
-                            <TabsTrigger value="valuable">$50+</TabsTrigger>
+                            <TabsTrigger value="onepiece">One Piece</TabsTrigger>
+                            <TabsTrigger value="soccer">Soccer</TabsTrigger>
                         </TabsList>
                     </Tabs>
 

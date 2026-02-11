@@ -93,7 +93,7 @@ export default function ProductDetailsPage() {
                 low_price: card.low_price,
                 high_price: card.high_price,
                 mid_price: card.mid_price,
-                category: card.category,
+                category: 'Pokemon',
                 rarity: card.rarity,
             }, { onConflict: 'user_id,title' });
 
