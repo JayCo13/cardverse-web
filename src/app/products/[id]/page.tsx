@@ -32,6 +32,7 @@ interface ProductCard {
     high_price: number | null;
     rarity: string | null;
     category: string | null;
+    category_id?: number | null;
     number: string | null;
 }
 
@@ -93,7 +94,7 @@ export default function ProductDetailsPage() {
                 low_price: card.low_price,
                 high_price: card.high_price,
                 mid_price: card.mid_price,
-                category: 'Pokemon',
+                category: card.category_id === 68 ? 'One Piece' : 'Pokemon',
                 rarity: card.rarity,
             }, { onConflict: 'user_id,title' });
 
@@ -137,7 +138,7 @@ export default function ProductDetailsPage() {
                 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
                 const response = await fetch(
-                    `${SUPABASE_URL}/rest/v1/tcgcsv_products?product_id=eq.${params.id}&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number`,
+                    `${SUPABASE_URL}/rest/v1/tcgcsv_products?product_id=eq.${params.id}&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,category_id`,
                     { headers: { 'apikey': SUPABASE_KEY } }
                 );
 
@@ -154,6 +155,7 @@ export default function ProductDetailsPage() {
                             high_price: data.high_price,
                             rarity: data.rarity,
                             category: data.set_name,
+                            category_id: data.category_id,
                             number: data.number,
                         };
                         setCard(cardData);

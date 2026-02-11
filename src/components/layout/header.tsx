@@ -3,7 +3,7 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { CircleUser, Menu, Search, Headphones, Camera, Library } from "lucide-react"
+import { CircleUser, Menu, Search, Headphones, Camera } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { NotificationBell } from "@/components/notification-bell"
 import { LanguageSelector } from "@/components/language-selector"
@@ -63,6 +63,9 @@ export function Header() {
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link href="/profile">{t('profile')}</Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/collection">Collection</Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link href="/profile">{t('my_listings')}</Link>
@@ -165,10 +168,6 @@ export function Header() {
                   <Link href="/forum" className="text-muted-foreground hover:text-foreground">
                     {t('nav_forum')}
                   </Link>
-                  <Link href="/collection" className="text-muted-foreground hover:text-foreground flex items-center gap-2">
-                    <Library className="h-4 w-4" />
-                    Collection
-                  </Link>
                   <div className="border-t my-2 pt-2 grid gap-4">
                     <Link href="/pokemon" className="text-muted-foreground hover:text-foreground flex items-center gap-2">
                       <Image src="/assets/pok-logo.png" width={24} height={24} alt="Pokemon" className="object-contain" />
@@ -235,13 +234,6 @@ export function Header() {
                 className="text-foreground/80 transition-colors hover:text-foreground"
               >
                 {t('nav_forum')}
-              </Link>
-              <Link
-                href="/collection"
-                className="text-foreground/80 transition-colors hover:text-foreground flex items-center gap-1"
-              >
-                <Library className="h-4 w-4" />
-                Collection
               </Link>
             </nav>
           </div>
