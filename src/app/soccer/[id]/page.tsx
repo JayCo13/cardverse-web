@@ -76,17 +76,28 @@ export default function SoccerCardDetailsPage() {
         try {
             const priceInUSD = currency === 'VND' ? card.price / 2 : card.price;
 
-            await supabase.from('user_collections').upsert({
-                user_id: user.id,
-                title: card.name,
-                image_url: card.image_url,
-                market_price: priceInUSD,
-                category: 'Soccer',
-                rarity: card.grader && card.grade ? `${card.grader} ${card.grade}` : null,
-            }, { onConflict: 'user_id,title' });
+            const { error } = await supabase
+                .from('user_collections')
+                .insert({
+                    user_id: user.id,
+                    title: card.name,
+                    image_url: card.image_url,
+                    market_price: priceInUSD,
+                    category: 'Soccer',
+                    rarity: card.grader && card.grade ? `${card.grader} ${card.grade}` : null,
+                });
 
-            setAddedToCollection(true);
-            setTimeout(() => setAddedToCollection(false), 3000);
+            if (error) {
+                if (error.code === '23505') {
+                    setAddedToCollection(true);
+                    setTimeout(() => setAddedToCollection(false), 3000);
+                } else {
+                    console.error('Failed to add to collection:', error);
+                }
+            } else {
+                setAddedToCollection(true);
+                setTimeout(() => setAddedToCollection(false), 3000);
+            }
         } catch (err) {
             console.error('Error adding to collection:', err);
         } finally {

@@ -86,20 +86,32 @@ export default function ProductDetailsPage() {
 
         setIsAddingToCollection(true);
         try {
-            await supabase.from('user_collections').upsert({
-                user_id: user.id,
-                title: card.title,
-                image_url: card.image_url,
-                market_price: card.market_price,
-                low_price: card.low_price,
-                high_price: card.high_price,
-                mid_price: card.mid_price,
-                category: card.category_id === 68 ? 'One Piece' : 'Pokemon',
-                rarity: card.rarity,
-            }, { onConflict: 'user_id,title' });
+            const { error } = await supabase
+                .from('user_collections')
+                .insert({
+                    user_id: user.id,
+                    title: card.title,
+                    image_url: card.image_url,
+                    market_price: card.market_price,
+                    low_price: card.low_price,
+                    high_price: card.high_price,
+                    mid_price: card.mid_price,
+                    category: card.category_id === 68 ? 'One Piece' : 'Pokemon',
+                    rarity: card.rarity,
+                });
 
-            setAddedToCollection(true);
-            setTimeout(() => setAddedToCollection(false), 3000);
+            if (error) {
+                if (error.code === '23505') {
+                    // Duplicate — still show success
+                    setAddedToCollection(true);
+                    setTimeout(() => setAddedToCollection(false), 3000);
+                } else {
+                    console.error('Failed to add to collection:', error);
+                }
+            } else {
+                setAddedToCollection(true);
+                setTimeout(() => setAddedToCollection(false), 3000);
+            }
         } catch (err) {
             console.error('Error adding to collection:', err);
         } finally {
