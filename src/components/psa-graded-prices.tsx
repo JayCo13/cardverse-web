@@ -203,27 +203,26 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
             </div>
 
             {/* Grade Summary Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
+            <div className="flex flex-wrap justify-center gap-3 mb-4">
                 {grades.slice(0, 3).map(grade => {
                     const lowest = lowestPriceByGrade[grade];
                     const count = groupedPrices[grade].length;
                     return (
                         <div
                             key={grade}
-                            className={`p-2.5 sm:p-3 rounded-xl border ${getGradeBgColor(grade)} 
-                                flex items-center justify-between sm:block sm:text-center w-full
+                            className={`p-3 rounded-xl border ${getGradeBgColor(grade)} 
+                                flex flex-col items-center justify-center text-center
+                                flex-1 min-w-[100px] max-w-[160px]
                                 transition-all duration-200 hover:bg-opacity-30 group/card`}
                         >
-                            <div className={`text-lg font-bold ${getGradeColor(grade)}`}>
+                            <div className={`text-xl font-bold mb-1 ${getGradeColor(grade)}`}>
                                 PSA {grade}
                             </div>
-                            <div className="flex flex-col items-end sm:items-center">
-                                <div className="text-white font-bold text-base sm:text-lg sm:mt-1">
-                                    {formatPrice(lowest.price)}
-                                </div>
-                                <div className="text-gray-400 text-xs sm:mt-0.5">
-                                    {t('psa_listings_count').replace('{count}', count.toString())}
-                                </div>
+                            <div className="text-white font-bold text-lg">
+                                {formatPrice(lowest.price)}
+                            </div>
+                            <div className="text-gray-400 text-xs mt-1">
+                                {t('psa_listings_count').replace('{count}', count.toString())}
                             </div>
                         </div>
                     );
