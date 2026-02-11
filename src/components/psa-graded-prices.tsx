@@ -286,29 +286,28 @@ export function PSAGradedPrices({ productId, productName, isScanned = false, hid
             {/* Image Modal */}
             {selectedImage && (
                 <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200"
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-in fade-in duration-200"
                     onClick={() => setSelectedImage(null)}
                 >
-                    <div
-                        className="relative w-full max-w-lg bg-transparent flex flex-col items-center justify-center p-4"
-                        onClick={(e) => e.stopPropagation()}
+                    {/* Close Button - Fixed to Screen Top Right for reliability */}
+                    <button
+                        onClick={() => setSelectedImage(null)}
+                        className="fixed top-4 right-4 z-[60] p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors backdrop-blur-md border border-white/10"
                     >
-                        {/* Close Button - Floating Overlay */}
-                        <button
-                            onClick={() => setSelectedImage(null)}
-                            className="absolute top-2 right-2 z-50 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-colors backdrop-blur-sm"
-                        >
-                            <X className="w-6 h-6" />
-                        </button>
+                        <X className="w-8 h-8" />
+                    </button>
 
+                    <div
+                        className="relative w-full max-w-5xl h-full flex items-center justify-center pointer-events-none"
+                    >
                         {/* Modal Image - Full View */}
-                        <div className="relative w-full h-[80vh] sm:h-[85vh]">
+                        <div className="relative w-full h-full max-h-[85vh] pointer-events-auto">
                             <Image
                                 src={selectedImage.url}
                                 alt={selectedImage.name}
                                 fill
                                 className="object-contain drop-shadow-2xl"
-                                sizes="(max-width: 768px) 100vw, 800px"
+                                sizes="100vw"
                                 priority
                             />
                         </div>
