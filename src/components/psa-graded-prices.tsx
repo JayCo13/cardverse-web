@@ -56,7 +56,7 @@ export function PSAGradedPrices({ productId, productName, isScanned = false, hid
     const [error, setError] = useState<string | null>(null);
     const [isExpanded, setIsExpanded] = useState(true);
     const [selectedImage, setSelectedImage] = useState<{ url: string; name: string; grade: string; price: number } | null>(null);
-    const [activeTab, setActiveTab] = useState('all');
+    const [activeTab, setActiveTab] = useState('10');
 
     // Close modal on Escape key
     useEffect(() => {
@@ -157,12 +157,10 @@ export function PSAGradedPrices({ productId, productName, isScanned = false, hid
         return null;
     }
 
-    const availableGrades = Object.keys(groupedPrices).sort((a, b) => parseFloat(b) - parseFloat(a));
+    const availableGrades = ['10', '9'];
 
     // Filter listings based on active tab
-    const filteredListings = activeTab === 'all'
-        ? psaPrices
-        : groupedPrices[activeTab] || [];
+    const filteredListings = groupedPrices[activeTab] || [];
 
     const displayCount = (isExpanded || activeTab !== 'all') ? filteredListings.length : 3;
 
@@ -188,67 +186,29 @@ export function PSAGradedPrices({ productId, productName, isScanned = false, hid
                 </div>
             )}
 
-            {/* Custom Tabs */}
-            <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
-                <button
-                    onClick={() => setActiveTab('all')}
-                    className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all ${activeTab === 'all'
-                            ? 'bg-white text-black'
-                            : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
-                        }`}
-                >
-                    All Grades
-                </button>
-                {availableGrades.map(grade => (
-                    <button
-                        key={grade}
-                        onClick={() => setActiveTab(grade)}
-                        className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all flex items-center gap-2 ${activeTab === grade
-                                ? `bg-gradient-to-r ${getGradeGradient(grade).split(' ')[0]} text-white border border-white/20`
+            {/* Custom Tabs - Centered without 'All' option */}
+            <div className="flex items-center justify-center gap-4 mb-6">
+                {availableGrades.map(grade => {
+                    const count = groupedPrices[grade]?.length || 0;
+                    if (count === 0) return null;
+
+                    return (
+                        <button
+                            key={grade}
+                            onClick={() => setActiveTab(grade)}
+                            className={`px-6 py-2 rounded-full text-base font-bold whitespace-nowrap transition-all flex items-center gap-2 ${activeTab === grade
+                                ? `bg-gradient-to-r ${getGradeGradient(grade).split(' ')[0]} text-white border border-white/20 shadow-lg shadow-${grade === '10' ? 'yellow' : 'emerald'}-500/20`
                                 : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
-                            }`}
-                    >
-                        <span>PSA {grade}</span>
-                        <span className="bg-black/20 px-1.5 py-0.5 rounded text-[10px] ml-1">
-                            {groupedPrices[grade].length}
-                        </span>
-                    </button>
-                ))}
+                                }`}
+                        >
+                            <span>PSA {grade}</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] ml-1 ${activeTab === grade ? 'bg-black/20 text-white' : 'bg-white/10 text-gray-400'}`}>
+                                {count}
+                            </span>
+                        </button>
+                    );
+                })}
             </div>
-
-            {/* Grade Slab Cards - Only show on 'all' tab */}
-            {activeTab === 'all' && (
-                <div className="flex flex-wrap gap-4 mb-6">
-                    {availableGrades.slice(0, 3).map(grade => {
-                        const lowest = lowestPriceByGrade[grade];
-                        const count = groupedPrices[grade].length;
-                        return (
-                            <button
-                                key={grade}
-                                onClick={() => setActiveTab(grade)}
-                                className={`relative flex-1 min-w-[140px] p-4 rounded-xl border bg-gradient-to-br ${getGradeGradient(grade)} 
-                                    group transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/50 text-left`}
-                            >
-                                <div className="absolute top-3 right-3 opacity-10 group-hover:opacity-20 transition-opacity">
-                                    <Medal className="w-12 h-12" weight="fill" />
-                                </div>
-
-                                <div className="relative z-10">
-                                    <div className={`text-2xl font-black mb-1 tracking-tight ${getGradeColor(grade)}`}>
-                                        PSA {grade}
-                                    </div>
-                                    <div className="text-white font-bold text-xl tracking-wide">
-                                        {formatPrice(lowest.price)}
-                                    </div>
-                                    <div className="text-gray-400 text-xs font-medium mt-2 uppercase tracking-wider">
-                                        {count} {count === 1 ? 'Listing' : 'Listings'}
-                                    </div>
-                                </div>
-                            </button>
-                        );
-                    })}
-                </div>
-            )}
 
             {/* Listings List */}
             <div className="space-y-3">

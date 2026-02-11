@@ -1831,12 +1831,12 @@ export function MarketSpotlight() {
                                         </DialogTrigger>
                                         <DialogContent className="sm:max-w-[700px] bg-[#0a0a0a] border-white/10 text-white max-h-[90vh] overflow-y-auto">
                                             <DialogHeader>
-                                                <DialogTitle className="flex items-center gap-2 text-xl">
+                                                <DialogTitle className="flex items-center justify-center gap-2 text-xl w-full">
                                                     <Medal className="h-6 w-6 text-yellow-500" weight="fill" />
                                                     PSA Graded Prices
                                                 </DialogTitle>
                                             </DialogHeader>
-                                            <div className="mt-4">
+                                            <div className="mt-0">
                                                 <PSAGradedPrices
                                                     productId={product.product_id}
                                                     productName={product.name}
