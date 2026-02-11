@@ -41,12 +41,12 @@ function getGradeColor(grade: string): string {
     return 'text-gray-400';
 }
 
-function getGradeBgColor(grade: string): string {
+function getGradeGradient(grade: string): string {
     const gradeNum = parseFloat(grade);
-    if (gradeNum >= 10) return 'bg-yellow-500/20 border-yellow-500/30';
-    if (gradeNum >= 9) return 'bg-emerald-500/20 border-emerald-500/30';
-    if (gradeNum >= 8) return 'bg-blue-500/20 border-blue-500/30';
-    return 'bg-gray-500/20 border-gray-500/30';
+    if (gradeNum >= 10) return 'from-yellow-500/20 to-yellow-500/5 border-yellow-500/30 hover:border-yellow-500/50';
+    if (gradeNum >= 9) return 'from-emerald-500/20 to-emerald-500/5 border-emerald-500/30 hover:border-emerald-500/50';
+    if (gradeNum >= 8) return 'from-blue-500/20 to-blue-500/5 border-blue-500/30 hover:border-blue-500/50';
+    return 'from-gray-500/20 to-gray-500/5 border-gray-500/30 hover:border-gray-500/50';
 }
 
 export function PSAGradedPrices({ productId, productName, isScanned = false }: PsaGradedPricesProps) {
@@ -75,7 +75,6 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
     useEffect(() => {
         async function fetchPsaPrices() {
             if (!isScanned) return;
-
             if (!productId || !SUPABASE_URL) {
                 setIsLoading(false);
                 return;
@@ -87,14 +86,8 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
                     `order=grade.desc,price.asc&` +
                     `limit=20`;
 
-                const response = await fetch(url, {
-                    headers: { 'apikey': SUPABASE_KEY }
-                });
-
-                if (!response.ok) {
-                    throw new Error('Failed to fetch PSA prices');
-                }
-
+                const response = await fetch(url, { headers: { 'apikey': SUPABASE_KEY } });
+                if (!response.ok) throw new Error('Failed to fetch PSA prices');
                 const data = await response.json();
                 setPsaPrices(data);
             } catch (err) {
@@ -104,7 +97,6 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
                 setIsLoading(false);
             }
         }
-
         fetchPsaPrices();
     }, [productId, isScanned]);
 
@@ -118,16 +110,6 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
         return groups;
     }, [psaPrices]);
 
-    // Calculate average price per grade
-    const avgPriceByGrade = React.useMemo(() => {
-        const avgs: { [grade: string]: number } = {};
-        Object.entries(groupedPrices).forEach(([grade, prices]) => {
-            const total = prices.reduce((sum, p) => sum + p.price, 0);
-            avgs[grade] = Math.round(total / prices.length);
-        });
-        return avgs;
-    }, [groupedPrices]);
-
     // Get lowest price per grade
     const lowestPriceByGrade = React.useMemo(() => {
         const lowest: { [grade: string]: PsaPrice } = {};
@@ -137,211 +119,231 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
         return lowest;
     }, [groupedPrices]);
 
-    // 1. Scan Prompt (Highest priority if not scanned)
+    // Render logic
     if (!isScanned) {
         return (
-            <div className="mt-4 p-4 lg:p-6 bg-white/5 rounded-xl border border-white/10 w-full max-w-full overflow-hidden flex flex-col items-center justify-center text-center group transition-colors hover:bg-white/10">
-                <div className="w-12 h-12 rounded-full bg-orange-500/20 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Medal className="w-6 h-6 text-orange-500" weight="fill" />
+            <div className="mt-6 p-8 bg-gradient-to-br from-white/5 to-transparent rounded-2xl border border-white/10 text-center group cursor-default">
+                <div className="w-16 h-16 rounded-2xl bg-orange-500/10 flex items-center justify-center mx-auto mb-4 border border-orange-500/20 group-hover:scale-110 transition-transform duration-300">
+                    <Medal className="w-8 h-8 text-orange-500" weight="duotone" />
                 </div>
-                <h3 className="text-white font-bold text-lg">{t('psa_scan_to_see')}</h3>
-                <p className="text-gray-400 text-sm mt-1 max-w-[200px]">
+                <h3 className="text-white font-bold text-xl mb-2">{t('psa_scan_to_see')}</h3>
+                <p className="text-gray-400 max-w-xs mx-auto text-sm leading-relaxed">
                     {t('psa_scan_description')}
                 </p>
             </div>
         );
     }
 
-    // 2. Loading State
     if (isLoading) {
         return (
-            <div className="mt-4 p-4 bg-white/5 rounded-xl border border-white/10">
-                <div className="flex items-center gap-2 mb-3">
-                    <Medal className="w-5 h-5 text-yellow-400" weight="fill" />
-                    <span className="text-white font-semibold">{t('psa_graded_prices')}</span>
-                </div>
-                <div className="space-y-2">
-                    {[1, 2, 3].map(i => (
-                        <div key={i} className="h-12 bg-white/10 rounded-lg animate-pulse" />
-                    ))}
-                </div>
+            <div className="mt-6 space-y-4">
+                <div className="h-40 bg-white/5 rounded-2xl animate-pulse" />
+                <div className="h-20 bg-white/5 rounded-xl animate-pulse" />
+                <div className="h-20 bg-white/5 rounded-xl animate-pulse" />
             </div>
         );
     }
 
-    // 3. Error State
-    if (error) {
-        return null; // Or show error message if desired
-    }
-
-    // 4. No Data State (Scanned but no results)
-    if (psaPrices.length === 0) {
-        return (
-            <div className="mt-4 p-4 bg-white/5 rounded-xl border border-white/10 w-full max-w-full overflow-hidden flex flex-col items-center justify-center text-center">
-                <div className="w-12 h-12 rounded-full bg-gray-500/20 flex items-center justify-center mb-3">
-                    <Medal className="w-6 h-6 text-gray-500" weight="fill" />
+    if (error || psaPrices.length === 0) {
+        if (psaPrices.length === 0 && !error) {
+            return (
+                <div className="mt-6 p-8 bg-white/5 rounded-2xl border border-white/10 text-center">
+                    <Medal className="w-12 h-12 text-gray-600 mx-auto mb-3" weight="duotone" />
+                    <p className="text-gray-400">{t('psa_no_data')}</p>
                 </div>
-                <p className="text-gray-400 text-sm">
-                    {t('psa_no_data')}
-                </p>
-            </div>
-        );
+            );
+        }
+        return null;
     }
 
     const grades = Object.keys(groupedPrices).sort((a, b) => parseFloat(b) - parseFloat(a));
     const displayCount = isExpanded ? psaPrices.length : 3;
 
     return (
-        <div className="mt-4 p-3 md:p-4 bg-white/5 rounded-xl border border-white/10 w-full max-w-full min-w-0 overflow-hidden">
+        <div className="mt-8">
             {/* Header */}
-            <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                    <Medal className="w-5 h-5 text-yellow-400" weight="fill" />
-                    <span className="text-white font-semibold text-sm">{t('psa_graded_prices')}</span>
-                    <span className="text-gray-500 text-xs">({t('psa_listings_count').replace('{count}', psaPrices.length.toString())})</span>
+            <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+                        <Medal className="w-5 h-5 text-yellow-500" weight="fill" />
+                    </div>
+                    <div>
+                        <h2 className="text-white font-bold text-lg leading-none">{t('psa_graded_prices')}</h2>
+                        <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-white/10 text-gray-300 border border-white/5">
+                                {t('psa_listings_count').replace('{count}', psaPrices.length.toString())}
+                            </span>
+                            <span className="text-xs text-gray-500">Real-time market data</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            {/* Grade Summary Cards */}
-            <div className="flex flex-wrap justify-center gap-3 mb-4">
+            {/* Grade Slab Cards */}
+            <div className="flex flex-wrap gap-4 mb-6">
                 {grades.slice(0, 3).map(grade => {
                     const lowest = lowestPriceByGrade[grade];
                     const count = groupedPrices[grade].length;
                     return (
                         <div
                             key={grade}
-                            className={`p-3 rounded-xl border ${getGradeBgColor(grade)} 
-                                flex flex-col items-center justify-center text-center
-                                flex-1 min-w-[100px] max-w-[160px]
-                                transition-all duration-200 hover:bg-opacity-30 group/card`}
+                            className={`relative flex-1 min-w-[140px] p-4 rounded-xl border bg-gradient-to-br ${getGradeGradient(grade)} 
+                                group transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/50`}
                         >
-                            <div className={`text-xl font-bold mb-1 ${getGradeColor(grade)}`}>
-                                PSA {grade}
+                            <div className="absolute top-3 right-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                                <Medal className="w-12 h-12" weight="fill" />
                             </div>
-                            <div className="text-white font-bold text-lg">
-                                {formatPrice(lowest.price)}
-                            </div>
-                            <div className="text-gray-400 text-xs mt-1">
-                                {t('psa_listings_count').replace('{count}', count.toString())}
+
+                            <div className="relative z-10 text-center">
+                                <div className={`text-2xl font-black mb-1 tracking-tight ${getGradeColor(grade)}`}>
+                                    PSA {grade}
+                                </div>
+                                <div className="text-white font-bold text-xl tracking-wide">
+                                    {formatPrice(lowest.price)}
+                                </div>
+                                <div className="text-gray-400 text-xs font-medium mt-2 uppercase tracking-wider">
+                                    {count} {count === 1 ? 'Listing' : 'Listings'}
+                                </div>
                             </div>
                         </div>
                     );
                 })}
             </div>
 
-            {/* Detailed Listings (Expandable) */}
-            {isExpanded && (
-                <div className="space-y-2 mt-3 max-h-64 overflow-y-auto">
-                    {psaPrices.slice(0, displayCount).map(psa => (
-                        <button
-                            key={psa.ebay_id}
-                            onClick={() => psa.image_url && setSelectedImage({
-                                url: psa.image_url,
-                                name: psa.name,
-                                grade: psa.grade,
-                                price: psa.price
-                            })}
-                            className={`flex items-center gap-2.5 sm:gap-3 p-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors group w-full max-w-full overflow-hidden text-left ${psa.image_url ? 'cursor-pointer' : 'cursor-default'}`}
-                        >
-                            {/* Image */}
-                            {psa.image_url && (
-                                <div className="w-12 h-12 relative rounded overflow-hidden flex-shrink-0 bg-gray-800">
-                                    <Image
-                                        src={psa.image_url}
-                                        alt={psa.name}
-                                        fill
-                                        className="object-contain"
-                                        sizes="48px"
-                                    />
+            {/* Listings List */}
+            <div className="space-y-3">
+                {psaPrices.slice(0, displayCount).map((psa, index) => (
+                    <div
+                        key={`${psa.ebay_id}-${index}`}
+                        onClick={() => psa.image_url && setSelectedImage({
+                            url: psa.image_url,
+                            name: psa.name,
+                            grade: psa.grade,
+                            price: psa.price
+                        })}
+                        className={`group relative flex items-center p-3 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/10 transition-all duration-200 ${psa.image_url ? 'cursor-pointer' : ''}`}
+                    >
+                        {/* Image Thumbnail */}
+                        <div className="relative w-16 h-20 flex-shrink-0 bg-black/40 rounded-lg overflow-hidden border border-white/5 group-hover:border-white/20 transition-colors">
+                            {psa.image_url ? (
+                                <Image
+                                    src={psa.image_url}
+                                    alt={psa.name}
+                                    fill
+                                    className="object-contain p-1 group-hover:scale-110 transition-transform duration-500"
+                                    sizes="64px"
+                                />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center text-gray-700">
+                                    <Medal className="w-6 h-6" />
                                 </div>
                             )}
+                        </div>
 
-                            {/* Info */}
-                            <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                    <span className={`font-bold ${getGradeColor(psa.grade)}`}>
+                        {/* Details */}
+                        <div className="flex-1 min-w-0 ml-4 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 sm:gap-4 items-center">
+                            <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className={`text-sm font-bold px-2 py-0.5 rounded-md bg-white/5 border border-white/5 ${getGradeColor(psa.grade)}`}>
                                         PSA {psa.grade}
                                     </span>
-                                    <span className="text-white font-semibold">
-                                        {formatPrice(psa.price)}
-                                    </span>
                                 </div>
-                                <div className="text-gray-400 text-xs truncate">
-                                    {psa.name.slice(0, 30)}...
-                                </div>
+                                <h4 className="text-gray-300 text-sm font-medium leading-snug line-clamp-2 group-hover:text-white transition-colors">
+                                    {psa.name}
+                                </h4>
                             </div>
-                        </button>
-                    ))}
-                </div>
+
+                            <div className="flex items-center justify-between sm:justify-end gap-4 mt-2 sm:mt-0 w-full sm:w-auto">
+                                <span className="text-white font-bold text-lg whitespace-nowrap">
+                                    {formatPrice(psa.price)}
+                                </span>
+                                {psa.ebay_url && (
+                                    <a
+                                        href={psa.ebay_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="text-xs font-semibold text-blue-400 hover:text-blue-300 hover:underline px-3 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-all"
+                                    >
+                                        View Deal
+                                    </a>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            {/* Expand/Collapse Button */}
+            {psaPrices.length > 3 && (
+                <button
+                    onClick={() => setIsExpanded(!isExpanded)}
+                    className="w-full mt-4 py-3 text-sm font-medium text-gray-400 hover:text-white flex items-center justify-center gap-2 transition-colors border-t border-white/5 hover:bg-white/5 rounded-b-xl"
+                >
+                    {isExpanded ? (
+                        <>
+                            <CaretUp className="w-4 h-4" />
+                            {t('psa_show_less')}
+                        </>
+                    ) : (
+                        <>
+                            <CaretDown className="w-4 h-4" />
+                            {t('psa_view_details')}
+                        </>
+                    )}
+                </button>
             )}
 
             {/* Image Modal */}
             {selectedImage && (
                 <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 sm:p-8"
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200"
                     onClick={() => setSelectedImage(null)}
                 >
                     <div
-                        className="relative w-full max-w-md sm:max-w-lg md:max-w-xl bg-gray-900/95 rounded-2xl border border-white/10 overflow-hidden shadow-2xl"
+                        className="relative w-full max-w-sm sm:max-w-md bg-[#111] rounded-3xl border border-white/10 overflow-hidden shadow-2xl scale-100 animate-in zoom-in-95 duration-200"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Modal Header */}
-                        <div className="flex items-center justify-between p-3 sm:p-4 border-b border-white/10">
-                            <div className="flex items-center gap-2 min-w-0">
-                                <span className={`font-bold text-sm sm:text-base ${getGradeColor(selectedImage.grade)}`}>
+                        <div className="flex items-center justify-between p-5 border-b border-white/5 bg-white/[0.02]">
+                            <div className="flex items-center gap-3">
+                                <span className={`text-xl font-black ${getGradeColor(selectedImage.grade)}`}>
                                     PSA {selectedImage.grade}
                                 </span>
-                                <span className="text-white font-semibold text-sm sm:text-base">
+                                <div className="h-4 w-px bg-white/10"></div>
+                                <span className="text-white font-bold text-xl">
                                     {formatPrice(selectedImage.price)}
                                 </span>
                             </div>
                             <button
                                 onClick={() => setSelectedImage(null)}
-                                className="p-1.5 rounded-full hover:bg-white/10 transition-colors flex-shrink-0"
+                                className="p-2 rounded-full bg-white/5 hover:bg-white/10 transition-colors"
                             >
                                 <X className="w-5 h-5 text-gray-400 hover:text-white" />
                             </button>
                         </div>
 
                         {/* Modal Image */}
-                        <div className="relative w-full aspect-square sm:aspect-[4/5] bg-black">
+                        <div className="relative w-full aspect-[3/4] bg-black/50 p-4">
                             <Image
                                 src={selectedImage.url}
                                 alt={selectedImage.name}
                                 fill
-                                className="object-contain"
-                                sizes="(max-width: 640px) 100vw, (max-width: 768px) 80vw, 600px"
+                                className="object-contain drop-shadow-2xl"
+                                sizes="(max-width: 768px) 100vw, 500px"
                                 priority
                             />
                         </div>
 
                         {/* Modal Footer */}
-                        <div className="p-3 sm:p-4 border-t border-white/10">
-                            <p className="text-gray-400 text-xs sm:text-sm truncate">
+                        <div className="p-5 border-t border-white/5 bg-white/[0.02]">
+                            <p className="text-gray-300 text-sm font-medium leading-relaxed">
                                 {selectedImage.name}
                             </p>
                         </div>
                     </div>
                 </div>
             )}
-
-            {/* Toggle Button */}
-            <button
-                onClick={() => setIsExpanded(!isExpanded)}
-                className="w-full mt-3 py-2 text-sm text-gray-400 hover:text-white flex items-center justify-center gap-1 transition-colors"
-            >
-                {isExpanded ? (
-                    <>
-                        <CaretUp className="w-4 h-4" />
-                        {t('psa_show_less')}
-                    </>
-                ) : (
-                    <>
-                        <CaretDown className="w-4 h-4" />
-                        {t('psa_view_details')}
-                    </>
-                )}
-            </button>
         </div>
     );
 }
