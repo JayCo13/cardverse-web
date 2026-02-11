@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
     ArrowLeft, TrendingUp, TrendingDown, DollarSign, Plus, Check,
-    Package, Tag, Sparkles, Star, Loader2
+    Package, Tag, Sparkles, Star, Loader2, Medal
 } from "lucide-react";
 import Image from "next/image";
 import {
@@ -21,6 +21,13 @@ import {
 import { useCurrency } from "@/contexts/currency-context";
 import { useLocalization } from "@/context/localization-context";
 import { PSAGradedPrices } from "@/components/psa-graded-prices";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
 
 interface ProductCard {
     product_id: number;
@@ -245,19 +252,45 @@ export default function ProductDetailsPage() {
                                 )}
                             </div>
 
-                            <Button
-                                onClick={addToCollection}
-                                disabled={isAddingToCollection}
-                                className={`mt-4 w-full gap-2 transition-all ${addedToCollection ? 'bg-green-600 hover:bg-green-700' : ''}`}
-                            >
-                                {isAddingToCollection ? (
-                                    <><Loader2 className="h-4 w-4 animate-spin" /> {t('adding_to_collection')}</>
-                                ) : addedToCollection ? (
-                                    <><Check className="h-4 w-4" /> {t('added_to_collection')}</>
-                                ) : (
-                                    <><Plus className="h-4 w-4" /> {t('add_to_collection')}</>
-                                )}
-                            </Button>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                                <Button
+                                    onClick={addToCollection}
+                                    disabled={isAddingToCollection}
+                                    className={`w-full gap-2 transition-all ${addedToCollection ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                                >
+                                    {isAddingToCollection ? (
+                                        <><Loader2 className="h-4 w-4 animate-spin" /> {t('adding_to_collection')}</>
+                                    ) : addedToCollection ? (
+                                        <><Check className="h-4 w-4" /> {t('added_to_collection')}</>
+                                    ) : (
+                                        <><Plus className="h-4 w-4" /> {t('add_to_collection')}</>
+                                    )}
+                                </Button>
+
+                                <Dialog>
+                                    <DialogTrigger asChild>
+                                        <Button variant="outline" className="w-full gap-2 border-orange-500/20 hover:bg-orange-500/10 hover:text-orange-500">
+                                            <Medal className="h-4 w-4 text-orange-500" />
+                                            View PSA Grade
+                                        </Button>
+                                    </DialogTrigger>
+                                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-[#0a0a0a] border-white/10">
+                                        <DialogHeader>
+                                            <DialogTitle className="flex items-center gap-2">
+                                                <Medal className="h-5 w-5 text-orange-500" />
+                                                PSA Graded Prices
+                                            </DialogTitle>
+                                        </DialogHeader>
+                                        {card.product_id && (
+                                            <PSAGradedPrices
+                                                productId={card.product_id}
+                                                productName={card.title}
+                                                isScanned={true}
+                                            />
+                                        )}
+                                    </DialogContent>
+                                </Dialog>
+                            </div>
                         </div>
                     </div>
 
@@ -325,14 +358,7 @@ export default function ProductDetailsPage() {
                             </CardContent>
                         </Card>
 
-                        {/* PSA Graded Prices */}
-                        {card.product_id && (
-                            <PSAGradedPrices
-                                productId={card.product_id}
-                                productName={card.title}
-                                isScanned={true}
-                            />
-                        )}
+
                     </div>
                 </div>
             </main>
