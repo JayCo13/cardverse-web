@@ -20,6 +20,7 @@ import {
 } from "recharts";
 import { useCurrency } from "@/contexts/currency-context";
 import { useLocalization } from "@/context/localization-context";
+import { PSAGradedPrices } from "@/components/psa-graded-prices";
 
 interface ProductCard {
     product_id: number;
@@ -323,6 +324,15 @@ export default function ProductDetailsPage() {
                                 </div>
                             </CardContent>
                         </Card>
+
+                        {/* PSA Graded Prices */}
+                        {card.product_id && (
+                            <PSAGradedPrices
+                                productId={card.product_id}
+                                productName={card.title}
+                                isScanned={true}
+                            />
+                        )}
                     </div>
                 </div>
             </main>
