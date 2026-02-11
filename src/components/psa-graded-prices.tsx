@@ -290,45 +290,27 @@ export function PSAGradedPrices({ productId, productName, isScanned = false, hid
                     onClick={() => setSelectedImage(null)}
                 >
                     <div
-                        className="relative w-full max-w-sm sm:max-w-md bg-[#111] rounded-3xl border border-white/10 overflow-hidden shadow-2xl scale-100 animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col"
+                        className="relative w-full max-w-lg bg-transparent flex flex-col items-center justify-center p-4"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        {/* Modal Header */}
-                        <div className="flex-none flex items-center justify-between p-5 border-b border-white/5 bg-white/[0.02]">
-                            <div className="flex items-center gap-3">
-                                <span className={`text-xl font-black ${getGradeColor(selectedImage.grade)}`}>
-                                    PSA {selectedImage.grade}
-                                </span>
-                                <div className="h-4 w-px bg-white/10"></div>
-                                <span className="text-white font-bold text-xl">
-                                    {formatPrice(selectedImage.price)}
-                                </span>
-                            </div>
-                            <button
-                                onClick={() => setSelectedImage(null)}
-                                className="p-2 rounded-full bg-white/5 hover:bg-white/10 transition-colors"
-                            >
-                                <X className="w-5 h-5 text-gray-400 hover:text-white" />
-                            </button>
-                        </div>
+                        {/* Close Button - Floating Overlay */}
+                        <button
+                            onClick={() => setSelectedImage(null)}
+                            className="absolute top-2 right-2 z-50 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-colors backdrop-blur-sm"
+                        >
+                            <X className="w-6 h-6" />
+                        </button>
 
-                        {/* Modal Image */}
-                        <div className="flex-1 relative min-h-0 bg-black/50 w-full">
+                        {/* Modal Image - Full View */}
+                        <div className="relative w-full h-[80vh] sm:h-[85vh]">
                             <Image
                                 src={selectedImage.url}
                                 alt={selectedImage.name}
                                 fill
-                                className="object-contain drop-shadow-2xl p-4"
-                                sizes="(max-width: 768px) 100vw, 500px"
+                                className="object-contain drop-shadow-2xl"
+                                sizes="(max-width: 768px) 100vw, 800px"
                                 priority
                             />
-                        </div>
-
-                        {/* Modal Footer */}
-                        <div className="flex-none p-5 border-t border-white/5 bg-white/[0.02]">
-                            <p className="text-gray-300 text-sm font-medium leading-relaxed line-clamp-2">
-                                {selectedImage.name}
-                            </p>
                         </div>
                     </div>
                 </div>
