@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { TrendUp, Pulse, CurrencyDollar, SpinnerGap, ArrowsClockwise, MagnifyingGlass, Camera, Plus, Check, SoccerBall, Skull, UploadSimple, Crop as CropIcon, X } from '@phosphor-icons/react';
+import { TrendUp, Pulse, CurrencyDollar, SpinnerGap, ArrowsClockwise, MagnifyingGlass, Camera, Plus, Check, SoccerBall, Skull, UploadSimple, Crop as CropIcon, X, Medal } from '@phosphor-icons/react';
 import ReactCrop, { type Crop, centerCrop, makeAspectCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { Card } from '@/components/ui/card';
@@ -1787,32 +1787,66 @@ export function MarketSpotlight() {
 
 
                         {/* Add to Collection Button - Below Card Area */}
+                        {/* Action Buttons Row */}
                         {!isLoading && product && (
-                            <Button
-                                onClick={addToCollection}
-                                disabled={isAddingToCollection}
-                                className={`mt-6 w-full max-w-[400px] mx-auto gap-2 transition-all text-lg py-6 ${addedToCollection
-                                    ? 'bg-green-600 hover:bg-green-700 text-white'
-                                    : 'bg-gradient-to-r from-primary to-orange-500 hover:from-primary/90 hover:to-orange-500/90'
-                                    }`}
-                            >
-                                {isAddingToCollection ? (
-                                    <>
-                                        <SpinnerGap className="h-5 w-5 animate-spin" weight="bold" />
-                                        Adding...
-                                    </>
-                                ) : addedToCollection ? (
-                                    <>
-                                        <Check className="h-5 w-5" />
-                                        Added to Collection!
-                                    </>
-                                ) : (
-                                    <>
-                                        <Plus className="h-5 w-5" />
-                                        Add to My Collection
-                                    </>
+                            <div className="mt-6 flex flex-col sm:flex-row gap-3 w-full max-w-[500px] mx-auto">
+                                {/* Add to Collection Button */}
+                                <Button
+                                    onClick={addToCollection}
+                                    disabled={isAddingToCollection}
+                                    className={`flex-1 gap-2 transition-all text-base py-6 ${addedToCollection
+                                        ? 'bg-green-600 hover:bg-green-700 text-white'
+                                        : 'bg-gradient-to-r from-primary to-orange-500 hover:from-primary/90 hover:to-orange-500/90'
+                                        }`}
+                                >
+                                    {isAddingToCollection ? (
+                                        <>
+                                            <SpinnerGap className="h-5 w-5 animate-spin" weight="bold" />
+                                            Adding...
+                                        </>
+                                    ) : addedToCollection ? (
+                                        <>
+                                            <Check className="h-5 w-5" />
+                                            Added!
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Plus className="h-5 w-5" />
+                                            Add to Collection
+                                        </>
+                                    )}
+                                </Button>
+
+                                {/* View PSA Button - Only for Pokemon */}
+                                {(product.category_id === 3 || product.category_id === 85) && (
+                                    <Dialog>
+                                        <DialogTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                className="flex-1 gap-2 border-white/10 hover:bg-white/5 hover:text-white text-gray-300 py-6 text-base"
+                                            >
+                                                <Medal className="h-5 w-5 text-yellow-500" weight="duotone" />
+                                                View PSA
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent className="sm:max-w-[700px] bg-[#0a0a0a] border-white/10 text-white max-h-[90vh] overflow-y-auto">
+                                            <DialogHeader>
+                                                <DialogTitle className="flex items-center gap-2 text-xl">
+                                                    <Medal className="h-6 w-6 text-yellow-500" weight="fill" />
+                                                    PSA Graded Prices
+                                                </DialogTitle>
+                                            </DialogHeader>
+                                            <div className="mt-4">
+                                                <PSAGradedPrices
+                                                    productId={product.product_id}
+                                                    productName={product.name}
+                                                    isScanned={isScannedResult}
+                                                />
+                                            </div>
+                                        </DialogContent>
+                                    </Dialog>
                                 )}
-                            </Button>
+                            </div>
                         )}
 
                     </div>
@@ -1946,16 +1980,7 @@ export function MarketSpotlight() {
                             </Card>
                         </div>
 
-                        {/* PSA Graded Prices Section - Only for Pokemon (category 3 or 85) */}
-                        {!isLoading && product && (product.category_id === 3 || product.category_id === 85) && (
-                            <div className="w-full min-w-0">
-                                <PSAGradedPrices
-                                    productId={product.product_id}
-                                    productName={product.name}
-                                    isScanned={isScannedResult}
-                                />
-                            </div>
-                        )}
+
                     </div>
                 </div>
             </div>
