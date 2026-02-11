@@ -1841,6 +1841,7 @@ export function MarketSpotlight() {
                                                     productId={product.product_id}
                                                     productName={product.name}
                                                     isScanned={isScannedResult}
+                                                    hideHeader={true}
                                                 />
                                             </div>
                                         </DialogContent>

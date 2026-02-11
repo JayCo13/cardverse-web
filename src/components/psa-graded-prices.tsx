@@ -49,13 +49,14 @@ function getGradeGradient(grade: string): string {
     return 'from-gray-500/20 to-gray-500/5 border-gray-500/30 hover:border-gray-500/50';
 }
 
-export function PSAGradedPrices({ productId, productName, isScanned = false }: PsaGradedPricesProps) {
+export function PSAGradedPrices({ productId, productName, isScanned = false, hideHeader = false }: PsaGradedPricesProps & { hideHeader?: boolean }) {
     const { t } = useLocalization();
     const [psaPrices, setPsaPrices] = useState<PsaPrice[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isExpanded, setIsExpanded] = useState(true);
     const [selectedImage, setSelectedImage] = useState<{ url: string; name: string; grade: string; price: number } | null>(null);
+    const [activeTab, setActiveTab] = useState('all');
 
     // Close modal on Escape key
     useEffect(() => {
@@ -84,7 +85,7 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
                 const url = `${SUPABASE_URL}/rest/v1/pokemon_psa_prices?` +
                     `product_id=eq.${productId}&` +
                     `order=grade.desc,price.asc&` +
-                    `limit=20`;
+                    `limit=50`; // Increased limit to ensure we have enough data for tabs
 
                 const response = await fetch(url, { headers: { 'apikey': SUPABASE_KEY } });
                 if (!response.ok) throw new Error('Failed to fetch PSA prices');
@@ -156,63 +157,102 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
         return null;
     }
 
-    const grades = Object.keys(groupedPrices).sort((a, b) => parseFloat(b) - parseFloat(a));
-    const displayCount = isExpanded ? psaPrices.length : 3;
+    const availableGrades = Object.keys(groupedPrices).sort((a, b) => parseFloat(b) - parseFloat(a));
+
+    // Filter listings based on active tab
+    const filteredListings = activeTab === 'all'
+        ? psaPrices
+        : groupedPrices[activeTab] || [];
+
+    const displayCount = (isExpanded || activeTab !== 'all') ? filteredListings.length : 3;
 
     return (
         <div className="mt-8">
-            {/* Header */}
-            <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
-                        <Medal className="w-5 h-5 text-yellow-500" weight="fill" />
-                    </div>
-                    <div>
-                        <h2 className="text-white font-bold text-lg leading-none">{t('psa_graded_prices')}</h2>
-                        <div className="flex items-center gap-2 mt-1">
-                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-white/10 text-gray-300 border border-white/5">
-                                {t('psa_listings_count').replace('{count}', psaPrices.length.toString())}
-                            </span>
-                            <span className="text-xs text-gray-500">Real-time market data</span>
+            {/* Header - Conditionally rendered */}
+            {!hideHeader && (
+                <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+                            <Medal className="w-5 h-5 text-yellow-500" weight="fill" />
+                        </div>
+                        <div>
+                            <h2 className="text-white font-bold text-lg leading-none">{t('psa_graded_prices')}</h2>
+                            <div className="flex items-center gap-2 mt-1">
+                                <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-white/10 text-gray-300 border border-white/5">
+                                    {t('psa_listings_count').replace('{count}', psaPrices.length.toString())}
+                                </span>
+                                <span className="text-xs text-gray-500">Real-time market data</span>
+                            </div>
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Custom Tabs */}
+            <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
+                <button
+                    onClick={() => setActiveTab('all')}
+                    className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all ${activeTab === 'all'
+                            ? 'bg-white text-black'
+                            : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+                        }`}
+                >
+                    All Grades
+                </button>
+                {availableGrades.map(grade => (
+                    <button
+                        key={grade}
+                        onClick={() => setActiveTab(grade)}
+                        className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all flex items-center gap-2 ${activeTab === grade
+                                ? `bg-gradient-to-r ${getGradeGradient(grade).split(' ')[0]} text-white border border-white/20`
+                                : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+                            }`}
+                    >
+                        <span>PSA {grade}</span>
+                        <span className="bg-black/20 px-1.5 py-0.5 rounded text-[10px] ml-1">
+                            {groupedPrices[grade].length}
+                        </span>
+                    </button>
+                ))}
             </div>
 
-            {/* Grade Slab Cards */}
-            <div className="flex flex-wrap gap-4 mb-6">
-                {grades.slice(0, 3).map(grade => {
-                    const lowest = lowestPriceByGrade[grade];
-                    const count = groupedPrices[grade].length;
-                    return (
-                        <div
-                            key={grade}
-                            className={`relative flex-1 min-w-[140px] p-4 rounded-xl border bg-gradient-to-br ${getGradeGradient(grade)} 
-                                group transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/50`}
-                        >
-                            <div className="absolute top-3 right-3 opacity-10 group-hover:opacity-20 transition-opacity">
-                                <Medal className="w-12 h-12" weight="fill" />
-                            </div>
+            {/* Grade Slab Cards - Only show on 'all' tab */}
+            {activeTab === 'all' && (
+                <div className="flex flex-wrap gap-4 mb-6">
+                    {availableGrades.slice(0, 3).map(grade => {
+                        const lowest = lowestPriceByGrade[grade];
+                        const count = groupedPrices[grade].length;
+                        return (
+                            <button
+                                key={grade}
+                                onClick={() => setActiveTab(grade)}
+                                className={`relative flex-1 min-w-[140px] p-4 rounded-xl border bg-gradient-to-br ${getGradeGradient(grade)} 
+                                    group transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/50 text-left`}
+                            >
+                                <div className="absolute top-3 right-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                                    <Medal className="w-12 h-12" weight="fill" />
+                                </div>
 
-                            <div className="relative z-10 text-center">
-                                <div className={`text-2xl font-black mb-1 tracking-tight ${getGradeColor(grade)}`}>
-                                    PSA {grade}
+                                <div className="relative z-10">
+                                    <div className={`text-2xl font-black mb-1 tracking-tight ${getGradeColor(grade)}`}>
+                                        PSA {grade}
+                                    </div>
+                                    <div className="text-white font-bold text-xl tracking-wide">
+                                        {formatPrice(lowest.price)}
+                                    </div>
+                                    <div className="text-gray-400 text-xs font-medium mt-2 uppercase tracking-wider">
+                                        {count} {count === 1 ? 'Listing' : 'Listings'}
+                                    </div>
                                 </div>
-                                <div className="text-white font-bold text-xl tracking-wide">
-                                    {formatPrice(lowest.price)}
-                                </div>
-                                <div className="text-gray-400 text-xs font-medium mt-2 uppercase tracking-wider">
-                                    {count} {count === 1 ? 'Listing' : 'Listings'}
-                                </div>
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
 
             {/* Listings List */}
             <div className="space-y-3">
-                {psaPrices.slice(0, displayCount).map((psa, index) => (
+                {filteredListings.slice(0, displayCount).map((psa, index) => (
                     <div
                         key={`${psa.ebay_id}-${index}`}
                         onClick={() => psa.image_url && setSelectedImage({
@@ -274,8 +314,8 @@ export function PSAGradedPrices({ productId, productName, isScanned = false }: P
                 ))}
             </div>
 
-            {/* Expand/Collapse Button */}
-            {psaPrices.length > 3 && (
+            {/* Expand/Collapse Button - Only show if there are more items and we are in 'all' tab (or force show all in specific tabs) */}
+            {activeTab === 'all' && filteredListings.length > 3 && (
                 <button
                     onClick={() => setIsExpanded(!isExpanded)}
                     className="w-full mt-4 py-3 text-sm font-medium text-gray-400 hover:text-white flex items-center justify-center gap-2 transition-colors border-t border-white/5 hover:bg-white/5 rounded-b-xl"
