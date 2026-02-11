@@ -290,11 +290,11 @@ export function PSAGradedPrices({ productId, productName, isScanned = false, hid
                     onClick={() => setSelectedImage(null)}
                 >
                     <div
-                        className="relative w-full max-w-sm sm:max-w-md bg-[#111] rounded-3xl border border-white/10 overflow-hidden shadow-2xl scale-100 animate-in zoom-in-95 duration-200"
+                        className="relative w-full max-w-sm sm:max-w-md bg-[#111] rounded-3xl border border-white/10 overflow-hidden shadow-2xl scale-100 animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Modal Header */}
-                        <div className="flex items-center justify-between p-5 border-b border-white/5 bg-white/[0.02]">
+                        <div className="flex-none flex items-center justify-between p-5 border-b border-white/5 bg-white/[0.02]">
                             <div className="flex items-center gap-3">
                                 <span className={`text-xl font-black ${getGradeColor(selectedImage.grade)}`}>
                                     PSA {selectedImage.grade}
@@ -313,20 +313,20 @@ export function PSAGradedPrices({ productId, productName, isScanned = false, hid
                         </div>
 
                         {/* Modal Image */}
-                        <div className="relative w-full aspect-[3/4] bg-black/50 p-4">
+                        <div className="flex-1 relative min-h-0 bg-black/50 w-full">
                             <Image
                                 src={selectedImage.url}
                                 alt={selectedImage.name}
                                 fill
-                                className="object-contain drop-shadow-2xl"
+                                className="object-contain drop-shadow-2xl p-4"
                                 sizes="(max-width: 768px) 100vw, 500px"
                                 priority
                             />
                         </div>
 
                         {/* Modal Footer */}
-                        <div className="p-5 border-t border-white/5 bg-white/[0.02]">
-                            <p className="text-gray-300 text-sm font-medium leading-relaxed">
+                        <div className="flex-none p-5 border-t border-white/5 bg-white/[0.02]">
+                            <p className="text-gray-300 text-sm font-medium leading-relaxed line-clamp-2">
                                 {selectedImage.name}
                             </p>
                         </div>
