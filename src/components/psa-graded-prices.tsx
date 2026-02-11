@@ -253,21 +253,10 @@ export function PSAGradedPrices({ productId, productName, isScanned = false, hid
                                 </h4>
                             </div>
 
-                            <div className="flex items-center justify-between sm:justify-end gap-4 mt-2 sm:mt-0 w-full sm:w-auto">
+                            <div className="flex items-center justify-end gap-4 mt-2 sm:mt-0 w-full sm:w-auto">
                                 <span className="text-white font-bold text-lg whitespace-nowrap">
                                     {formatPrice(psa.price)}
                                 </span>
-                                {psa.ebay_url && (
-                                    <a
-                                        href={psa.ebay_url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="text-xs font-semibold text-blue-400 hover:text-blue-300 hover:underline px-3 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 transition-all"
-                                    >
-                                        View Deal
-                                    </a>
-                                )}
                             </div>
                         </div>
                     </div>
