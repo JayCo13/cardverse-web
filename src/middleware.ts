@@ -2,6 +2,24 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
+    const { pathname, searchParams } = request.nextUrl
+
+    // If an auth code lands on any page OTHER than /auth/callback,
+    // redirect it to the server-side callback handler.
+    // This prevents the client-side Supabase SDK from auto-processing
+    // the PKCE code on the homepage, which causes cascading re-renders.
+    if (searchParams.has('code') && pathname !== '/auth/callback') {
+        const callbackUrl = request.nextUrl.clone()
+        callbackUrl.pathname = '/auth/callback'
+        // Preserve code and type params, strip everything else
+        const code = searchParams.get('code')!
+        const type = searchParams.get('type')
+        callbackUrl.search = ''
+        callbackUrl.searchParams.set('code', code)
+        if (type) callbackUrl.searchParams.set('type', type)
+        return NextResponse.redirect(callbackUrl)
+    }
+
     let supabaseResponse = NextResponse.next({
         request,
     })
