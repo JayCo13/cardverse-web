@@ -466,7 +466,7 @@ export function MarketSpotlight() {
                 .select('recorded_at, market_price')
                 .eq('product_id', featured.product_id)
                 .order('recorded_at', { ascending: true })
-                .limit(30) as { data: PriceHistoryRecord[] | null };
+                .limit(365) as { data: PriceHistoryRecord[] | null };
 
             // DEBUG: Log price history data (search path)
             console.log(`[PRICE HISTORY - SEARCH] Product ID: ${featured.product_id}`);
@@ -1016,7 +1016,7 @@ export function MarketSpotlight() {
 
         // Fetch price history using REST API (faster than Supabase client)
         try {
-            const historyUrl = `${SUPABASE_URL}/rest/v1/tcgcsv_price_history?product_id=eq.${featured.product_id}&order=recorded_at.asc&select=recorded_at,market_price&limit=30`;
+            const historyUrl = `${SUPABASE_URL}/rest/v1/tcgcsv_price_history?product_id=eq.${featured.product_id}&order=recorded_at.asc&select=recorded_at,market_price&limit=365`;
             const historyResponse = await fetch(historyUrl, {
                 headers: {
                     'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
@@ -1802,17 +1802,17 @@ export function MarketSpotlight() {
                                     {isAddingToCollection ? (
                                         <>
                                             <SpinnerGap className="h-5 w-5 animate-spin" weight="bold" />
-                                            Adding...
+                                            {t('adding_to_collection')}
                                         </>
                                     ) : addedToCollection ? (
                                         <>
                                             <Check className="h-5 w-5" />
-                                            Added!
+                                            {t('added_to_collection')}
                                         </>
                                     ) : (
                                         <>
                                             <Plus className="h-5 w-5" />
-                                            Add to Collection
+                                            {t('add_to_collection')}
                                         </>
                                     )}
                                 </Button>

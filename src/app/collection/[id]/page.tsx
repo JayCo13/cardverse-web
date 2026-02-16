@@ -20,6 +20,8 @@ import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart
 } from "recharts";
 import { useCurrency } from "@/contexts/currency-context";
+import { useLocalization } from "@/context/localization-context";
+import { PSAGradedPrices } from "@/components/psa-graded-prices";
 
 // Types
 interface CollectionCard {
@@ -74,8 +76,9 @@ export default function CardDetailsPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [priceChange, setPriceChange] = useState(0);
 
-    // Use centralized currency formatting
     const { formatPrice } = useCurrency();
+    const { t } = useLocalization();
+    const [productId, setProductId] = useState<number | null>(null);
 
     // Fetch card data
     useEffect(() => {
@@ -120,6 +123,33 @@ export default function CardDetailsPage() {
         fetchCard();
     }, [params.id, user, supabase]);
 
+    // Look up product_id from tcgcsv_products for Pokemon cards (needed for PSA)
+    useEffect(() => {
+        if (!card || card.category !== 'Pokemon') return;
+
+        const lookupProductId = async () => {
+            try {
+                const res = await fetch(
+                    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/tcgcsv_products?name=eq.${encodeURIComponent(card.title)}&select=product_id&limit=1`,
+                    {
+                        headers: {
+                            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+                            Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+                        },
+                    }
+                );
+                const data = await res.json();
+                if (data && data.length > 0) {
+                    setProductId(data[0].product_id);
+                }
+            } catch (err) {
+                console.error('Error looking up product_id:', err);
+            }
+        };
+
+        lookupProductId();
+    }, [card]);
+
     if (isLoading) {
         return (
             <>
@@ -146,12 +176,12 @@ export default function CardDetailsPage() {
                 <Header />
                 <div className="container mx-auto px-4 py-16 text-center">
                     <Package className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-                    <h1 className="text-2xl font-bold mb-2">Card Not Found</h1>
+                    <h1 className="text-2xl font-bold mb-2">{t('coll_card_not_found')}</h1>
                     <p className="text-muted-foreground mb-6">
-                        This card doesn't exist or you don't have access to it.
+                        {t('coll_card_not_found_desc')}
                     </p>
                     <Button asChild>
-                        <Link href="/collection">Back to Collection</Link>
+                        <Link href="/collection">{t('coll_back')}</Link>
                     </Button>
                 </div>
                 <Footer />
@@ -170,7 +200,7 @@ export default function CardDetailsPage() {
                     onClick={() => router.back()}
                 >
                     <ArrowLeft className="h-4 w-4" />
-                    Back to Collection
+                    {t('coll_back')}
                 </Button>
 
                 <div className="grid lg:grid-cols-2 gap-8">
@@ -199,19 +229,10 @@ export default function CardDetailsPage() {
                                     <Button variant="outline" className="flex-1 gap-2" asChild>
                                         <a href={card.ebay_link} target="_blank" rel="noopener noreferrer">
                                             <ExternalLink className="h-4 w-4" />
-                                            View on eBay
+                                            {t('coll_view_ebay')}
                                         </a>
                                     </Button>
                                 )}
-                                <Button variant="outline" size="icon">
-                                    <Share2 className="h-4 w-4" />
-                                </Button>
-                                <Button variant="outline" size="icon">
-                                    <Edit className="h-4 w-4" />
-                                </Button>
-                                <Button variant="outline" size="icon" className="text-destructive hover:bg-destructive/10">
-                                    <Trash2 className="h-4 w-4" />
-                                </Button>
                             </div>
                         </div>
                     </div>
@@ -236,7 +257,7 @@ export default function CardDetailsPage() {
                             </div>
                             <h1 className="text-3xl md:text-4xl font-bold mb-2">{card.title}</h1>
                             <p className="text-muted-foreground">
-                                Added on {new Date(card.created_at).toLocaleDateString('en-US', {
+                                {t('coll_added_on')} {new Date(card.created_at).toLocaleDateString('en-US', {
                                     year: 'numeric',
                                     month: 'long',
                                     day: 'numeric'
@@ -248,32 +269,32 @@ export default function CardDetailsPage() {
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                             <Card className="bg-gradient-to-br from-green-500/10 to-green-500/5 border-green-500/20">
                                 <CardContent className="p-4">
-                                    <p className="text-xs text-muted-foreground mb-1">Market Price</p>
-                                    <p className="text-xl font-bold text-green-500">
+                                    <p className="text-xs text-muted-foreground mb-1">{t('coll_market_price')}</p>
+                                    <p className="text-xl font-bold text-green-500 truncate">
                                         {formatPrice(card.market_price)}
                                     </p>
                                 </CardContent>
                             </Card>
                             <Card className="bg-white/5 border-white/10">
                                 <CardContent className="p-4">
-                                    <p className="text-xs text-muted-foreground mb-1">Low</p>
-                                    <p className="text-xl font-bold">
+                                    <p className="text-xs text-muted-foreground mb-1">{t('coll_low')}</p>
+                                    <p className="text-xl font-bold truncate">
                                         {formatPrice(card.low_price)}
                                     </p>
                                 </CardContent>
                             </Card>
                             <Card className="bg-white/5 border-white/10">
                                 <CardContent className="p-4">
-                                    <p className="text-xs text-muted-foreground mb-1">Mid</p>
-                                    <p className="text-xl font-bold">
+                                    <p className="text-xs text-muted-foreground mb-1">{t('coll_mid')}</p>
+                                    <p className="text-xl font-bold truncate">
                                         {formatPrice(card.mid_price)}
                                     </p>
                                 </CardContent>
                             </Card>
                             <Card className="bg-white/5 border-white/10">
                                 <CardContent className="p-4">
-                                    <p className="text-xs text-muted-foreground mb-1">High</p>
-                                    <p className="text-xl font-bold">
+                                    <p className="text-xs text-muted-foreground mb-1">{t('coll_high')}</p>
+                                    <p className="text-xl font-bold truncate">
                                         {formatPrice(card.high_price)}
                                     </p>
                                 </CardContent>
@@ -286,7 +307,7 @@ export default function CardDetailsPage() {
                                 <div className="flex items-center justify-between">
                                     <CardTitle className="text-lg flex items-center gap-2">
                                         <TrendingUp className="h-5 w-5 text-primary" />
-                                        Price History
+                                        {t('coll_price_history')}
                                     </CardTitle>
                                     <div className={`flex items-center gap-1 text-sm font-medium ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'
                                         }`}>
@@ -353,22 +374,22 @@ export default function CardDetailsPage() {
                             <CardHeader>
                                 <CardTitle className="text-lg flex items-center gap-2">
                                     <Sparkles className="h-5 w-5 text-primary" />
-                                    Card Information
+                                    {t('coll_card_info')}
                                 </CardTitle>
                             </CardHeader>
                             <CardContent>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-3">
                                         <div>
-                                            <p className="text-xs text-muted-foreground mb-1">Category</p>
+                                            <p className="text-xs text-muted-foreground mb-1">{t('coll_category')}</p>
                                             <p className="font-medium">{card.category || "N/A"}</p>
                                         </div>
                                         <div>
-                                            <p className="text-xs text-muted-foreground mb-1">Rarity</p>
+                                            <p className="text-xs text-muted-foreground mb-1">{t('coll_rarity')}</p>
                                             <p className="font-medium">{card.rarity || "N/A"}</p>
                                         </div>
                                         <div>
-                                            <p className="text-xs text-muted-foreground mb-1">Added</p>
+                                            <p className="text-xs text-muted-foreground mb-1">{t('coll_added')}</p>
                                             <p className="font-medium">
                                                 {new Date(card.created_at).toLocaleDateString()}
                                             </p>
@@ -376,17 +397,17 @@ export default function CardDetailsPage() {
                                     </div>
                                     <div className="space-y-3">
                                         <div>
-                                            <p className="text-xs text-muted-foreground mb-1">Purchase Price</p>
-                                            <p className="font-medium">{card.price || "Not recorded"}</p>
+                                            <p className="text-xs text-muted-foreground mb-1">{t('coll_purchase_price')}</p>
+                                            <p className="font-medium">{card.price || t('coll_not_recorded')}</p>
                                         </div>
                                         <div>
-                                            <p className="text-xs text-muted-foreground mb-1">Current Value</p>
-                                            <p className="font-medium text-green-500">
+                                            <p className="text-xs text-muted-foreground mb-1">{t('coll_current_value')}</p>
+                                            <p className="font-medium text-green-500 truncate">
                                                 {formatPrice(card.market_price)}
                                             </p>
                                         </div>
                                         <div>
-                                            <p className="text-xs text-muted-foreground mb-1">ROI</p>
+                                            <p className="text-xs text-muted-foreground mb-1">{t('coll_roi')}</p>
                                             <p className={`font-medium ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                                                 {priceChange >= 0 ? '+' : ''}{priceChange}%
                                             </p>
@@ -401,15 +422,15 @@ export default function CardDetailsPage() {
                             <CardHeader>
                                 <CardTitle className="text-lg flex items-center gap-2">
                                     <DollarSign className="h-5 w-5 text-primary" />
-                                    Market Analysis
+                                    {t('coll_market_analysis')}
                                 </CardTitle>
                             </CardHeader>
                             <CardContent>
                                 <div className="space-y-4">
                                     <div>
                                         <div className="flex justify-between text-sm mb-2">
-                                            <span className="text-muted-foreground">Price Range</span>
-                                            <span>
+                                            <span className="text-muted-foreground">{t('coll_price_range')}</span>
+                                            <span className="truncate ml-2">
                                                 {formatPrice(card.low_price)} - {formatPrice(card.high_price)}
                                             </span>
                                         </div>
@@ -439,11 +460,11 @@ export default function CardDetailsPage() {
                                         <p className="text-sm text-muted-foreground">
                                             {card.market_price && card.mid_price && card.market_price > card.mid_price ? (
                                                 <span className="text-green-500">
-                                                    ✓ Trading above mid-market price. Good time to sell.
+                                                    ✓ {t('coll_above_mid')}
                                                 </span>
                                             ) : (
                                                 <span className="text-yellow-500">
-                                                    ⚡ Trading below mid-market. Consider holding.
+                                                    ⚡ {t('coll_below_mid')}
                                                 </span>
                                             )}
                                         </p>
@@ -451,6 +472,15 @@ export default function CardDetailsPage() {
                                 </div>
                             </CardContent>
                         </Card>
+
+                        {/* PSA Graded Prices - Pokemon only */}
+                        {card.category === 'Pokemon' && productId && (
+                            <PSAGradedPrices
+                                productId={productId}
+                                productName={card.title}
+                                isScanned={true}
+                            />
+                        )}
                     </div>
                 </div>
             </main>
