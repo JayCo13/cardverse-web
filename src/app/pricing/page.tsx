@@ -105,7 +105,7 @@ export default function PricingPage() {
                         <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-orange-500/20 to-amber-500/20 border border-orange-500/30">
                             <Crown className="w-5 h-5 text-orange-400" weight="fill" />
                             <span className="text-orange-300 font-medium text-sm">
-                                Active: {subscription.package_type === 'vip_pro' ? 'MERCHANT VIP Pro' : subscription.package_type === 'day_pass' ? 'BOX BREAK 24H' : `COLLECTOR (${creditsRemaining} credits)`}
+                                {t('pricing_active')}: {subscription.package_type === 'vip_pro' ? t('pricing_vippro') : subscription.package_type === 'day_pass' ? t('pricing_daypass') : `${t('pricing_creditpack')} (${creditsRemaining})`}
                             </span>
                         </div>
                     )}
@@ -121,29 +121,28 @@ export default function PricingPage() {
                                 <Timer className="w-6 h-6 text-blue-400" weight="bold" />
                             </div>
                             <div>
-                                <h3 className="text-lg font-bold text-white">BOX BREAK 24H</h3>
-                                <p className="text-xs text-gray-500">Day Pass</p>
+                                <h3 className="text-lg font-bold text-white">{t('pricing_daypass')}</h3>
+                                <p className="text-xs text-gray-500">{t('pricing_daypass_type')}</p>
                             </div>
                         </div>
 
                         <div className="mb-6">
                             <span className="text-3xl font-bold text-white">69,000</span>
                             <span className="text-gray-400 ml-1">₫</span>
-                            <span className="text-gray-500 text-sm ml-2">/ 24 hours</span>
                         </div>
 
-                        <p className="text-gray-400 text-sm mb-6">Perfect for box-breaking events and high-volume scanning sessions.</p>
+                        <p className="text-gray-400 text-sm mb-6">{t('pricing_daypass_desc')}</p>
 
                         <div className="space-y-3 mb-8 flex-1">
-                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Phase 1 — Tools</h4>
-                            <Feature icon={<Lightning weight="fill" className="text-blue-400" />} text="Unlimited scans for 24 hours" />
-                            <Feature icon={<Package weight="fill" className="text-blue-400" />} text="Portfolio expanded to 100 cards" />
-                            <Feature icon={<CheckCircle weight="fill" className="text-blue-400" />} text="Fair Use: max 500 scans/day" />
+                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('pricing_phase1')}</h4>
+                            <Feature icon={<Lightning weight="fill" className="text-blue-400" />} text={t('pricing_feat_daypass_1')} />
+                            <Feature icon={<Package weight="fill" className="text-blue-400" />} text={t('pricing_feat_daypass_2')} />
+                            <Feature icon={<CheckCircle weight="fill" className="text-blue-400" />} text={t('pricing_feat_daypass_3')} />
 
-                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4">Phases 2–4 — Ecosystem</h4>
-                            <Feature icon={<Storefront className="text-gray-600" />} text="Standard 5% marketplace fee" muted />
-                            <Feature icon={<Gavel className="text-gray-600" />} text="100% upfront bid balance required" muted />
-                            <Feature icon={<Users className="text-gray-600" />} text="No special forum badges" muted />
+                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4">{t('pricing_phase2_ecosystem')}</h4>
+                            <Feature icon={<Storefront className="text-gray-600" />} text={t('pricing_feat_basic_p2')} muted />
+                            <Feature icon={<Gavel className="text-gray-600" />} text={t('pricing_feat_basic_p3')} muted />
+                            <Feature icon={<Users className="text-gray-600" />} text={t('pricing_feat_basic_p4')} muted />
                         </div>
 
                         <button
@@ -151,7 +150,7 @@ export default function PricingPage() {
                             disabled={loadingPackage === "day_pass" || isDayPass}
                             className="w-full py-3 rounded-xl font-bold text-sm transition-all duration-200 bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            {loadingPackage === "day_pass" ? "Processing..." : isDayPass ? "Active ✓" : "Buy Day Pass"}
+                            {loadingPackage === "day_pass" ? t('pricing_processing') : isDayPass ? t('pricing_active') : t('pricing_buy')}
                         </button>
                     </div>
 
@@ -162,29 +161,28 @@ export default function PricingPage() {
                                 <CreditCard className="w-6 h-6 text-emerald-400" weight="bold" />
                             </div>
                             <div>
-                                <h3 className="text-lg font-bold text-white">COLLECTOR</h3>
-                                <p className="text-xs text-gray-500">Credit Pack</p>
+                                <h3 className="text-lg font-bold text-white">{t('pricing_creditpack')}</h3>
+                                <p className="text-xs text-gray-500">{t('pricing_creditpack_type')}</p>
                             </div>
                         </div>
 
                         <div className="mb-6">
                             <span className="text-3xl font-bold text-white">99,000</span>
                             <span className="text-gray-400 ml-1">₫</span>
-                            <span className="text-gray-500 text-sm ml-2">/ 100 credits</span>
                         </div>
 
-                        <p className="text-gray-400 text-sm mb-6">Pay-as-you-go credits. Only used on successful scans. Never expires.</p>
+                        <p className="text-gray-400 text-sm mb-6">{t('pricing_creditpack_desc')}</p>
 
                         <div className="space-y-3 mb-8 flex-1">
-                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Phase 1 — Tools</h4>
-                            <Feature icon={<Lightning weight="fill" className="text-emerald-400" />} text="100 lifetime scan credits" />
-                            <Feature icon={<Package weight="fill" className="text-emerald-400" />} text="Portfolio expanded to 200 cards" />
-                            <Feature icon={<CheckCircle weight="fill" className="text-emerald-400" />} text="Credits deducted on success only" />
+                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('pricing_phase1')}</h4>
+                            <Feature icon={<Lightning weight="fill" className="text-emerald-400" />} text={t('pricing_feat_credit_1')} />
+                            <Feature icon={<Package weight="fill" className="text-emerald-400" />} text={t('pricing_feat_credit_2')} />
+                            <Feature icon={<CheckCircle weight="fill" className="text-emerald-400" />} text={t('pricing_feat_credit_3')} />
 
-                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4">Phases 2–4 — Ecosystem</h4>
-                            <Feature icon={<Storefront className="text-gray-600" />} text="Standard 5% marketplace fee" muted />
-                            <Feature icon={<Gavel className="text-gray-600" />} text="100% upfront bid balance required" muted />
-                            <Feature icon={<Users className="text-gray-600" />} text="No special forum badges" muted />
+                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4">{t('pricing_phase2_ecosystem')}</h4>
+                            <Feature icon={<Storefront className="text-gray-600" />} text={t('pricing_feat_basic_p2')} muted />
+                            <Feature icon={<Gavel className="text-gray-600" />} text={t('pricing_feat_basic_p3')} muted />
+                            <Feature icon={<Users className="text-gray-600" />} text={t('pricing_feat_basic_p4')} muted />
                         </div>
 
                         <button
@@ -192,7 +190,7 @@ export default function PricingPage() {
                             disabled={loadingPackage === "credit_pack"}
                             className="w-full py-3 rounded-xl font-bold text-sm transition-all duration-200 bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            {loadingPackage === "credit_pack" ? "Processing..." : hasCredits ? `Buy More (${creditsRemaining} left)` : "Buy 100 Credits"}
+                            {loadingPackage === "credit_pack" ? t('pricing_processing') : hasCredits ? `${t('pricing_buy')} (${creditsRemaining})` : t('pricing_buy')}
                         </button>
                     </div>
 
@@ -202,7 +200,7 @@ export default function PricingPage() {
                         <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                             <span className="bg-gradient-to-r from-orange-500 to-amber-500 text-white text-xs font-bold px-4 py-1 rounded-full shadow-lg flex items-center gap-1">
                                 <Sparkle weight="fill" className="w-3 h-3" />
-                                MOST POPULAR
+                                {t('pricing_popular')}
                             </span>
                         </div>
 
@@ -211,8 +209,8 @@ export default function PricingPage() {
                                 <Crown className="w-6 h-6 text-orange-400" weight="fill" />
                             </div>
                             <div>
-                                <h3 className="text-lg font-bold bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent">MERCHANT</h3>
-                                <p className="text-xs text-orange-400/70">VIP Pro</p>
+                                <h3 className="text-lg font-bold bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent">{t('pricing_vippro')}</h3>
+                                <p className="text-xs text-orange-400/70">{t('pricing_vippro_type')}</p>
                             </div>
                         </div>
 
@@ -222,37 +220,37 @@ export default function PricingPage() {
                             <span className="text-gray-500 text-sm ml-2">/ month</span>
                         </div>
 
-                        <p className="text-gray-400 text-sm mb-6">The ultimate package for serious dealers, sellers, and Razz hosts.</p>
+                        <p className="text-gray-400 text-sm mb-6">{t('pricing_vippro_desc')}</p>
 
                         <div className="space-y-3 mb-8 flex-1">
                             <h4 className="text-xs font-semibold text-orange-500/70 uppercase tracking-wider flex items-center gap-1">
-                                <Star weight="fill" className="w-3 h-3" /> Phase 1 — Immediate Perks
+                                <Star weight="fill" className="w-3 h-3" /> {t('pricing_phase1_perks')}
                             </h4>
-                            <Feature icon={<Lightning weight="fill" className="text-orange-400" />} text="Unlimited monthly scans (3,000 fair use)" highlight />
-                            <Feature icon={<Package weight="fill" className="text-orange-400" />} text="UNLIMITED portfolio capacity" highlight />
-                            <Feature icon={<Sparkle weight="fill" className="text-orange-400" />} text="Priority AI scan queue (< 2s)" highlight />
-                            <Feature icon={<Crown weight="fill" className="text-orange-400" />} text="👑 VIP Pro profile badge" highlight />
+                            <Feature icon={<Lightning weight="fill" className="text-orange-400" />} text={t('pricing_feat_vip_1')} highlight />
+                            <Feature icon={<Package weight="fill" className="text-orange-400" />} text={t('pricing_feat_vip_2')} highlight />
+                            <Feature icon={<Sparkle weight="fill" className="text-orange-400" />} text={t('pricing_feat_vip_3')} highlight />
+                            <Feature icon={<Crown weight="fill" className="text-orange-400" />} text={t('pricing_feat_vip_4')} highlight />
 
                             <h4 className="text-xs font-semibold text-orange-500/70 uppercase tracking-wider mt-4 flex items-center gap-1">
-                                <Star weight="fill" className="w-3 h-3" /> Phase 2 — Marketplace
+                                <Star weight="fill" className="w-3 h-3" /> {t('pricing_phase2')}
                             </h4>
-                            <Feature icon={<ShieldCheck weight="fill" className="text-amber-400" />} text="✅ Verified Seller checkmark" highlight />
-                            <Feature icon={<Storefront weight="fill" className="text-amber-400" />} text="Ultra-low 1.5% seller fee (vs 5%)" highlight />
-                            <Feature icon={<Sparkle weight="fill" className="text-amber-400" />} text='5 free "Hot Deal" bumps / week' highlight />
+                            <Feature icon={<ShieldCheck weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p2_1')} highlight />
+                            <Feature icon={<Storefront weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p2_2')} highlight />
+                            <Feature icon={<Sparkle weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p2_3')} highlight />
 
                             <h4 className="text-xs font-semibold text-orange-500/70 uppercase tracking-wider mt-4 flex items-center gap-1">
-                                <Star weight="fill" className="w-3 h-3" /> Phase 3 — Auction & Razz
+                                <Star weight="fill" className="w-3 h-3" /> {t('pricing_phase3')}
                             </h4>
-                            <Feature icon={<Gavel weight="fill" className="text-amber-400" />} text="🎰 Exclusive Razz hosting rights" highlight />
-                            <Feature icon={<Lightning weight="fill" className="text-amber-400" />} text="Margin Bidding (credit line)" highlight />
-                            <Feature icon={<CheckCircle weight="fill" className="text-amber-400" />} text="Reduced 3% auction fee (vs 8%)" highlight />
+                            <Feature icon={<Gavel weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p3_1')} highlight />
+                            <Feature icon={<Lightning weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p3_2')} highlight />
+                            <Feature icon={<CheckCircle weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p3_3')} highlight />
 
                             <h4 className="text-xs font-semibold text-orange-500/70 uppercase tracking-wider mt-4 flex items-center gap-1">
-                                <Star weight="fill" className="w-3 h-3" /> Phase 4 — Community
+                                <Star weight="fill" className="w-3 h-3" /> {t('pricing_phase4')}
                             </h4>
-                            <Feature icon={<Crown weight="fill" className="text-amber-400" />} text="Animated VIP badge + flair" highlight />
-                            <Feature icon={<Users weight="fill" className="text-amber-400" />} text="Direct sales posts allowed" highlight />
-                            <Feature icon={<Lock weight="fill" className="text-amber-400" />} text="Private VIP forum section" highlight />
+                            <Feature icon={<Crown weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p4_1')} highlight />
+                            <Feature icon={<Users weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p4_2')} highlight />
+                            <Feature icon={<Lock weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p4_3')} highlight />
                         </div>
 
                         <button
@@ -260,7 +258,7 @@ export default function PricingPage() {
                             disabled={loadingPackage === "vip_pro" || isVipPro}
                             className="w-full py-3.5 rounded-xl font-bold text-sm transition-all duration-200 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white shadow-lg shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            {loadingPackage === "vip_pro" ? "Processing..." : isVipPro ? "Active ✓ Renew" : "Subscribe VIP Pro"}
+                            {loadingPackage === "vip_pro" ? t('pricing_processing') : isVipPro ? `${t('pricing_active')}` : t('pricing_buy')}
                         </button>
                     </div>
                 </div>
@@ -268,9 +266,9 @@ export default function PricingPage() {
                 {/* Free Tier Info */}
                 <div className="max-w-2xl mx-auto px-4 mt-12 text-center">
                     <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6">
-                        <h3 className="text-white font-semibold mb-2">Free Tier</h3>
+                        <h3 className="text-white font-semibold mb-2">{t('pricing_free_tier')}</h3>
                         <p className="text-gray-500 text-sm">
-                            All users get <span className="text-white font-medium">5 free scans per day</span> and a portfolio capacity of <span className="text-white font-medium">20 cards</span>. Sign up to start scanning — no payment required.
+                            {t('pricing_free_tier_desc')}
                         </p>
                     </div>
                 </div>

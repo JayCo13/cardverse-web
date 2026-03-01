@@ -3,7 +3,7 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { CircleUser, Menu, Search, Headphones, Camera } from "lucide-react"
+import { CircleUser, Menu, Search, Headphones, Camera, Crown } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { NotificationBell } from "@/components/notification-bell"
 import { LanguageSelector } from "@/components/language-selector"
@@ -78,6 +78,12 @@ export function Header() {
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link href="/profile">{t('my_listings')}</Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/pricing" className="text-orange-500 font-medium flex items-center gap-2">
+                <Crown className="w-4 h-4" />
+                {t('pricing_title') || 'Upgrade & Billing'}
+              </Link>
             </DropdownMenuItem>
             <DropdownMenuItem>{t('settings')}</DropdownMenuItem>
             <DropdownMenuSeparator />
@@ -178,11 +184,6 @@ export function Header() {
                     {t('nav_forum')}
                     <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('soon')}</Badge>
                   </span>
-                  <div className="border-t my-2 pt-2">
-                    <Link href="/pricing" className="text-orange-400 hover:text-orange-300 font-semibold flex items-center gap-2 mb-4">
-                      👑 Pricing
-                    </Link>
-                  </div>
                   <div className="border-t my-2 pt-2 grid gap-4">
                     <Link href="/pokemon" className="text-muted-foreground hover:text-foreground flex items-center gap-2">
                       <Image src="/assets/pok-logo.png" width={24} height={24} alt="Pokemon" className="object-contain" />
@@ -214,12 +215,6 @@ export function Header() {
           </div>
           <div className="flex-1 flex items-center justify-center">
             <nav className="hidden md:flex flex-row items-center gap-6 lg:gap-8 whitespace-nowrap text-sm font-medium">
-              <Link
-                href="/pricing"
-                className="text-orange-400 hover:text-orange-300 font-semibold transition-colors flex items-center gap-1"
-              >
-                👑 Pricing
-              </Link>
               <div className="relative">
                 <span
                   onClick={handleComingSoon}
