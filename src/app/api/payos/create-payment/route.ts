@@ -69,9 +69,12 @@ export async function POST(request: NextRequest) {
             qrCode: paymentLink.qrCode,
             orderCode,
         });
-    } catch (error) {
+    } catch (error: any) {
         console.error('PayOS create payment error:', error);
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        return NextResponse.json({ error: 'Internal server error', details: errorMessage }, { status: 500 });
+        // Include the actual error message dynamically to find out what's failing in production
+        return NextResponse.json({
+            error: 'Internal server error',
+            details: error?.message || String(error)
+        }, { status: 500 });
     }
 }
