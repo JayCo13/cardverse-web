@@ -169,6 +169,8 @@ const en = {
   // Scan Limits
   scan_limit_reached: 'Daily Scan Limit Reached',
   scan_limit_used: '{used}/{limit} scans used today',
+  scan_remaining: '{remaining} scans left',
+  scan_remaining_short: '{remaining} left',
   scan_limit_resets_in: 'Resets in',
   scan_limit_register_prompt: 'Register for 3 free scans per day!',
   scan_limit_register_button: 'Create Free Account',
@@ -203,6 +205,8 @@ const en = {
   auth_use_different_email: 'Use a different email',
   // Feature Teasers - Coming Soon
   coming_soon: 'Coming Soon',
+  pricing_title: 'Choose Your Power Package',
+  pricing_subtitle: 'Unlock the full potential of AI-powered card scanning and join the CardVerseHub ecosystem.',
   live_auctions_title: 'Live Auctions & Marketplace',
   live_auctions_desc: 'Bid on rare cards in real-time or list your collection on our secure marketplace.',
   join_waitlist: 'Join Waitlist',
@@ -289,6 +293,12 @@ const en = {
   market_spotlight: 'Market Spotlight',
   price_change: 'Change',
   chart_demo: 'Chart: Demo',
+  card_number: 'Card Number',
+  type_hp_stage: 'Type / HP / Stage',
+  attack: 'Attack',
+  first_edition: '1st Edition',
+  holo: 'Holo',
+  view_psa: 'View PSA',
   // Scan Confirmation
   scan_is_correct_card: 'Is this the correct card?',
   scan_yes_correct: 'Yes, correct',
@@ -567,6 +577,8 @@ const vi = {
   // Scan Limits
   scan_limit_reached: 'Đã đạt giới hạn quét hàng ngày',
   scan_limit_used: 'Đã sử dụng {used}/{limit} lượt quét hôm nay',
+  scan_remaining: 'Còn {remaining} lượt quét',
+  scan_remaining_short: 'Còn {remaining}',
   scan_limit_resets_in: 'Đặt lại sau',
   scan_limit_register_prompt: 'Đăng ký để có 3 lượt quét miễn phí mỗi ngày!',
   scan_limit_register_button: 'Tạo tài khoản miễn phí',
@@ -600,6 +612,8 @@ const vi = {
   auth_resending: 'Đang gửi lại...',
   auth_use_different_email: 'Sử dụng email khác',
   // Feature Teasers - Coming Soon
+  pricing_title: 'Chọn Gói AI Scan',
+  pricing_subtitle: 'Mở khóa toàn bộ sức mạnh quét thẻ bằng AI và tham gia hệ sinh thái CardVerseHub.',
   live_auctions_title: 'Đấu giá trực tuyến & mua bán thẻ',
   live_auctions_desc: 'Đấu giá thẻ hiếm theo thời gian thực hoặc đăng bán bộ sưu tập của bạn trên chợ an toàn của chúng tôi.',
   join_waitlist: 'Đăng ký chờ',
@@ -676,6 +690,12 @@ const vi = {
   market_spotlight: 'Tiêu điểm thị trường',
   price_change: 'Thay đổi',
   chart_demo: 'Biểu đồ: Demo',
+  card_number: 'Số thẻ',
+  type_hp_stage: 'Loại / HP / Giai đoạn',
+  attack: 'Đòn tấn công',
+  first_edition: 'Phiên bản đầu',
+  holo: 'Holo',
+  view_psa: 'Xem PSA',
   // Scan Confirmation
   scan_is_correct_card: 'Đây có phải là thẻ đúng không?',
   scan_yes_correct: 'Đúng, chính xác',
@@ -947,6 +967,8 @@ const ja = {
   // Scan Limits
   scan_limit_reached: '本日のスキャン上限に達しました',
   scan_limit_used: '本日 {used}/{limit} 回スキャン済み',
+  scan_remaining: '残り {remaining} 回',
+  scan_remaining_short: '残り {remaining} 回',
   scan_limit_resets_in: 'リセットまで',
   scan_limit_register_prompt: '登録すると1日3回無料スキャン！',
   scan_limit_register_button: '無料アカウント作成',
@@ -1009,6 +1031,8 @@ const ja = {
   auth_use_different_email: '別のメールを使用',
   // Feature Teasers - Coming Soon
   coming_soon: '近日公開',
+  pricing_title: 'パワーパッケージを選ぶ',
+  pricing_subtitle: 'AI搭載カードスキャンの全力を解き放ち、CardVerseHubエコシステムに参加しましょう。',
   live_auctions_title: 'ライブオークション & マーケット',
   live_auctions_desc: 'レアカードにリアルタイムで入札、または安全なマーケットプレイスでコレクションを出品。',
   join_waitlist: 'ウェイトリストに参加',
@@ -1085,6 +1109,12 @@ const ja = {
   market_spotlight: 'マーケット注目',
   price_change: '変動',
   chart_demo: 'チャート: デモ',
+  card_number: 'カード番号',
+  type_hp_stage: 'タイプ / HP / ステージ',
+  attack: 'わざ',
+  first_edition: '初版',
+  holo: 'ホロ',
+  view_psa: 'PSAを見る',
   // Scan Confirmation
   scan_is_correct_card: 'これは正しいカードですか？',
   scan_yes_correct: 'はい、正しいです',

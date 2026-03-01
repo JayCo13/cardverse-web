@@ -23,13 +23,22 @@ import { useLocalization } from "@/context/localization-context"
 import { Skeleton } from "../ui/skeleton"
 import { useAuth } from "@/lib/supabase"
 import { useAuthModal } from "@/components/auth-modal"
+import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 
 export function Header() {
   const { t } = useLocalization();
   const { user, isLoading, signOut } = useAuth();
   const { setOpen } = useAuthModal();
+  const { toast } = useToast();
   const router = useRouter();
+
+  const handleComingSoon = () => {
+    toast({
+      description: t('coming_soon'),
+      duration: 3000,
+    });
+  };
 
   // Scroll to market spotlight section
   const handleScanClick = () => {
@@ -146,28 +155,34 @@ export function Header() {
                     <Image src="/assets/logo-verse.png" width={140} height={35} alt="CardVerse logo" />
                   </Link>
                   <div className="relative group">
-                    <span className="hover:text-foreground opacity-50 cursor-not-allowed flex items-center gap-1">
+                    <span onClick={handleComingSoon} className="cursor-pointer text-muted-foreground hover:text-foreground flex items-center gap-1">
                       {t('nav_buy')}
                       <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('beta')}</Badge>
                     </span>
                   </div>
                   <div className="relative group">
-                    <span className="text-muted-foreground opacity-50 cursor-not-allowed flex items-center gap-1">
+                    <span onClick={handleComingSoon} className="cursor-pointer text-muted-foreground hover:text-foreground flex items-center gap-1">
                       {t('nav_sell')}
                       <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('beta')}</Badge>
                     </span>
                   </div>
-                  <Link href="/bid" className="text-muted-foreground hover:text-foreground flex items-center gap-1">
+                  <span onClick={handleComingSoon} className="cursor-pointer text-muted-foreground hover:text-foreground flex items-center gap-1">
                     {t('nav_bid')}
                     <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('beta')}</Badge>
-                  </Link>
-                  <Link href="/razz" className="text-muted-foreground hover:text-foreground flex items-center gap-1">
+                  </span>
+                  <span onClick={handleComingSoon} className="cursor-pointer text-muted-foreground hover:text-foreground flex items-center gap-1">
                     {t('nav_razz')}
                     <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('soon')}</Badge>
-                  </Link>
-                  <Link href="/forum" className="text-muted-foreground hover:text-foreground">
+                  </span>
+                  <span onClick={handleComingSoon} className="cursor-pointer text-muted-foreground hover:text-foreground flex items-center gap-1">
                     {t('nav_forum')}
-                  </Link>
+                    <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('soon')}</Badge>
+                  </span>
+                  <div className="border-t my-2 pt-2">
+                    <Link href="/pricing" className="text-orange-400 hover:text-orange-300 font-semibold flex items-center gap-2 mb-4">
+                      👑 Pricing
+                    </Link>
+                  </div>
                   <div className="border-t my-2 pt-2 grid gap-4">
                     <Link href="/pokemon" className="text-muted-foreground hover:text-foreground flex items-center gap-2">
                       <Image src="/assets/pok-logo.png" width={24} height={24} alt="Pokemon" className="object-contain" />
@@ -199,9 +214,16 @@ export function Header() {
           </div>
           <div className="flex-1 flex items-center justify-center">
             <nav className="hidden md:flex flex-row items-center gap-6 lg:gap-8 whitespace-nowrap text-sm font-medium">
+              <Link
+                href="/pricing"
+                className="text-orange-400 hover:text-orange-300 font-semibold transition-colors flex items-center gap-1"
+              >
+                👑 Pricing
+              </Link>
               <div className="relative">
                 <span
-                  className="text-foreground/50 cursor-not-allowed flex items-center gap-1"
+                  onClick={handleComingSoon}
+                  className="cursor-pointer text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors"
                 >
                   {t('nav_buy')}
                   <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('beta')}</Badge>
@@ -209,32 +231,34 @@ export function Header() {
               </div>
               <div className="relative">
                 <span
-                  className="text-foreground/50 cursor-not-allowed flex items-center gap-1"
+                  onClick={handleComingSoon}
+                  className="cursor-pointer text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors"
                 >
                   {t('nav_sell')}
                   <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('beta')}</Badge>
                 </span>
               </div>
-              <Link
-                href="/bid"
-                className="text-foreground/80 transition-colors hover:text-foreground flex items-center gap-1"
+              <span
+                onClick={handleComingSoon}
+                className="cursor-pointer text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors"
               >
                 {t('nav_bid')}
                 <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('beta')}</Badge>
-              </Link>
-              <Link
-                href="/razz"
-                className="text-foreground/80 transition-colors hover:text-foreground flex items-center gap-1"
+              </span>
+              <span
+                onClick={handleComingSoon}
+                className="cursor-pointer text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors"
               >
                 {t('nav_razz')}
                 <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('soon')}</Badge>
-              </Link>
-              <Link
-                href="/forum"
-                className="text-foreground/80 transition-colors hover:text-foreground"
+              </span>
+              <span
+                onClick={handleComingSoon}
+                className="cursor-pointer text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors"
               >
                 {t('nav_forum')}
-              </Link>
+                <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('soon')}</Badge>
+              </span>
             </nav>
           </div>
 

@@ -6,6 +6,21 @@ export async function middleware(request: NextRequest) {
         request,
     })
 
+    // Phase 1 Beta Restrictions: Block access to upcoming features
+    const restrictedPaths = ['/buy', '/sell', '/bid', '/razz', '/forum'];
+    const currentPath = request.nextUrl.pathname;
+
+    // Check if the current path exactly matches or starts with the restricted path (e.g. /sell/create)
+    const isRestricted = restrictedPaths.some(path => currentPath === path || currentPath.startsWith(`${path}/`));
+
+    if (isRestricted) {
+        // Redirect to home page with a query parameter to show the "Coming Soon" toast
+        const url = request.nextUrl.clone();
+        url.pathname = '/';
+        url.search = '?beta=true';
+        return NextResponse.redirect(url);
+    }
+
     const supabase = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,

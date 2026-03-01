@@ -5,9 +5,18 @@ import Link from "next/link";
 import Image from "next/image";
 import { Twitter, Instagram, Facebook } from "lucide-react";
 import { useLocalization } from "@/context/localization-context";
+import { useToast } from "@/hooks/use-toast";
 
 export function Footer() {
   const { t } = useLocalization();
+  const { toast } = useToast();
+
+  const handleComingSoon = () => {
+    toast({
+      description: t('coming_soon'),
+      duration: 3000,
+    });
+  };
 
   return (
     <footer className="border-t bg-card">
@@ -18,7 +27,7 @@ export function Footer() {
               href="#"
               className="flex items-center gap-2 text-lg font-semibold"
             >
-              <Image src="/assets/logo-verse.png" width={120} height={30} alt="CardVerse logo" />
+              <Image src="/assets/logo-verse.png" width={120} height={120} alt="CardVerse logo" />
             </Link>
             <p className="text-muted-foreground">{t('footer_tagline')}</p>
             <div className="flex gap-4">
@@ -35,14 +44,14 @@ export function Footer() {
           </div>
           <div className="flex flex-col gap-2">
             <h3 className="font-semibold">{t('footer_marketplace')}</h3>
-            <Link href="#" className="text-muted-foreground hover:text-foreground">{t('nav_buy')}</Link>
-            <Link href="#" className="text-muted-foreground hover:text-foreground">{t('nav_sell')}</Link>
-            <Link href="#" className="text-muted-foreground hover:text-foreground">{t('nav_bid')}</Link>
-            <Link href="#" className="text-muted-foreground hover:text-foreground">{t('nav_razz')}</Link>
+            <span onClick={handleComingSoon} className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors">{t('nav_buy')}</span>
+            <span onClick={handleComingSoon} className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors">{t('nav_sell')}</span>
+            <span onClick={handleComingSoon} className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors">{t('nav_bid')}</span>
+            <span onClick={handleComingSoon} className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors">{t('nav_razz')}</span>
           </div>
           <div className="flex flex-col gap-2">
             <h3 className="font-semibold">{t('footer_community')}</h3>
-            <Link href="#" className="text-muted-foreground hover:text-foreground">{t('nav_forum')}</Link>
+            <span onClick={handleComingSoon} className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors">{t('nav_forum')}</span>
             <Link href="#" className="text-muted-foreground hover:text-foreground">{t('footer_blog')}</Link>
             <Link href="#" className="text-muted-foreground hover:text-foreground">{t('footer_events')}</Link>
           </div>

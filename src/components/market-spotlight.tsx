@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { TrendUp, Pulse, CurrencyDollar, SpinnerGap, ArrowsClockwise, MagnifyingGlass, Camera, Plus, Check, SoccerBall, Skull, UploadSimple, Crop as CropIcon, X, Medal } from '@phosphor-icons/react';
+import { TrendUp, Pulse, CurrencyDollar, SpinnerGap, ArrowsClockwise, MagnifyingGlass, Camera, Plus, Check, SoccerBall, Skull, UploadSimple, Crop as CropIcon, X, Medal, Lightning } from '@phosphor-icons/react';
 import ReactCrop, { type Crop, centerCrop, makeAspectCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { Card } from '@/components/ui/card';
@@ -769,95 +769,117 @@ export function MarketSpotlight() {
                                     clearTimeout(searchTimeoutId);
                                     console.log(`Found ${products.length} cards by number (category: ${searchCatId})`);
 
-                                    // PRIORITY 1.5: Exact number match using any format variation
-                                    if (products.length > 1) {
-                                        const exactMatch = products.find((p: { number: string }) =>
-                                            altFormatsArray.includes(p.number)
-                                        );
-                                        if (exactMatch && cardName) {
-                                            const firstWord = cardName.toLowerCase().split(/[\s']/)[0];
-                                            const nameMatches = exactMatch.name.toLowerCase().includes(firstWord);
-                                            if (nameMatches) {
-                                                console.log(`Exact number + name match: ${exactMatch.name} #${exactMatch.number}`);
-                                                await displayProductResult(exactMatch);
-                                                setShowScanConfirmation(true);
-                                                return;
+                                    // SCORING-BASED MATCHING: Rank ALL candidates using composite score
+                                    // Instead of short-circuiting on first match, evaluate every product
+                                    // against all AI-provided data (name, number, set_code) simultaneously
+                                    type ScoredProduct = { product: typeof products[0]; score: number; breakdown: string };
+                                    const scored: ScoredProduct[] = products.map((p: { name: string; number: string; set_name: string }) => {
+                                        let score = 0;
+                                        const reasons: string[] = [];
+
+                                        // --- NUMBER SCORE (0-30) ---
+                                        if (p.number && altFormatsArray.includes(p.number)) {
+                                            score += 30;
+                                            reasons.push(`num:exact(30)`);
+                                        } else if (p.number && cardNumber) {
+                                            // Partial: collector number part matches
+                                            const pNum = p.number.split('/')[0]?.replace(/^0+/, '');
+                                            const aiNum = cardNumber.replace(/[^\d/]/g, '').split('/')[0]?.replace(/^0+/, '');
+                                            if (pNum && aiNum && pNum === aiNum) {
+                                                score += 20;
+                                                reasons.push(`num:partial(20)`);
                                             }
                                         }
-                                    }
 
-                                    // PRIORITY 2: Filter by set_code if provided
-                                    if (setCode && products.length > 1) {
-                                        const setLower = setCode.toLowerCase();
-                                        let setMatch = products.find((p: { set_name: string }) =>
-                                            p.set_name?.toLowerCase().includes(setLower)
-                                        );
+                                        // --- NAME SCORE (0-40) ---
+                                        if (cardName) {
+                                            const pNameLower = p.name.toLowerCase();
+                                            const aiNameLower = cardName.toLowerCase();
+                                            const aiBaseName = aiNameLower.replace(/\s*(ex|v|gx|vmax|vstar)\s*$/i, '').trim();
 
-                                        if (!setMatch) {
-                                            const fuzzySet = setLower
-                                                .replace(/5/g, 's').replace(/0/g, 'o').replace(/1/g, 'i')
-                                                .replace(/s/g, '5').replace(/o/g, '0').replace(/i/g, '1').replace(/l/g, '1');
-                                            const specificFix = setLower.replace('m15', 'm1s');
+                                            if (pNameLower === aiNameLower || pNameLower.split(' - ')[0].trim() === aiNameLower) {
+                                                score += 40;
+                                                reasons.push(`name:exact(40)`);
+                                            } else if (pNameLower.includes(aiNameLower) || pNameLower.includes(aiBaseName)) {
+                                                score += 30;
+                                                reasons.push(`name:contains(30)`);
+                                            } else {
+                                                // First word match (handles "Charizard" matching "Charizard ex - Holo")
+                                                const aiFirstWord = aiNameLower.split(/[\s']/)[0];
+                                                const pFirstWord = pNameLower.split(/[\s']/)[0];
+                                                // Owner-style names: "Iono's" -> check pokemon name after "'s "
+                                                const ownerAliases: Record<string, string[]> = {
+                                                    'mc': ['emcee', 'mc'], 'emcee': ['emcee', 'mc'],
+                                                };
+                                                const aiTerms = ownerAliases[aiFirstWord] || [aiFirstWord];
 
-                                            setMatch = products.find((p: { set_name: string }) => {
-                                                const dbSet = p.set_name?.toLowerCase() || '';
-                                                return dbSet.includes(fuzzySet) || dbSet.includes(specificFix) ||
-                                                    fuzzySet.includes(dbSet) || specificFix.includes(dbSet);
-                                            });
-                                            if (setMatch) console.log(`Fuzzy set match: "${setCode}" -> matched "${setMatch.set_name}"`);
+                                                if (aiTerms.some(t => pFirstWord.includes(t) || t.includes(pFirstWord))) {
+                                                    score += 20;
+                                                    reasons.push(`name:firstWord(20)`);
+                                                } else if (aiNameLower.includes("'s ")) {
+                                                    // "Iono's Bellibolt" -> match "Bellibolt"
+                                                    const pokemonPart = aiNameLower.split("'s ").pop() || '';
+                                                    if (pNameLower.includes(pokemonPart)) {
+                                                        score += 15;
+                                                        reasons.push(`name:pokemon(15)`);
+                                                    }
+                                                } else {
+                                                    // Any significant word overlap
+                                                    const aiWords = aiNameLower.split(/\s+/).filter((w: string) => w.length > 2);
+                                                    const matchingWords = aiWords.filter((w: string) => pNameLower.includes(w));
+                                                    if (matchingWords.length > 0) {
+                                                        const wordScore = Math.min(10, matchingWords.length * 5);
+                                                        score += wordScore;
+                                                        reasons.push(`name:words(${wordScore})`);
+                                                    }
+                                                }
+                                            }
                                         }
 
-                                        if (setMatch) {
-                                            console.log(`Matched by set: ${setMatch.name} (${setMatch.set_name})`);
-                                            await displayProductResult(setMatch);
-                                            setShowScanConfirmation(true);
-                                            return;
-                                        }
-                                    }
+                                        // --- SET SCORE (0-30) ---
+                                        if (setCode && p.set_name) {
+                                            const setLower = setCode.toLowerCase();
+                                            const dbSetLower = p.set_name.toLowerCase();
 
-                                    // PRIORITY 3: Filter by name if multiple results
-                                    if (cardName && products.length > 1) {
-                                        console.log(`Multiple results, filtering by name: "${cardName}"`);
-
-                                        let match = products.find((p: { name: string }) =>
-                                            p.name.toLowerCase().includes(cardName.toLowerCase())
-                                        );
-
-                                        if (!match) {
-                                            const firstWord = cardName.split(/['s\s]/)[0].toLowerCase();
-                                            const ownerAliases: Record<string, string[]> = {
-                                                'mc': ['emcee', 'mc'],
-                                                'emcee': ['emcee', 'mc'],
-                                            };
-                                            const searchTerms = ownerAliases[firstWord] || [firstWord];
-
-                                            match = products.find((p: { name: string }) => {
-                                                const pFirstWord = p.name.split(/['s\s]/)[0].toLowerCase();
-                                                return searchTerms.some(term => pFirstWord.includes(term) || term.includes(pFirstWord));
-                                            });
-                                        }
-
-                                        if (!match && cardName.includes("'s ")) {
-                                            const pokemonName = cardName.split("'s ").pop();
-                                            match = products.find((p: { name: string }) => {
-                                                const dbPokemonName = p.name.includes("'s ")
-                                                    ? p.name.split("'s ").pop()?.split(' - ')[0]
-                                                    : p.name.split(' - ')[0];
-                                                return dbPokemonName?.toLowerCase().includes(pokemonName?.toLowerCase() || '');
-                                            });
+                                            if (dbSetLower.includes(setLower) || setLower.includes(dbSetLower)) {
+                                                score += 30;
+                                                reasons.push(`set:exact(30)`);
+                                            } else {
+                                                // Fuzzy set matching for OCR confusion (S↔5, O↔0, I↔1, L↔1)
+                                                const fuzzyVariants = [
+                                                    setLower,
+                                                    setLower.replace(/5/g, 's'),
+                                                    setLower.replace(/s/g, '5'),
+                                                    setLower.replace(/0/g, 'o'),
+                                                    setLower.replace(/o/g, '0'),
+                                                    setLower.replace(/1/g, 'l'),
+                                                    setLower.replace(/l/g, '1'),
+                                                    setLower.replace('m15', 'm1s'),
+                                                    setLower.replace('m1s', 'm15'),
+                                                ];
+                                                const fuzzyMatch = fuzzyVariants.some(v => dbSetLower.includes(v) || v.includes(dbSetLower));
+                                                if (fuzzyMatch) {
+                                                    score += 20;
+                                                    reasons.push(`set:fuzzy(20)`);
+                                                }
+                                            }
                                         }
 
-                                        if (match) {
-                                            console.log(`Matched by name: ${match.name}`);
-                                            await displayProductResult(match);
-                                            setShowScanConfirmation(true);
-                                            return;
-                                        }
-                                    }
+                                        return { product: p, score, breakdown: reasons.join(' ') };
+                                    });
 
-                                    // Use first result
-                                    console.log(`Using first result: ${products[0].name}`);
-                                    await displayProductResult(products[0]);
+                                    // Sort by score descending, then by market_price descending as tiebreaker
+                                    scored.sort((a, b) => b.score - a.score || (b.product.market_price || 0) - (a.product.market_price || 0));
+
+                                    // Log scoring results for debugging
+                                    console.log(`Scoring results (${scored.length} candidates):`);
+                                    scored.slice(0, 5).forEach((s, i) => {
+                                        console.log(`  ${i + 1}. [${s.score}pts] ${s.product.name} #${s.product.number} (${s.product.set_name}) — ${s.breakdown}`);
+                                    });
+
+                                    const bestMatch = scored[0];
+                                    console.log(`Best match: ${bestMatch.product.name} (score: ${bestMatch.score})`);
+                                    await displayProductResult(bestMatch.product);
                                     setShowScanConfirmation(true);
                                     return;
                                 }
@@ -1363,7 +1385,7 @@ export function MarketSpotlight() {
     }, []);
 
     // Use centralized currency formatting from context
-    const { formatPrice } = useCurrency();
+    const { formatPrice, convertPrice } = useCurrency();
     const { t } = useLocalization();
 
     // Get display image - use TCG image or fallback
@@ -1472,16 +1494,13 @@ export function MarketSpotlight() {
                         {/* Glow effect */}
                         <div className="absolute -inset-1 bg-gradient-to-r from-orange-600 to-amber-600 rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
 
-                        <div className="relative flex items-center bg-black/80 rounded-full border border-white/10 p-1.5 shadow-2xl">
-                            <input
-                                type="text"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                onKeyDown={handleKeyDown}
-                                placeholder={t('search_placeholder_pokemon')}
-                                className="w-full bg-transparent border-none text-white text-base md:text-lg px-6 py-2 focus:outline-none placeholder:text-gray-500 font-medium rounded-l-full"
-                                disabled={isLoading || isScanning}
-                            />
+                        <div
+                            className="relative flex items-center bg-black/80 rounded-full border border-white/10 p-1.5 shadow-2xl cursor-pointer hover:bg-black/90 transition-colors"
+                            onClick={handleUploadClick}
+                        >
+                            <div className="w-full bg-transparent border-none text-gray-400 text-base md:text-lg px-6 py-2 font-medium rounded-l-full flex items-center">
+                                {t('scan_pokemon_card')}
+                            </div>
                             {/* Hidden file input for image selection (camera or gallery) */}
                             <input
                                 ref={galleryInputRef}
@@ -1490,46 +1509,32 @@ export function MarketSpotlight() {
                                 onChange={handleGallerySelect}
                                 className="hidden"
                             />
-                            {/* Remaining scans badge for logged-in users */}
+                            {/* Modern Responsive Remaining Scans Badge */}
                             {user && (
-                                <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 text-white/80 text-xs font-medium mr-2">
-                                    <Pulse className="w-3.5 h-3.5 text-orange-400" />
-                                    <span>{scansRemaining}/{scansLimit} scans</span>
+                                <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-gradient-to-r from-orange-500/20 to-amber-500/10 border border-orange-500/30 text-orange-50 text-[11px] sm:text-xs font-semibold mr-1 sm:mr-2 backdrop-blur-md shadow-[inset_0_1px_4px_rgba(255,255,255,0.1)] transition-all">
+                                    <Lightning className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-400 drop-shadow-[0_0_6px_rgba(249,115,22,0.8)]" weight="fill" />
+                                    <span className="hidden sm:inline-block tracking-wide">
+                                        {t('scan_remaining', { remaining: scansRemaining.toString() })}
+                                    </span>
+                                    <span className="sm:hidden tracking-wide whitespace-nowrap">
+                                        {t('scan_remaining_short', { remaining: scansRemaining.toString() })}
+                                    </span>
                                 </div>
                             )}
                             {/* Upload/Camera button - opens image picker with crop */}
                             <Button
-                                onClick={handleUploadClick}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleUploadClick();
+                                }}
                                 disabled={isLoading || isScanning}
-                                className="relative rounded-full bg-white/10 hover:bg-white/20 text-white h-10 w-10 md:h-11 md:w-11 p-0 flex items-center justify-center shrink-0 mr-2 transition-all"
+                                className="relative rounded-full bg-orange-500 hover:bg-orange-600 text-white h-10 w-10 md:h-11 md:w-11 p-0 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(249,115,22,0.5)] transition-transform active:scale-95 disabled:opacity-50"
                                 title="Upload or take photo"
                             >
                                 {isScanning ? (
                                     <SpinnerGap className="h-5 w-5 animate-spin" weight="bold" />
                                 ) : (
-                                    <Camera className="h-5 w-5" />
-                                )}
-                                {/* Scan status tooltip */}
-                                {/* Mobile: Show remaining scans as badge on button */}
-                                {user && (
-                                    <span className="sm:hidden absolute -top-1 -right-1 bg-orange-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                                        {scansRemaining}
-                                    </span>
-                                )}
-                            </Button>
-                            {/* Search button */}
-                            <Button
-                                onClick={() => {
-                                    setIsScannedResult(false);
-                                    handleSearch();
-                                }}
-                                disabled={isLoading}
-                                className="rounded-full bg-orange-500 hover:bg-orange-600 text-white h-10 w-10 md:h-11 md:w-11 p-0 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(249,115,22,0.5)] transition-transform active:scale-95 disabled:opacity-50"
-                            >
-                                {isLoading && !isScanning ? (
-                                    <SpinnerGap className="h-5 w-5 animate-spin" weight="bold" />
-                                ) : (
-                                    <MagnifyingGlass className="h-5 w-5 md:h-6 md:w-6" />
+                                    <Camera className="h-5 w-5 md:h-6 md:w-6" />
                                 )}
                             </Button>
                         </div>
@@ -1659,13 +1664,13 @@ export function MarketSpotlight() {
 
                             <div className="flex flex-wrap gap-2 text-sm text-gray-400 font-medium">
                                 {product?.isFirstEdition && (
-                                    <span className="px-2 py-1 bg-orange-500/20 text-orange-400 rounded border border-orange-500/30">1st Edition</span>
+                                    <span className="px-2 py-1 bg-orange-500/20 text-orange-400 rounded border border-orange-500/30">{t('first_edition')}</span>
                                 )}
                                 {product?.rarity && (
                                     <span className="px-2 py-1 bg-white/5 rounded">{product.rarity}</span>
                                 )}
                                 {product?.isHolo && (
-                                    <span className="px-2 py-1 bg-purple-500/20 text-purple-400 rounded border border-purple-500/30">Holo</span>
+                                    <span className="px-2 py-1 bg-purple-500/20 text-purple-400 rounded border border-purple-500/30">{t('holo')}</span>
                                 )}
                                 {product?.set_name && (
                                     <span className="px-2 py-1 bg-white/5 rounded">{product.set_name}</span>
@@ -1705,7 +1710,7 @@ export function MarketSpotlight() {
                             <div className="flex flex-col gap-2 md:gap-3 text-left w-full max-w-[160px] xs:max-w-[180px] md:max-w-none">
                                 {/* Market Price */}
                                 <div className="space-y-0.5">
-                                    <span className="text-gray-500 text-[9px] md:text-[10px] uppercase font-bold tracking-wider block">Market Price</span>
+                                    <span className="text-gray-500 text-[9px] md:text-[10px] uppercase font-bold tracking-wider block">{t('market_price')}</span>
                                     {isLoading ? (
                                         <div className="h-6 md:h-8 w-24 md:w-32 bg-white/10 rounded animate-pulse" />
                                     ) : (
@@ -1717,7 +1722,7 @@ export function MarketSpotlight() {
 
                                 {/* Card Number */}
                                 <div className="space-y-0.5">
-                                    <span className="text-gray-500 text-[9px] md:text-[10px] uppercase font-bold tracking-wider block">Card Number</span>
+                                    <span className="text-gray-500 text-[9px] md:text-[10px] uppercase font-bold tracking-wider block">{t('card_number')}</span>
                                     {isLoading ? (
                                         <div className="h-3 md:h-4 w-16 md:w-24 bg-white/10 rounded animate-pulse" />
                                     ) : (
@@ -1729,7 +1734,7 @@ export function MarketSpotlight() {
 
                                 {/* Rarity */}
                                 <div className="space-y-0.5">
-                                    <span className="text-gray-500 text-[9px] md:text-[10px] uppercase font-bold tracking-wider block">Rarity</span>
+                                    <span className="text-gray-500 text-[9px] md:text-[10px] uppercase font-bold tracking-wider block">{t('filter_rarity')}</span>
                                     {isLoading ? (
                                         <div className="h-3 md:h-4 w-16 md:w-24 bg-white/10 rounded animate-pulse" />
                                     ) : (
@@ -1741,7 +1746,7 @@ export function MarketSpotlight() {
 
                                 {/* Card Type / HP / Stage */}
                                 <div className="space-y-0.5">
-                                    <span className="text-gray-500 text-[9px] md:text-[10px] uppercase font-bold tracking-wider block">Type / HP / Stage</span>
+                                    <span className="text-gray-500 text-[9px] md:text-[10px] uppercase font-bold tracking-wider block">{t('type_hp_stage')}</span>
                                     {isLoading ? (
                                         <div className="h-3 md:h-4 w-32 md:w-48 bg-white/10 rounded animate-pulse" />
                                     ) : (
@@ -1754,7 +1759,7 @@ export function MarketSpotlight() {
                                 {/* Attack - Only show when loaded or if loading (placeholder) */}
                                 {(isLoading || product?.attack1) && (
                                     <div className="space-y-0.5">
-                                        <span className="text-gray-500 text-[9px] md:text-[10px] uppercase font-bold tracking-wider block">Attack</span>
+                                        <span className="text-gray-500 text-[9px] md:text-[10px] uppercase font-bold tracking-wider block">{t('attack')}</span>
                                         {isLoading ? (
                                             <div className="space-y-1">
                                                 <div className="h-2.5 md:h-3 w-full bg-white/10 rounded animate-pulse" />
@@ -1773,7 +1778,7 @@ export function MarketSpotlight() {
                                 {/* Artist */}
                                 {(isLoading || product?.artist) && (
                                     <div className="space-y-0.5">
-                                        <span className="text-gray-500 text-[9px] md:text-[10px] uppercase font-bold tracking-wider block">Artist</span>
+                                        <span className="text-gray-500 text-[9px] md:text-[10px] uppercase font-bold tracking-wider block">{t('artist')}</span>
                                         {isLoading ? (
                                             <div className="h-3 md:h-4 w-16 md:w-24 bg-white/10 rounded animate-pulse" />
                                         ) : (
@@ -1826,14 +1831,14 @@ export function MarketSpotlight() {
                                                 className="flex-1 gap-2 border-white/10 hover:bg-white/5 hover:text-white text-gray-300 py-6 text-base"
                                             >
                                                 <Medal className="h-5 w-5 text-yellow-500" weight="duotone" />
-                                                View PSA
+                                                {t('view_psa')}
                                             </Button>
                                         </DialogTrigger>
                                         <DialogContent className="sm:max-w-[700px] bg-[#0a0a0a] border-white/10 text-white max-h-[90vh] overflow-y-auto">
                                             <DialogHeader>
                                                 <DialogTitle className="flex items-center justify-center gap-2 text-xl w-full">
                                                     <Medal className="h-6 w-6 text-yellow-500" weight="fill" />
-                                                    PSA Graded Prices
+                                                    {t('psa_graded_prices')}
                                                 </DialogTitle>
                                             </DialogHeader>
                                             <div className="mt-0">
@@ -1920,13 +1925,18 @@ export function MarketSpotlight() {
                                             tick={{ fill: '#666', fontSize: 12 }}
                                             axisLine={false}
                                             tickLine={false}
-                                            tickFormatter={(val) => `$${val} `}
+                                            tickFormatter={(val) => {
+                                                const converted = convertPrice(val);
+                                                if (converted >= 1000000) return `${(converted / 1000000).toFixed(1)}M`;
+                                                if (converted >= 1000) return `${(converted / 1000).toFixed(0)}K`;
+                                                return formatPrice(val);
+                                            }}
                                             dx={10}
                                         />
                                         <Tooltip
                                             contentStyle={{ backgroundColor: '#111', borderColor: '#333', borderRadius: '8px', color: '#fff' }}
                                             itemStyle={{ color: '#F97316' }}
-                                            formatter={(value: number) => [`$${value.toLocaleString()} `, 'Price']}
+                                            formatter={(value: number) => [formatPrice(value), t('price_label')]}
                                         />
                                         <Area
                                             type="monotone"
