@@ -14,18 +14,20 @@ export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
 
-        // Verify webhook signature using v2 SDK
         let webhookData;
-        try {
-            webhookData = await getPayOS().webhooks.verify(body);
-        } catch (err) {
-            console.error('Invalid PayOS webhook signature:', err);
-            return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
+
+        // Skip test webhook from PayOS (orderCode === 123) - bypasses signature check
+        // This ensures the PayOS dashboard successfully registers the URL, even if
+        // the checksum key on Netlify has a temporary mismatch or is missing.
+        if (body?.data?.orderCode === 123) {
+            return NextResponse.json({ success: true });
         }
 
-        // Skip test webhook from PayOS (orderCode === 123)
-        if (webhookData.orderCode === 123) {
-            return NextResponse.json({ success: true });
+        try {
+            webhookData = await getPayOS().webhooks.verify(body);
+        } catch (err: any) {
+            console.error('Invalid PayOS webhook signature:', err?.message || err, body);
+            return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
         }
 
         const supabase = getServiceClient();
