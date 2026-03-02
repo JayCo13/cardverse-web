@@ -66,8 +66,8 @@ export async function POST(request: NextRequest) {
             orderCode,
             amount: pkg.amount,
             description: pkg.description,
-            cancelUrl: `${origin}/api/payos/return?status=cancelled&orderCode=${orderCode}`,
-            returnUrl: `${origin}/api/payos/return?status=success&orderCode=${orderCode}`,
+            cancelUrl: `${origin}/api/payos/return`,
+            returnUrl: `${origin}/api/payos/return`,
             items: [
                 {
                     name: pkg.name,
