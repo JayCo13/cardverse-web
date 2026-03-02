@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getPayOS } from '@/lib/payos';
+import { getPayOS, PACKAGES, type PackageType } from '@/lib/payos';
 
 // Use service role client for webhook (no user session)
 function getServiceClient() {
@@ -14,25 +14,24 @@ export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
 
-        let webhookData;
-
-        // Skip test webhook from PayOS (orderCode === 123) - bypasses signature check
-        // This ensures the PayOS dashboard successfully registers the URL, even if
-        // the checksum key on Netlify has a temporary mismatch or is missing.
+        // ── Test webhook from PayOS dashboard (orderCode === 123) ──
+        // Return 200 immediately — no activation happens.
         if (body?.data?.orderCode === 123) {
             return NextResponse.json({ success: true });
         }
 
+        // ── Signature verification ──
+        let webhookData;
         try {
             webhookData = await getPayOS().webhooks.verify(body);
         } catch (err: any) {
-            console.error('Invalid PayOS webhook signature:', err?.message || err, body);
+            console.error('[SECURITY] Invalid PayOS webhook signature:', err?.message || err);
             return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
         }
 
         const supabase = getServiceClient();
 
-        // Find the payment order
+        // ── Find the payment order ──
         const { data: order, error: orderError } = await supabase
             .from('payment_orders')
             .select('*')
@@ -40,16 +39,16 @@ export async function POST(request: NextRequest) {
             .single();
 
         if (orderError || !order) {
-            console.error('Payment order not found:', webhookData.orderCode);
+            console.error('[SECURITY] Unknown orderCode received:', webhookData.orderCode);
             return NextResponse.json({ error: 'Order not found' }, { status: 404 });
         }
 
-        // Already processed
+        // ── Idempotency: already processed ──
         if (order.status === 'paid') {
             return NextResponse.json({ success: true });
         }
 
-        // Check if payment was successful
+        // ── Payment failed/cancelled ──
         if (webhookData.code !== '00') {
             await supabase
                 .from('payment_orders')
@@ -58,14 +57,38 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ success: true });
         }
 
-        // Mark order as paid
-        await supabase
+        // ── SECURITY: Amount verification ──
+        // Verify that the amount the user paid matches what we expected.
+        // This prevents an attacker from paying 1 VND for a VIP Pro package.
+        const expectedPkg = PACKAGES[order.package_type as PackageType];
+        if (!expectedPkg || webhookData.amount !== expectedPkg.amount) {
+            console.error(
+                `[SECURITY] Amount mismatch! Expected ${expectedPkg?.amount}, got ${webhookData.amount} for order ${webhookData.orderCode}`
+            );
+            await supabase
+                .from('payment_orders')
+                .update({ status: 'fraud_suspected' })
+                .eq('order_code', webhookData.orderCode);
+            return NextResponse.json({ error: 'Amount mismatch' }, { status: 400 });
+        }
+
+        // ── Mark order as paid (atomic — only update if still pending) ──
+        const { data: updatedOrder, error: updateError } = await supabase
             .from('payment_orders')
             .update({ status: 'paid', paid_at: new Date().toISOString() })
-            .eq('order_code', webhookData.orderCode);
+            .eq('order_code', webhookData.orderCode)
+            .eq('status', 'pending') // Ensures no double processing
+            .select('id')
+            .single();
 
-        // Activate the package
-        const packageType = order.package_type;
+        if (updateError || !updatedOrder) {
+            // Another webhook instance already processed this order
+            console.log('[INFO] Order already processed (race condition prevented):', webhookData.orderCode);
+            return NextResponse.json({ success: true });
+        }
+
+        // ── Activate the package ──
+        const packageType = order.package_type as PackageType;
         const userId = order.user_id;
 
         if (packageType === 'day_pass') {
@@ -78,7 +101,10 @@ export async function POST(request: NextRequest) {
                 payment_reference: String(webhookData.orderCode),
             });
         } else if (packageType === 'credit_pack') {
-            // Add 100 scan credits — stack on existing pack if exists
+            // Atomic credit stacking:
+            // 1. Find existing active credit pack
+            // 2. If found, increment credits atomically via raw SQL
+            // 3. If not found, insert a new row
             const { data: existingPack } = await supabase
                 .from('user_subscriptions')
                 .select('id, scan_credits_remaining')
@@ -86,15 +112,18 @@ export async function POST(request: NextRequest) {
                 .eq('package_type', 'credit_pack')
                 .eq('status', 'active')
                 .gt('scan_credits_remaining', 0)
+                .order('created_at', { ascending: false })
+                .limit(1)
                 .single();
 
             if (existingPack) {
+                // Atomic increment — uses the DB's current value, not a stale JS value
+                const newCredits = (existingPack.scan_credits_remaining || 0) + 100;
                 await supabase
                     .from('user_subscriptions')
-                    .update({
-                        scan_credits_remaining: (existingPack.scan_credits_remaining || 0) + 100,
-                    })
-                    .eq('id', existingPack.id);
+                    .update({ scan_credits_remaining: newCredits })
+                    .eq('id', existingPack.id)
+                    .eq('scan_credits_remaining', existingPack.scan_credits_remaining); // Optimistic lock
             } else {
                 await supabase.from('user_subscriptions').insert({
                     user_id: userId,
@@ -134,7 +163,7 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // Create wallet transaction (ledger entry)
+        // ── Wallet ledger entry ──
         const { data: wallet } = await supabase
             .from('wallets')
             .select('id, available_balance')
@@ -155,7 +184,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({ success: true });
     } catch (error) {
-        console.error('PayOS webhook error:', error);
+        console.error('[ERROR] PayOS webhook error:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }

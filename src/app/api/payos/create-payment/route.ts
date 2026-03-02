@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getPayOS, PACKAGES, type PackageType } from '@/lib/payos';
+import { randomInt } from 'crypto';
 
 export async function POST(request: NextRequest) {
     try {
@@ -18,8 +19,26 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid package type' }, { status: 400 });
         }
 
+        // ── Rate limiting: max 5 payment orders per minute per user ──
+        const oneMinuteAgo = new Date(Date.now() - 60_000).toISOString();
+        const { count: recentOrders } = await supabase
+            .from('payment_orders')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', user.id)
+            .gte('created_at', oneMinuteAgo);
+
+        if ((recentOrders ?? 0) >= 5) {
+            return NextResponse.json(
+                { error: 'Too many payment requests. Please wait a moment.' },
+                { status: 429 }
+            );
+        }
+
         const pkg = PACKAGES[packageType];
-        const orderCode = Date.now();
+
+        // ── Cryptographic orderCode: 8-digit random integer (10M–99M range) ──
+        // This is far less predictable than Date.now() and avoids collisions.
+        const orderCode = randomInt(10_000_000, 99_999_999);
 
         // Create payment order in database
         const { error: insertError } = await supabase
@@ -71,7 +90,6 @@ export async function POST(request: NextRequest) {
         });
     } catch (error: any) {
         console.error('PayOS create payment error:', error);
-        // Include the actual error message dynamically to find out what's failing in production
         return NextResponse.json({
             error: 'Internal server error',
             details: error?.message || String(error)

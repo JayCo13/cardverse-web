@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getSupabaseClient } from '@/lib/supabase/client';
 import { useUser } from '@/lib/supabase';
 
@@ -22,6 +22,7 @@ interface UseSubscriptionReturn {
     scanType: 'free' | 'day_pass' | 'credit' | 'unlimited';
     portfolioLimit: number;
     isLoading: boolean;
+    justActivated: boolean; // True when a subscription was just activated via realtime
     refresh: () => Promise<void>;
 }
 
@@ -29,6 +30,8 @@ export function useSubscription(): UseSubscriptionReturn {
     const { user } = useUser();
     const [subscription, setSubscription] = useState<Subscription | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [justActivated, setJustActivated] = useState(false);
+    const prevSubRef = useRef<Subscription | null>(null);
 
     const fetchSubscription = useCallback(async () => {
         if (!user) {
@@ -43,7 +46,6 @@ export function useSubscription(): UseSubscriptionReturn {
             const now = new Date().toISOString();
 
             // Priority: VIP Pro > Day Pass > Credit Pack
-            // Check VIP Pro first
             const { data: vipPro } = await supabase
                 .from('user_subscriptions')
                 .select('*')
@@ -61,7 +63,6 @@ export function useSubscription(): UseSubscriptionReturn {
                 return;
             }
 
-            // Check Day Pass
             const { data: dayPass } = await supabase
                 .from('user_subscriptions')
                 .select('*')
@@ -79,7 +80,6 @@ export function useSubscription(): UseSubscriptionReturn {
                 return;
             }
 
-            // Check Credit Pack
             const { data: creditPack } = await supabase
                 .from('user_subscriptions')
                 .select('*')
@@ -106,9 +106,50 @@ export function useSubscription(): UseSubscriptionReturn {
         }
     }, [user]);
 
+    // ── Initial fetch ──
     useEffect(() => {
         fetchSubscription();
     }, [fetchSubscription]);
+
+    // ── Supabase Realtime subscription ──
+    // Listens for INSERT and UPDATE on user_subscriptions for this user.
+    // When the webhook activates a package, this fires instantly.
+    useEffect(() => {
+        if (!user) return;
+
+        const supabase = getSupabaseClient();
+        const channel = supabase
+            .channel(`user_subscriptions:${user.id}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: '*', // INSERT, UPDATE, DELETE
+                    schema: 'public',
+                    table: 'user_subscriptions',
+                    filter: `user_id=eq.${user.id}`,
+                },
+                (payload) => {
+                    console.log('[Realtime] Subscription change detected:', payload.eventType);
+                    // Re-fetch to get the highest priority subscription
+                    fetchSubscription().then(() => {
+                        // Signal that this was a realtime activation (not initial page load)
+                        setJustActivated(true);
+                        // Reset the flag after 5 seconds
+                        setTimeout(() => setJustActivated(false), 5000);
+                    });
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user, fetchSubscription]);
+
+    // Track previous subscription for detecting changes
+    useEffect(() => {
+        prevSubRef.current = subscription;
+    }, [subscription]);
 
     const isVipPro = subscription?.package_type === 'vip_pro';
     const isDayPass = subscription?.package_type === 'day_pass';
@@ -140,6 +181,7 @@ export function useSubscription(): UseSubscriptionReturn {
         scanType,
         portfolioLimit,
         isLoading,
+        justActivated,
         refresh: fetchSubscription,
     };
 }

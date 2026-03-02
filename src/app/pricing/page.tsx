@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
@@ -40,10 +40,32 @@ function PaymentStatusHandler() {
 
 export default function PricingPage() {
     const { user } = useUser();
-    const { subscription, isVipPro, isDayPass, hasCredits, creditsRemaining, isLoading: subLoading } = useSubscription();
+    const { subscription, isVipPro, isDayPass, hasCredits, creditsRemaining, isLoading: subLoading, justActivated } = useSubscription();
     const { t } = useLocalization();
     const { toast } = useToast();
     const [loadingPackage, setLoadingPackage] = useState<string | null>(null);
+    const hasShownCelebration = useRef(false);
+
+    // ── Realtime celebration: when subscription activates via webhook ──
+    useEffect(() => {
+        if (justActivated && subscription && !hasShownCelebration.current) {
+            hasShownCelebration.current = true;
+            setLoadingPackage(null); // Clear loading state
+            const packageName = subscription.package_type === 'vip_pro'
+                ? t('pricing_vippro')
+                : subscription.package_type === 'day_pass'
+                    ? t('pricing_daypass')
+                    : t('pricing_creditpack');
+            toast({
+                title: "🎉 " + (t('pricing_active') || 'Activated!'),
+                description: `${packageName} — ${t('pricing_subtitle')}`,
+                duration: 6000,
+            });
+        }
+        if (!justActivated) {
+            hasShownCelebration.current = false;
+        }
+    }, [justActivated, subscription, toast, t]);
 
     const handlePurchase = async (packageType: string) => {
         if (!user) {
@@ -102,7 +124,7 @@ export default function PricingPage() {
 
                     {/* Active subscription badge */}
                     {!subLoading && subscription && (
-                        <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-orange-500/20 to-amber-500/20 border border-orange-500/30">
+                        <div className={`mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-orange-500/20 to-amber-500/20 border border-orange-500/30 transition-all duration-500 ${justActivated ? 'animate-pulse shadow-lg shadow-orange-500/40 scale-105' : ''}`}>
                             <Crown className="w-5 h-5 text-orange-400" weight="fill" />
                             <span className="text-orange-300 font-medium text-sm">
                                 {t('pricing_active')}: {subscription.package_type === 'vip_pro' ? t('pricing_vippro') : subscription.package_type === 'day_pass' ? t('pricing_daypass') : `${t('pricing_creditpack')} (${creditsRemaining})`}
