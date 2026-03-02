@@ -5,7 +5,12 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const orderCode = searchParams.get('orderCode');
 
-    const baseUrl = request.nextUrl.origin;
+    // IMPORTANT: Use NEXT_PUBLIC_APP_URL, NOT request.nextUrl.origin.
+    // On Netlify, request.nextUrl.origin returns the deploy preview URL
+    // (e.g. 69a5...--sprightly-beignet-43a900.netlify.app) instead of
+    // the custom domain (cardversehub.com), which breaks auth cookies
+    // and shows the wrong domain to users.
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
 
     if (status === 'success') {
         return NextResponse.redirect(`${baseUrl}/pricing?payment=success&orderCode=${orderCode}`);
