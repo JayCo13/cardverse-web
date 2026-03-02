@@ -57,7 +57,10 @@ export async function POST(request: NextRequest) {
         }
 
         // Create PayOS payment link using v2 SDK
-        const origin = request.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        // IMPORTANT: Always use NEXT_PUBLIC_APP_URL for return/cancel URLs.
+        // Using request.headers.get('origin') picks up Netlify deploy preview URLs
+        // which breaks auth cookies and shows the wrong domain after payment.
+        const origin = process.env.NEXT_PUBLIC_APP_URL || request.headers.get('origin') || 'http://localhost:3000';
 
         const paymentLink = await getPayOS().paymentRequests.create({
             orderCode,
