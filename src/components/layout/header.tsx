@@ -3,7 +3,7 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { CircleUser, Menu, Search, Headphones, Camera, Crown } from "lucide-react"
+import { CircleUser, Menu, Search, Headphones, Camera, Crown, Zap, Diamond } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { NotificationBell } from "@/components/notification-bell"
 import { LanguageSelector } from "@/components/language-selector"
@@ -25,6 +25,7 @@ import { useAuth } from "@/lib/supabase"
 import { useAuthModal } from "@/components/auth-modal"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
+import { useSubscription } from "@/hooks/useSubscription"
 
 export function Header() {
   const { t } = useLocalization();
@@ -32,6 +33,7 @@ export function Header() {
   const { setOpen } = useAuthModal();
   const { toast } = useToast();
   const router = useRouter();
+  const { isVipPro, isDayPass, hasCredits, subscription } = useSubscription();
 
   const handleComingSoon = () => {
     toast({
@@ -61,8 +63,33 @@ export function Header() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="gap-2 px-2">
-              <div className="h-7 w-7 rounded-full bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-500 font-bold text-xs">
-                {initial}
+              <div className="relative">
+                <div className={`h-7 w-7 rounded-full flex items-center justify-center font-bold text-xs ${isVipPro
+                    ? 'bg-purple-500/20 border border-purple-500/40 text-purple-400'
+                    : isDayPass
+                      ? 'bg-cyan-500/15 border border-cyan-500/30 text-cyan-400'
+                      : hasCredits
+                        ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
+                        : 'bg-orange-500/10 border border-orange-500/20 text-orange-500'
+                  }`}>
+                  {initial}
+                </div>
+                {/* Subscription badge overlay */}
+                {isVipPro && (
+                  <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-purple-600 border border-[#0a0a14] shadow-[0_0_6px_rgba(168,85,247,0.6)]">
+                    <Crown className="h-2 w-2 text-white" />
+                  </span>
+                )}
+                {isDayPass && (
+                  <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-cyan-500 border border-[#0a0a14] shadow-[0_0_6px_rgba(34,211,238,0.6)]">
+                    <Zap className="h-2 w-2 text-white" />
+                  </span>
+                )}
+                {hasCredits && !isDayPass && !isVipPro && (
+                  <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500 border border-[#0a0a14] shadow-[0_0_6px_rgba(52,211,153,0.6)]">
+                    <Diamond className="h-2 w-2 text-white" />
+                  </span>
+                )}
               </div>
               <span className="hidden md:inline">{user.email || "Account"}</span>
             </Button>

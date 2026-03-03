@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { TrendUp, Pulse, CurrencyDollar, SpinnerGap, ArrowsClockwise, MagnifyingGlass, Camera, Plus, Check, SoccerBall, Skull, UploadSimple, Crop as CropIcon, X, Medal, Lightning } from '@phosphor-icons/react';
+import { TrendUp, Pulse, CurrencyDollar, SpinnerGap, ArrowsClockwise, MagnifyingGlass, Camera, Plus, Check, SoccerBall, Skull, UploadSimple, Crop as CropIcon, X, Medal, Lightning, Timer, Crown, CreditCard } from '@phosphor-icons/react';
 import ReactCrop, { type Crop, centerCrop, makeAspectCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { Card } from '@/components/ui/card';
@@ -187,7 +187,7 @@ export function MarketSpotlight() {
     const [cropImageSrc, setCropImageSrc] = useState<string>('');
 
     // Scan limit tracking
-    const { canScan, scansUsed, scansLimit, scansRemaining, resetTime, incrementUsage, isLoading: scanLimitLoading } = useScanLimit();
+    const { canScan, scansUsed, scansLimit, scansRemaining, resetTime, incrementUsage, isLoading: scanLimitLoading, scanType, subscription: scanSub } = useScanLimit();
     const [showLimitModal, setShowLimitModal] = useState(false);
     const [crop, setCrop] = useState<Crop>();
     const cropImgRef = useRef<HTMLImageElement>(null);
@@ -1509,18 +1509,68 @@ export function MarketSpotlight() {
                                 onChange={handleGallerySelect}
                                 className="hidden"
                             />
-                            {/* Modern Responsive Remaining Scans Badge */}
-                            {user && (
-                                <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-gradient-to-r from-orange-500/20 to-amber-500/10 border border-orange-500/30 text-orange-50 text-[11px] sm:text-xs font-semibold mr-1 sm:mr-2 backdrop-blur-md shadow-[inset_0_1px_4px_rgba(255,255,255,0.1)] transition-all">
-                                    <Lightning className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-400 drop-shadow-[0_0_6px_rgba(249,115,22,0.8)]" weight="fill" />
-                                    <span className="hidden sm:inline-block tracking-wide">
-                                        {t('scan_remaining', { remaining: scansRemaining.toString() })}
-                                    </span>
-                                    <span className="sm:hidden tracking-wide whitespace-nowrap">
-                                        {t('scan_remaining_short', { remaining: scansRemaining.toString() })}
-                                    </span>
-                                </div>
-                            )}
+                            {/* Smart Scan Status Badge — adapts to subscription type */}
+                            {user && (() => {
+                                // Calculate hours left for Day Pass
+                                const hoursLeft = scanSub?.expires_at
+                                    ? Math.max(0, Math.ceil((new Date(scanSub.expires_at).getTime() - Date.now()) / (1000 * 60 * 60)))
+                                    : 0;
+
+                                if (scanType === 'day_pass') {
+                                    return (
+                                        <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-gradient-to-r from-cyan-500/20 to-blue-500/10 border border-cyan-500/30 text-cyan-50 text-[11px] sm:text-xs font-semibold mr-1 sm:mr-2 backdrop-blur-md shadow-[inset_0_1px_4px_rgba(255,255,255,0.1)] transition-all">
+                                            <Timer className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400 drop-shadow-[0_0_6px_rgba(34,211,238,0.8)]" weight="fill" />
+                                            <span className="hidden sm:inline-block tracking-wide">
+                                                {t('scan_daypass_nolimit', { hours: hoursLeft.toString() })}
+                                            </span>
+                                            <span className="sm:hidden tracking-wide whitespace-nowrap">
+                                                {t('scan_daypass_nolimit_short', { hours: hoursLeft.toString() })}
+                                            </span>
+                                        </div>
+                                    );
+                                }
+
+                                if (scanType === 'unlimited') {
+                                    return (
+                                        <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-gradient-to-r from-purple-500/20 to-violet-500/10 border border-purple-500/30 text-purple-50 text-[11px] sm:text-xs font-semibold mr-1 sm:mr-2 backdrop-blur-md shadow-[inset_0_1px_4px_rgba(255,255,255,0.1)] transition-all">
+                                            <Crown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-400 drop-shadow-[0_0_6px_rgba(168,85,247,0.8)]" weight="fill" />
+                                            <span className="hidden sm:inline-block tracking-wide">
+                                                {t('scan_vip_unlimited')}
+                                            </span>
+                                            <span className="sm:hidden tracking-wide whitespace-nowrap">
+                                                {t('scan_vip_unlimited_short')}
+                                            </span>
+                                        </div>
+                                    );
+                                }
+
+                                if (scanType === 'credit') {
+                                    return (
+                                        <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-gradient-to-r from-emerald-500/20 to-green-500/10 border border-emerald-500/30 text-emerald-50 text-[11px] sm:text-xs font-semibold mr-1 sm:mr-2 backdrop-blur-md shadow-[inset_0_1px_4px_rgba(255,255,255,0.1)] transition-all">
+                                            <CreditCard className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400 drop-shadow-[0_0_6px_rgba(52,211,153,0.8)]" weight="fill" />
+                                            <span className="hidden sm:inline-block tracking-wide">
+                                                {t('scan_credits_left', { remaining: scansRemaining.toString() })}
+                                            </span>
+                                            <span className="sm:hidden tracking-wide whitespace-nowrap">
+                                                {t('scan_credits_left_short', { remaining: scansRemaining.toString() })}
+                                            </span>
+                                        </div>
+                                    );
+                                }
+
+                                // Free user — default orange badge
+                                return (
+                                    <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-gradient-to-r from-orange-500/20 to-amber-500/10 border border-orange-500/30 text-orange-50 text-[11px] sm:text-xs font-semibold mr-1 sm:mr-2 backdrop-blur-md shadow-[inset_0_1px_4px_rgba(255,255,255,0.1)] transition-all">
+                                        <Lightning className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-400 drop-shadow-[0_0_6px_rgba(249,115,22,0.8)]" weight="fill" />
+                                        <span className="hidden sm:inline-block tracking-wide">
+                                            {t('scan_remaining', { remaining: scansRemaining.toString() })}
+                                        </span>
+                                        <span className="sm:hidden tracking-wide whitespace-nowrap">
+                                            {t('scan_remaining_short', { remaining: scansRemaining.toString() })}
+                                        </span>
+                                    </div>
+                                );
+                            })()}
                             {/* Upload/Camera button - opens image picker with crop */}
                             <Button
                                 onClick={(e) => {

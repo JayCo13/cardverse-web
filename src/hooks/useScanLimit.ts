@@ -26,6 +26,7 @@ interface UseScanLimitReturn {
     isLoading: boolean;
     scanType: 'free' | 'day_pass' | 'credit' | 'unlimited';
     creditsRemaining: number;
+    subscription: { expires_at: string | null; package_type: string } | null;
 }
 
 function getNextMidnight(): Date {
@@ -192,6 +193,7 @@ export function useScanLimit(): UseScanLimitReturn {
         isLoading,
         scanType,
         creditsRemaining,
+        subscription,
     };
 }
 
