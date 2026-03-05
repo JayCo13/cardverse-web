@@ -15,19 +15,43 @@ export function SupportSection() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (!email.trim()) return;
+
         setIsLoading(true);
 
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        try {
+            const response = await fetch('/api/newsletter/subscribe', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ email: email.trim() }),
+            });
 
-        toast({
-            title: "Success! / Thành công!",
-            description: t('support_success_message'),
-            className: "bg-orange-950 border-orange-800 text-white",
-        });
+            const data = await response.json();
 
-        setEmail("");
-        setIsLoading(false);
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to subscribe');
+            }
+
+            toast({
+                title: "Success! / Thành công!",
+                description: t('support_success_message'),
+                className: "bg-orange-950 border-orange-800 text-white",
+            });
+
+            setEmail("");
+        } catch (error) {
+            console.error('Subscribe error:', error);
+            toast({
+                variant: "destructive",
+                title: "Error / Lỗi",
+                description: "Vui lòng thử lại sau. / Please try again later.",
+            });
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
