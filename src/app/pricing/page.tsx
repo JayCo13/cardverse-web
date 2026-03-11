@@ -14,26 +14,27 @@ function PaymentStatusHandler() {
     const searchParams = useSearchParams();
     const { toast } = useToast();
     const { refresh } = useSubscription();
+    const { t } = useLocalization();
 
     useEffect(() => {
         const paymentStatus = searchParams.get("payment");
         if (paymentStatus === "success") {
             toast({
-                title: "🎉 Payment Successful!",
-                description: "Your package has been activated. Enjoy your new perks!",
+                title: t('payment_success_title') || "🎉 Payment Successful!",
+                description: t('payment_success_desc') || "Your package has been activated. Enjoy your new perks!",
                 duration: 5000,
             });
             refresh();
             window.history.replaceState({}, "", "/pricing");
         } else if (paymentStatus === "cancelled") {
             toast({
-                title: "Payment Cancelled",
-                description: "Your payment was cancelled. You can try again anytime.",
+                title: t('payment_cancelled_title') || "Payment Cancelled",
+                description: t('payment_cancelled_desc') || "Your payment was cancelled. You can try again anytime.",
                 duration: 4000,
             });
             window.history.replaceState({}, "", "/pricing");
         }
-    }, [searchParams, toast, refresh]);
+    }, [searchParams, toast, refresh, t]);
 
     return null;
 }
@@ -70,8 +71,8 @@ export default function PricingPage() {
     const handlePurchase = async (packageType: string) => {
         if (!user) {
             toast({
-                title: "Login Required",
-                description: "Please sign in to purchase a package.",
+                title: t('login_required_title') || "Login Required",
+                description: t('payment_login_desc') || "Please sign in to purchase a package.",
                 duration: 3000,
             });
             return;
@@ -96,8 +97,8 @@ export default function PricingPage() {
         } catch (error) {
             console.error("Purchase error:", error);
             toast({
-                title: "Error",
-                description: "Failed to initiate payment. Please try again.",
+                title: t('payment_error_title') || "Error",
+                description: t('payment_error_desc') || "Failed to initiate payment. Please try again.",
                 duration: 4000,
             });
         } finally {

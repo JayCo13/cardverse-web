@@ -63,8 +63,8 @@ export default function CreatePostPage() {
     try {
       // Forum posts table not yet created - placeholder for future implementation
       toast({
-        title: 'Feature coming soon',
-        description: 'Forum posts will be available after the forum table is created.',
+        title: t('coming_soon_title') || 'Feature coming soon',
+        description: t('forum_coming_soon_desc') || 'Forum posts will be available after the forum table is created.',
       });
       router.push('/forum');
 

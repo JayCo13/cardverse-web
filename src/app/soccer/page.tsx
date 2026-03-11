@@ -20,6 +20,7 @@ import { useCurrency } from "@/contexts/currency-context";
 import { useScanLimit } from "@/hooks/useScanLimit";
 import { ScanLimitModal } from "@/components/scan-limit-modal";
 import { useUser } from "@/lib/supabase/auth-provider";
+import { useToast } from "@/hooks/use-toast";
 
 interface EbayItem {
     itemId: string;
@@ -35,6 +36,7 @@ export default function SoccerPage() {
     const { t } = useLocalization();
     const { currency, formatPrice } = useCurrency();
     const { user } = useUser();
+    const { toast } = useToast();
 
     // Scan limit tracking
     const { canScan, scansUsed, scansLimit, scansRemaining, resetTime, incrementUsage, isLoading: scanLimitLoading } = useScanLimit();
@@ -233,21 +235,45 @@ export default function SoccerPage() {
             // Step 2: No local results - fallback to eBay
             setSearchMode("ebay");
 
-            const response = await fetch(
-                `/api/ebay-scrape?q=${encodeURIComponent(effectiveTerm + " soccer card")}&limit=30`,
-                { signal: controller.signal }
-            );
-            const data = await response.json();
+            let validItems: EbayItem[] = [];
+            let searchWords = effectiveTerm.split(" ").filter(w => w.trim() !== "");
 
-            if (data.items) {
-                const validItems = data.items.filter((item: EbayItem) => {
-                    const price = parseFloat(item.price?.value || "0");
-                    return price > 0;
-                });
-                setEbayResults(validItems);
-                setCards([]);
+            while (searchWords.length > 0) {
+                const currentQuery = searchWords.join(" ");
+                console.log("Fetching from eBay with matching fewer words logic:", currentQuery);
 
-                // Cache the eBay results
+                const response = await fetch(
+                    `/api/ebay-scrape?q=${encodeURIComponent(currentQuery + " soccer")}&limit=30`,
+                    { signal: controller.signal }
+                );
+
+                if (!response.ok) break;
+
+                const data = await response.json();
+
+                if (data.items && data.items.length > 0) {
+                    validItems = data.items.filter((item: EbayItem) => {
+                        const price = parseFloat(item.price?.value || "0");
+                        return price > 0;
+                    });
+
+                    if (validItems.length > 0) {
+                        break; // Found results, stop searching
+                    }
+                }
+
+                // If no results, drop the last word to widen the search (results matching fewer words)
+                searchWords.pop();
+
+                // Add a small delay to avoid hitting rate limits instantly on multiple retries
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+
+            setEbayResults(validItems);
+            setCards([]);
+
+            // Cache the eBay results if any were found
+            if (validItems.length > 0) {
                 try {
                     sessionStorage.setItem(cacheKey, JSON.stringify({
                         results: validItems,
@@ -304,14 +330,20 @@ export default function SoccerPage() {
             if (error) throw error;
             if (data?.error) throw new Error(data.error);
 
-            // Construct search query
+            // Construct precise search query matching the required format: "Francesco Totti auto patch /10 Topps Dynasty 2025"
+            // We use "/10" instead of "03/10" because eBay listings rarely include the exact stamp number.
             const queryParts = [];
-            if (data.cardName && data.cardName !== "Unknown") queryParts.push(data.cardName);
-            if (data.year) queryParts.push(data.year);
-            if (data.brand) queryParts.push(data.brand);
-            if (data.cardSet) queryParts.push(data.cardSet);
-            if (data.variant && data.variant !== "Base") queryParts.push(data.variant);
 
+            if (data.player_name && data.player_name !== "Unknown") queryParts.push(data.player_name);
+            if (data.autograph) queryParts.push(data.autograph);
+            if (data.patch) queryParts.push(data.patch);
+            // Prefix the extracted denominator with a slash (e.g., "/10") which is the standard eBay meta-tag.
+            if (data.numbering) queryParts.push(`/${data.numbering}`);
+            if (data.brand) queryParts.push(data.brand);
+            if (data.set_name && data.set_name !== data.brand) queryParts.push(data.set_name);
+            if (data.year) queryParts.push(data.year);
+
+            // The resulting query is exactly what eBay needs
             const query = queryParts.join(" ");
             console.log("AI Identified:", data);
             console.log("Search Query:", query);
@@ -320,7 +352,11 @@ export default function SoccerPage() {
             handleSmartSearch(query);
         } catch (error) {
             console.error("Identification failed:", error);
-            alert("Could not identify card. Please try again.");
+            toast({
+                title: t('scan_failed_title') || "Scan Failed",
+                description: t('scan_failed_desc') || "Could not identify card. Please try again.",
+                variant: "destructive",
+            });
         } finally {
             setIsAnalyzing(false);
         }
@@ -622,8 +658,7 @@ export default function SoccerPage() {
                     ) : (
                         <div className="flex flex-col items-center justify-center py-20 text-center">
                             <SoccerBall className="w-16 h-16 text-green-500/30 mb-4" weight="fill" />
-                            <p className="text-white/50">{t('no_cards_found')}</p>
-                            <p className="text-sm text-white/30 mt-1">{t('try_adjusting_filters_short')}</p>
+                            <p className="text-white/50">currently no sell price for this card</p>
                         </div>
                     )}
                 </div>

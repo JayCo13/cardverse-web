@@ -167,6 +167,18 @@ export function useScanLimit(): UseScanLimitReturn {
                 } else {
                     setScansUsed(newCount);
                 }
+
+                // Log the individual scan history event
+                const { error: historyError } = await supabase
+                    .from('user_scan_history')
+                    .insert({
+                        user_id: user.id,
+                        scan_type: scanType
+                    } as never);
+
+                if (historyError) {
+                    console.error('Error logging scan history:', historyError);
+                }
             } catch (err) {
                 console.error('Error incrementing scan usage:', err);
             }

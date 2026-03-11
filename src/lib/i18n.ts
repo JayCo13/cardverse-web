@@ -450,6 +450,18 @@ const en = {
   coll_delete_desc: 'Are you sure you want to remove this card from your collection? This action cannot be undone.',
   coll_cancel: 'Cancel',
   coll_confirm_delete: 'Delete',
+  payment_success_title: '🎉 Payment Successful!',
+  payment_success_desc: 'Your package has been activated. Enjoy your new perks!',
+  payment_cancelled_title: 'Payment Cancelled',
+  payment_cancelled_desc: 'Your payment was cancelled. You can try again anytime.',
+  payment_error_title: 'Error',
+  payment_error_desc: 'Failed to initiate payment. Please try again.',
+  login_required_title: 'Login Required',
+  payment_login_desc: 'Please sign in to purchase a package.',
+  scan_failed_title: 'Scan Failed',
+  scan_failed_desc: 'Could not identify card. Please try again.',
+  coming_soon_title: 'Feature coming soon',
+  forum_coming_soon_desc: 'Forum posts will be available after the forum table is created.',
 };
 const vi = {
   language_en: 'Tiếng Anh',
@@ -901,6 +913,18 @@ const vi = {
   coll_delete_desc: 'Bạn có chắc chắn muốn xóa thẻ này khỏi bộ sưu tập không? Hành động này không thể hoàn tác.',
   coll_cancel: 'Hủy',
   coll_confirm_delete: 'Xóa',
+  payment_success_title: '🎉 Thanh toán thành công!',
+  payment_success_desc: 'Gói của bạn đã được kích hoạt. Hãy tận hưởng các đặc quyền mới!',
+  payment_cancelled_title: 'Đã hủy thanh toán',
+  payment_cancelled_desc: 'Thanh toán của bạn đã bị hủy. Bạn có thể thử lại bất cứ lúc nào.',
+  payment_error_title: 'Lỗi',
+  payment_error_desc: 'Không thể khởi tạo thanh toán. Vui lòng thử lại.',
+  login_required_title: 'Yêu cầu đăng nhập',
+  payment_login_desc: 'Vui lòng đăng nhập để mua các gói dịch vụ.',
+  scan_failed_title: 'Không thể nhận diện',
+  scan_failed_desc: 'Không thể nhận diện thẻ. Vui lòng xem lại ảnh và thử lại.',
+  coming_soon_title: 'Tính năng sắp ra mắt',
+  forum_coming_soon_desc: 'Tính năng đăng bài rèn luân sẽ sớm ra mắt sau khi hệ thống diễn đàn được hoàn thiện.',
 };
 
 // Japanese translations
@@ -1346,6 +1370,18 @@ const ja = {
   coll_delete_desc: 'このカードをコレクションから削除してもよろしいですか？この操作は取り消せません。',
   coll_cancel: 'キャンセル',
   coll_confirm_delete: '削除',
+  payment_success_title: '🎉 支払い完了！',
+  payment_success_desc: 'パッケージが有効化されました。新しい特典をお楽しみください！',
+  payment_cancelled_title: '支払いがキャンセルされました',
+  payment_cancelled_desc: '支払いはキャンセルされました。いつでも再度お試しいただけます。',
+  payment_error_title: 'エラー',
+  payment_error_desc: '支払いの開始に失敗しました。もう一度お試しください。',
+  login_required_title: 'ログインが必要です',
+  payment_login_desc: 'パッケージを購入するにはログインしてください。',
+  scan_failed_title: 'スキャンに失敗しました',
+  scan_failed_desc: 'カードを認識できませんでした。もう一度お試しください。',
+  coming_soon_title: '近日公開予定',
+  forum_coming_soon_desc: 'フォーラム投稿機能はシステム完成後にご利用いただけます。',
 };
 
 export const translations = {
