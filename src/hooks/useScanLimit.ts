@@ -135,17 +135,23 @@ export function useScanLimit(): UseScanLimitReturn {
             try {
                 const supabase = getSupabaseClient();
 
-                // For credit-based users, also deduct a credit
+                // For credit-based users, also deduct a credit via server-side API
                 if (scanType === 'credit' && subscription) {
-                    const { error: creditError } = await supabase
-                        .from('user_subscriptions')
-                        .update({
-                            scan_credits_remaining: Math.max(0, (subscription.scan_credits_remaining ?? 1) - 1),
-                        } as never)
-                        .eq('id', subscription.id);
-
-                    if (creditError) {
-                        console.error('Error decrementing credit:', creditError);
+                    try {
+                        const res = await fetch('/api/scan/decrement-credit', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                subscriptionId: subscription.id,
+                                userId: user.id,
+                            }),
+                        });
+                        if (!res.ok) {
+                            const errData = await res.json();
+                            console.error('Error decrementing credit:', errData.error);
+                        }
+                    } catch (creditErr) {
+                        console.error('Error decrementing credit:', creditErr);
                     }
                     // Refresh subscription to get updated credits
                     refreshSub();
