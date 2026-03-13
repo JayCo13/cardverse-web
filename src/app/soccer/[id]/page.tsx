@@ -10,7 +10,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, ArrowSquareOut, Plus, Check, Trophy, Star, SpinnerGap, Calendar, Medal, Tag } from "@phosphor-icons/react";
+import {
+    ArrowLeft, Plus, Check,
+    Package, Tag, Star, Loader2, Trophy, Medal, ExternalLink
+} from "lucide-react";
 import Image from "next/image";
 import { useCurrency } from "@/contexts/currency-context";
 import { useLocalization } from "@/context/localization-context";
@@ -116,40 +119,36 @@ export default function SoccerCardDetailsPage() {
 
     useEffect(() => {
         const fetchCard = async () => {
+            let loadedCard: SoccerCardData | null = null;
             const storedCard = sessionStorage.getItem('viewingSoccerCard');
             if (storedCard) {
                 try {
-                    const parsed = JSON.parse(storedCard);
-                    setCard(parsed);
-                    setIsLoading(false);
-                    return;
+                    loadedCard = JSON.parse(storedCard);
                 } catch (e) {
                     console.error('Error parsing stored soccer card:', e);
                 }
             }
 
-            if (!params.id) {
-                setIsLoading(false);
-                return;
-            }
+            if (!loadedCard && params.id) {
+                try {
+                    const { data, error } = await supabase
+                        .from('crawled_cards')
+                        .select('id, name, image_url, price, category, year, grader, grade, set_name, player_name, ebay_id')
+                        .eq('id', params.id)
+                        .single();
 
-            try {
-                const { data, error } = await supabase
-                    .from('crawled_cards')
-                    .select('id, name, image_url, price, category, year, grader, grade, set_name, player_name, ebay_id')
-                    .eq('id', params.id)
-                    .single();
-
-                if (error) {
-                    console.error('Error fetching soccer card:', error);
-                } else if (data) {
-                    setCard(data);
+                    if (!error && data) {
+                        loadedCard = data;
+                    }
+                } catch (error) {
+                    // silently fail
                 }
-            } catch (error) {
-                console.error('Error fetching soccer card:', error);
-            } finally {
-                setIsLoading(false);
             }
+
+            if (loadedCard) {
+                setCard(loadedCard);
+            }
+            setIsLoading(false);
         };
 
         fetchCard();
@@ -182,7 +181,7 @@ export default function SoccerCardDetailsPage() {
             <>
                 <Header />
                 <div className="container mx-auto px-4 py-16 text-center">
-                    <Trophy className="h-16 w-16 mx-auto text-muted-foreground mb-4" weight="duotone" />
+                    <Trophy className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
                     <h1 className="text-2xl font-bold mb-2">{t('card_not_found')}</h1>
                     <p className="text-muted-foreground mb-6">{t('card_load_error')}</p>
                     <Button onClick={() => router.push('/')}>{t('go_home')}</Button>
@@ -195,137 +194,128 @@ export default function SoccerCardDetailsPage() {
     return (
         <>
             <Header />
-            <main className="container mx-auto px-4 py-4 sm:py-6">
+            <main className="container mx-auto px-4 py-8">
                 {/* Back button */}
-                <Button variant="ghost" size="sm" className="mb-4 gap-1.5 -ml-2" onClick={() => router.back()}>
-                    <ArrowLeft className="h-4 w-4" weight="bold" /> {t('back_button')}
+                <Button variant="ghost" className="mb-6 gap-2" onClick={() => router.back()}>
+                    <ArrowLeft className="h-4 w-4" /> {t('back_button')}
                 </Button>
 
-                {/* Main content - horizontal on desktop, stacked on mobile */}
-                <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
-
-                    {/* Left: Image - smaller and responsive */}
-                    <div className="w-full lg:w-80 xl:w-96 shrink-0">
-                        <div className="relative aspect-[3/4] max-w-xs mx-auto lg:max-w-none rounded-2xl overflow-hidden bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-500/20">
-                            {card.image_url ? (
-                                <Image src={card.image_url} alt={card.name} fill className="object-contain p-3" priority />
-                            ) : (
-                                <div className="w-full h-full flex items-center justify-center">
-                                    <Trophy className="h-16 w-16 text-green-500/30" weight="duotone" />
-                                </div>
-                            )}
-
-                            {/* Graded badge */}
-                            {card.grader && card.grade && (
-                                <div className={`absolute top-3 right-3 px-2 py-1 rounded-lg bg-gradient-to-r ${getGraderColor(card.grader)} text-white font-bold shadow-lg text-sm`}>
-                                    <span className="text-[10px] opacity-80">{card.grader}</span>
-                                    <span className="ml-1">{card.grade}</span>
-                                </div>
-                            )}
-
-                            {/* Year badge */}
-                            {card.year && (
-                                <Badge className="absolute top-3 left-3 bg-black/70 text-white backdrop-blur-md border-white/20 text-xs">
-                                    {card.year}
-                                </Badge>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Right: Details */}
-                    <div className="flex-1 space-y-4">
-                        {/* Title & Badges */}
-                        <div>
-                            <div className="flex flex-wrap gap-1.5 mb-2">
-                                <Badge className="bg-green-500/10 text-green-400 border-green-500/30 text-xs">
-                                    <Trophy className="h-3 w-3 mr-1" weight="fill" /> {t('nav_soccer')}
-                                </Badge>
-                                {card.player_name && (
-                                    <Badge variant="outline" className="border-yellow-500/30 text-yellow-400 text-xs">
-                                        <Star className="h-3 w-3 mr-1" weight="fill" /> {card.player_name}
-                                    </Badge>
+                <div className="grid lg:grid-cols-2 gap-8">
+                    {/* Left: Sticky Image Container */}
+                    <div className="relative">
+                        <div className="sticky top-24 max-w-md mx-auto">
+                            <div className="relative aspect-[3/4] rounded-2xl overflow-hidden bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-500/20">
+                                {card.image_url ? (
+                                    <Image src={card.image_url} alt={card.name} fill className="object-contain p-4" priority />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center">
+                                        <Trophy className="h-24 w-24 text-green-500/30" />
+                                    </div>
                                 )}
-                                {card.grader && card.grade && (
-                                    <Badge variant="outline" className={`text-xs ${getGraderBg(card.grader)}`}>
-                                        <Medal className="h-3 w-3 mr-1" weight="fill" /> {card.grader} {card.grade}
+                                
+                                {card.year && (
+                                    <Badge className="absolute top-4 left-4 bg-black/70 text-white backdrop-blur-md border-white/20">
+                                        {card.year}
                                     </Badge>
                                 )}
                             </div>
-                            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold leading-tight">{card.name}</h1>
+                        </div>
+                    </div>
+
+                    {/* Right: Details & Charts */}
+                    <div className="space-y-6">
+                        {/* Title and Badges */}
+                        <div>
+                            <div className="flex flex-wrap items-center gap-2 mb-3">
+                                <Badge className="bg-green-500/10 text-green-400 border-green-500/30">
+                                    <Trophy className="h-3 w-3 mr-1" /> {t('nav_soccer')}
+                                </Badge>
+                                {card.player_name && (
+                                    <Badge variant="outline" className="border-yellow-500/30 text-yellow-400">
+                                        <Star className="h-3 w-3 mr-1" /> {card.player_name}
+                                    </Badge>
+                                )}
+                                {card.grader && card.grade && (
+                                    <Badge variant="outline" className={`${getGraderBg(card.grader)}`}>
+                                        <Medal className="h-3 w-3 mr-1" /> {card.grader} {card.grade}
+                                    </Badge>
+                                )}
+                            </div>
+                            <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold leading-tight">{card.name}</h1>
                             {card.set_name && (
-                                <p className="text-sm text-muted-foreground mt-1">{card.set_name}</p>
+                                <p className="text-base text-muted-foreground mt-2">{card.set_name}</p>
                             )}
                         </div>
+                        {/* Price Details Grid & Actions */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Card className="bg-gradient-to-br from-green-500/10 to-green-500/5 border-green-500/20">
+                                <CardContent className="p-6">
+                                    <div className="flex flex-col justify-center h-full">
+                                        <p className="text-sm text-muted-foreground mb-1 font-medium tracking-wide uppercase">{t('sold_price')}</p>
+                                        <p className="text-4xl font-bold text-green-400 break-words">{formatPrice(displayPrice)}</p>
+                                    </div>
+                                </CardContent>
+                            </Card>
 
-                        {/* Price - prominent */}
-                        <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/5 border border-green-500/20 rounded-xl p-4">
-                            <p className="text-xs text-muted-foreground mb-1">{t('sold_price')}</p>
-                            <p className="text-3xl sm:text-4xl font-bold text-green-400">{formatPrice(displayPrice)}</p>
+                            <div className="flex flex-col gap-3 justify-center">
+                                <Button
+                                    onClick={addToCollection}
+                                    disabled={isAddingToCollection}
+                                    className={`w-full gap-2 h-14 text-lg transition-all ${addedToCollection ? 'bg-green-600 hover:bg-green-700' : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500'}`}
+                                >
+                                    {isAddingToCollection ? (
+                                        <><Loader2 className="h-5 w-5 animate-spin" /> {t('adding_to_collection')}</>
+                                    ) : addedToCollection ? (
+                                        <><Check className="h-5 w-5" /> {t('added_to_collection')}</>
+                                    ) : (
+                                        <><Plus className="h-5 w-5" /> {t('add_to_collection')}</>
+                                    )}
+                                </Button>
+                                
+                                <Button
+                                    onClick={handleViewOnEbay}
+                                    variant="outline"
+                                    className="w-full gap-2 h-12 border-green-500/40 text-green-400 hover:bg-green-500/10"
+                                >
+                                    {t('view_on_ebay')} <ExternalLink className="h-4 w-4" />
+                                </Button>
+                            </div>
                         </div>
 
-                        {/* Action buttons - full width on mobile */}
-                        <div className="flex flex-col sm:flex-row gap-2">
-                            <Button
-                                onClick={addToCollection}
-                                disabled={isAddingToCollection}
-                                className={`flex-1 gap-2 h-11 ${addedToCollection ? 'bg-green-600 hover:bg-green-700' : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500'}`}
-                            >
-                                {isAddingToCollection ? (
-                                    <><SpinnerGap className="h-4 w-4 animate-spin" weight="bold" /> {t('adding_to_collection')}</>
-                                ) : addedToCollection ? (
-                                    <><Check className="h-4 w-4" weight="bold" /> {t('added_to_collection')}</>
-                                ) : (
-                                    <><Plus className="h-4 w-4" weight="bold" /> {t('add_to_collection')}</>
-                                )}
-                            </Button>
-                            <Button
-                                onClick={handleViewOnEbay}
-                                variant="outline"
-                                className="flex-1 sm:flex-none gap-2 h-11 border-green-500/40 text-green-400 hover:bg-green-500/10"
-                            >
-                                {t('view_on_ebay')} <ArrowSquareOut className="h-4 w-4" weight="bold" />
-                            </Button>
-                        </div>
-
-                        {/* Card Details Grid */}
+                        {/* Card Metadata Grid */}
                         <Card className="border-white/10">
                             <CardHeader className="pb-3">
                                 <CardTitle className="text-base flex items-center gap-2">
-                                    <Medal className="h-4 w-4 text-green-400" weight="duotone" /> {t('card_details_title')}
+                                    <Medal className="h-5 w-5 text-green-400" /> {t('card_details_title')}
                                 </CardTitle>
                             </CardHeader>
                             <CardContent className="pt-0">
-                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                     {card.player_name && (
-                                        <div className="bg-white/5 rounded-lg p-3">
-                                            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">{t('player_label')}</p>
-                                            <p className="font-medium text-yellow-400 text-sm">{card.player_name}</p>
+                                        <div className="bg-white/5 rounded-xl p-4 transition-colors hover:bg-white/10">
+                                            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{t('player_label')}</p>
+                                            <p className="font-semibold text-yellow-400 text-sm">{card.player_name}</p>
                                         </div>
                                     )}
                                     {card.year && (
-                                        <div className="bg-white/5 rounded-lg p-3">
-                                            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">{t('year_label')}</p>
-                                            <p className="font-medium text-sm">{card.year}</p>
+                                        <div className="bg-white/5 rounded-xl p-4 transition-colors hover:bg-white/10">
+                                            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{t('year_label')}</p>
+                                            <p className="font-semibold text-sm">{card.year}</p>
                                         </div>
                                     )}
                                     {card.grader && card.grade && (
-                                        <div className="bg-white/5 rounded-lg p-3">
-                                            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">{t('grade_label')}</p>
-                                            <p className="font-medium text-sm">
-                                                <span className="text-muted-foreground">{card.grader}</span> <span className="font-bold">{card.grade}</span>
+                                        <div className="bg-white/5 rounded-xl p-4 transition-colors hover:bg-white/10">
+                                            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{t('grade_label')}</p>
+                                            <p className="font-semibold text-sm">
+                                                <span className="text-muted-foreground mr-1">{card.grader}</span> 
+                                                <span className="text-green-400">{card.grade}</span>
                                             </p>
                                         </div>
                                     )}
-                                    <div className="bg-white/5 rounded-lg p-3">
-                                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">{t('category_label')}</p>
-                                        <p className="font-medium text-sm">{card.category || t('nav_soccer')}</p>
+                                    <div className="bg-white/5 rounded-xl p-4 transition-colors hover:bg-white/10">
+                                        <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{t('category_label')}</p>
+                                        <p className="font-semibold text-sm">{card.category || t('nav_soccer')}</p>
                                     </div>
-                                    {card.set_name && (
-                                        <div className="bg-white/5 rounded-lg p-3 col-span-2 sm:col-span-1">
-                                            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">{t('set_label')}</p>
-                                            <p className="font-medium text-green-400 text-sm truncate">{card.set_name}</p>
-                                        </div>
-                                    )}
                                 </div>
                             </CardContent>
                         </Card>

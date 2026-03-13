@@ -6,6 +6,16 @@ export async function middleware(request: NextRequest) {
         request,
     })
 
+    // If the user lands on the root with a ?code= param (from email OTP/OAuth),
+    // redirect to /auth/callback to properly exchange the code for a session
+    const code = request.nextUrl.searchParams.get('code')
+    if (code && request.nextUrl.pathname === '/') {
+        const callbackUrl = request.nextUrl.clone()
+        callbackUrl.pathname = '/auth/callback'
+        callbackUrl.searchParams.set('code', code)
+        return NextResponse.redirect(callbackUrl)
+    }
+
     // Phase 1 Beta Restrictions: Block access to upcoming features
     const restrictedPaths = ['/buy', '/sell', '/bid', '/razz', '/forum'];
     const currentPath = request.nextUrl.pathname;
