@@ -77,11 +77,11 @@ export function HeroSection() {
         <div className="grid md:grid-cols-2 gap-6 md:gap-8 items-center w-full py-12 md:py-0">
           <div className="max-w-2xl animate-fade-in-up space-y-6 text-left will-change-transform">
             <h1
-              className="text-4xl sm:text-5xl md:text-7xl font-extrabold !leading-tight tracking-tighter uppercase glitch-text"
+              className="text-3xl sm:text-4xl md:text-6xl font-extrabold !leading-tight tracking-tighter uppercase glitch-text"
               style={{ fontFamily: "'Orbitron', sans-serif" }}
               data-text="CardVerse"
             >
-              CardVerse
+              CardVerseHub
             </h1>
             <div className="space-y-2 text-base md:text-lg text-white/80 uppercase tracking-widest">
               <p>{t('hero_subtitle_1')}</p>
@@ -132,7 +132,7 @@ export function HeroSection() {
                   }}
                 >
                   <Image
-                    src={img.id === 'hero-3' ? "/assets/imgmain3.jpg" : img.id === 'hero-2' ? "/assets/imgmain2.jpg" : "/assets/imgmain.jpg"}
+                    src={img.id === 'hero-3' ? "/assets/imgmain3.jpg" : img.id === 'hero-2' ? "/assets/imgmain2.webp" : "/assets/imgmain.webp"}
                     alt={img.description || "Hero Card"}
                     data-ai-hint={img.imageHint}
                     fill

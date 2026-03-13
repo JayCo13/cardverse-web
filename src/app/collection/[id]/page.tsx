@@ -46,24 +46,7 @@ interface PriceHistory {
     price: number;
 }
 
-// Mock price history generator
-const generateMockHistory = (currentPrice: number): PriceHistory[] => {
-    const days = 30;
-    const history: PriceHistory[] = [];
-    const now = new Date();
-
-    for (let i = days; i >= 0; i--) {
-        const date = new Date(now);
-        date.setDate(date.getDate() - i);
-        const variance = (Math.random() - 0.5) * 0.1; // ±5% variance
-        const price = currentPrice * (0.9 + (i / days) * 0.1 + variance);
-        history.push({
-            date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-            price: Math.round(price * 100) / 100
-        });
-    }
-    return history;
-};
+// Removed Mock Price History
 
 export default function CardDetailsPage() {
     const params = useParams();
@@ -100,18 +83,7 @@ export default function CardDetailsPage() {
                     const cardData = data as CollectionCard;
                     setCard(cardData);
 
-                    // Generate mock price history based on current price
-                    const currentPrice = cardData.market_price || 10;
-                    const history = generateMockHistory(currentPrice);
-                    setPriceHistory(history);
-
-                    // Calculate price change
-                    if (history.length >= 2) {
-                        const first = history[0].price;
-                        const last = history[history.length - 1].price;
-                        const change = ((last - first) / first) * 100;
-                        setPriceChange(Math.round(change * 10) / 10);
-                    }
+                    // Price history and change will be handled by the second useEffect
                 }
             } catch (error) {
                 console.error("Error fetching card:", error);
@@ -125,10 +97,11 @@ export default function CardDetailsPage() {
 
     // Look up product_id from tcgcsv_products for Pokemon cards (needed for PSA)
     useEffect(() => {
-        if (!card || card.category !== 'Pokemon') return;
+        if (!card) return;
 
-        const lookupProductId = async () => {
+        const lookupProductAndHistory = async () => {
             try {
+                // 1. Get product_id
                 const res = await fetch(
                     `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/tcgcsv_products?name=eq.${encodeURIComponent(card.title)}&select=product_id&limit=1`,
                     {
@@ -140,14 +113,47 @@ export default function CardDetailsPage() {
                 );
                 const data = await res.json();
                 if (data && data.length > 0) {
-                    setProductId(data[0].product_id);
+                    const pid = data[0].product_id;
+                    setProductId(pid);
+
+                    // 2. Fetch history
+                    const historyRes = await fetch(
+                        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/tcgcsv_price_history?product_id=eq.${pid}&order=recorded_at.asc&select=recorded_at,market_price&limit=30`,
+                        {
+                            headers: {
+                                apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+                                Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+                            },
+                        }
+                    );
+                    const historyData = await historyRes.json();
+                    if (historyData && historyData.length > 0) {
+                        const realHistory = historyData.map((item: any) => ({
+                            date: new Date(item.recorded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                            price: item.market_price
+                        }));
+                        setPriceHistory(realHistory);
+
+                        if (realHistory.length >= 2) {
+                            const first = realHistory[0].price;
+                            const last = realHistory[realHistory.length - 1].price;
+                            if (first > 0) {
+                                const change = ((last - first) / first) * 100;
+                                setPriceChange(Math.round(change * 10) / 10);
+                            }
+                        }
+                    } else {
+                        // Empty history
+                        setPriceHistory([]);
+                        setPriceChange(0);
+                    }
                 }
             } catch (err) {
-                console.error('Error looking up product_id:', err);
+                console.error('Error looking up product history:', err);
             }
         };
 
-        lookupProductId();
+        lookupProductAndHistory();
     }, [card]);
 
     if (isLoading) {
@@ -398,7 +404,7 @@ export default function CardDetailsPage() {
                                     <div className="space-y-3">
                                         <div>
                                             <p className="text-xs text-muted-foreground mb-1">{t('coll_purchase_price')}</p>
-                                            <p className="font-medium">{card.price || t('coll_not_recorded')}</p>
+                                            <p className="font-medium">{card.price ? formatPrice(parseFloat(card.price)) : (card.market_price ? formatPrice(card.market_price) : t('coll_not_recorded'))}</p>
                                         </div>
                                         <div>
                                             <p className="text-xs text-muted-foreground mb-1">{t('coll_current_value')}</p>

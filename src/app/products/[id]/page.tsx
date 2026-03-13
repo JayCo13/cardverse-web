@@ -41,23 +41,7 @@ interface PriceHistory {
     price: number;
 }
 
-const generateMockHistory = (currentPrice: number): PriceHistory[] => {
-    const days = 30;
-    const history: PriceHistory[] = [];
-    const now = new Date();
-
-    for (let i = days; i >= 0; i--) {
-        const date = new Date(now);
-        date.setDate(date.getDate() - i);
-        const variance = (Math.random() - 0.5) * 0.1;
-        const price = currentPrice * (0.9 + (i / days) * 0.1 + variance);
-        history.push({
-            date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-            price: Math.round(price * 100) / 100
-        });
-    }
-    return history;
-};
+// Removed generateMockHistory
 
 export default function ProductDetailsPage() {
     const params = useParams();
@@ -126,15 +110,7 @@ export default function ProductDetailsPage() {
                 try {
                     const parsed = JSON.parse(storedProduct);
                     setCard(parsed);
-                    const history = generateMockHistory(parsed.market_price || 10);
-                    setPriceHistory(history);
-                    if (history.length >= 2) {
-                        const first = history[0].price;
-                        const last = history[history.length - 1].price;
-                        setPriceChange(Math.round(((last - first) / first) * 1000) / 10);
-                    }
-                    setIsLoading(false);
-                    return;
+                    // we will fetch history outside of this block using params.id or fall back
                 } catch (e) {
                     console.error('Error parsing stored product:', e);
                 }
@@ -171,12 +147,31 @@ export default function ProductDetailsPage() {
                             number: data.number,
                         };
                         setCard(cardData);
-                        const history = generateMockHistory(data.market_price || 10);
-                        setPriceHistory(history);
-                        if (history.length >= 2) {
-                            const first = history[0].price;
-                            const last = history[history.length - 1].price;
-                            setPriceChange(Math.round(((last - first) / first) * 1000) / 10);
+                    }
+                }
+
+                // Fetch real history for this product
+                const historyRes = await fetch(
+                    `${SUPABASE_URL}/rest/v1/tcgcsv_price_history?product_id=eq.${params.id}&order=recorded_at.asc&select=recorded_at,market_price&limit=30`,
+                    { headers: { 'apikey': SUPABASE_KEY } }
+                );
+                
+                if (historyRes.ok) {
+                    const historyData = await historyRes.json();
+                    if (historyData && historyData.length > 0) {
+                        const realHistory = historyData.map((item: any) => ({
+                            date: new Date(item.recorded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                            price: item.market_price
+                        }));
+                        setPriceHistory(realHistory);
+
+                        if (realHistory.length >= 2) {
+                            const first = realHistory[0].price;
+                            const last = realHistory[realHistory.length - 1].price;
+                            if (first > 0) {
+                                const change = ((last - first) / first) * 100;
+                                setPriceChange(Math.round(change * 10) / 10);
+                            }
                         }
                     }
                 }

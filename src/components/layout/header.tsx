@@ -29,7 +29,7 @@ import { useSubscription } from "@/hooks/useSubscription"
 
 export function Header() {
   const { t } = useLocalization();
-  const { user, isLoading, signOut } = useAuth();
+  const { user, profile, isLoading, signOut } = useAuth();
   const { setOpen } = useAuthModal();
   const { toast } = useToast();
   const router = useRouter();
@@ -59,20 +59,28 @@ export function Header() {
 
     if (user) {
       const initial = user.email ? user.email.charAt(0).toUpperCase() : "A";
+      const displayEmail = user.email && user.email.length > 15
+        ? user.email.substring(0, 12) + "..."
+        : (user.email || "Account");
+
       return (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="gap-2 px-2">
               <div className="relative">
-                <div className={`h-7 w-7 rounded-full flex items-center justify-center font-bold text-xs ${isVipPro
-                    ? 'bg-purple-500/20 border border-purple-500/40 text-purple-400'
-                    : isDayPass
-                      ? 'bg-cyan-500/15 border border-cyan-500/30 text-cyan-400'
-                      : hasCredits
-                        ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
-                        : 'bg-orange-500/10 border border-orange-500/20 text-orange-500'
+                <div className={`h-7 w-7 rounded-full flex items-center justify-center font-bold text-xs overflow-hidden ${isVipPro
+                  ? 'bg-purple-500/20 border border-purple-500/40 text-purple-400'
+                  : isDayPass
+                    ? 'bg-cyan-500/15 border border-cyan-500/30 text-cyan-400'
+                    : hasCredits
+                      ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
+                      : 'bg-orange-500/10 border border-orange-500/20 text-orange-500'
                   }`}>
-                  {initial}
+                  {profile?.profile_image_url ? (
+                    <img src={profile.profile_image_url} alt="User Avatar" className="h-full w-full object-cover" />
+                  ) : (
+                    initial
+                  )}
                 </div>
                 {/* Subscription badge overlay */}
                 {isVipPro && (
@@ -91,11 +99,13 @@ export function Header() {
                   </span>
                 )}
               </div>
-              <span className="hidden md:inline">{user.email || "Account"}</span>
+              <span className="hidden md:inline">{displayEmail}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuLabel>{user.email}</DropdownMenuLabel>
+            <DropdownMenuLabel className="max-w-[200px] truncate" title={user.email || ""}>
+              {user.email}
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link href="/profile">{t('profile')}</Link>
@@ -142,7 +152,7 @@ export function Header() {
         <div className="flex h-16 items-center">
           <div className="hidden md:flex flex-1 items-center gap-4 text-sm text-muted-foreground">
             <Headphones className="h-4 w-4" />
-            <span>24/7 037-2339-9874</span>
+            <span>+84 812 334 511</span>
           </div>
 
           <div className="flex-1 flex justify-start md:justify-center">

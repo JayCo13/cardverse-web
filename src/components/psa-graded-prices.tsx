@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { Medal, CaretDown, CaretUp, X } from '@phosphor-icons/react';
 import { useLocalization } from '@/context/localization-context';
+import { useCurrency } from '@/contexts/currency-context';
 
 interface PsaPrice {
     id: number;
@@ -27,10 +28,7 @@ interface PsaGradedPricesProps {
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-// Format price from cents to dollars
-function formatPrice(cents: number): string {
-    return `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+
 
 // Grade color mapping
 function getGradeColor(grade: string): string {
@@ -51,6 +49,7 @@ function getGradeGradient(grade: string): string {
 
 export function PSAGradedPrices({ productId, productName, isScanned = false, hideHeader = false }: PsaGradedPricesProps & { hideHeader?: boolean }) {
     const { t } = useLocalization();
+    const { formatPrice } = useCurrency();
     const [psaPrices, setPsaPrices] = useState<PsaPrice[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -255,7 +254,7 @@ export function PSAGradedPrices({ productId, productName, isScanned = false, hid
 
                             <div className="flex items-center justify-end gap-4 mt-2 sm:mt-0 w-full sm:w-auto">
                                 <span className="text-white font-bold text-lg whitespace-nowrap">
-                                    {formatPrice(psa.price)}
+                                    {formatPrice(psa.price / 100)}
                                 </span>
                             </div>
                         </div>

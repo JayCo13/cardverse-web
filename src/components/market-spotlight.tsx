@@ -1603,9 +1603,12 @@ export function MarketSpotlight() {
                         <p className="text-sm text-red-400 mb-4">{searchError}</p>
                     )}
 
-                    <p className="text-sm md:text-base text-gray-400 max-w-xl mx-auto">
-                        Access comprehensive price history from major global marketplaces including eBay, TCGPlayer, and PWCC.
-                    </p>
+                    <div className="max-w-max mx-auto px-4 sm:px-5 py-2 mt-4 bg-gradient-to-r from-orange-500/10 via-amber-500/5 to-transparent backdrop-blur-md border border-orange-500/20 rounded-full flex items-center shadow-[0_0_20px_rgba(249,115,22,0.1)] transition-all hover:bg-orange-500/10">
+                        <Timer className="w-4 h-4 text-orange-400 mr-2 sm:mr-3 shrink-0" weight="duotone" />
+                        <p className="text-[11px] sm:text-xs md:text-sm text-orange-200/90 font-medium tracking-wide">
+                            {t('content_update_time')}
+                        </p>
+                    </div>
 
                     {/* Scan Confirmation - Ask if result is correct (only when no error) */}
                     {showScanConfirmation && product && !searchError && (
