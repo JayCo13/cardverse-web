@@ -6,17 +6,8 @@ export async function middleware(request: NextRequest) {
         request,
     })
 
-    // If the user lands on any page with a ?code= param (from email OTP/OAuth),
-    // redirect to /auth/callback to properly exchange the code for a session.
-    // Only do this if we're NOT already on /auth/callback to prevent loops.
-    const code = request.nextUrl.searchParams.get('code')
-    if (code && request.nextUrl.pathname !== '/auth/callback') {
-        const callbackUrl = request.nextUrl.clone()
-        callbackUrl.pathname = '/auth/callback'
-        // Only keep the code param, strip everything else to prevent loops
-        callbackUrl.search = `?code=${encodeURIComponent(code)}`
-        return NextResponse.redirect(callbackUrl)
-    }
+    // Note: OAuth ?code= handling is done by /auth/callback route directly.
+    // The auth provider sets redirectTo to /auth/callback, so no middleware interception is needed.
 
     // Phase 1 Beta Restrictions: Block access to upcoming features
     const restrictedPaths = ['/buy', '/sell', '/bid', '/razz', '/forum'];
