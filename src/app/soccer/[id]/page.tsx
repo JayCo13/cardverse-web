@@ -203,7 +203,7 @@ export default function SoccerCardDetailsPage() {
                 <div className="grid lg:grid-cols-2 gap-8">
                     {/* Left: Sticky Image Container */}
                     <div className="relative">
-                        <div className="sticky top-24 max-w-md mx-auto">
+                        <div className="sticky top-24 max-w-xs mx-auto">
                             <div className="relative aspect-[3/4] rounded-2xl overflow-hidden bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-500/20">
                                 {card.image_url ? (
                                     <Image src={card.image_url} alt={card.name} fill className="object-contain p-4" priority />

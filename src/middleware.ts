@@ -6,13 +6,15 @@ export async function middleware(request: NextRequest) {
         request,
     })
 
-    // If the user lands on the root with a ?code= param (from email OTP/OAuth),
-    // redirect to /auth/callback to properly exchange the code for a session
+    // If the user lands on any page with a ?code= param (from email OTP/OAuth),
+    // redirect to /auth/callback to properly exchange the code for a session.
+    // Only do this if we're NOT already on /auth/callback to prevent loops.
     const code = request.nextUrl.searchParams.get('code')
-    if (code && request.nextUrl.pathname === '/') {
+    if (code && request.nextUrl.pathname !== '/auth/callback') {
         const callbackUrl = request.nextUrl.clone()
         callbackUrl.pathname = '/auth/callback'
-        callbackUrl.searchParams.set('code', code)
+        // Only keep the code param, strip everything else to prevent loops
+        callbackUrl.search = `?code=${encodeURIComponent(code)}`
         return NextResponse.redirect(callbackUrl)
     }
 

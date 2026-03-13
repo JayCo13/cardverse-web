@@ -7,22 +7,27 @@ export async function GET(request: Request) {
     const type = requestUrl.searchParams.get('type')
 
     if (code) {
-        const supabase = await createServerSupabaseClient()
-        await supabase.auth.exchangeCodeForSession(code)
+        try {
+            const supabase = await createServerSupabaseClient()
+            const { error } = await supabase.auth.exchangeCodeForSession(code)
+            if (error) {
+                console.error('Auth callback: Failed to exchange code for session:', error.message)
+            }
+        } catch (err) {
+            console.error('Auth callback: Exception during code exchange:', err)
+        }
     }
+
+    // Determine base URL (no query params to prevent redirect loops)
+    const baseUrl = process.env.NODE_ENV === 'production'
+        ? 'https://cardversehub.com'
+        : requestUrl.origin
 
     // Handle password recovery redirect
     if (type === 'recovery') {
-        const redirectUrl = process.env.NODE_ENV === 'production'
-            ? 'https://cardversehub.com/update-password'
-            : requestUrl.origin + '/update-password'
-        return NextResponse.redirect(redirectUrl)
+        return NextResponse.redirect(`${baseUrl}/update-password`)
     }
 
-    // Redirect to production domain after sign in
-    const redirectUrl = process.env.NODE_ENV === 'production'
-        ? 'https://cardversehub.com/'
-        : requestUrl.origin + '/'
-
-    return NextResponse.redirect(redirectUrl)
+    // Redirect to home — MUST be a clean URL with no ?code= to avoid middleware loop
+    return NextResponse.redirect(baseUrl + '/')
 }
