@@ -22,15 +22,17 @@ export function Footer() {
     <footer className="border-t bg-card">
       <div className="container mx-auto px-4 py-8">
         <div className="grid gap-8 sm:grid-cols-2 md:grid-cols-4">
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 items-center text-center">
             <Link
               href="/"
-              className="flex items-center gap-2 text-lg font-semibold"
+              className="flex items-center justify-center gap-2 mb-2 w-full"
             >
-              <Image src="/assets/logo-verse.png" width={130} height={130} alt="CardVerse logo" />
+              <Image src="/assets/logo-verse.png" width={220} height={220} alt="CardVerse logo" className="object-contain" priority />
             </Link>
-            <p className="text-muted-foreground">{t('footer_tagline')}</p>
-            <div className="flex gap-4">
+            <p className="text-base sm:text-lg text-muted-foreground/90 font-serif italic tracking-wide leading-relaxed bg-clip-text bg-gradient-to-r from-gray-400 to-gray-500 w-full text-center">
+                {t('footer_tagline')}
+            </p>
+            <div className="flex justify-center gap-4 w-full">
               <Link href="#" aria-label="Twitter">
                 <Twitter className="h-5 w-5 text-muted-foreground hover:text-foreground transition-colors" />
               </Link>
