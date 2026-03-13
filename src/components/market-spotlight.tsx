@@ -686,19 +686,20 @@ export function MarketSpotlight() {
             setSearchTerm(cardName + (cardNumber ? ` #${cardNumber}` : ''));
 
             // Step 3: Search TCGCSV database using REST API
-            // Always use TCG search path - we primarily handle Pokemon cards
+            // UNIFIED SCORING: Gather candidates from multiple search strategies,
+            // then score them ALL together for the best possible match
             console.log(`Category from AI: "${identification.category}" -> using TCG search`);
             {
                 console.log('Step 3: Searching TCGCSV database for TCG card...');
 
                 const isJapanese = language?.toLowerCase() === 'japanese';
                 const categoryId = isJapanese ? CATEGORY_POKEMON_JAPANESE : CATEGORY_POKEMON_ENGLISH;
+                const altCategoryId = isJapanese ? CATEGORY_POKEMON_ENGLISH : CATEGORY_POKEMON_JAPANESE;
 
-                // 15 second timeout (supports multi-fallback search)
+                // 15 second timeout
                 const searchController = new AbortController();
                 const searchTimeoutId = setTimeout(() => searchController.abort(), 15000);
 
-                // Helper: fetch from Supabase REST with shared abort signal
                 const searchFetch = (url: string) => fetch(url, {
                     headers: {
                         'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
@@ -707,15 +708,118 @@ export function MarketSpotlight() {
                     signal: searchController.signal,
                 });
 
-                // Helper: build name search URL for a given category
-                const buildNameUrl = (name: string, catId: number) =>
-                    `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&name=ilike.*${encodeURIComponent(name)}*&market_price=not.is.null&order=market_price.desc&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=5`;
+                const buildNameUrl = (name: string, catId: number, limit = 10) =>
+                    `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&name=ilike.*${encodeURIComponent(name)}*&market_price=not.is.null&order=market_price.desc&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=${limit}`;
 
-                // Opposite category for cross-category fallback
-                const altCategoryId = isJapanese ? CATEGORY_POKEMON_ENGLISH : CATEGORY_POKEMON_JAPANESE;
+                // --- REUSABLE SCORING FUNCTION ---
+                // Scores a candidate product against ALL AI-provided signals
+                type ScoredProduct = { product: TcgcsvProduct; score: number; breakdown: string };
+
+                const scoreProduct = (p: { name: string; number: string | null; set_name: string | null; market_price: number }, numberFormats: string[]): ScoredProduct => {
+                    let score = 0;
+                    const reasons: string[] = [];
+
+                    // --- NUMBER SCORE (0-30) ---
+                    if (p.number && numberFormats.length > 0 && numberFormats.includes(p.number)) {
+                        score += 30;
+                        reasons.push(`num:exact(30)`);
+                    } else if (p.number && cardNumber) {
+                        const pNum = p.number.split('/')[0]?.replace(/^0+/, '');
+                        const aiNum = cardNumber.replace(/[^\d/]/g, '').split('/')[0]?.replace(/^0+/, '');
+                        if (pNum && aiNum && pNum === aiNum) {
+                            score += 20;
+                            reasons.push(`num:partial(20)`);
+                        }
+                    }
+
+                    // --- NAME SCORE (0-40) ---
+                    if (cardName) {
+                        const pNameLower = p.name.toLowerCase();
+                        const aiNameLower = cardName.toLowerCase();
+                        const aiBaseName = aiNameLower.replace(/\s*(ex|v|gx|vmax|vstar)\s*$/i, '').trim();
+
+                        if (pNameLower === aiNameLower || pNameLower.split(' - ')[0].trim() === aiNameLower) {
+                            score += 40;
+                            reasons.push(`name:exact(40)`);
+                        } else if (pNameLower.includes(aiNameLower) || pNameLower.includes(aiBaseName)) {
+                            score += 30;
+                            reasons.push(`name:contains(30)`);
+                        } else {
+                            const aiFirstWord = aiNameLower.split(/[\s']/)[0];
+                            const pFirstWord = pNameLower.split(/[\s']/)[0];
+                            const ownerAliases: Record<string, string[]> = {
+                                'mc': ['emcee', 'mc'], 'emcee': ['emcee', 'mc'],
+                            };
+                            const aiTerms = ownerAliases[aiFirstWord] || [aiFirstWord];
+
+                            if (aiTerms.some(t => pFirstWord.includes(t) || t.includes(pFirstWord))) {
+                                score += 20;
+                                reasons.push(`name:firstWord(20)`);
+                            } else if (aiNameLower.includes("'s ")) {
+                                const pokemonPart = aiNameLower.split("'s ").pop() || '';
+                                if (pNameLower.includes(pokemonPart)) {
+                                    score += 15;
+                                    reasons.push(`name:pokemon(15)`);
+                                }
+                            } else {
+                                const aiWords = aiNameLower.split(/\s+/).filter((w: string) => w.length > 2);
+                                const matchingWords = aiWords.filter((w: string) => pNameLower.includes(w));
+                                if (matchingWords.length > 0) {
+                                    const wordScore = Math.min(10, matchingWords.length * 5);
+                                    score += wordScore;
+                                    reasons.push(`name:words(${wordScore})`);
+                                }
+                            }
+                        }
+                    }
+
+                    // --- SET SCORE (0-30) ---
+                    if (setCode && p.set_name) {
+                        const setLower = setCode.toLowerCase();
+                        const dbSetLower = p.set_name.toLowerCase();
+
+                        if (dbSetLower.includes(setLower) || setLower.includes(dbSetLower)) {
+                            score += 30;
+                            reasons.push(`set:exact(30)`);
+                        } else {
+                            const fuzzyVariants = [
+                                setLower,
+                                setLower.replace(/5/g, 's'),
+                                setLower.replace(/s/g, '5'),
+                                setLower.replace(/0/g, 'o'),
+                                setLower.replace(/o/g, '0'),
+                                setLower.replace(/1/g, 'l'),
+                                setLower.replace(/l/g, '1'),
+                                setLower.replace('m15', 'm1s'),
+                                setLower.replace('m1s', 'm15'),
+                            ];
+                            const fuzzyMatch = fuzzyVariants.some(v => dbSetLower.includes(v) || v.includes(dbSetLower));
+                            if (fuzzyMatch) {
+                                score += 20;
+                                reasons.push(`set:fuzzy(20)`);
+                            }
+                        }
+                    }
+
+                    return { product: p as TcgcsvProduct, score, breakdown: reasons.join(' ') };
+                };
 
                 try {
-                    // PRIORITY 1: Search by card_id (number) + set_code
+                    // --- GATHER ALL CANDIDATES from multiple search strategies ---
+                    const allCandidates: TcgcsvProduct[] = [];
+                    const seenIds = new Set<number>(); // Deduplicate by product_id
+
+                    const addCandidates = (products: TcgcsvProduct[]) => {
+                        for (const p of products) {
+                            if (!seenIds.has(p.product_id)) {
+                                seenIds.add(p.product_id);
+                                allCandidates.push(p);
+                            }
+                        }
+                    };
+
+                    // Build number format variations
+                    let altFormatsArray: string[] = [];
                     if (cardNumber) {
                         let cleanNumber = cardNumber.replace(/[^\d/]/g, '').trim();
                         if (!cleanNumber.includes('/') && /^\d+$/.test(cleanNumber) && cleanNumber.length >= 4 && cleanNumber.length % 2 === 0) {
@@ -723,15 +827,12 @@ export function MarketSpotlight() {
                             cleanNumber = cleanNumber.substring(0, midPoint) + '/' + cleanNumber.substring(midPoint);
                         }
 
-                        // Generate ALL number format variations (with/without leading zeros)
                         const parts = cleanNumber.split('/');
                         const altFormats = new Set<string>([cleanNumber]);
 
                         if (parts.length === 2) {
-                            const collectorNum = parts[0];
-                            const setTotal = parts[1];
-                            const collectorInt = parseInt(collectorNum, 10);
-                            const setTotalInt = parseInt(setTotal, 10);
+                            const collectorInt = parseInt(parts[0], 10);
+                            const setTotalInt = parseInt(parts[1], 10);
 
                             const collectorVariations = [
                                 collectorInt.toString(),
@@ -750,195 +851,87 @@ export function MarketSpotlight() {
                                 }
                             }
                         }
+                        altFormatsArray = Array.from(altFormats);
+                    }
 
-                        const altFormatsArray = Array.from(altFormats);
-                        console.log(`TCGCSV: Searching by number formats: ${altFormatsArray.join(', ')} (category: ${categoryId})`);
-                        if (setCode) console.log(`Set code: ${setCode}`);
-
+                    // --- SEARCH STRATEGY 1: By card number (both categories) ---
+                    if (altFormatsArray.length > 0) {
                         const numberClauses = altFormatsArray.map((n: string) => `number.eq.${encodeURIComponent(n)}`).join(',');
+                        console.log(`TCGCSV: Number search: ${altFormatsArray.join(', ')}`);
 
-                        // Search BOTH categories by number (primary first, then alt)
                         for (const searchCatId of [categoryId, altCategoryId]) {
-                            const restUrl = `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${searchCatId}&or=(${numberClauses})&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=20`;
-
-                            const response = await searchFetch(restUrl);
-
-                            if (response.ok) {
-                                const products = await response.json();
-                                if (products && products.length > 0) {
-                                    clearTimeout(searchTimeoutId);
-                                    console.log(`Found ${products.length} cards by number (category: ${searchCatId})`);
-
-                                    // SCORING-BASED MATCHING: Rank ALL candidates using composite score
-                                    // Instead of short-circuiting on first match, evaluate every product
-                                    // against all AI-provided data (name, number, set_code) simultaneously
-                                    type ScoredProduct = { product: typeof products[0]; score: number; breakdown: string };
-                                    const scored: ScoredProduct[] = products.map((p: { name: string; number: string; set_name: string }) => {
-                                        let score = 0;
-                                        const reasons: string[] = [];
-
-                                        // --- NUMBER SCORE (0-30) ---
-                                        if (p.number && altFormatsArray.includes(p.number)) {
-                                            score += 30;
-                                            reasons.push(`num:exact(30)`);
-                                        } else if (p.number && cardNumber) {
-                                            // Partial: collector number part matches
-                                            const pNum = p.number.split('/')[0]?.replace(/^0+/, '');
-                                            const aiNum = cardNumber.replace(/[^\d/]/g, '').split('/')[0]?.replace(/^0+/, '');
-                                            if (pNum && aiNum && pNum === aiNum) {
-                                                score += 20;
-                                                reasons.push(`num:partial(20)`);
-                                            }
-                                        }
-
-                                        // --- NAME SCORE (0-40) ---
-                                        if (cardName) {
-                                            const pNameLower = p.name.toLowerCase();
-                                            const aiNameLower = cardName.toLowerCase();
-                                            const aiBaseName = aiNameLower.replace(/\s*(ex|v|gx|vmax|vstar)\s*$/i, '').trim();
-
-                                            if (pNameLower === aiNameLower || pNameLower.split(' - ')[0].trim() === aiNameLower) {
-                                                score += 40;
-                                                reasons.push(`name:exact(40)`);
-                                            } else if (pNameLower.includes(aiNameLower) || pNameLower.includes(aiBaseName)) {
-                                                score += 30;
-                                                reasons.push(`name:contains(30)`);
-                                            } else {
-                                                // First word match (handles "Charizard" matching "Charizard ex - Holo")
-                                                const aiFirstWord = aiNameLower.split(/[\s']/)[0];
-                                                const pFirstWord = pNameLower.split(/[\s']/)[0];
-                                                // Owner-style names: "Iono's" -> check pokemon name after "'s "
-                                                const ownerAliases: Record<string, string[]> = {
-                                                    'mc': ['emcee', 'mc'], 'emcee': ['emcee', 'mc'],
-                                                };
-                                                const aiTerms = ownerAliases[aiFirstWord] || [aiFirstWord];
-
-                                                if (aiTerms.some(t => pFirstWord.includes(t) || t.includes(pFirstWord))) {
-                                                    score += 20;
-                                                    reasons.push(`name:firstWord(20)`);
-                                                } else if (aiNameLower.includes("'s ")) {
-                                                    // "Iono's Bellibolt" -> match "Bellibolt"
-                                                    const pokemonPart = aiNameLower.split("'s ").pop() || '';
-                                                    if (pNameLower.includes(pokemonPart)) {
-                                                        score += 15;
-                                                        reasons.push(`name:pokemon(15)`);
-                                                    }
-                                                } else {
-                                                    // Any significant word overlap
-                                                    const aiWords = aiNameLower.split(/\s+/).filter((w: string) => w.length > 2);
-                                                    const matchingWords = aiWords.filter((w: string) => pNameLower.includes(w));
-                                                    if (matchingWords.length > 0) {
-                                                        const wordScore = Math.min(10, matchingWords.length * 5);
-                                                        score += wordScore;
-                                                        reasons.push(`name:words(${wordScore})`);
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        // --- SET SCORE (0-30) ---
-                                        if (setCode && p.set_name) {
-                                            const setLower = setCode.toLowerCase();
-                                            const dbSetLower = p.set_name.toLowerCase();
-
-                                            if (dbSetLower.includes(setLower) || setLower.includes(dbSetLower)) {
-                                                score += 30;
-                                                reasons.push(`set:exact(30)`);
-                                            } else {
-                                                // Fuzzy set matching for OCR confusion (S↔5, O↔0, I↔1, L↔1)
-                                                const fuzzyVariants = [
-                                                    setLower,
-                                                    setLower.replace(/5/g, 's'),
-                                                    setLower.replace(/s/g, '5'),
-                                                    setLower.replace(/0/g, 'o'),
-                                                    setLower.replace(/o/g, '0'),
-                                                    setLower.replace(/1/g, 'l'),
-                                                    setLower.replace(/l/g, '1'),
-                                                    setLower.replace('m15', 'm1s'),
-                                                    setLower.replace('m1s', 'm15'),
-                                                ];
-                                                const fuzzyMatch = fuzzyVariants.some(v => dbSetLower.includes(v) || v.includes(dbSetLower));
-                                                if (fuzzyMatch) {
-                                                    score += 20;
-                                                    reasons.push(`set:fuzzy(20)`);
-                                                }
-                                            }
-                                        }
-
-                                        return { product: p, score, breakdown: reasons.join(' ') };
-                                    });
-
-                                    // Sort by score descending, then by market_price descending as tiebreaker
-                                    scored.sort((a, b) => b.score - a.score || (b.product.market_price || 0) - (a.product.market_price || 0));
-
-                                    // Log scoring results for debugging
-                                    console.log(`Scoring results (${scored.length} candidates):`);
-                                    scored.slice(0, 5).forEach((s, i) => {
-                                        console.log(`  ${i + 1}. [${s.score}pts] ${s.product.name} #${s.product.number} (${s.product.set_name}) — ${s.breakdown}`);
-                                    });
-
-                                    const bestMatch = scored[0];
-                                    console.log(`Best match: ${bestMatch.product.name} (score: ${bestMatch.score})`);
-                                    await displayProductResult(bestMatch.product);
-                                    setShowScanConfirmation(true);
-                                    return;
+                            try {
+                                const restUrl = `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${searchCatId}&or=(${numberClauses})&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=20`;
+                                const response = await searchFetch(restUrl);
+                                if (response.ok) {
+                                    const products = await response.json();
+                                    if (products?.length > 0) {
+                                        console.log(`  Found ${products.length} by number (cat: ${searchCatId})`);
+                                        addCandidates(products);
+                                    }
                                 }
-                            }
+                            } catch { /* continue to next strategy */ }
                         }
                     }
 
-                    // FALLBACK 1: Search by name in PRIMARY category
-                    console.log(`TCGCSV: Searching by name "${cardName}" in category ${categoryId}`);
-                    const nameResponse = await searchFetch(buildNameUrl(cardName, categoryId));
-
-                    if (nameResponse.ok) {
-                        const nameProducts = await nameResponse.json();
-                        if (nameProducts && nameProducts.length > 0) {
-                            console.log(`Found ${nameProducts.length} cards by name (primary category)`);
-                            await displayProductResult(nameProducts[0]);
-                            setShowScanConfirmation(true);
-                            clearTimeout(searchTimeoutId);
-                            return;
-                        }
-                    }
-
-                    // FALLBACK 2: Search by name in OPPOSITE category
-                    console.log(`TCGCSV: Cross-category search "${cardName}" in category ${altCategoryId}`);
-                    const altNameResponse = await searchFetch(buildNameUrl(cardName, altCategoryId));
-
-                    if (altNameResponse.ok) {
-                        const altProducts = await altNameResponse.json();
-                        if (altProducts && altProducts.length > 0) {
-                            console.log(`Found ${altProducts.length} cards by name (cross-category)`);
-                            await displayProductResult(altProducts[0]);
-                            setShowScanConfirmation(true);
-                            clearTimeout(searchTimeoutId);
-                            return;
-                        }
-                    }
-
-                    // FALLBACK 3: Simplified base name search (strip ex/EX/V/GX/VMAX etc.)
-                    const baseName = cardName.replace(/\s*(ex|EX|Ex|V|GX|Gx|VMAX|Vmax|VSTAR|Vstar)\s*$/i, '').trim();
-                    if (baseName && baseName !== cardName) {
-                        console.log(`TCGCSV: Simplified name search "${baseName}" across both categories`);
-                        for (const catId of [categoryId, altCategoryId]) {
-                            const baseResponse = await searchFetch(buildNameUrl(baseName, catId));
-                            if (baseResponse.ok) {
-                                const baseProducts = await baseResponse.json();
-                                if (baseProducts && baseProducts.length > 0) {
-                                    console.log(`Found ${baseProducts.length} cards by base name "${baseName}" (category: ${catId})`);
-                                    await displayProductResult(baseProducts[0]);
-                                    setShowScanConfirmation(true);
-                                    clearTimeout(searchTimeoutId);
-                                    return;
+                    // --- SEARCH STRATEGY 2: By name (both categories, more results) ---
+                    if (cardName) {
+                        console.log(`TCGCSV: Name search: "${cardName}"`);
+                        for (const searchCatId of [categoryId, altCategoryId]) {
+                            try {
+                                const response = await searchFetch(buildNameUrl(cardName, searchCatId, 10));
+                                if (response.ok) {
+                                    const products = await response.json();
+                                    if (products?.length > 0) {
+                                        console.log(`  Found ${products.length} by name (cat: ${searchCatId})`);
+                                        addCandidates(products);
+                                    }
                                 }
+                            } catch { /* continue */ }
+                        }
+
+                        // --- SEARCH STRATEGY 3: Base name (strip ex/V/GX etc.) ---
+                        const baseName = cardName.replace(/\s*(ex|EX|Ex|V|GX|Gx|VMAX|Vmax|VSTAR|Vstar)\s*$/i, '').trim();
+                        if (baseName && baseName !== cardName) {
+                            console.log(`TCGCSV: Base name search: "${baseName}"`);
+                            for (const catId of [categoryId, altCategoryId]) {
+                                try {
+                                    const response = await searchFetch(buildNameUrl(baseName, catId, 10));
+                                    if (response.ok) {
+                                        const products = await response.json();
+                                        if (products?.length > 0) {
+                                            console.log(`  Found ${products.length} by base name (cat: ${catId})`);
+                                            addCandidates(products);
+                                        }
+                                    }
+                                } catch { /* continue */ }
                             }
                         }
                     }
 
                     clearTimeout(searchTimeoutId);
-                    setSearchError(`No cards found for "${cardName}"`);
-                    setShowScanConfirmation(true);
+
+                    // --- SCORE ALL CANDIDATES TOGETHER ---
+                    if (allCandidates.length > 0) {
+                        console.log(`\nScoring ${allCandidates.length} total candidates:`);
+
+                        const scored = allCandidates.map(p => scoreProduct(p, altFormatsArray));
+                        scored.sort((a, b) => b.score - a.score || (b.product.market_price || 0) - (a.product.market_price || 0));
+
+                        // Log top 5 for debugging
+                        scored.slice(0, 5).forEach((s, i) => {
+                            console.log(`  ${i + 1}. [${s.score}pts] ${s.product.name} #${s.product.number} (${s.product.set_name}) — ${s.breakdown}`);
+                        });
+
+                        const bestMatch = scored[0];
+                        console.log(`\n✅ Best match: ${bestMatch.product.name} #${bestMatch.product.number} (score: ${bestMatch.score}/100)`);
+
+                        await displayProductResult(bestMatch.product);
+                        setShowScanConfirmation(true);
+                    } else {
+                        setSearchError(`No cards found for "${cardName}"`);
+                        setShowScanConfirmation(true);
+                    }
                 } catch (searchErr: unknown) {
                     clearTimeout(searchTimeoutId);
                     if (searchErr instanceof Error && searchErr.name === 'AbortError') {
