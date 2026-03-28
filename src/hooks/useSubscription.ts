@@ -22,7 +22,7 @@ interface UseSubscriptionReturn {
     scanType: 'free' | 'day_pass' | 'credit' | 'unlimited';
     portfolioLimit: number;
     isLoading: boolean;
-    justActivated: boolean; // True when a subscription was just activated via realtime
+    justActivated: boolean;
     refresh: () => Promise<void>;
 }
 
@@ -31,27 +31,17 @@ export function useSubscription(): UseSubscriptionReturn {
     const [subscription, setSubscription] = useState<Subscription | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [justActivated, setJustActivated] = useState(false);
-    const prevSubRef = useRef<Subscription | null>(null);
-    const initialLoadDoneRef = useRef(false);
-    const lastFetchedUserIdRef = useRef<string | null>(null);
 
-    const fetchSubscription = useCallback(async (isRefresh = false) => {
-        if (!user) {
-            setSubscription(null);
-            setIsLoading(false);
-            initialLoadDoneRef.current = true;
-            return;
-        }
+    const mountedRef = useRef(true);
+    const fetchedForUserRef = useRef<string | null>(null);
 
-        // Skip re-fetch if same user was already fetched (prevents auth re-render cascade)
-        if (!isRefresh && lastFetchedUserIdRef.current === user.id && initialLoadDoneRef.current) {
-            return;
-        }
+    // Stable user ID string — avoids object identity issues
+    const userId = user?.id ?? null;
 
-        // Only show loading skeleton on initial load, not on background refreshes
-        if (!initialLoadDoneRef.current) {
-            setIsLoading(true);
-        }
+    // Fetch subscription — stable reference, uses userId ref internally
+    const doFetch = useCallback(async (uid: string, showLoading: boolean) => {
+        if (showLoading) setIsLoading(true);
+
         try {
             const supabase = getSupabaseClient();
             const now = new Date().toISOString();
@@ -60,7 +50,7 @@ export function useSubscription(): UseSubscriptionReturn {
             const { data: vipPro } = await supabase
                 .from('user_subscriptions')
                 .select('*')
-                .eq('user_id', user.id)
+                .eq('user_id', uid)
                 .eq('package_type', 'vip_pro')
                 .eq('status', 'active')
                 .gte('expires_at', now)
@@ -68,7 +58,7 @@ export function useSubscription(): UseSubscriptionReturn {
                 .limit(1)
                 .maybeSingle();
 
-            if (vipPro) {
+            if (vipPro && mountedRef.current) {
                 setSubscription(vipPro as Subscription);
                 setIsLoading(false);
                 return;
@@ -77,7 +67,7 @@ export function useSubscription(): UseSubscriptionReturn {
             const { data: dayPass } = await supabase
                 .from('user_subscriptions')
                 .select('*')
-                .eq('user_id', user.id)
+                .eq('user_id', uid)
                 .eq('package_type', 'day_pass')
                 .eq('status', 'active')
                 .gte('expires_at', now)
@@ -85,7 +75,7 @@ export function useSubscription(): UseSubscriptionReturn {
                 .limit(1)
                 .maybeSingle();
 
-            if (dayPass) {
+            if (dayPass && mountedRef.current) {
                 setSubscription(dayPass as Subscription);
                 setIsLoading(false);
                 return;
@@ -94,7 +84,7 @@ export function useSubscription(): UseSubscriptionReturn {
             const { data: creditPack } = await supabase
                 .from('user_subscriptions')
                 .select('*')
-                .eq('user_id', user.id)
+                .eq('user_id', uid)
                 .eq('package_type', 'credit_pack')
                 .eq('status', 'active')
                 .gt('scan_credits_remaining', 0)
@@ -102,67 +92,82 @@ export function useSubscription(): UseSubscriptionReturn {
                 .limit(1)
                 .maybeSingle();
 
-            if (creditPack) {
+            if (creditPack && mountedRef.current) {
                 setSubscription(creditPack as Subscription);
                 setIsLoading(false);
                 return;
             }
 
-            setSubscription(null);
+            if (mountedRef.current) {
+                setSubscription(null);
+                setIsLoading(false);
+            }
         } catch (err) {
             console.error('Error fetching subscription:', err);
-            setSubscription(null);
-        } finally {
-            setIsLoading(false);
-            initialLoadDoneRef.current = true;
-            if (user) lastFetchedUserIdRef.current = user.id;
+            if (mountedRef.current) {
+                setSubscription(null);
+                setIsLoading(false);
+            }
         }
-    }, [user]);
+    }, []);
 
-    // ── Initial fetch ──
+    // Public refresh function
+    const refresh = useCallback(async () => {
+        if (userId) await doFetch(userId, false);
+    }, [userId, doFetch]);
+
+    // Main effect — ONLY depends on userId (string)
     useEffect(() => {
-        fetchSubscription();
-    }, [fetchSubscription]);
+        mountedRef.current = true;
 
-    // ── Supabase Realtime subscription ──
-    // Listens for INSERT and UPDATE on user_subscriptions for this user.
-    // When the webhook activates a package, this fires instantly.
-    useEffect(() => {
-        if (!user) return;
+        if (!userId) {
+            setSubscription(null);
+            setIsLoading(false);
+            fetchedForUserRef.current = null;
+            return;
+        }
 
+        // Skip if we already fetched for this exact user
+        if (fetchedForUserRef.current === userId) {
+            return;
+        }
+
+        fetchedForUserRef.current = userId;
+        // Show loading only on first fetch
+        doFetch(userId, true);
+
+        // Realtime subscription for changes
         const supabase = getSupabaseClient();
         const channel = supabase
-            .channel(`user_subscriptions:${user.id}`)
+            .channel(`user_sub_${userId}`)
             .on(
                 'postgres_changes',
                 {
-                    event: '*', // INSERT, UPDATE, DELETE
+                    event: '*',
                     schema: 'public',
                     table: 'user_subscriptions',
-                    filter: `user_id=eq.${user.id}`,
+                    filter: `user_id=eq.${userId}`,
                 },
-                (payload) => {
-                    console.log('[Realtime] Subscription change detected:', payload.eventType);
-                    // Re-fetch to get the highest priority subscription
-                    fetchSubscription(true).then(() => {
-                        // Signal that this was a realtime activation (not initial page load)
-                        setJustActivated(true);
-                        // Reset the flag after 5 seconds
-                        setTimeout(() => setJustActivated(false), 5000);
+                () => {
+                    if (!mountedRef.current) return;
+                    // Re-fetch silently (no loading spinner)
+                    doFetch(userId, false).then(() => {
+                        if (mountedRef.current) {
+                            setJustActivated(true);
+                            setTimeout(() => setJustActivated(false), 5000);
+                        }
                     });
                 }
             )
             .subscribe();
 
         return () => {
+            mountedRef.current = false;
             supabase.removeChannel(channel);
         };
-    }, [user, fetchSubscription]);
-
-    // Track previous subscription for detecting changes
-    useEffect(() => {
-        prevSubRef.current = subscription;
-    }, [subscription]);
+    // ONLY depend on userId (string) — not user object or fetchSubscription
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [userId]);
 
     const isVipPro = subscription?.package_type === 'vip_pro';
     const isDayPass = subscription?.package_type === 'day_pass';
@@ -178,12 +183,12 @@ export function useSubscription(): UseSubscriptionReturn {
                 : 'free';
 
     const portfolioLimit = isVipPro
-        ? -1 // unlimited
+        ? -1
         : hasCredits
             ? 200
             : isDayPass
                 ? 100
-                : 20; // free
+                : 20;
 
     return {
         subscription,
@@ -195,7 +200,7 @@ export function useSubscription(): UseSubscriptionReturn {
         portfolioLimit,
         isLoading,
         justActivated,
-        refresh: fetchSubscription,
+        refresh,
     };
 }
 
