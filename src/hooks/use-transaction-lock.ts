@@ -25,70 +25,75 @@ export function useTransactionLock() {
 
         // Check for active transactions
         const checkTransactions = async () => {
-            // Query as seller
-            const { data: sellerTx } = await supabase
-                .from('transactions')
-                .select('*')
-                .eq('seller_id', user.id)
-                .eq('status', 'active')
-                .limit(1)
-                .maybeSingle();
+            try {
+                // Query as seller
+                const { data: sellerTx } = await supabase
+                    .from('transactions')
+                    .select('*')
+                    .eq('seller_id', user.id)
+                    .eq('status', 'active')
+                    .limit(1)
+                    .maybeSingle();
 
-            if (sellerTx) {
-                const txData: Transaction = {
-                    id: sellerTx.id,
-                    cardId: sellerTx.card_id,
-                    sellerId: sellerTx.seller_id,
-                    buyerId: sellerTx.buyer_id,
-                    offerId: sellerTx.offer_id,
-                    price: sellerTx.price,
-                    status: sellerTx.status,
-                    cancelledBy: sellerTx.cancelled_by,
-                    cancellationReason: sellerTx.cancellation_reason,
-                    createdAt: sellerTx.created_at,
-                    expiresAt: sellerTx.expires_at,
-                    completedAt: sellerTx.completed_at,
-                    cancelledAt: sellerTx.cancelled_at,
-                };
-                setActiveTransaction(txData);
-                const transactionPath = `/transaction/${txData.id}`;
-                if (pathname !== transactionPath) {
-                    router.replace(transactionPath);
+                if (sellerTx) {
+                    const txData: Transaction = {
+                        id: (sellerTx as any).id,
+                        cardId: (sellerTx as any).card_id,
+                        sellerId: (sellerTx as any).seller_id,
+                        buyerId: (sellerTx as any).buyer_id,
+                        offerId: (sellerTx as any).offer_id,
+                        price: (sellerTx as any).price,
+                        status: (sellerTx as any).status,
+                        cancelledBy: (sellerTx as any).cancelled_by,
+                        cancellationReason: (sellerTx as any).cancellation_reason,
+                        createdAt: (sellerTx as any).created_at,
+                        expiresAt: (sellerTx as any).expires_at,
+                        completedAt: (sellerTx as any).completed_at,
+                        cancelledAt: (sellerTx as any).cancelled_at,
+                    };
+                    setActiveTransaction(txData);
+                    const transactionPath = `/transaction/${txData.id}`;
+                    if (pathname !== transactionPath) {
+                        router.replace(transactionPath);
+                    }
+                    setIsChecking(false);
+                    return;
                 }
-                setIsChecking(false);
-                return;
-            }
 
-            // Query as buyer
-            const { data: buyerTx } = await supabase
-                .from('transactions')
-                .select('*')
-                .eq('buyer_id', user.id)
-                .eq('status', 'active')
-                .limit(1)
-                .maybeSingle();
+                // Query as buyer
+                const { data: buyerTx } = await supabase
+                    .from('transactions')
+                    .select('*')
+                    .eq('buyer_id', user.id)
+                    .eq('status', 'active')
+                    .limit(1)
+                    .maybeSingle();
 
-            if (buyerTx) {
-                const txData: Transaction = {
-                    id: buyerTx.id,
-                    cardId: buyerTx.card_id,
-                    sellerId: buyerTx.seller_id,
-                    buyerId: buyerTx.buyer_id,
-                    offerId: buyerTx.offer_id,
-                    price: buyerTx.price,
-                    status: buyerTx.status,
-                    cancelledBy: buyerTx.cancelled_by,
-                    cancellationReason: buyerTx.cancellation_reason,
-                    createdAt: buyerTx.created_at,
-                    expiresAt: buyerTx.expires_at,
-                    completedAt: buyerTx.completed_at,
-                    cancelledAt: buyerTx.cancelled_at,
-                };
-                setActiveTransaction(txData);
-                const transactionPath = `/transaction/${txData.id}`;
-                if (pathname !== transactionPath) {
-                    router.replace(transactionPath);
+                if (buyerTx) {
+                    const txData: Transaction = {
+                        id: (buyerTx as any).id,
+                        cardId: (buyerTx as any).card_id,
+                        sellerId: (buyerTx as any).seller_id,
+                        buyerId: (buyerTx as any).buyer_id,
+                        offerId: (buyerTx as any).offer_id,
+                        price: (buyerTx as any).price,
+                        status: (buyerTx as any).status,
+                        cancelledBy: (buyerTx as any).cancelled_by,
+                        cancellationReason: (buyerTx as any).cancellation_reason,
+                        createdAt: (buyerTx as any).created_at,
+                        expiresAt: (buyerTx as any).expires_at,
+                        completedAt: (buyerTx as any).completed_at,
+                        cancelledAt: (buyerTx as any).cancelled_at,
+                    };
+                    setActiveTransaction(txData);
+                    const transactionPath = `/transaction/${txData.id}`;
+                    if (pathname !== transactionPath) {
+                        router.replace(transactionPath);
+                    }
                 }
+            } catch (err) {
+                // Silently handle — don't crash the page if transactions table is unavailable
+                console.warn('[TransactionLock] Check failed:', err);
             }
 
             setIsChecking(false);

@@ -37,9 +37,16 @@ export function SoccerCards() {
         return (
             <section className="py-12 px-4">
                 <div className="max-w-7xl mx-auto">
-                    <div className="flex items-center justify-center py-20">
-                        <SpinnerGap className="w-8 h-8 animate-spin text-green-500" weight="bold" />
-                        <span className="ml-3 text-white/60">Loading soccer cards...</span>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                            <div key={i} className="rounded-2xl overflow-hidden bg-card/40 border border-gray-800/50">
+                                <div className="aspect-square img-shimmer" />
+                                <div className="p-3 space-y-2">
+                                    <div className="h-4 bg-white/5 rounded w-3/4" />
+                                    <div className="h-3 bg-white/5 rounded w-1/2" />
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </section>
