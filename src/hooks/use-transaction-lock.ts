@@ -32,7 +32,7 @@ export function useTransactionLock() {
                 .eq('seller_id', user.id)
                 .eq('status', 'active')
                 .limit(1)
-                .single();
+                .maybeSingle();
 
             if (sellerTx) {
                 const txData: Transaction = {
@@ -66,7 +66,7 @@ export function useTransactionLock() {
                 .eq('buyer_id', user.id)
                 .eq('status', 'active')
                 .limit(1)
-                .single();
+                .maybeSingle();
 
             if (buyerTx) {
                 const txData: Transaction = {

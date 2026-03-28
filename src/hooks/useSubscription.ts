@@ -66,7 +66,7 @@ export function useSubscription(): UseSubscriptionReturn {
                 .gte('expires_at', now)
                 .order('expires_at', { ascending: false })
                 .limit(1)
-                .single();
+                .maybeSingle();
 
             if (vipPro) {
                 setSubscription(vipPro as Subscription);
@@ -83,7 +83,7 @@ export function useSubscription(): UseSubscriptionReturn {
                 .gte('expires_at', now)
                 .order('expires_at', { ascending: false })
                 .limit(1)
-                .single();
+                .maybeSingle();
 
             if (dayPass) {
                 setSubscription(dayPass as Subscription);
@@ -100,7 +100,7 @@ export function useSubscription(): UseSubscriptionReturn {
                 .gt('scan_credits_remaining', 0)
                 .order('created_at', { ascending: false })
                 .limit(1)
-                .single();
+                .maybeSingle();
 
             if (creditPack) {
                 setSubscription(creditPack as Subscription);
