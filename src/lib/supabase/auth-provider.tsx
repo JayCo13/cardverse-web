@@ -103,25 +103,23 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
                 const { data: { session: currentSession } } = await supabase.auth.getSession();
 
                 if (currentSession?.user && mounted) {
-                    // Check if email is confirmed (OAuth users have confirmed_at set automatically)
                     const isEmailConfirmed = currentSession.user.email_confirmed_at != null;
                     const isOAuthUser = currentSession.user.app_metadata?.provider !== 'email';
 
                     if (isEmailConfirmed || isOAuthUser) {
-                        currentUserIdRef.current = currentSession.user.id;
-                        setSession(currentSession);
-                        setUser(currentSession.user);
-                        // Set loading false early so UI shows user
-                        setIsLoading(false);
+                        // Fetch profile FIRST, then set ALL state at once
+                        // React 18 batches these into a SINGLE re-render
+                        const profileData = await ensureProfile(currentSession.user);
 
-                        // Fetch/create profile in background (non-blocking)
-                        ensureProfile(currentSession.user).then((profileData) => {
-                            if (mounted && profileData) {
-                                setProfile(profileData);
-                            }
-                        });
+                        if (mounted) {
+                            currentUserIdRef.current = currentSession.user.id;
+                            setSession(currentSession);
+                            setUser(currentSession.user);
+                            if (profileData) setProfile(profileData);
+                            setIsLoading(false);
+                            // ↑ All 4 setState calls batched → ONE re-render
+                        }
                     } else {
-                        // User exists but email not confirmed - don't log them in
                         if (mounted) setIsLoading(false);
                     }
                 } else {

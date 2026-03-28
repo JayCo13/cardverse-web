@@ -36,13 +36,14 @@ export function NotificationBell() {
     // Fetch and subscribe to notifications for current user
     useEffect(() => {
         if (!user) return;
+        const uid = user.id;
 
         // Initial fetch
         const fetchNotifications = async () => {
             const { data, error } = await supabase
                 .from('notifications')
                 .select('*')
-                .eq('user_id', user.id)
+                .eq('user_id', uid)
                 .order('created_at', { ascending: false })
                 .limit(20);
 
@@ -71,14 +72,14 @@ export function NotificationBell() {
 
         // Subscribe to realtime updates
         const channel = supabase
-            .channel('notifications')
+            .channel(`notifications-${uid}`)
             .on(
                 'postgres_changes',
                 {
                     event: 'INSERT',
                     schema: 'public',
                     table: 'notifications',
-                    filter: `user_id=eq.${user.id}`,
+                    filter: `user_id=eq.${uid}`,
                 },
                 (payload) => {
                     const newNotification = {
@@ -115,7 +116,8 @@ export function NotificationBell() {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [user]); // supabase is stable singleton
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user?.id]); // Use user.id string — not user object
 
     // Mark notification as read
     const markAsRead = async (notificationId: string) => {
