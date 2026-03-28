@@ -149,19 +149,25 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
                         return;
                     }
 
-                    // Check if email is confirmed (OAuth users have confirmed_at set automatically)
                     const isEmailConfirmed = currentSession.user.email_confirmed_at != null;
                     const isOAuthUser = currentSession.user.app_metadata?.provider !== 'email';
 
                     if (isEmailConfirmed || isOAuthUser) {
-                        currentUserIdRef.current = currentSession.user.id;
-                        setSession(currentSession);
-                        setUser(currentSession.user);
+                        // ① Set isLoading=true FIRST → AuthReady unmounts all children
+                        //   This stops all hooks from running during the transition
+                        setIsLoading(true);
 
-                        // Ensure profile exists (with deduplication guard)
+                        // ② Fetch profile while children are unmounted
                         const profileData = await ensureProfile(currentSession.user);
-                        if (mounted && profileData) {
-                            setProfile(profileData);
+
+                        // ③ Set ALL state at once → React 18 batches into ONE render
+                        if (mounted) {
+                            currentUserIdRef.current = currentSession.user.id;
+                            setSession(currentSession);
+                            setUser(currentSession.user);
+                            if (profileData) setProfile(profileData);
+                            setIsLoading(false);
+                            // ④ AuthReady remounts children with full state → clean mount
                         }
 
                         // Clean up OAuth code from URL
@@ -173,20 +179,19 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
                             }
                         }
                     } else {
-                        // User exists but email not confirmed - don't log them in
                         setSession(null);
                         setUser(null);
                         setProfile(null);
                         currentUserIdRef.current = null;
+                        setIsLoading(false);
                     }
                 } else {
                     setSession(null);
                     setUser(null);
                     setProfile(null);
                     currentUserIdRef.current = null;
+                    setIsLoading(false);
                 }
-
-                setIsLoading(false);
             }
         );
 
