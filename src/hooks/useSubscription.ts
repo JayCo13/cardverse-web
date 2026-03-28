@@ -32,15 +32,26 @@ export function useSubscription(): UseSubscriptionReturn {
     const [isLoading, setIsLoading] = useState(true);
     const [justActivated, setJustActivated] = useState(false);
     const prevSubRef = useRef<Subscription | null>(null);
+    const initialLoadDoneRef = useRef(false);
+    const lastFetchedUserIdRef = useRef<string | null>(null);
 
-    const fetchSubscription = useCallback(async () => {
+    const fetchSubscription = useCallback(async (isRefresh = false) => {
         if (!user) {
             setSubscription(null);
             setIsLoading(false);
+            initialLoadDoneRef.current = true;
             return;
         }
 
-        setIsLoading(true);
+        // Skip re-fetch if same user was already fetched (prevents auth re-render cascade)
+        if (!isRefresh && lastFetchedUserIdRef.current === user.id && initialLoadDoneRef.current) {
+            return;
+        }
+
+        // Only show loading skeleton on initial load, not on background refreshes
+        if (!initialLoadDoneRef.current) {
+            setIsLoading(true);
+        }
         try {
             const supabase = getSupabaseClient();
             const now = new Date().toISOString();
@@ -103,6 +114,8 @@ export function useSubscription(): UseSubscriptionReturn {
             setSubscription(null);
         } finally {
             setIsLoading(false);
+            initialLoadDoneRef.current = true;
+            if (user) lastFetchedUserIdRef.current = user.id;
         }
     }, [user]);
 
@@ -131,7 +144,7 @@ export function useSubscription(): UseSubscriptionReturn {
                 (payload) => {
                     console.log('[Realtime] Subscription change detected:', payload.eventType);
                     // Re-fetch to get the highest priority subscription
-                    fetchSubscription().then(() => {
+                    fetchSubscription(true).then(() => {
                         // Signal that this was a realtime activation (not initial page load)
                         setJustActivated(true);
                         // Reset the flag after 5 seconds

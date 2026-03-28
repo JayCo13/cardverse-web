@@ -96,6 +96,7 @@ interface CardCacheContextType extends CardCacheState {
 }
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache
+const INITIAL_FETCH_GUARD = 2000; // Prevent re-fetch within 2s of initial mount
 
 const CardCacheContext = createContext<CardCacheContextType | undefined>(undefined);
 
@@ -122,17 +123,24 @@ export function CardCacheProvider({ children }: { children: ReactNode }) {
 
     // Prevent concurrent fetches
     const fetchingRef = useRef({ pokemon: false, soccer: false, onepiece: false });
+    // Track if initial fetch has been done (survives re-renders)
+    const hasFetchedRef = useRef({ pokemon: false, soccer: false, onepiece: false });
 
     // STABLE function references — no state in deps, uses stateRef instead
     const fetchPokemon = useCallback(async (force = false) => {
         const s = stateRef.current;
-        if (!force && s.pokemon.length > 0 && Date.now() - s.pokemonLastFetch < CACHE_DURATION) {
+        // Skip if already fetched and not forced, or if cache is still fresh
+        if (!force && hasFetchedRef.current.pokemon && s.pokemon.length > 0 && Date.now() - s.pokemonLastFetch < CACHE_DURATION) {
             return;
         }
         if (fetchingRef.current.pokemon) return;
         fetchingRef.current.pokemon = true;
+        hasFetchedRef.current.pokemon = true;
 
-        setState(prev => ({ ...prev, pokemonLoading: true, pokemonError: null }));
+        // Only show loading spinner if we have NO cached data
+        if (s.pokemon.length === 0) {
+            setState(prev => ({ ...prev, pokemonLoading: true, pokemonError: null }));
+        }
 
         try {
             const supabase = getSupabaseClient();
@@ -157,13 +165,17 @@ export function CardCacheProvider({ children }: { children: ReactNode }) {
 
     const fetchSoccer = useCallback(async (force = false) => {
         const s = stateRef.current;
-        if (!force && s.soccer.length > 0 && Date.now() - s.soccerLastFetch < CACHE_DURATION) {
+        if (!force && hasFetchedRef.current.soccer && s.soccer.length > 0 && Date.now() - s.soccerLastFetch < CACHE_DURATION) {
             return;
         }
         if (fetchingRef.current.soccer) return;
         fetchingRef.current.soccer = true;
+        hasFetchedRef.current.soccer = true;
 
-        setState(prev => ({ ...prev, soccerLoading: true, soccerError: null }));
+        // Only show loading spinner if we have NO cached data
+        if (s.soccer.length === 0) {
+            setState(prev => ({ ...prev, soccerLoading: true, soccerError: null }));
+        }
 
         try {
             const supabase = getSupabaseClient();
@@ -188,13 +200,17 @@ export function CardCacheProvider({ children }: { children: ReactNode }) {
 
     const fetchOnepiece = useCallback(async (force = false) => {
         const s = stateRef.current;
-        if (!force && s.onepiece.length > 0 && Date.now() - s.onepieceLastFetch < CACHE_DURATION) {
+        if (!force && hasFetchedRef.current.onepiece && s.onepiece.length > 0 && Date.now() - s.onepieceLastFetch < CACHE_DURATION) {
             return;
         }
         if (fetchingRef.current.onepiece) return;
         fetchingRef.current.onepiece = true;
+        hasFetchedRef.current.onepiece = true;
 
-        setState(prev => ({ ...prev, onepieceLoading: true, onepieceError: null }));
+        // Only show loading spinner if we have NO cached data
+        if (s.onepiece.length === 0) {
+            setState(prev => ({ ...prev, onepieceLoading: true, onepieceError: null }));
+        }
 
         try {
             const supabase = getSupabaseClient();
