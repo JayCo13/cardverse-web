@@ -107,18 +107,20 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
                     const isOAuthUser = currentSession.user.app_metadata?.provider !== 'email';
 
                     if (isEmailConfirmed || isOAuthUser) {
-                        // Fetch profile FIRST, then set ALL state at once
-                        // React 18 batches these into a SINGLE re-render
-                        const profileData = await ensureProfile(currentSession.user);
+                        // Set user/session/isLoading IMMEDIATELY — don't wait for profile
+                        // This opens the AuthReady gate so the page renders fast
+                        currentUserIdRef.current = currentSession.user.id;
+                        setSession(currentSession);
+                        setUser(currentSession.user);
+                        setIsLoading(false);
 
-                        if (mounted) {
-                            currentUserIdRef.current = currentSession.user.id;
-                            setSession(currentSession);
-                            setUser(currentSession.user);
-                            if (profileData) setProfile(profileData);
-                            setIsLoading(false);
-                            // ↑ All 4 setState calls batched → ONE re-render
-                        }
+                        // Fetch profile in background — only updates avatar, no cascade
+                        // because all hooks depend on userId (string), not profile
+                        ensureProfile(currentSession.user).then((profileData) => {
+                            if (mounted && profileData) {
+                                setProfile(profileData);
+                            }
+                        });
                     } else {
                         if (mounted) setIsLoading(false);
                     }
@@ -153,22 +155,18 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
                     const isOAuthUser = currentSession.user.app_metadata?.provider !== 'email';
 
                     if (isEmailConfirmed || isOAuthUser) {
-                        // ① Set isLoading=true FIRST → AuthReady unmounts all children
-                        //   This stops all hooks from running during the transition
-                        setIsLoading(true);
+                        // Set state IMMEDIATELY — don't block on profile
+                        currentUserIdRef.current = currentSession.user.id;
+                        setSession(currentSession);
+                        setUser(currentSession.user);
+                        setIsLoading(false);
 
-                        // ② Fetch profile while children are unmounted
-                        const profileData = await ensureProfile(currentSession.user);
-
-                        // ③ Set ALL state at once → React 18 batches into ONE render
-                        if (mounted) {
-                            currentUserIdRef.current = currentSession.user.id;
-                            setSession(currentSession);
-                            setUser(currentSession.user);
-                            if (profileData) setProfile(profileData);
-                            setIsLoading(false);
-                            // ④ AuthReady remounts children with full state → clean mount
-                        }
+                        // Profile in background (non-blocking)
+                        ensureProfile(currentSession.user).then((profileData) => {
+                            if (mounted && profileData) {
+                                setProfile(profileData);
+                            }
+                        });
 
                         // Clean up OAuth code from URL
                         if (typeof window !== 'undefined') {
