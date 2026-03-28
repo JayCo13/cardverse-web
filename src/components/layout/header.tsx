@@ -198,16 +198,24 @@ export function Header() {
                     <Image src="/assets/logo-verse.png" width={140} height={35} alt="CardVerse logo" />
                   </Link>
                   <div className="relative group">
-                    <span onClick={handleComingSoon} className="cursor-pointer text-muted-foreground hover:text-foreground flex items-center gap-1">
+                    <Link href="/buy" className="text-muted-foreground hover:text-foreground flex items-center gap-1">
                       {t('nav_buy')}
-                      <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('beta')}</Badge>
-                    </span>
+                    </Link>
                   </div>
                   <div className="relative group">
-                    <span onClick={handleComingSoon} className="cursor-pointer text-muted-foreground hover:text-foreground flex items-center gap-1">
+                    <Link href="/sell" className="text-muted-foreground hover:text-foreground flex items-center gap-1">
                       {t('nav_sell')}
-                      <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('beta')}</Badge>
-                    </span>
+                    </Link>
+                  </div>
+                  <div className="relative group">
+                    <Link href="/wallet" className="text-muted-foreground hover:text-foreground flex items-center gap-1">
+                      💰 Ví
+                    </Link>
+                  </div>
+                  <div className="relative group">
+                    <Link href="/orders" className="text-muted-foreground hover:text-foreground flex items-center gap-1">
+                      📦 Đơn hàng
+                    </Link>
                   </div>
                   <span onClick={handleComingSoon} className="cursor-pointer text-muted-foreground hover:text-foreground flex items-center gap-1">
                     {t('nav_bid')}
@@ -253,22 +261,20 @@ export function Header() {
           <div className="flex-1 flex items-center justify-center">
             <nav className="hidden md:flex flex-row items-center gap-6 lg:gap-8 whitespace-nowrap text-sm font-medium">
               <div className="relative">
-                <span
-                  onClick={handleComingSoon}
-                  className="cursor-pointer text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors"
+                <Link
+                  href="/buy"
+                  className="text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors"
                 >
                   {t('nav_buy')}
-                  <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('beta')}</Badge>
-                </span>
+                </Link>
               </div>
               <div className="relative">
-                <span
-                  onClick={handleComingSoon}
-                  className="cursor-pointer text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors"
+                <Link
+                  href="/sell"
+                  className="text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors"
                 >
                   {t('nav_sell')}
-                  <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('beta')}</Badge>
-                </span>
+                </Link>
               </div>
               <span
                 onClick={handleComingSoon}

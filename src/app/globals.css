@@ -15,9 +15,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-* {
-  backface-visibility: hidden;
-}
+
 
 @layer base {
   :root {
@@ -137,8 +135,20 @@ body {
 }
 
 .animate-fade-in-up {
-  animation: fade-in-up 0.8s ease-in-out forwards;
+  animation: fade-in-up 0.6s ease-out both;
   opacity: 0;
+}
+
+/* Image shimmer loading effect */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.img-shimmer {
+  background: linear-gradient(90deg, hsl(240 10% 6%) 25%, hsl(240 10% 12%) 50%, hsl(240 10% 6%) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
 }
 
 .background-grid-scan {

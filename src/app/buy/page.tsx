@@ -14,6 +14,7 @@ import { ListFilter } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSupabase } from '@/lib/supabase';
+import { CheckoutModal } from '@/components/checkout-modal';
 
 export type Filters = {
   search: string;
@@ -35,6 +36,8 @@ export default function BuyPage() {
   const supabase = useSupabase();
   const [saleCards, setSaleCards] = useState<Card[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [checkoutCard, setCheckoutCard] = useState<Card | null>(null);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
 
   useEffect(() => {
     const fetchCards = async () => {
@@ -45,7 +48,7 @@ export default function BuyPage() {
         .eq('status', 'active');
 
       if (data && !error) {
-        const cards: Card[] = data.map(c => ({
+        const cards: Card[] = (data as any[]).map((c: any) => ({
           id: c.id,
           name: c.name,
           imageUrl: c.image_url || '',
@@ -137,7 +140,19 @@ export default function BuyPage() {
       return (
         <div className="flex flex-col gap-4">
           {filteredAndSortedCards.map((card) => (
-            <CardItem key={card.id} card={card} layout="list" />
+            <CardItem key={card.id} card={card} layout="list" onBuyClick={(c) => {
+              setCheckoutCard({
+                ...c,
+                id: c.id,
+                name: c.name,
+                imageUrl: c.imageUrl,
+                price: c.price ?? 0,
+                category: c.category,
+                condition: c.condition,
+                sellerId: c.sellerId,
+              } as any);
+              setCheckoutOpen(true);
+            }} />
           ))}
         </div>
       );
@@ -201,6 +216,23 @@ export default function BuyPage() {
         </div>
       </main>
       <Footer />
+      <CheckoutModal
+        open={checkoutOpen}
+        onOpenChange={setCheckoutOpen}
+        card={checkoutCard ? {
+          id: checkoutCard.id,
+          name: checkoutCard.name,
+          image_url: checkoutCard.imageUrl,
+          price: checkoutCard.price ?? 0,
+          category: checkoutCard.category,
+          condition: checkoutCard.condition || '',
+          seller_id: checkoutCard.sellerId,
+        } : null}
+        onSuccess={() => {
+          // Refresh cards list
+          window.location.reload();
+        }}
+      />
     </div>
   );
 }

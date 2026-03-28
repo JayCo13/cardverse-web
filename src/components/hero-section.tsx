@@ -8,6 +8,9 @@ import { ArrowRight, Tag, Ticket, Lightning } from '@phosphor-icons/react';
 import { useLocalization } from '@/context/localization-context';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 
+// Tiny 8x8 blur placeholders generated for each hero image
+const BLUR_PLACEHOLDER = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAMklEQVQI12NwdHZh+P+fgYGBwdHZhcHR2YXh/38GBgZGBkcnZwZHJ2eG//8ZGBgYHZ1dAFP8Dq94hkmuAAAAAElFTkSuQmCC';
+
 export function HeroSection() {
   const { t } = useLocalization();
   const [activeIndex, setActiveIndex] = React.useState(1);
@@ -136,7 +139,10 @@ export function HeroSection() {
                     alt={img.description || "Hero Card"}
                     data-ai-hint={img.imageHint}
                     fill
-                    priority={isActive}
+                    priority
+                    sizes="(max-width: 768px) 160px, 260px"
+                    placeholder="blur"
+                    blurDataURL={BLUR_PLACEHOLDER}
                     className={`object-cover rounded-2xl transition-all duration-500 ${isActive ? 'border-[4px] border-white/20' : 'border-[2px] border-white/10 grayscale-[0.3]'}`}
                   />
                   {/* Highlight overlay for inactive cards */}

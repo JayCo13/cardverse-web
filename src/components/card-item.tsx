@@ -23,6 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useUser } from "@/lib/supabase";
 import { useAuthModal } from "@/components/auth-modal";
 import { useRouter } from "next/navigation";
+import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 
 // Category badge styles with colors and gradients (no icons for cleaner look)
 const getCategoryStyle = (category: string) => {
@@ -86,9 +87,10 @@ const getCategoryStyle = (category: string) => {
 interface CardItemProps {
   card: CardType;
   layout?: 'grid' | 'list';
+  onBuyClick?: (card: CardType) => void;
 }
 
-export const CardItem = React.memo(function CardItem({ card, layout = 'grid' }: CardItemProps) {
+export const CardItem = React.memo(function CardItem({ card, layout = 'grid', onBuyClick }: CardItemProps) {
   const { t } = useLocalization();
   const { formatPrice } = useCurrency();
   const { setOpen } = useAuthModal();
@@ -99,8 +101,11 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid' }: 
   const isOwner = user?.id === card.sellerId;
 
   const handleActionClick = () => {
-    // Navigate to card details page
-    router.push(`/cards/${card.id}`);
+    if (onBuyClick && card.listingType === 'sale' && card.status !== 'sold') {
+      onBuyClick(card);
+    } else {
+      router.push(`/cards/${card.id}`);
+    }
   };
 
   const handleManageClick = () => {
@@ -210,10 +215,11 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid' }: 
       <Card className={`overflow-hidden w-full flex flex-col md:flex-row bg-card/80 hover:bg-card transition-colors duration-300 group ${card.status === 'sold' ? 'border-green-500/50 opacity-75' : ''}`}>
         <div className="relative w-full md:w-1/5 aspect-square md:aspect-[3/4]">
           <Image
-            src={card.imageUrl}
+            src={optimizeCloudinaryUrl(card.imageUrl, 300)}
             alt={card.name}
             data-ai-hint={card.imageHint || 'trading card'}
             fill
+            sizes="(max-width: 768px) 100vw, 20vw"
             className={`object-cover ${card.status === 'sold' ? 'grayscale' : ''}`}
           />
           {/* Sold overlay */}
@@ -252,12 +258,14 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid' }: 
   return (
     <Card className={`overflow-hidden flex flex-col bg-card/80 hover:bg-card transition-all duration-300 group rounded-2xl sm:rounded-3xl border shadow-lg hover:shadow-xl ${card.status === 'sold' ? 'border-green-500/50 opacity-75' : 'border-gray-700/50'}`}>
       {/* Image section */}
-      <div className="relative aspect-square overflow-hidden">
+      <div className="relative aspect-square overflow-hidden img-shimmer">
         <Image
-          src={card.imageUrl}
+          src={optimizeCloudinaryUrl(card.imageUrl, 400)}
           alt={card.name}
           data-ai-hint={card.imageHint || 'trading card'}
           fill
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+          loading="lazy"
           className={`object-cover transition-transform duration-500 ${card.status === 'sold' ? 'grayscale' : 'group-hover:scale-105'}`}
         />
         {/* Sold overlay */}

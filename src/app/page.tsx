@@ -5,7 +5,9 @@ import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { HeroSection } from "@/components/hero-section";
 import { MarketTicker } from "@/components/market-ticker";
-import { MarketSpotlight } from "@/components/market-spotlight";
+const MarketSpotlight = dynamic(() => import("@/components/market-spotlight").then(mod => ({ default: mod.MarketSpotlight })), {
+  loading: () => <div className="w-full h-[500px] flex items-center justify-center"><div className="w-full max-w-7xl mx-auto px-4"><Skeleton className="h-[400px] w-full rounded-2xl" /></div></div>
+});
 import { FeatureTeasers } from "@/components/feature-teasers";
 import { SupportSection } from "@/components/support-section";
 import { Skeleton } from "@/components/ui/skeleton";

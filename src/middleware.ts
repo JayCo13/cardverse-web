@@ -10,7 +10,7 @@ export async function middleware(request: NextRequest) {
     // The auth provider sets redirectTo to /auth/callback, so no middleware interception is needed.
 
     // Phase 1 Beta Restrictions: Block access to upcoming features
-    const restrictedPaths = ['/buy', '/sell', '/bid', '/razz', '/forum'];
+    const restrictedPaths = ['/bid', '/razz', '/forum'];
     const currentPath = request.nextUrl.pathname;
 
     // Check if the current path exactly matches or starts with the restricted path (e.g. /sell/create)
@@ -47,12 +47,12 @@ export async function middleware(request: NextRequest) {
         }
     )
 
-    // IMPORTANT: Do NOT run code between createServerClient and supabase.auth.getUser().
-    // A simple mistake could make it very hard to debug issues with users being
-    // randomly logged out.
-
-    // Refresh the auth token on every request to keep the session alive
-    await supabase.auth.getUser()
+    // Refresh the auth token on every request to keep the session alive.
+    // Using getSession() instead of getUser() for performance:
+    // - getSession() reads from local cookie (~0ms)
+    // - getUser() makes a network call to Supabase (~200-500ms)
+    // Protected routes should call getUser() themselves if JWT verification is needed.
+    await supabase.auth.getSession()
 
     return supabaseResponse
 }
