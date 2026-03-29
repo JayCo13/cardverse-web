@@ -375,6 +375,7 @@ export const en = {
   scan_cancel: 'Cancel',
   scan_select_card: 'Select Your Card',
   scan_top_matches: 'Top matches from scan — tap to select',
+  scan_not_a_card: 'This doesn\'t look like a Pokemon card. Please upload a clear photo of a Pokemon trading card.',
   // PSA Section
   psa_graded_prices: 'PSA Graded Prices',
   psa_listings_count: '{count} listings',

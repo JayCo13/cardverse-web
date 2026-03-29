@@ -374,6 +374,7 @@ export const vi = {
   scan_cancel: 'Hủy',
   scan_select_card: 'Chọn Thẻ Của Bạn',
   scan_top_matches: 'Kết quả phù hợp nhất — chạm để chọn',
+  scan_not_a_card: 'Đây không giống thẻ Pokémon. Vui lòng tải lên ảnh rõ ràng của một thẻ Pokémon.',
   // PSA Section
   psa_graded_prices: 'Giá PSA',
   psa_listings_count: '{count} tin đăng',

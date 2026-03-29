@@ -382,6 +382,7 @@ export const ja = {
   scan_cancel: 'キャンセル',
   scan_select_card: 'カードを選択',
   scan_top_matches: 'スキャン結果トップ5 — タップして選択',
+  scan_not_a_card: 'ポケモンカードではないようです。ポケモンカードの鮮明な写真をアップロードしてください。',
   // PSA Section
   psa_graded_prices: 'PSA鑑定価格',
   psa_listings_count: '{count}件の出品',

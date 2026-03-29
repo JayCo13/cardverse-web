@@ -641,6 +641,13 @@ export function MarketSpotlight() {
                 return;
             }
 
+            // Automatic card detection: reject non-card images without charging credits
+            if (identification.is_card === false) {
+                console.log('AI detected image is NOT a Pokemon card');
+                setSearchError(t('scan_not_a_card') || 'This doesn\'t look like a Pokemon card. Please upload a clear photo of a Pokemon trading card.');
+                return;
+            }
+
             setScanStatus('Card identified! Searching database...');
 
             // NOTE: incrementUsage is now called AFTER successful DB results found
