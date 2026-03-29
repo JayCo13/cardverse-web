@@ -551,8 +551,8 @@ export function MarketSpotlight() {
             setIsScannedResult(true);
 
             // Automatic retry with exponential backoff
-            const RETRY_TIMEOUTS = [20000, 25000, 30000]; // 20s, 25s, 30s
-            const RETRY_DELAYS = [0, 1500, 2500]; // 0s, 1.5s, 2.5s delay before retry
+            const RETRY_TIMEOUTS = [12000, 15000, 18000]; // 12s, 15s, 18s (reduced for speed)
+            const RETRY_DELAYS = [0, 1000, 1500]; // 0s, 1s, 1.5s delay before retry
             const STATUS_MESSAGES = [
                 'Identifying card...',
                 'Still working... retrying...',
@@ -688,9 +688,9 @@ export function MarketSpotlight() {
                 const categoryId = isJapanese ? CATEGORY_POKEMON_JAPANESE : CATEGORY_POKEMON_ENGLISH;
                 const altCategoryId = isJapanese ? CATEGORY_POKEMON_ENGLISH : CATEGORY_POKEMON_JAPANESE;
 
-                // 15 second timeout
+                // 10 second timeout (reduced for speed)
                 const searchController = new AbortController();
-                const searchTimeoutId = setTimeout(() => searchController.abort(), 15000);
+                const searchTimeoutId = setTimeout(() => searchController.abort(), 10000);
 
                 const searchFetch = (url: string) => fetch(url, {
                     headers: {
@@ -846,59 +846,53 @@ export function MarketSpotlight() {
                         altFormatsArray = Array.from(altFormats);
                     }
 
-                    // --- SEARCH STRATEGY 1: By card number (both categories) ---
+                    // Helper: fetch both categories in parallel for a given URL builder
+                    const searchBothCategories = async (buildUrl: (catId: number) => string, label: string) => {
+                        const results = await Promise.allSettled(
+                            [categoryId, altCategoryId].map(async (catId) => {
+                                const response = await searchFetch(buildUrl(catId));
+                                if (response.ok) {
+                                    const products = await response.json();
+                                    if (products?.length > 0) {
+                                        console.log(`  Found ${products.length} by ${label} (cat: ${catId})`);
+                                        return products;
+                                    }
+                                }
+                                return [];
+                            })
+                        );
+                        for (const r of results) {
+                            if (r.status === 'fulfilled' && r.value.length > 0) addCandidates(r.value);
+                        }
+                    };
+
+                    // --- SEARCH STRATEGY 1: By card number (both categories in parallel) ---
                     if (altFormatsArray.length > 0) {
                         const numberClauses = altFormatsArray.map((n: string) => `number.eq.${encodeURIComponent(n)}`).join(',');
                         console.log(`TCGCSV: Number search: ${altFormatsArray.join(', ')}`);
-
-                        for (const searchCatId of [categoryId, altCategoryId]) {
-                            try {
-                                const restUrl = `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${searchCatId}&or=(${numberClauses})&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=20`;
-                                const response = await searchFetch(restUrl);
-                                if (response.ok) {
-                                    const products = await response.json();
-                                    if (products?.length > 0) {
-                                        console.log(`  Found ${products.length} by number (cat: ${searchCatId})`);
-                                        addCandidates(products);
-                                    }
-                                }
-                            } catch { /* continue to next strategy */ }
-                        }
+                        await searchBothCategories(
+                            (catId) => `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&or=(${numberClauses})&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=20`,
+                            'number'
+                        );
                     }
 
-                    // --- SEARCH STRATEGY 2: By name (both categories, more results) ---
+                    // --- SEARCH STRATEGIES 2 & 3: By name + base name (all in parallel) ---
                     if (cardName) {
-                        console.log(`TCGCSV: Name search: "${cardName}"`);
-                        for (const searchCatId of [categoryId, altCategoryId]) {
-                            try {
-                                const response = await searchFetch(buildNameUrl(cardName, searchCatId, 10));
-                                if (response.ok) {
-                                    const products = await response.json();
-                                    if (products?.length > 0) {
-                                        console.log(`  Found ${products.length} by name (cat: ${searchCatId})`);
-                                        addCandidates(products);
-                                    }
-                                }
-                            } catch { /* continue */ }
-                        }
-
-                        // --- SEARCH STRATEGY 3: Base name (strip ex/V/GX etc.) ---
                         const baseName = cardName.replace(/\s*(ex|EX|Ex|V|GX|Gx|VMAX|Vmax|VSTAR|Vstar)\s*$/i, '').trim();
+                        const nameSearches: Promise<void>[] = [];
+
+                        // Strategy 2: Full name search (both categories)
+                        console.log(`TCGCSV: Name search: "${cardName}"`);
+                        nameSearches.push(searchBothCategories((catId) => buildNameUrl(cardName, catId, 10), 'name'));
+
+                        // Strategy 3: Base name search (both categories, only if different)
                         if (baseName && baseName !== cardName) {
                             console.log(`TCGCSV: Base name search: "${baseName}"`);
-                            for (const catId of [categoryId, altCategoryId]) {
-                                try {
-                                    const response = await searchFetch(buildNameUrl(baseName, catId, 10));
-                                    if (response.ok) {
-                                        const products = await response.json();
-                                        if (products?.length > 0) {
-                                            console.log(`  Found ${products.length} by base name (cat: ${catId})`);
-                                            addCandidates(products);
-                                        }
-                                    }
-                                } catch { /* continue */ }
-                            }
+                            nameSearches.push(searchBothCategories((catId) => buildNameUrl(baseName, catId, 10), 'base name'));
                         }
+
+                        // Run strategies 2 & 3 simultaneously
+                        await Promise.allSettled(nameSearches);
                     }
 
                     // --- SEARCH STRATEGY 4: Word-split fallback for compound names ---
@@ -1155,8 +1149,8 @@ export function MarketSpotlight() {
                     return;
                 }
 
-                // Only resize if too large (max 1500px - keep quality for card numbers)
-                const maxWidth = 1500;
+                // Only resize if too large (max 1024px for speed — AI doesn't need higher)
+                const maxWidth = 1024;
                 let width = img.width;
                 let height = img.height;
 
@@ -1172,8 +1166,8 @@ export function MarketSpotlight() {
                 // Draw image (no contrast/brightness changes - preserve original quality)
                 ctx.drawImage(img, 0, 0, width, height);
 
-                // Convert to base64 (JPEG quality 95% - higher quality for small text)
-                const enhancedBase64 = canvas.toDataURL('image/jpeg', 0.95);
+                // Convert to base64 (JPEG quality 85% — balanced quality/speed)
+                const enhancedBase64 = canvas.toDataURL('image/jpeg', 0.85);
                 const base64Data = enhancedBase64.split(',')[1];
 
                 console.log(`Image resized: ${img.width}x${img.height} -> ${width}x${height}`);
