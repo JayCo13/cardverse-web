@@ -192,24 +192,11 @@ export function MarketSpotlight() {
     const [crop, setCrop] = useState<Crop>();
     const cropImgRef = useRef<HTMLImageElement>(null);
 
-    // Retry state for scan confirmation
-    const [showScanConfirmation, setShowScanConfirmation] = useState(false);
-    const [retriesRemaining, setRetriesRemaining] = useState(0);
-    const [lastScannedImage, setLastScannedImage] = useState<string | null>(null);
+    // Top 5 scan results dialog state
+    type ScoredResult = { product: TcgcsvProduct; score: number; breakdown: string };
+    const [scanResults, setScanResults] = useState<ScoredResult[]>([]);
+    const [showScanResultsDialog, setShowScanResultsDialog] = useState(false);
     const [scanStatus, setScanStatus] = useState<string>('');
-
-    // Auto-dismiss scan confirmation after 30 seconds
-    useEffect(() => {
-        if (!showScanConfirmation) return;
-
-        const timer = setTimeout(() => {
-            setShowScanConfirmation(false);
-            setRetriesRemaining(0);
-            setLastScannedImage(null);
-        }, 60000);
-
-        return () => clearTimeout(timer);
-    }, [showScanConfirmation]);
 
     // Collection state
     const [isAddingToCollection, setIsAddingToCollection] = useState(false);
@@ -927,21 +914,20 @@ export function MarketSpotlight() {
                         console.log(`\n✅ Best match: ${bestMatch.product.name} #${bestMatch.product.number} (score: ${bestMatch.score}/100)`);
 
                         await displayProductResult(bestMatch.product);
-                        setShowScanConfirmation(true);
+                        // Store top 5 for the selection dialog
+                        setScanResults(scored.slice(0, 5));
+                        setShowScanResultsDialog(true);
                     } else {
                         setSearchError(`No cards found for "${cardName}"`);
-                        setShowScanConfirmation(true);
                     }
                 } catch (searchErr: unknown) {
                     clearTimeout(searchTimeoutId);
                     if (searchErr instanceof Error && searchErr.name === 'AbortError') {
                         console.log('Search timed out');
                         setSearchError('Database search timed out. Please try again.');
-                        setShowScanConfirmation(true);
                     } else {
                         console.error('Search error:', searchErr);
                         setSearchError('Database search failed. Please try again.');
-                        setShowScanConfirmation(true);
                     }
                 }
             }
@@ -949,7 +935,6 @@ export function MarketSpotlight() {
         } catch (error: unknown) {
             console.error('Error processing scanned image:', error);
             setSearchError('Failed to scan card. Please try again.');
-            setShowScanConfirmation(true);
         } finally {
             scanInProgressRef.current = false;
             setIsScanning(false);
@@ -959,20 +944,12 @@ export function MarketSpotlight() {
         }
     };
 
-    // Handle retry scan with the same image
-    const handleRetry = useCallback(async () => {
-        if (!lastScannedImage || retriesRemaining <= 0) return;
-
-        setRetriesRemaining(prev => prev - 1);
-        setShowScanConfirmation(false);
-        processScannedImage(lastScannedImage, false); // Don't re-count usage on retry
-    }, [lastScannedImage, retriesRemaining]);
-
-    // Handle confirmation - user said result is correct
-    const handleConfirmCorrect = () => {
-        setShowScanConfirmation(false);
-        setRetriesRemaining(0);
-        setLastScannedImage(null);
+    // Handle selecting a card from the top 5 results dialog
+    const handleSelectScanResult = async (result: ScoredResult) => {
+        setShowScanResultsDialog(false);
+        setIsLoading(true);
+        await displayProductResult(result.product);
+        setIsLoading(false);
     };
 
     // Helper function to display a product result (extracted from fetchFeaturedProduct)
@@ -1195,8 +1172,6 @@ export function MarketSpotlight() {
                 return;
             }
 
-            setLastScannedImage(enhancedBase64);
-            setRetriesRemaining(2);
             processScannedImage(enhancedBase64, true);
         };
         reader.readAsDataURL(file);
@@ -1282,10 +1257,8 @@ export function MarketSpotlight() {
             return;
         }
 
-        setLastScannedImage(enhancedBase64);
-        setRetriesRemaining(2);
         processScannedImage(enhancedBase64, true);
-    }, [crop, processScannedImage, canScan, incrementUsage]);
+    }, [crop, processScannedImage, canScan]);
 
     // Use original image without cropping
     const handleUseOriginal = useCallback(async () => {
@@ -1307,10 +1280,8 @@ export function MarketSpotlight() {
             return;
         }
 
-        setLastScannedImage(enhancedBase64);
-        setRetriesRemaining(2);
         processScannedImage(enhancedBase64, true);
-    }, [cropImageSrc, processScannedImage, canScan, incrementUsage]);
+    }, [cropImageSrc, processScannedImage, canScan]);
 
     // Trigger camera input click
     const handleScanClick = () => {
@@ -1603,78 +1574,91 @@ export function MarketSpotlight() {
                         </p>
                     </div>
 
-                    {/* Scan Confirmation - Ask if result is correct (only when no error) */}
-                    {showScanConfirmation && product && !searchError && (
-                        <div className="mt-6 p-4 rounded-xl bg-gradient-to-r from-orange-500/10 to-amber-500/10 border border-orange-500/30 max-w-[400px] mx-auto animate-in fade-in slide-in-from-top-4 duration-300">
-                            <p className="text-white text-sm font-medium text-center mb-3">
-                                {t('scan_is_correct_card')}
-                            </p>
-                            <div className="flex gap-3 justify-center">
-                                <Button
-                                    onClick={handleConfirmCorrect}
-                                    className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm py-2 h-9"
-                                >
-                                    <Check className="w-4 h-4 mr-1.5" />
-                                    {t('scan_yes_correct')}
-                                </Button>
-                                {retriesRemaining > 0 && (
-                                    <Button
-                                        onClick={handleRetry}
-                                        disabled={isScanning}
-                                        className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-sm py-2 h-9"
+                    {/* Top 5 Scan Results Dialog */}
+                    <Dialog open={showScanResultsDialog} onOpenChange={setShowScanResultsDialog}>
+                        <DialogContent className="bg-zinc-950 border-white/10 text-white max-w-md sm:max-w-lg p-0 rounded-2xl overflow-hidden">
+                            <DialogHeader className="px-5 pt-5 pb-3 border-b border-white/10">
+                                <DialogTitle className="text-lg font-bold flex items-center gap-2">
+                                    <MagnifyingGlass className="w-5 h-5 text-yellow-400" weight="bold" />
+                                    {t('scan_select_card') || 'Select Your Card'}
+                                </DialogTitle>
+                                <p className="text-xs text-white/50 mt-1">{t('scan_top_matches') || 'Top matches from scan — tap to select'}</p>
+                            </DialogHeader>
+                            <div className="px-3 py-3 max-h-[60vh] overflow-y-auto space-y-2">
+                                {scanResults.map((result, index) => (
+                                    <button
+                                        key={result.product.product_id}
+                                        onClick={() => handleSelectScanResult(result)}
+                                        className={`w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] ${
+                                            index === 0
+                                                ? 'bg-gradient-to-r from-yellow-500/15 to-orange-500/10 border border-yellow-500/40 shadow-[0_0_15px_rgba(234,179,8,0.1)]'
+                                                : 'bg-white/5 border border-white/5 hover:border-white/20 hover:bg-white/10'
+                                        }`}
                                     >
-                                        <ArrowsClockwise className={`w-4 h-4 mr-1.5 ${isScanning ? 'animate-spin' : ''}`} />
-                                        {t('scan_retry')} ({retriesRemaining})
-                                    </Button>
-                                )}
-                            </div>
-                            {retriesRemaining <= 0 && (
-                                <p className="text-gray-400 text-xs text-center mt-2">
-                                    {t('scan_retry_limit_reached')}
-                                </p>
-                            )}
-                        </div>
-                    )}
+                                        {/* Rank */}
+                                        <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                                            index === 0 ? 'bg-yellow-500 text-black' : 'bg-white/10 text-white/60'
+                                        }`}>
+                                            {index + 1}
+                                        </div>
 
-                    {/* Error with retry option */}
-                    {showScanConfirmation && searchError && retriesRemaining > 0 && (
-                        <div className="mt-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 max-w-[400px] mx-auto animate-in fade-in slide-in-from-top-4 duration-300">
-                            <p className="text-white text-sm font-medium text-center mb-3">
-                                {searchError}
-                            </p>
-                            <div className="flex gap-3 justify-center">
-                                <Button
-                                    onClick={() => {
-                                        setShowScanConfirmation(false);
-                                        setRetriesRemaining(0);
-                                        setLastScannedImage(null);
-                                    }}
-                                    variant="outline"
-                                    className="flex-1 text-sm py-2 h-9"
-                                >
-                                    {t('scan_cancel')}
-                                </Button>
-                                <Button
-                                    onClick={handleRetry}
-                                    disabled={isScanning}
-                                    className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-sm py-2 h-9"
-                                >
-                                    <ArrowsClockwise className={`w-4 h-4 mr-1.5 ${isScanning ? 'animate-spin' : ''}`} />
-                                    {t('scan_retry')} ({retriesRemaining})
-                                </Button>
+                                        {/* Image */}
+                                        <div className="relative w-12 h-16 flex-shrink-0 rounded-lg overflow-hidden bg-black/40">
+                                            {result.product.image_url ? (
+                                                <Image
+                                                    src={result.product.image_url}
+                                                    alt={result.product.name}
+                                                    fill
+                                                    className="object-contain p-0.5"
+                                                    sizes="48px"
+                                                />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center text-xl">⚡</div>
+                                            )}
+                                        </div>
+
+                                        {/* Card Info */}
+                                        <div className="flex-1 min-w-0">
+                                            <p className={`text-sm font-semibold truncate ${index === 0 ? 'text-yellow-300' : 'text-white'}`}>
+                                                {result.product.name}
+                                            </p>
+                                            <div className="flex items-center gap-2 mt-0.5">
+                                                {result.product.set_name && (
+                                                    <span className="text-[10px] text-white/40 truncate max-w-[120px]">
+                                                        {result.product.set_name}
+                                                    </span>
+                                                )}
+                                                {result.product.number && (
+                                                    <span className="text-[10px] text-white/30 font-mono">
+                                                        #{result.product.number}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {/* Match score bar */}
+                                            <div className="flex items-center gap-2 mt-1.5">
+                                                <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
+                                                    <div
+                                                        className={`h-full rounded-full transition-all ${
+                                                            result.score >= 60 ? 'bg-green-500' : result.score >= 30 ? 'bg-yellow-500' : 'bg-orange-500'
+                                                        }`}
+                                                        style={{ width: `${Math.min(100, result.score)}%` }}
+                                                    />
+                                                </div>
+                                                <span className="text-[9px] text-white/30 font-mono w-8 text-right">{result.score}%</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Price */}
+                                        <div className="flex-shrink-0 text-right">
+                                            <p className={`text-sm font-bold ${index === 0 ? 'text-yellow-400' : 'text-green-400'}`}>
+                                                {formatPrice(result.product.market_price)}
+                                            </p>
+                                        </div>
+                                    </button>
+                                ))}
                             </div>
-                        </div>
-                    )}
-                    {showScanConfirmation && searchError && retriesRemaining <= 0 && (
-                        <div className="mt-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 max-w-[400px] mx-auto animate-in fade-in slide-in-from-top-4 duration-300">
-                            <p className="text-white text-sm font-medium text-center mb-3">
-                                {searchError}
-                            </p>
-                            <p className="text-gray-400 text-xs text-center">
-                                {t('scan_retry_limit_reached')}
-                            </p>
-                        </div>
-                    )}
+                        </DialogContent>
+                    </Dialog>
                 </div>
 
                 <div className="grid lg:grid-cols-2 gap-8 items-center">
