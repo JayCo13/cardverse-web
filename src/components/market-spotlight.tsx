@@ -643,10 +643,8 @@ export function MarketSpotlight() {
 
             setScanStatus('Card identified! Searching database...');
 
-            // Count scan usage now that AI identification succeeded
-            if (shouldIncrementUsage) {
-                await incrementUsage();
-            }
+            // NOTE: incrementUsage is now called AFTER successful DB results found
+            // to avoid charging credits when no cards are found
 
             // Get category from identification response (default to pokemon)
             const category = (identification.category || 'pokemon').toLowerCase();
@@ -896,6 +894,34 @@ export function MarketSpotlight() {
                         }
                     }
 
+                    // --- SEARCH STRATEGY 4: Word-split fallback for compound names ---
+                    // e.g. AI returns "KochiKing ex" but DB has "Kochiking ex" or different transliteration
+                    if (cardName && allCandidates.length === 0) {
+                        // Split camelCase/PascalCase compound names (e.g. "KochiKing" -> ["Kochi", "King"])
+                        const splitCamel = cardName.replace(/([a-z])([A-Z])/g, '$1 $2');
+                        // Also strip suffixes like ex/V/GX for broader search
+                        const cleanedName = splitCamel.replace(/\s*(ex|EX|Ex|V|GX|Gx|VMAX|Vmax|VSTAR|Vstar)\s*$/i, '').trim();
+                        const words = cleanedName.split(/\s+/).filter((w: string) => w.length >= 3);
+
+                        if (words.length > 0 && (splitCamel !== cardName || words.length > 1)) {
+                            console.log(`TCGCSV: Word-split fallback: [${words.join(', ')}]`);
+                            for (const word of words) {
+                                for (const catId of [categoryId, altCategoryId]) {
+                                    try {
+                                        const response = await searchFetch(buildNameUrl(word, catId, 15));
+                                        if (response.ok) {
+                                            const products = await response.json();
+                                            if (products?.length > 0) {
+                                                console.log(`  Found ${products.length} by word '${word}' (cat: ${catId})`);
+                                                addCandidates(products);
+                                            }
+                                        }
+                                    } catch { /* continue */ }
+                                }
+                            }
+                        }
+                    }
+
                     clearTimeout(searchTimeoutId);
 
                     // --- SCORE ALL CANDIDATES TOGETHER ---
@@ -917,6 +943,11 @@ export function MarketSpotlight() {
                         // Store top 5 for the selection dialog
                         setScanResults(scored.slice(0, 5));
                         setShowScanResultsDialog(true);
+
+                        // Only count scan usage when results were found
+                        if (shouldIncrementUsage) {
+                            await incrementUsage();
+                        }
                     } else {
                         setSearchError(`No cards found for "${cardName}"`);
                     }
