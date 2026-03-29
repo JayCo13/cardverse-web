@@ -1890,7 +1890,7 @@ export function MarketSpotlight() {
                                         <DialogTrigger asChild>
                                             <Button
                                                 variant="outline"
-                                                className="flex-1 gap-2 border-white/10 hover:bg-white/5 hover:text-white text-gray-300 py-6 text-base"
+                                                className="flex-1 gap-2 border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 hover:text-yellow-400 py-6 text-base transition-colors"
                                             >
                                                 <Medal className="h-5 w-5 text-yellow-500" weight="duotone" />
                                                 {t('view_psa')}

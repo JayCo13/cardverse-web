@@ -13,10 +13,15 @@ export async function POST(request: NextRequest) {
         }
 
         const body = await request.json();
-        const { full_name, id_card_front_url, id_card_back_url, selfie_url, bank_name, bank_account_number, bank_account_name } = body;
+        const {
+            full_name, id_card_front_url, id_card_back_url,
+            bank_name, bank_account_number, bank_account_name,
+            bank_screenshot_url, phone_number,
+            ai_cccd_name, ai_bank_name, ai_bank_number, ai_confidence, ai_name_match,
+        } = body;
 
         // Validate required fields
-        if (!full_name || !id_card_front_url || !id_card_back_url || !selfie_url || !bank_name || !bank_account_number || !bank_account_name) {
+        if (!full_name || !id_card_front_url || !id_card_back_url || !bank_name || !bank_account_number || !bank_account_name) {
             return NextResponse.json({ error: 'All fields are required' }, { status: 400 });
         }
 
@@ -25,7 +30,7 @@ export async function POST(request: NextRequest) {
             .from('seller_verifications')
             .select('id, status')
             .eq('user_id', user.id)
-            .single();
+            .single() as { data: { id: string; status: string } | null };
 
         if (existing) {
             if (existing.status === 'approved') {
@@ -38,8 +43,10 @@ export async function POST(request: NextRequest) {
             const { error: updateError } = await supabase
                 .from('seller_verifications')
                 .update({
-                    full_name, id_card_front_url, id_card_back_url, selfie_url,
+                    full_name, id_card_front_url, id_card_back_url,
                     bank_name, bank_account_number, bank_account_name,
+                    bank_screenshot_url, phone_number,
+                    ai_cccd_name, ai_bank_name, ai_bank_number, ai_confidence, ai_name_match,
                     status: 'pending',
                     rejection_reason: null,
                     reviewed_by: null,
@@ -63,8 +70,10 @@ export async function POST(request: NextRequest) {
             .from('seller_verifications')
             .insert({
                 user_id: user.id,
-                full_name, id_card_front_url, id_card_back_url, selfie_url,
+                full_name, id_card_front_url, id_card_back_url,
                 bank_name, bank_account_number, bank_account_name,
+                bank_screenshot_url, phone_number,
+                ai_cccd_name, ai_bank_name, ai_bank_number, ai_confidence, ai_name_match,
                 status: 'pending',
             } as never);
 

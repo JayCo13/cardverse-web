@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckCircle, XCircle/*, Wallet*/ } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckCircle, XCircle, Phone, FileCheck, ChevronRight, ChevronLeft, Sparkles, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
@@ -35,11 +35,27 @@ type SellerOrder = {
   card: { name: string; image_url: string } | null;
 };
 
+type AIResult = {
+  cccd_name: string;
+  cccd_id_number: string | null;
+  cccd_dob: string | null;
+  is_valid_cccd: boolean;
+  bank_account_name: string;
+  bank_account_number: string;
+  bank_name_detected: string | null;
+  is_valid_bank: boolean;
+  is_name_match: boolean;
+  confidence: number;
+};
+
 const BANKS = [
   'Vietcombank', 'Techcombank', 'MB Bank', 'BIDV', 'Agribank',
   'VPBank', 'ACB', 'Sacombank', 'TPBank', 'VIB',
   'SHB', 'HDBank', 'OCB', 'MSB', 'SeABank', 'Khác',
 ];
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 export default function SellPage() {
   const { t } = useLocalization();
@@ -53,14 +69,22 @@ export default function SellPage() {
   const [sellerOrders, setSellerOrders] = useState<SellerOrder[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
 
-  // KYC form state
+  // Wizard step
+  const [currentStep, setCurrentStep] = useState(1);
+
+  // Step 1: AI Verification
   const [fullName, setFullName] = useState('');
   const [bankName, setBankName] = useState('');
-  const [bankAccountNumber, setBankAccountNumber] = useState('');
-  const [bankAccountName, setBankAccountName] = useState('');
   const [idFrontFile, setIdFrontFile] = useState<File | null>(null);
   const [idBackFile, setIdBackFile] = useState<File | null>(null);
-  const [selfieFile, setSelfieFile] = useState<File | null>(null);
+
+  const [bankScreenshotFile, setBankScreenshotFile] = useState<File | null>(null);
+  const [isAIChecking, setIsAIChecking] = useState(false);
+  const [aiResult, setAIResult] = useState<AIResult | null>(null);
+  const [aiError, setAIError] = useState<string | null>(null);
+
+  // Step 2: Phone
+  const [phoneNumber, setPhoneNumber] = useState('');
 
   useEffect(() => {
     if (!authLoading && !user) setOpen(true);
@@ -101,21 +125,97 @@ export default function SellPage() {
     }
   };
 
-  const handleKYCSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Convert file to compressed base64 (resize + JPEG quality reduction)
+  const fileToBase64 = (file: File, maxWidth = 800, quality = 0.7): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new window.Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let { width, height } = img;
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(dataUrl.split(',')[1]);
+      };
+      img.onerror = reject;
+      img.src = URL.createObjectURL(file);
+    });
+  };
 
-    if (!fullName || !bankName || !bankAccountNumber || !bankAccountName || !idFrontFile || !idBackFile || !selfieFile) {
-      toast({ variant: 'destructive', title: 'Vui lòng điền đầy đủ thông tin' });
+  // Step 1: Run AI verification
+  const handleAICheck = async (cccdFile: File, bankFile: File) => {
+    setIsAIChecking(true);
+    setAIError(null);
+    setAIResult(null);
+
+    try {
+      const [cccdBase64, bankBase64] = await Promise.all([
+        fileToBase64(cccdFile),
+        fileToBase64(bankFile),
+      ]);
+
+      const response = await fetch('/api/seller/ai-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cccd_image: cccdBase64,
+          bank_image: bankBase64,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setAIError(data.error || 'AI kiểm tra thất bại. Vui lòng thử lại.');
+        return;
+      }
+
+      setAIResult(data as AIResult);
+
+      if (data.is_name_match && data.confidence >= 0.7) {
+        toast({ title: '✅ AI xác minh thành công!', description: 'Tên trên CCCD và Ngân hàng trùng khớp.' });
+      } else {
+        toast({ variant: 'destructive', title: '⚠️ Cần kiểm tra lại', description: 'Tên trên CCCD và Ngân hàng không khớp hoặc ảnh không rõ.' });
+      }
+    } catch (err: any) {
+      setAIError(err.message || 'Lỗi kết nối AI');
+    } finally {
+      setIsAIChecking(false);
+    }
+  };
+
+  // Auto-trigger AI check when both CCCD front and Bank screenshot are uploaded
+  useEffect(() => {
+    if (idFrontFile && bankScreenshotFile && !aiResult && !isAIChecking) {
+      handleAICheck(idFrontFile, bankScreenshotFile);
+    }
+  }, [idFrontFile, bankScreenshotFile]);
+
+  // Final submit
+  const handleKYCSubmit = async () => {
+    if (!fullName || !bankName || !idFrontFile || !idBackFile || !bankScreenshotFile || !phoneNumber) {
+      toast({ variant: 'destructive', title: 'Vui lòng điền đầy đủ thông tin ở tất cả các bước' });
+      return;
+    }
+
+    if (!aiResult) {
+      toast({ variant: 'destructive', title: 'Vui lòng chạy kiểm tra AI ở Bước 1 trước' });
       return;
     }
 
     setIsSubmitting(true);
     try {
-      // Upload images
+      // Upload all images in parallel
       const uploads = await Promise.all([
         uploadImageToCloudinary((() => { const fd = new FormData(); fd.append('file', idFrontFile!); return fd; })()),
         uploadImageToCloudinary((() => { const fd = new FormData(); fd.append('file', idBackFile!); return fd; })()),
-        uploadImageToCloudinary((() => { const fd = new FormData(); fd.append('file', selfieFile!); return fd; })()),
+        uploadImageToCloudinary((() => { const fd = new FormData(); fd.append('file', bankScreenshotFile!); return fd; })()),
       ]);
 
       if (uploads.some(u => !u.success)) {
@@ -129,17 +229,23 @@ export default function SellPage() {
           full_name: fullName,
           id_card_front_url: uploads[0].url,
           id_card_back_url: uploads[1].url,
-          selfie_url: uploads[2].url,
+          bank_screenshot_url: uploads[2].url,
           bank_name: bankName,
-          bank_account_number: bankAccountNumber,
-          bank_account_name: bankAccountName,
+          bank_account_number: aiResult.bank_account_number,
+          bank_account_name: aiResult.bank_account_name,
+          phone_number: phoneNumber,
+          ai_cccd_name: aiResult.cccd_name,
+          ai_bank_name: aiResult.bank_account_name,
+          ai_bank_number: aiResult.bank_account_number,
+          ai_confidence: aiResult.confidence,
+          ai_name_match: aiResult.is_name_match,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      toast({ title: '✅ Đã gửi yêu cầu xác minh!', description: 'Admin sẽ duyệt trong 24h.' });
+      toast({ title: '✅ Đã gửi yêu cầu xác minh!', description: 'AI đã tiền duyệt hồ sơ. Admin sẽ xác nhận lần cuối trong vài giờ.' });
       fetchVerification();
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Lỗi', description: err.message });
@@ -157,6 +263,8 @@ export default function SellPage() {
     disputed: { label: 'Khiếu nại', icon: <XCircle className="h-4 w-4" />, color: 'text-red-400' },
     cancelled: { label: 'Đã hủy', icon: <XCircle className="h-4 w-4" />, color: 'text-muted-foreground' },
   };
+
+  const isPhoneValid = /^0[3-9]\d{8}$/.test(phoneNumber);
 
   // ── LOADING STATE ──
   if (authLoading || isLoadingVerification) {
@@ -198,10 +306,10 @@ export default function SellPage() {
           <div className="max-w-2xl mx-auto text-center">
             <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-8 space-y-4">
               <Clock className="h-16 w-16 text-yellow-500 mx-auto" />
-              <h2 className="text-2xl font-bold text-yellow-400">Đang chờ duyệt</h2>
+              <h2 className="text-2xl font-bold text-yellow-400">Đang chờ Admin duyệt lần cuối</h2>
               <p className="text-muted-foreground">
-                Yêu cầu xác minh của bạn đã được gửi và đang chờ Admin xem xét.
-                Thường sẽ được duyệt trong vòng 24 giờ.
+                Hồ sơ của bạn đã được AI tiền duyệt thành công.
+                Admin sẽ xác nhận lần cuối trong thời gian sớm nhất.
               </p>
               <p className="text-xs text-muted-foreground">
                 Gửi lúc: {new Date(verification.created_at).toLocaleString('vi-VN')}
@@ -350,7 +458,13 @@ export default function SellPage() {
     );
   }
 
-  // ── KYC FORM (Not yet submitted) ──
+  // ── KYC FORM — 3-STEP WIZARD ──
+  const steps = [
+    { number: 1, title: 'Xác minh danh tính (AI)', icon: <Sparkles className="h-4 w-4" /> },
+    { number: 2, title: 'Xác minh số điện thoại', icon: <Phone className="h-4 w-4" /> },
+    { number: 3, title: 'Xác nhận & Gửi', icon: <FileCheck className="h-4 w-4" /> },
+  ];
+
   return (
     <div className="flex flex-col min-h-screen">
       <Header />
@@ -361,122 +475,354 @@ export default function SellPage() {
               {t('sell_title')}
             </h1>
             <p className="text-muted-foreground mt-2">
-              Để bắt đầu bán thẻ, bạn cần xác minh danh tính và tài khoản ngân hàng.
+              Hoàn thành 3 bước xác minh để bắt đầu đăng bán thẻ trên CardVerse.
             </p>
           </div>
 
-          <Card className="border-orange-500/20">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ShieldCheck className="h-5 w-5 text-orange-500" />
-                Xác minh người bán (KYC)
-              </CardTitle>
-              <CardDescription>
-                Thông tin của bạn được bảo mật và chỉ dùng để xác thực danh tính.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleKYCSubmit} className="space-y-6">
-                {/* Personal Info */}
-                <div className="space-y-4">
-                  <h3 className="font-semibold text-lg border-b pb-2">Thông tin cá nhân</h3>
-                  <div>
-                    <Label htmlFor="fullName">Họ và tên (đúng với CCCD) *</Label>
-                    <Input id="fullName" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Nguyễn Văn A" required />
-                  </div>
+          {/* Step Indicator */}
+          <div className="flex items-center justify-center gap-2 py-4">
+            {steps.map((step, idx) => (
+              <div key={step.number} className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (step.number < currentStep) setCurrentStep(step.number);
+                  }}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-full text-xs font-medium transition-all ${
+                    currentStep === step.number
+                      ? 'bg-orange-500 text-white shadow-md scale-105'
+                      : currentStep > step.number
+                      ? 'bg-green-500/20 text-green-500 border border-green-500/30'
+                      : 'bg-zinc-100 dark:bg-zinc-800 text-muted-foreground'
+                  }`}
+                >
+                  {currentStep > step.number ? (
+                    <CheckCircle className="h-4 w-4" />
+                  ) : (
+                    step.icon
+                  )}
+                  <span className="hidden sm:inline">{step.title}</span>
+                  <span className="sm:hidden">B{step.number}</span>
+                </button>
+                {idx < steps.length - 1 && (
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                )}
+              </div>
+            ))}
+          </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label>Ảnh CCCD mặt trước *</Label>
-                      <div className="mt-1 border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-orange-500/50 transition-colors"
-                        onClick={() => document.getElementById('id-front')?.click()}>
-                        {idFrontFile ? (
-                          <p className="text-sm text-green-400">{idFrontFile.name}</p>
-                        ) : (
-                          <>
-                            <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
-                            <p className="text-xs text-muted-foreground mt-1">Nhấn để tải ảnh</p>
-                          </>
-                        )}
-                        <input type="file" id="id-front" className="hidden" accept="image/*"
-                          onChange={e => setIdFrontFile(e.target.files?.[0] || null)} />
-                      </div>
-                    </div>
-                    <div>
-                      <Label>Ảnh CCCD mặt sau *</Label>
-                      <div className="mt-1 border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-orange-500/50 transition-colors"
-                        onClick={() => document.getElementById('id-back')?.click()}>
-                        {idBackFile ? (
-                          <p className="text-sm text-green-400">{idBackFile.name}</p>
-                        ) : (
-                          <>
-                            <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
-                            <p className="text-xs text-muted-foreground mt-1">Nhấn để tải ảnh</p>
-                          </>
-                        )}
-                        <input type="file" id="id-back" className="hidden" accept="image/*"
-                          onChange={e => setIdBackFile(e.target.files?.[0] || null)} />
-                      </div>
-                    </div>
-                  </div>
+          {/* ═══ STEP 1: AI IDENTITY CHECK ═══ */}
+          {currentStep === 1 && (
+            <Card className="border-orange-500/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-orange-500" />
+                  Bước 1: Xác minh danh tính bằng AI
+                </CardTitle>
+                <CardDescription>
+                  Tải lên ảnh CCCD và ảnh App Ngân hàng. AI sẽ tự động so sánh tên và trích xuất số tài khoản.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Full Name */}
+                <div>
+                  <Label htmlFor="fullName">Họ và tên (đúng với CCCD) *</Label>
+                  <Input id="fullName" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Nguyễn Văn A" required />
+                </div>
 
+                {/* CCCD Front + Bank Screenshot (side by side - AI reads these two) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label>Ảnh selfie cầm CCCD *</Label>
+                    <Label>Ảnh CCCD mặt trước *</Label>
                     <div className="mt-1 border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-orange-500/50 transition-colors"
-                      onClick={() => document.getElementById('selfie')?.click()}>
-                      {selfieFile ? (
-                        <p className="text-sm text-green-400">{selfieFile.name}</p>
+                      onClick={() => document.getElementById('id-front')?.click()}>
+                      {idFrontFile ? (
+                        <p className="text-sm text-green-400 truncate">{idFrontFile.name}</p>
                       ) : (
                         <>
                           <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
-                          <p className="text-xs text-muted-foreground mt-1">Chụp ảnh bạn cầm CCCD bên cạnh khuôn mặt</p>
+                          <p className="text-xs text-muted-foreground mt-1">Nhấn để tải ảnh</p>
                         </>
                       )}
-                      <input type="file" id="selfie" className="hidden" accept="image/*"
-                        onChange={e => setSelfieFile(e.target.files?.[0] || null)} />
+                      <input type="file" id="id-front" className="hidden" accept="image/*"
+                        onChange={e => { setIdFrontFile(e.target.files?.[0] || null); setAIResult(null); }} />
+                    </div>
+                  </div>
+                  <div>
+                    <Label>Ảnh CCCD mặt sau *</Label>
+                    <div className="mt-1 border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-orange-500/50 transition-colors"
+                      onClick={() => document.getElementById('id-back')?.click()}>
+                      {idBackFile ? (
+                        <p className="text-sm text-green-400 truncate">{idBackFile.name}</p>
+                      ) : (
+                        <>
+                          <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
+                          <p className="text-xs text-muted-foreground mt-1">Nhấn để tải ảnh</p>
+                        </>
+                      )}
+                      <input type="file" id="id-back" className="hidden" accept="image/*"
+                        onChange={e => setIdBackFile(e.target.files?.[0] || null)} />
                     </div>
                   </div>
                 </div>
 
-                {/* Bank Info */}
+                {/* AI Loading State */}
+                {isAIChecking && (
+                  <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-4 flex items-center gap-3">
+                    <Loader2 className="h-5 w-5 animate-spin text-purple-400" />
+                    <div>
+                      <p className="text-sm font-medium text-purple-400">AI đang phân tích ảnh...</p>
+                      <p className="text-xs text-muted-foreground">Đang đọc CCCD và đối chiếu với ngân hàng</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* AI Error */}
+                {aiError && (
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-sm text-red-400 flex items-start gap-2">
+                    <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+                    <div>{aiError}</div>
+                  </div>
+                )}
+
+                {/* AI Results */}
+                {aiResult && (
+                  <div className={`border rounded-xl p-5 space-y-4 ${
+                    aiResult.is_name_match && aiResult.confidence >= 0.7
+                      ? 'bg-green-500/5 border-green-500/30'
+                      : 'bg-yellow-500/5 border-yellow-500/30'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-orange-500" />
+                        Kết quả AI
+                      </h4>
+                      <span className={`text-xs font-bold px-3 py-1 rounded-full ${
+                        aiResult.confidence >= 0.7
+                          ? 'bg-green-500/20 text-green-500'
+                          : aiResult.confidence >= 0.5
+                          ? 'bg-yellow-500/20 text-yellow-500'
+                          : 'bg-red-500/20 text-red-500'
+                      }`}>
+                        Confidence: {Math.round(aiResult.confidence * 100)}%
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground text-xs mb-1">Tên trên CCCD</p>
+                        <p className="font-medium">{aiResult.cccd_name || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs mb-1">Tên trên Ngân hàng</p>
+                        <p className="font-medium">{aiResult.bank_account_name || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs mb-1">Số tài khoản (AI đọc)</p>
+                        <p className="font-mono font-medium">{aiResult.bank_account_number || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs mb-1">Trùng khớp tên</p>
+                        <p className={`font-semibold ${aiResult.is_name_match ? 'text-green-500' : 'text-red-500'}`}>
+                          {aiResult.is_name_match ? '✅ Khớp' : '❌ Không khớp'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Bank Screenshot */}
+                <div>
+                  <Label>Ảnh chụp màn hình App Ngân hàng *</Label>
+                  <div className="mt-1 border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-orange-500/50 transition-colors"
+                    onClick={() => document.getElementById('bank-screenshot')?.click()}>
+                    {bankScreenshotFile ? (
+                      <p className="text-sm text-green-400 truncate">{bankScreenshotFile.name}</p>
+                    ) : (
+                      <>
+                        <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
+                        <p className="text-xs text-muted-foreground mt-1">Screenshot phần Tên & Số TK</p>
+                      </>
+                    )}
+                    <input type="file" id="bank-screenshot" className="hidden" accept="image/*"
+                      onChange={e => { setBankScreenshotFile(e.target.files?.[0] || null); setAIResult(null); }} />
+                  </div>
+                </div>
+
+                {/* Bank Name */}
+                <div>
+                  <Label>Ngân hàng *</Label>
+                  <Select value={bankName} onValueChange={setBankName}>
+                    <SelectTrigger><SelectValue placeholder="Chọn ngân hàng..." /></SelectTrigger>
+                    <SelectContent>
+                      {BANKS.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Next */}
+                <Button
+                  type="button"
+                  onClick={() => setCurrentStep(2)}
+                  disabled={!aiResult || !fullName || !idFrontFile || !idBackFile || !bankScreenshotFile || !bankName}
+                  className="w-full"
+                  size="lg"
+                >
+                  Tiếp tục <ChevronRight className="h-4 w-4 ml-2" />
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ═══ STEP 2: PHONE VERIFICATION ═══ */}
+          {currentStep === 2 && (
+            <Card className="border-orange-500/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Phone className="h-5 w-5 text-orange-500" />
+                  Bước 2: Xác minh số điện thoại
+                </CardTitle>
+                <CardDescription>
+                  Số điện thoại để bưu tá liên hệ lấy thẻ khi có đơn hàng.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div>
+                  <Label htmlFor="phone">Số điện thoại *</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={e => setPhoneNumber(e.target.value.replace(/[^0-9]/g, ''))}
+                    placeholder="0912 345 678"
+                    maxLength={10}
+                    required
+                  />
+                  {phoneNumber && !isPhoneValid && (
+                    <p className="text-xs text-red-400 mt-1">Số điện thoại phải bắt đầu bằng 03, 05, 07, 08, 09 và gồm 10 chữ số</p>
+                  )}
+                  {phoneNumber && isPhoneValid && (
+                    <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
+                      <CheckCircle className="h-3 w-3" /> Số điện thoại hợp lệ
+                    </p>
+                  )}
+                </div>
+
+                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 text-xs text-blue-400">
+                  📱 Trong tương lai, hệ thống sẽ gửi mã OTP qua tin nhắn/cuộc gọi để xác minh số điện thoại này.
+                  Hiện tại, bạn chỉ cần nhập số chính xác.
+                </div>
+
+                <div className="flex gap-3">
+                  <Button type="button" variant="outline" onClick={() => setCurrentStep(1)} className="flex-1">
+                    <ChevronLeft className="h-4 w-4 mr-2" /> Quay lại
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => setCurrentStep(3)}
+                    disabled={!isPhoneValid}
+                    className="flex-1"
+                    size="lg"
+                  >
+                    Tiếp tục <ChevronRight className="h-4 w-4 ml-2" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ═══ STEP 3: REVIEW & SUBMIT ═══ */}
+          {currentStep === 3 && (
+            <Card className="border-orange-500/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileCheck className="h-5 w-5 text-orange-500" />
+                  Bước 3: Xác nhận thông tin
+                </CardTitle>
+                <CardDescription>
+                  Kiểm tra lại toàn bộ thông tin trước khi gửi yêu cầu xác minh.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Summary */}
                 <div className="space-y-4">
-                  <h3 className="font-semibold text-lg border-b pb-2">Thông tin ngân hàng</h3>
-                  <div>
-                    <Label>Ngân hàng *</Label>
-                    <Select value={bankName} onValueChange={setBankName}>
-                      <SelectTrigger><SelectValue placeholder="Chọn ngân hàng..." /></SelectTrigger>
-                      <SelectContent>
-                        {BANKS.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                  <div className="bg-zinc-50 dark:bg-zinc-900 rounded-lg p-4 space-y-3">
+                    <h4 className="font-semibold text-sm flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-orange-500" /> Thông tin danh tính
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <p className="text-muted-foreground text-xs">Họ tên</p>
+                        <p className="font-medium">{fullName}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs">AI Confidence</p>
+                        <p className={`font-semibold ${(aiResult?.confidence || 0) >= 0.7 ? 'text-green-500' : 'text-yellow-500'}`}>
+                          {Math.round((aiResult?.confidence || 0) * 100)}%
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs">Ngân hàng</p>
+                        <p className="font-medium">{bankName}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs">Số tài khoản (AI đọc)</p>
+                        <p className="font-mono font-medium">{aiResult?.bank_account_number || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs">Tên chủ TK (AI đọc)</p>
+                        <p className="font-medium">{aiResult?.bank_account_name || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs">Tên trùng khớp</p>
+                        <p className={`font-semibold ${aiResult?.is_name_match ? 'text-green-500' : 'text-red-500'}`}>
+                          {aiResult?.is_name_match ? '✅ Khớp' : '❌ Không khớp'}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <Label htmlFor="bankAccount">Số tài khoản *</Label>
-                    <Input id="bankAccount" value={bankAccountNumber} onChange={e => setBankAccountNumber(e.target.value)} placeholder="0123456789" required />
+
+                  <div className="bg-zinc-50 dark:bg-zinc-900 rounded-lg p-4 space-y-3">
+                    <h4 className="font-semibold text-sm flex items-center gap-2">
+                      <Phone className="h-4 w-4 text-orange-500" /> Liên hệ
+                    </h4>
+                    <div className="text-sm">
+                      <p className="text-muted-foreground text-xs">Số điện thoại</p>
+                      <p className="font-mono font-medium">{phoneNumber}</p>
+                    </div>
                   </div>
-                  <div>
-                    <Label htmlFor="bankAccountName">Tên chủ tài khoản (phải khớp với CCCD) *</Label>
-                    <Input id="bankAccountName" value={bankAccountName} onChange={e => setBankAccountName(e.target.value)} placeholder="NGUYEN VAN A" required />
+
+                  <div className="bg-zinc-50 dark:bg-zinc-900 rounded-lg p-4 space-y-3">
+                    <h4 className="font-semibold text-sm">Ảnh đã tải lên</h4>
+                    <div className="flex flex-wrap gap-2 text-xs text-green-400">
+                      <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3" /> CCCD trước</span>
+                      <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3" /> CCCD sau</span>
+                      <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3" /> App Ngân hàng</span>
+                    </div>
                   </div>
                 </div>
 
                 <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 text-xs text-yellow-400">
-                  ⚠️ Tên chủ tài khoản ngân hàng <strong>bắt buộc phải trùng khớp</strong> với tên trên CCCD.
-                  Nếu không khớp, yêu cầu sẽ bị từ chối.
+                  ⚠️ Sau khi gửi, AI sẽ tiền duyệt hồ sơ ngay lập tức. Admin sẽ xác nhận lần cuối trong thời gian sớm nhất để bạn bắt đầu bán hàng.
                 </div>
 
-                <Button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold"
-                  size="lg"
-                >
-                  {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ShieldCheck className="h-4 w-4 mr-2" />}
-                  {isSubmitting ? 'Đang gửi...' : 'Gửi yêu cầu xác minh'}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+                <div className="flex gap-3">
+                  <Button type="button" variant="outline" onClick={() => setCurrentStep(2)} className="flex-1">
+                    <ChevronLeft className="h-4 w-4 mr-2" /> Quay lại
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={handleKYCSubmit}
+                    disabled={isSubmitting}
+                    className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold"
+                    size="lg"
+                  >
+                    {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ShieldCheck className="h-4 w-4 mr-2" />}
+                    {isSubmitting ? 'Đang gửi...' : 'Gửi yêu cầu xác minh'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </main>
       <Footer />
