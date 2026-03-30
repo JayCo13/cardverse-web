@@ -565,4 +565,8 @@ export const en = {
   privacy_section_6_desc: 'We work hard to protect CardVerseHub and our users from unauthorized access. We use secure servers, encryption (SSL), and restrict access to personal information to employees and contractors who need it to process it for us.',
   privacy_section_7_title: '7. Contact Us',
   privacy_section_7_desc: 'If you have any questions about this Privacy Policy, please contact us at support@cardversehub.com or visit our Contact Us page.',
+
+  // KYC Overlay
+  kyc_verifying_title: 'Card Verse Hub Verifying...',
+  kyc_verifying_subtitle: 'Card Verse Hub automated system is cross-checking ID & Bank',
 };

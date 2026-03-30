@@ -562,5 +562,8 @@ export const vi = {
   privacy_section_6_desc: 'Chúng tôi làm việc hết mình để bảo vệ dữ liệu người dùng khỏi truy cập trái phép. Chúng tôi sử dụng máy chủ an toàn, mã hóa SSL và hạn chế quyền truy cập vào thông tin cá nhân đối với nhân viên và các nhà thầu cần thiết.',
   privacy_section_7_title: '7. Liên Hệ',
   privacy_section_7_desc: 'Nếu bạn có bất kỳ câu hỏi nào về Chính Sách Bảo Mật này, vui lòng liên hệ với chúng tôi tại support@cardversehub.com hoặc truy cập trang Liên Hệ.',
-};
 
+  // KYC Overlay
+  kyc_verifying_title: 'Card Verse Hub Verifying...',
+  kyc_verifying_subtitle: 'Hệ thống tự động Card Verse Hub đang soi chéo CCCD & Ngân hàng',
+};

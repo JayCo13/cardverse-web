@@ -41,12 +41,16 @@ type AIResult = {
   cccd_id_number: string | null;
   cccd_dob: string | null;
   is_valid_cccd: boolean;
+  is_valid_cccd_back: boolean;
   bank_account_name: string;
   bank_account_number: string;
   bank_name_detected: string | null;
   is_valid_bank: boolean;
   is_name_match: boolean;
+  is_cccd_bank_match: boolean;
+  is_cccd_user_match: boolean;
   confidence: number;
+  issues: string[] | null;
 };
 
 const BANKS = [
@@ -83,6 +87,25 @@ export default function SellPage() {
   const [isAIChecking, setIsAIChecking] = useState(false);
   const [aiResult, setAIResult] = useState<AIResult | null>(null);
   const [aiError, setAIError] = useState<string | null>(null);
+  const [aiScanCooldown, setAiScanCooldown] = useState(0);
+  const [aiScanAttempts, setAiScanAttempts] = useState(0);
+  const [pendingReplacements, setPendingReplacements] = useState({ front: false, back: false, bank: false });
+  const AI_MAX_ATTEMPTS = 5;
+
+  const handleFileChange = (type: 'front' | 'back' | 'bank', file: File | null) => {
+    if (type === 'front') setIdFrontFile(file);
+    if (type === 'back') setIdBackFile(file);
+    if (type === 'bank') setBankScreenshotFile(file);
+
+    setPendingReplacements(prev => {
+      const next = { ...prev, [type]: false };
+      // Clear AI result to trigger rescan ONLY if all invalid files have been replaced
+      if (!next.front && !next.back && !next.bank) {
+        setAIResult(null);
+      }
+      return next;
+    });
+  };
 
   // Step 2: Phone + OTP
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -157,15 +180,21 @@ export default function SellPage() {
     });
   };
 
-  // Step 1: Run AI verification
-  const handleAICheck = async (cccdFile: File, bankFile: File) => {
+  // Step 1: Run AI verification (all 3 images + user name)
+  const handleAICheck = async (frontFile: File, backFile: File, bankFile: File, userName: string) => {
+    if (aiScanAttempts >= AI_MAX_ATTEMPTS) {
+      setAIError('Bạn đã sử dụng hết số lần kiểm tra. Vui lòng tải lại trang và thử lại sau.');
+      return;
+    }
     setIsAIChecking(true);
     setAIError(null);
     setAIResult(null);
+    setAiScanAttempts(prev => prev + 1);
 
     try {
-      const [cccdBase64, bankBase64] = await Promise.all([
-        fileToBase64(cccdFile),
+      const [frontBase64, backBase64, bankBase64] = await Promise.all([
+        fileToBase64(frontFile),
+        fileToBase64(backFile),
         fileToBase64(bankFile),
       ]);
 
@@ -173,38 +202,78 @@ export default function SellPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cccd_image: cccdBase64,
+          cccd_front_image: frontBase64,
+          cccd_back_image: backBase64,
           bank_image: bankBase64,
+          user_full_name: userName,
         }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        setAIError(data.error || 'AI kiểm tra thất bại. Vui lòng thử lại.');
+        setAIError(data.error || 'Hệ thống kiểm tra thất bại. Vui lòng thử lại.');
         return;
       }
 
-      setAIResult(data as AIResult);
+      const result = data as AIResult;
+      setAIResult(result);
 
-      if (data.is_name_match && data.confidence >= 0.7) {
-        toast({ title: '✅ AI xác minh thành công!', description: 'Tên trên CCCD và Ngân hàng trùng khớp.' });
+      // Require user to replace ALL invalid images if there are multiple errors
+      const errorCount = (!result.is_valid_cccd ? 1 : 0) + (!result.is_valid_cccd_back ? 1 : 0) + (!result.is_valid_bank ? 1 : 0);
+      if (errorCount > 1) {
+        setPendingReplacements({
+          front: !result.is_valid_cccd,
+          back: !result.is_valid_cccd_back,
+          bank: !result.is_valid_bank,
+        });
       } else {
-        toast({ variant: 'destructive', title: '⚠️ Cần kiểm tra lại', description: 'Tên trên CCCD và Ngân hàng không khớp hoặc ảnh không rõ.' });
+        setPendingReplacements({ front: false, back: false, bank: false });
+      }
+
+      // Auto-fill bank name from AI detection
+      if (result.bank_name_detected) {
+        const detected = result.bank_name_detected;
+        const matchedBank = BANKS.find(b => b.toLowerCase() === detected.toLowerCase());
+        if (matchedBank) {
+          setBankName(matchedBank);
+        }
+      }
+
+      if (result.issues && result.issues.length > 0) {
+        toast({ variant: 'destructive', title: '⚠️ Phát hiện vấn đề', description: result.issues[0] });
+      } else if (result.is_name_match && result.confidence >= 0.7) {
+        toast({ title: '✅ Xác minh thành công!', description: 'Tất cả thông tin trùng khớp.' });
+      } else {
+        toast({ variant: 'destructive', title: '⚠️ Cần kiểm tra lại', description: 'Thông tin trên các ảnh không khớp hoặc ảnh không rõ.' });
       }
     } catch (err: any) {
-      setAIError(err.message || 'Lỗi kết nối AI');
+      setAIError(err.message || 'Lỗi kết nối hệ thống');
     } finally {
       setIsAIChecking(false);
+      setAiScanCooldown(15); // 15s cooldown
     }
   };
 
-  // Auto-trigger AI check when both CCCD front and Bank screenshot are uploaded
+  // Auto-trigger AI check when name + all 3 images are ready (debounced for name input)
+  const allFilesReady = !!(idFrontFile && idBackFile && bankScreenshotFile);
   useEffect(() => {
-    if (idFrontFile && bankScreenshotFile && !aiResult && !isAIChecking) {
-      handleAICheck(idFrontFile, bankScreenshotFile);
-    }
-  }, [idFrontFile, bankScreenshotFile]);
+    if (!allFilesReady || aiResult || isAIChecking || fullName.trim().length < 2 || aiScanCooldown > 0 || aiScanAttempts >= AI_MAX_ATTEMPTS) return;
+    const timer = setTimeout(() => {
+      if (idFrontFile && idBackFile && bankScreenshotFile) {
+        handleAICheck(idFrontFile, idBackFile, bankScreenshotFile, fullName.trim());
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allFilesReady, aiResult, isAIChecking, fullName, aiScanCooldown]);
+
+  // AI scan cooldown timer
+  useEffect(() => {
+    if (aiScanCooldown <= 0) return;
+    const timer = setInterval(() => setAiScanCooldown(c => c - 1), 1000);
+    return () => clearInterval(timer);
+  }, [aiScanCooldown]);
 
   // Cooldown timer for OTP resend
   useEffect(() => {
@@ -304,7 +373,12 @@ export default function SellPage() {
     }
 
     if (!aiResult) {
-      toast({ variant: 'destructive', title: 'Vui lòng chạy kiểm tra AI ở Bước 1 trước' });
+      toast({ variant: 'destructive', title: 'Vui lòng chạy kiểm tra ở Bước 1 trước' });
+      return;
+    }
+
+    if (!aiResult.is_name_match || aiResult.confidence < 0.7 || (aiResult.issues && aiResult.issues.length > 0)) {
+      toast({ variant: 'destructive', title: 'Kết quả xác minh chưa đạt', description: 'Vui lòng quay lại Bước 1 và kiểm tra ảnh/tên.' });
       return;
     }
 
@@ -578,6 +652,25 @@ export default function SellPage() {
             </p>
           </div>
 
+          {/* Full-screen AI Verification Overlay */}
+          {isAIChecking && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+              <div className="bg-zinc-950 border border-orange-500/30 rounded-2xl p-8 flex flex-col items-center max-w-sm w-[90%] text-center shadow-2xl shadow-orange-500/10 animate-in zoom-in-95 duration-200">
+                <div className="relative mb-6">
+                  <div className="absolute inset-0 bg-orange-500 blur-xl opacity-20 rounded-full animate-pulse"></div>
+                  <Sparkles className="h-12 w-12 text-orange-500 relative z-10 animate-pulse" />
+                </div>
+                <h3 className="text-xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent mb-2" style={{ fontFamily: "'Orbitron', sans-serif" }}>
+                  {t('kyc_verifying_title')}
+                </h3>
+                <p className="text-sm text-muted-foreground flex items-center justify-center gap-2 mt-4">
+                  <Loader2 className="h-4 w-4 animate-spin text-orange-500" />
+                  {t('kyc_verifying_subtitle')}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Step Indicator */}
           <div className="flex items-center justify-center gap-2 py-4">
             {steps.map((step, idx) => (
@@ -622,6 +715,107 @@ export default function SellPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+                
+                {/* AI Error */}
+                {aiError && (
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-sm text-red-400 flex items-start gap-2">
+                    <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+                    <div>{aiError}</div>
+                  </div>
+                )}
+
+                {/* Scan status */}
+                {aiScanAttempts > 0 && (
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Số lần quét: {aiScanAttempts}/{AI_MAX_ATTEMPTS}</span>
+                    {aiScanCooldown > 0 && (
+                      <span className="text-orange-400 flex items-center gap-1">
+                        <Clock className="h-3 w-3" /> Quét lại sau {aiScanCooldown}s
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* AI Results */}
+                {aiResult && (
+                  <div className={`border rounded-xl p-5 space-y-4 ${
+                    aiResult.is_name_match && aiResult.confidence >= 0.7 && !aiResult.issues
+                      ? 'bg-green-500/5 border-green-500/30'
+                      : aiResult.issues && aiResult.issues.length > 0
+                      ? 'bg-red-500/5 border-red-500/30'
+                      : 'bg-yellow-500/5 border-yellow-500/30'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-orange-500" />
+                        Kết quả xác minh AI
+                      </h4>
+                      <span className={`text-xs font-bold px-3 py-1 rounded-full ${
+                        aiResult.confidence >= 0.7
+                          ? 'bg-green-500/20 text-green-500'
+                          : aiResult.confidence >= 0.5
+                          ? 'bg-yellow-500/20 text-yellow-500'
+                          : 'bg-red-500/20 text-red-500'
+                      }`}>
+                        Độ tin cậy: {Math.round(aiResult.confidence * 100)}%
+                      </span>
+                    </div>
+
+                    {/* Pending Replacements Notice */}
+                    {Object.values(pendingReplacements).some(Boolean) && (
+                      <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3 text-sm text-orange-400 flex items-start gap-2">
+                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                        <div>Vui lòng tải lên lại <strong>tất cả</strong> các ảnh không hợp lệ để hệ thống tự động quét lại.</div>
+                      </div>
+                    )}
+
+                    {/* Issues */}
+                    {aiResult.issues && aiResult.issues.length > 0 && (
+                      <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 space-y-1">
+                        {aiResult.issues.map((issue, i) => (
+                          <p key={i} className="text-sm text-red-400 flex items-start gap-2">
+                            <XCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                            {issue}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground text-xs mb-1">CCCD mặt trước</p>
+                        <p className={`font-medium ${aiResult.is_valid_cccd ? 'text-green-500' : 'text-red-500'}`}>
+                          {aiResult.is_valid_cccd ? '✅ Hợp lệ' : '❌ Cần tải lại'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs mb-1">CCCD mặt sau</p>
+                        <p className={`font-medium ${aiResult.is_valid_cccd_back ? 'text-green-500' : 'text-red-500'}`}>
+                          {aiResult.is_valid_cccd_back ? '✅ Hợp lệ' : '❌ Cần tải lại'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs mb-1">Tên trên CCCD</p>
+                        <p className="font-medium">{aiResult.cccd_name || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs mb-1">Tên ngân hàng</p>
+                        <p className="font-medium">{aiResult.bank_account_name || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs mb-1">Số TK</p>
+                        <p className="font-mono font-medium">{aiResult.bank_account_number || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs mb-1">Khớp tên đăng ký</p>
+                        <p className={`font-semibold ${aiResult.is_name_match ? 'text-green-500' : 'text-red-500'}`}>
+                          {aiResult.is_name_match ? '✅ Khớp' : '❌ Không khớp'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Full Name */}
                 <div>
                   <Label htmlFor="fullName">Họ và tên (đúng với CCCD) *</Label>
@@ -632,10 +826,10 @@ export default function SellPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Label>Ảnh CCCD mặt trước *</Label>
-                    <div className="mt-1 border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-orange-500/50 transition-colors"
+                    <div className={`mt-1 border-2 rounded-lg p-4 text-center cursor-pointer transition-colors ${aiResult ? (aiResult.is_valid_cccd ? 'border-green-500/50' : 'border-red-500/50 bg-red-500/5') : 'border-dashed hover:border-orange-500/50'}`}
                       onClick={() => document.getElementById('id-front')?.click()}>
                       {idFrontFile ? (
-                        <p className="text-sm text-green-400 truncate">{idFrontFile.name}</p>
+                        <p className={`text-sm truncate ${aiResult && !aiResult.is_valid_cccd ? 'text-red-500' : 'text-green-400'}`}>{idFrontFile.name}</p>
                       ) : (
                         <>
                           <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
@@ -643,15 +837,15 @@ export default function SellPage() {
                         </>
                       )}
                       <input type="file" id="id-front" className="hidden" accept="image/*"
-                        onChange={e => { setIdFrontFile(e.target.files?.[0] || null); setAIResult(null); }} />
+                        onChange={e => handleFileChange('front', e.target.files?.[0] || null)} />
                     </div>
                   </div>
                   <div>
                     <Label>Ảnh CCCD mặt sau *</Label>
-                    <div className="mt-1 border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-orange-500/50 transition-colors"
+                    <div className={`mt-1 border-2 rounded-lg p-4 text-center cursor-pointer transition-colors ${aiResult ? (aiResult.is_valid_cccd_back ? 'border-green-500/50' : 'border-red-500/50 bg-red-500/5') : 'border-dashed hover:border-orange-500/50'}`}
                       onClick={() => document.getElementById('id-back')?.click()}>
                       {idBackFile ? (
-                        <p className="text-sm text-green-400 truncate">{idBackFile.name}</p>
+                        <p className={`text-sm truncate ${aiResult && !aiResult.is_valid_cccd_back ? 'text-red-500' : 'text-green-400'}`}>{idBackFile.name}</p>
                       ) : (
                         <>
                           <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
@@ -659,83 +853,18 @@ export default function SellPage() {
                         </>
                       )}
                       <input type="file" id="id-back" className="hidden" accept="image/*"
-                        onChange={e => setIdBackFile(e.target.files?.[0] || null)} />
+                        onChange={e => handleFileChange('back', e.target.files?.[0] || null)} />
                     </div>
                   </div>
                 </div>
 
-                {/* AI Loading State */}
-                {isAIChecking && (
-                  <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-4 flex items-center gap-3">
-                    <Loader2 className="h-5 w-5 animate-spin text-purple-400" />
-                    <div>
-                      <p className="text-sm font-medium text-purple-400">AI đang phân tích ảnh...</p>
-                      <p className="text-xs text-muted-foreground">Đang đọc CCCD và đối chiếu với ngân hàng</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* AI Error */}
-                {aiError && (
-                  <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-sm text-red-400 flex items-start gap-2">
-                    <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
-                    <div>{aiError}</div>
-                  </div>
-                )}
-
-                {/* AI Results */}
-                {aiResult && (
-                  <div className={`border rounded-xl p-5 space-y-4 ${
-                    aiResult.is_name_match && aiResult.confidence >= 0.7
-                      ? 'bg-green-500/5 border-green-500/30'
-                      : 'bg-yellow-500/5 border-yellow-500/30'
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-semibold flex items-center gap-2">
-                        <Sparkles className="h-4 w-4 text-orange-500" />
-                        Kết quả AI
-                      </h4>
-                      <span className={`text-xs font-bold px-3 py-1 rounded-full ${
-                        aiResult.confidence >= 0.7
-                          ? 'bg-green-500/20 text-green-500'
-                          : aiResult.confidence >= 0.5
-                          ? 'bg-yellow-500/20 text-yellow-500'
-                          : 'bg-red-500/20 text-red-500'
-                      }`}>
-                        Confidence: {Math.round(aiResult.confidence * 100)}%
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <p className="text-muted-foreground text-xs mb-1">Tên trên CCCD</p>
-                        <p className="font-medium">{aiResult.cccd_name || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground text-xs mb-1">Tên trên Ngân hàng</p>
-                        <p className="font-medium">{aiResult.bank_account_name || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground text-xs mb-1">Số tài khoản (AI đọc)</p>
-                        <p className="font-mono font-medium">{aiResult.bank_account_number || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground text-xs mb-1">Trùng khớp tên</p>
-                        <p className={`font-semibold ${aiResult.is_name_match ? 'text-green-500' : 'text-red-500'}`}>
-                          {aiResult.is_name_match ? '✅ Khớp' : '❌ Không khớp'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 {/* Bank Screenshot */}
                 <div>
-                  <Label>Ảnh chụp màn hình App Ngân hàng *</Label>
-                  <div className="mt-1 border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-orange-500/50 transition-colors"
+                  <Label>Ảnh chụp mục "QR của tôi" trên App Ngân hàng *</Label>
+                  <div className={`mt-1 border-2 rounded-lg p-4 text-center cursor-pointer transition-colors ${aiResult ? (aiResult.is_valid_bank ? 'border-green-500/50' : 'border-red-500/50 bg-red-500/5') : 'border-dashed hover:border-orange-500/50'}`}
                     onClick={() => document.getElementById('bank-screenshot')?.click()}>
                     {bankScreenshotFile ? (
-                      <p className="text-sm text-green-400 truncate">{bankScreenshotFile.name}</p>
+                      <p className={`text-sm truncate ${aiResult && !aiResult.is_valid_bank ? 'text-red-500' : 'text-green-400'}`}>{bankScreenshotFile.name}</p>
                     ) : (
                       <>
                         <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
@@ -743,7 +872,7 @@ export default function SellPage() {
                       </>
                     )}
                     <input type="file" id="bank-screenshot" className="hidden" accept="image/*"
-                      onChange={e => { setBankScreenshotFile(e.target.files?.[0] || null); setAIResult(null); }} />
+                      onChange={e => handleFileChange('bank', e.target.files?.[0] || null)} />
                   </div>
                 </div>
 
@@ -762,7 +891,12 @@ export default function SellPage() {
                 <Button
                   type="button"
                   onClick={() => setCurrentStep(2)}
-                  disabled={!aiResult || !fullName || !idFrontFile || !idBackFile || !bankScreenshotFile || !bankName}
+                  disabled={
+                    !aiResult || !fullName || !idFrontFile || !idBackFile || !bankScreenshotFile || !bankName ||
+                    !aiResult.is_valid_cccd || !aiResult.is_valid_cccd_back || !aiResult.is_valid_bank ||
+                    !aiResult.is_name_match || aiResult.confidence < 0.7 ||
+                    (aiResult.issues && aiResult.issues.length > 0)
+                  }
                   className="w-full"
                   size="lg"
                 >
@@ -976,7 +1110,7 @@ export default function SellPage() {
                   <Button
                     type="button"
                     onClick={handleKYCSubmit}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || !aiResult?.is_name_match || (aiResult?.confidence || 0) < 0.7}
                     className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold"
                     size="lg"
                   >

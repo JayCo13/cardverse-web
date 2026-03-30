@@ -25,6 +25,13 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'All fields are required' }, { status: 400 });
         }
 
+        // Server-side AI validation: prevent bypass
+        if (ai_confidence !== undefined && ai_confidence < 0.7) {
+            return NextResponse.json({ error: 'Kết quả xác minh chưa đạt yêu cầu (confidence thấp). Vui lòng kiểm tra lại ảnh.' }, { status: 400 });
+        }
+        if (ai_name_match === false) {
+            return NextResponse.json({ error: 'Tên trên CCCD và Ngân hàng không trùng khớp. Không thể gửi yêu cầu.' }, { status: 400 });
+        }
         // Check if already has a verification
         const { data: existing } = await supabase
             .from('seller_verifications')
