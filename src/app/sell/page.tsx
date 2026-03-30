@@ -83,8 +83,14 @@ export default function SellPage() {
   const [aiResult, setAIResult] = useState<AIResult | null>(null);
   const [aiError, setAIError] = useState<string | null>(null);
 
-  // Step 2: Phone
+  // Step 2: Phone + OTP
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [cooldown, setCooldown] = useState(0);
 
   useEffect(() => {
     if (!authLoading && !user) setOpen(true);
@@ -196,6 +202,76 @@ export default function SellPage() {
       handleAICheck(idFrontFile, bankScreenshotFile);
     }
   }, [idFrontFile, bankScreenshotFile]);
+
+  // Cooldown timer for OTP resend
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setInterval(() => setCooldown(c => c - 1), 1000);
+    return () => clearInterval(timer);
+  }, [cooldown]);
+
+  // Send OTP
+  const handleSendOTP = async () => {
+    if (!isPhoneValid) return;
+    setOtpLoading(true);
+    setOtpError(null);
+    try {
+      const res = await fetch('/api/seller/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phoneNumber }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setOtpError(data.error);
+        return;
+      }
+      setOtpSent(true);
+      setCooldown(60);
+      toast({ title: '📱 Đã gửi mã OTP', description: `Mã xác minh đã gửi tới ${phoneNumber}` });
+    } catch {
+      setOtpError('Lỗi kết nối. Vui lòng thử lại.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  // Verify OTP
+  const handleVerifyOTP = async () => {
+    if (otpCode.length !== 6) return;
+    setOtpLoading(true);
+    setOtpError(null);
+    try {
+      const res = await fetch('/api/seller/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phoneNumber, otp: otpCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setOtpError(data.error);
+        return;
+      }
+      setOtpVerified(true);
+      toast({ title: '✅ Xác minh thành công', description: 'Số điện thoại đã được xác minh!' });
+    } catch {
+      setOtpError('Lỗi kết nối. Vui lòng thử lại.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  // Reset OTP state when phone number changes
+  const handlePhoneChange = (value: string) => {
+    const cleaned = value.replace(/[^0-9]/g, '');
+    setPhoneNumber(cleaned);
+    if (otpSent || otpVerified) {
+      setOtpSent(false);
+      setOtpVerified(false);
+      setOtpCode('');
+      setOtpError(null);
+    }
+  };
 
   // Final submit
   const handleKYCSubmit = async () => {
@@ -673,7 +749,7 @@ export default function SellPage() {
             </Card>
           )}
 
-          {/* ═══ STEP 2: PHONE VERIFICATION ═══ */}
+          {/* ═══ STEP 2: PHONE + OTP ═══ */}
           {currentStep === 2 && (
             <Card className="border-orange-500/20">
               <CardHeader>
@@ -682,36 +758,98 @@ export default function SellPage() {
                   Bước 2: Xác minh số điện thoại
                 </CardTitle>
                 <CardDescription>
-                  Số điện thoại để bưu tá liên hệ lấy thẻ khi có đơn hàng.
+                  Số điện thoại để bưu tá liên hệ lấy thẻ khi có đơn hàng. Bạn sẽ nhận mã OTP qua SMS.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+                {/* Phone Input + Send OTP */}
                 <div>
                   <Label htmlFor="phone">Số điện thoại *</Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    value={phoneNumber}
-                    onChange={e => setPhoneNumber(e.target.value.replace(/[^0-9]/g, ''))}
-                    placeholder="0912 345 678"
-                    maxLength={10}
-                    required
-                  />
+                  <div className="flex gap-2 mt-1">
+                    <Input
+                      id="phone"
+                      type="tel"
+                      value={phoneNumber}
+                      onChange={e => handlePhoneChange(e.target.value)}
+                      placeholder="0912 345 678"
+                      maxLength={10}
+                      disabled={otpVerified}
+                      className={otpVerified ? 'border-green-500/50 bg-green-500/5' : ''}
+                      required
+                    />
+                    {!otpVerified && (
+                      <Button
+                        type="button"
+                        onClick={handleSendOTP}
+                        disabled={!isPhoneValid || otpLoading || cooldown > 0}
+                        variant="outline"
+                        className="shrink-0 min-w-[120px]"
+                      >
+                        {otpLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : cooldown > 0 ? (
+                          `${cooldown}s`
+                        ) : otpSent ? (
+                          'Gửi lại'
+                        ) : (
+                          'Gửi mã OTP'
+                        )}
+                      </Button>
+                    )}
+                  </div>
                   {phoneNumber && !isPhoneValid && (
                     <p className="text-xs text-red-400 mt-1">Số điện thoại phải bắt đầu bằng 03, 05, 07, 08, 09 và gồm 10 chữ số</p>
                   )}
-                  {phoneNumber && isPhoneValid && (
+                  {otpVerified && (
                     <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
-                      <CheckCircle className="h-3 w-3" /> Số điện thoại hợp lệ
+                      <CheckCircle className="h-3 w-3" /> Số điện thoại đã xác minh
                     </p>
                   )}
                 </div>
 
-                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 text-xs text-blue-400">
-                  📱 Trong tương lai, hệ thống sẽ gửi mã OTP qua tin nhắn/cuộc gọi để xác minh số điện thoại này.
-                  Hiện tại, bạn chỉ cần nhập số chính xác.
-                </div>
+                {/* OTP Input */}
+                {otpSent && !otpVerified && (
+                  <div className="space-y-3">
+                    <Label htmlFor="otp">Nhập mã OTP (6 chữ số)</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="otp"
+                        type="text"
+                        inputMode="numeric"
+                        value={otpCode}
+                        onChange={e => setOtpCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
+                        placeholder="000000"
+                        maxLength={6}
+                        className="text-center text-2xl font-mono tracking-[0.5em] max-w-[200px]"
+                      />
+                      <Button
+                        type="button"
+                        onClick={handleVerifyOTP}
+                        disabled={otpCode.length !== 6 || otpLoading}
+                        className="bg-gradient-to-r from-green-500 to-emerald-600 text-white"
+                      >
+                        {otpLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          'Xác minh'
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Mã OTP đã gửi tới <span className="font-mono font-medium">{phoneNumber}</span>. Có hiệu lực trong 5 phút.
+                    </p>
+                  </div>
+                )}
 
+                {/* OTP Error */}
+                {otpError && (
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-400 flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <div>{otpError}</div>
+                  </div>
+                )}
+
+                {/* Navigation */}
                 <div className="flex gap-3">
                   <Button type="button" variant="outline" onClick={() => setCurrentStep(1)} className="flex-1">
                     <ChevronLeft className="h-4 w-4 mr-2" /> Quay lại
@@ -719,7 +857,7 @@ export default function SellPage() {
                   <Button
                     type="button"
                     onClick={() => setCurrentStep(3)}
-                    disabled={!isPhoneValid}
+                    disabled={!otpVerified}
                     className="flex-1"
                     size="lg"
                   >
