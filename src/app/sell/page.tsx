@@ -219,12 +219,20 @@ export default function SellPage() {
     setOtpLoading(true);
     setOtpError(null);
     try {
-      // Initialize reCAPTCHA verifier (invisible)
-      if (!recaptchaVerifierRef.current) {
-        recaptchaVerifierRef.current = new RecaptchaVerifier(auth, 'recaptcha-container', {
-          size: 'invisible',
-        });
+      // Clear previous reCAPTCHA before creating new one
+      if (recaptchaVerifierRef.current) {
+        recaptchaVerifierRef.current.clear();
+        recaptchaVerifierRef.current = null;
       }
+      // Reset the container
+      const container = document.getElementById('recaptcha-container');
+      if (container) container.innerHTML = '';
+
+      // Initialize fresh reCAPTCHA verifier (invisible)
+      recaptchaVerifierRef.current = new RecaptchaVerifier(auth, 'recaptcha-container', {
+        size: 'invisible',
+      });
+
       // Format: 0912345678 → +84912345678
       const internationalPhone = '+84' + phoneNumber.substring(1);
       const result = await signInWithPhoneNumber(auth, internationalPhone, recaptchaVerifierRef.current);
@@ -235,7 +243,12 @@ export default function SellPage() {
     } catch (err: any) {
       console.error('Firebase OTP error:', err);
       // Reset reCAPTCHA on error
+      if (recaptchaVerifierRef.current) {
+        try { recaptchaVerifierRef.current.clear(); } catch {}
+      }
       recaptchaVerifierRef.current = null;
+      const container = document.getElementById('recaptcha-container');
+      if (container) container.innerHTML = '';
       if (err.code === 'auth/too-many-requests') {
         setOtpError('Quá nhiều yêu cầu. Vui lòng đợi vài phút rồi thử lại.');
       } else if (err.code === 'auth/invalid-phone-number') {
