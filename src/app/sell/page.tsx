@@ -1,7 +1,8 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { auth, RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from '@/lib/firebase';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
@@ -91,6 +92,8 @@ export default function SellPage() {
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpError, setOtpError] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
+  const confirmationResultRef = useRef<ConfirmationResult | null>(null);
+  const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) setOpen(true);
@@ -210,52 +213,58 @@ export default function SellPage() {
     return () => clearInterval(timer);
   }, [cooldown]);
 
-  // Send OTP
+  // Send OTP via Firebase Phone Auth
   const handleSendOTP = async () => {
     if (!isPhoneValid) return;
     setOtpLoading(true);
     setOtpError(null);
     try {
-      const res = await fetch('/api/seller/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phoneNumber }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setOtpError(data.error);
-        return;
+      // Initialize reCAPTCHA verifier (invisible)
+      if (!recaptchaVerifierRef.current) {
+        recaptchaVerifierRef.current = new RecaptchaVerifier(auth, 'recaptcha-container', {
+          size: 'invisible',
+        });
       }
+      // Format: 0912345678 → +84912345678
+      const internationalPhone = '+84' + phoneNumber.substring(1);
+      const result = await signInWithPhoneNumber(auth, internationalPhone, recaptchaVerifierRef.current);
+      confirmationResultRef.current = result;
       setOtpSent(true);
       setCooldown(60);
       toast({ title: '📱 Đã gửi mã OTP', description: `Mã xác minh đã gửi tới ${phoneNumber}` });
-    } catch {
-      setOtpError('Lỗi kết nối. Vui lòng thử lại.');
+    } catch (err: any) {
+      console.error('Firebase OTP error:', err);
+      // Reset reCAPTCHA on error
+      recaptchaVerifierRef.current = null;
+      if (err.code === 'auth/too-many-requests') {
+        setOtpError('Quá nhiều yêu cầu. Vui lòng đợi vài phút rồi thử lại.');
+      } else if (err.code === 'auth/invalid-phone-number') {
+        setOtpError('Số điện thoại không hợp lệ.');
+      } else {
+        setOtpError(err.message || 'Không thể gửi OTP. Vui lòng thử lại.');
+      }
     } finally {
       setOtpLoading(false);
     }
   };
 
-  // Verify OTP
+  // Verify OTP via Firebase
   const handleVerifyOTP = async () => {
-    if (otpCode.length !== 6) return;
+    if (otpCode.length !== 6 || !confirmationResultRef.current) return;
     setOtpLoading(true);
     setOtpError(null);
     try {
-      const res = await fetch('/api/seller/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phoneNumber, otp: otpCode }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setOtpError(data.error);
-        return;
-      }
+      await confirmationResultRef.current.confirm(otpCode);
       setOtpVerified(true);
       toast({ title: '✅ Xác minh thành công', description: 'Số điện thoại đã được xác minh!' });
-    } catch {
-      setOtpError('Lỗi kết nối. Vui lòng thử lại.');
+    } catch (err: any) {
+      if (err.code === 'auth/invalid-verification-code') {
+        setOtpError('Mã OTP không đúng. Vui lòng kiểm tra lại.');
+      } else if (err.code === 'auth/code-expired') {
+        setOtpError('Mã OTP đã hết hạn. Vui lòng gửi lại.');
+      } else {
+        setOtpError(err.message || 'Xác minh thất bại.');
+      }
     } finally {
       setOtpLoading(false);
     }
@@ -270,6 +279,7 @@ export default function SellPage() {
       setOtpVerified(false);
       setOtpCode('');
       setOtpError(null);
+      confirmationResultRef.current = null;
     }
   };
 
@@ -848,6 +858,9 @@ export default function SellPage() {
                     <div>{otpError}</div>
                   </div>
                 )}
+
+                {/* Firebase reCAPTCHA (invisible) */}
+                <div id="recaptcha-container"></div>
 
                 {/* Navigation */}
                 <div className="flex gap-3">
