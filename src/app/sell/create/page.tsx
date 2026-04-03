@@ -29,10 +29,13 @@ import {
   getCategories,
   getCategoryConfig,
   getPublishers,
-  getSets,
+  getStaticSets,
   getSeasons,
   isSinglePublisher,
   isFreeText,
+  isDbSets,
+  fetchDbSets,
+  type SetConfig,
 } from '@/lib/card-catalog';
 
 const getFormSchema = (t: (key: string) => string) => z.object({
@@ -139,10 +142,19 @@ export default function CreateListingPage() {
   const selectedCategory = form.watch('category');
   const selectedPublisher = form.watch('publisher');
 
+  // DB-driven sets state
+  const [dbSetNames, setDbSetNames] = useState<string[]>([]);
+  const [loadingDbSets, setLoadingDbSets] = useState(false);
+
   // Derived state from catalog
   const categoryConfig = selectedCategory ? getCategoryConfig(selectedCategory) : undefined;
   const availablePublishers = selectedCategory ? getPublishers(selectedCategory) : [];
-  const availableSets = selectedCategory ? getSets(selectedCategory, selectedPublisher) : [];
+  const staticSets = selectedCategory ? getStaticSets(selectedCategory, selectedPublisher) : [];
+  const useDbSets = selectedCategory ? isDbSets(selectedCategory) : false;
+  // For DB-driven categories, convert DB set names to SetConfig; otherwise use static
+  const availableSets: SetConfig[] = useDbSets
+    ? dbSetNames.map(name => ({ name }))
+    : staticSets;
   const availableSeasons = selectedCategory ? getSeasons(selectedCategory) : [];
   const singlePublisher = selectedCategory ? isSinglePublisher(selectedCategory) : false;
   const freeTextMode = selectedCategory ? isFreeText(selectedCategory) : false;
@@ -176,6 +188,19 @@ export default function CreateListingPage() {
     form.setValue('setName', '');
     form.setValue('season', '');
   }, [selectedCategory, selectedPublisher, form]);
+
+  // Fetch DB-driven sets when category changes (Pokemon, One Piece)
+  useEffect(() => {
+    if (selectedCategory && isDbSets(selectedCategory)) {
+      setLoadingDbSets(true);
+      fetchDbSets(selectedCategory).then(sets => {
+        setDbSetNames(sets);
+        setLoadingDbSets(false);
+      });
+    } else {
+      setDbSetNames([]);
+    }
+  }, [selectedCategory]);
 
   const categories = getCategories(locale);
 
@@ -456,14 +481,14 @@ export default function CreateListingPage() {
                     name="setName"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Set / Bộ sưu tập</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                        <FormLabel>Set / Bộ sưu tập {loadingDbSets && <span className="text-xs text-muted-foreground">(đang tải...)</span>}</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value} disabled={loadingDbSets}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="Chọn set..." />
+                              <SelectValue placeholder={loadingDbSets ? "Đang tải sets..." : "Chọn set..."} />
                             </SelectTrigger>
                           </FormControl>
-                          <SelectContent className="max-h-[280px]">
+                          <SelectContent className="max-h-[300px]">
                             {availableSets.map(set => (
                               <SelectItem key={set.name} value={set.name}>
                                 {set.code ? `[${set.code}] ${set.name}` : set.name}

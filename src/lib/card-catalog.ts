@@ -1,11 +1,12 @@
 /**
- * Card Catalog — Standardized Sets, Publishers, and Seasons per Category
+ * Card Catalog — Category configuration & DB-driven set fetching
  *
- * When a seller selects a category, we auto-populate:
- *  - Publisher(s) available for that category
- *  - Sets (dropdown) belonging to the chosen publisher + category
- *  - Seasons (dropdown) — only for categories that use seasons (Soccer, Basketball, F1)
+ * Sets for Pokemon and One Piece are fetched from the existing `tcgcsv_products`
+ * table / materialized views in Supabase.
+ * For other categories (Soccer, Basketball, etc.), we use curated static lists.
  */
+
+import { getSupabaseClient } from '@/lib/supabase/client';
 
 // ────────────────────────────────────────────
 // Types
@@ -26,6 +27,15 @@ export interface CategoryConfig {
   seasons?: string[];
   /** Whether to allow free-text entry for set/publisher (for "Other" category) */
   freeText?: boolean;
+  /** Whether sets should be fetched from the DB instead of using static list */
+  dbSets?: boolean;
+  /** DB source config for fetching sets dynamically */
+  dbSetSource?: {
+    /** Table or view name to query */
+    view?: string;
+    /** category_id to filter tcgcsv_products */
+    categoryId?: number;
+  };
 }
 
 export interface PublisherConfig {
@@ -41,88 +51,7 @@ export interface SetConfig {
 }
 
 // ────────────────────────────────────────────
-// Pokémon
-// ────────────────────────────────────────────
-
-const POKEMON_SETS: SetConfig[] = [
-  // Scarlet & Violet Era (2023-2025)
-  { name: 'Scarlet & Violet - Base Set', code: 'SV01' },
-  { name: 'Paldea Evolved', code: 'SV02' },
-  { name: 'Obsidian Flames', code: 'SV03' },
-  { name: '151', code: 'SV3.5' },
-  { name: 'Paradox Rift', code: 'SV04' },
-  { name: 'Paldean Fates', code: 'SV4.5' },
-  { name: 'Temporal Forces', code: 'SV05' },
-  { name: 'Twilight Masquerade', code: 'SV06' },
-  { name: 'Shrouded Fable', code: 'SV6.5' },
-  { name: 'Stellar Crown', code: 'SV07' },
-  { name: 'Surging Sparks', code: 'SV08' },
-  { name: 'Prismatic Evolutions', code: 'SV8.5' },
-  { name: 'Journey Together', code: 'SV09' },
-  { name: 'Destined Rivals', code: 'SV10' },
-  // Sword & Shield Era
-  { name: 'Sword & Shield - Base Set', code: 'SWSH01' },
-  { name: 'Rebel Clash', code: 'SWSH02' },
-  { name: 'Darkness Ablaze', code: 'SWSH03' },
-  { name: 'Vivid Voltage', code: 'SWSH04' },
-  { name: 'Battle Styles', code: 'SWSH05' },
-  { name: 'Chilling Reign', code: 'SWSH06' },
-  { name: 'Evolving Skies', code: 'SWSH07' },
-  { name: 'Fusion Strike', code: 'SWSH08' },
-  { name: 'Brilliant Stars', code: 'SWSH09' },
-  { name: 'Astral Radiance', code: 'SWSH10' },
-  { name: 'Lost Origin', code: 'SWSH11' },
-  { name: 'Silver Tempest', code: 'SWSH12' },
-  { name: 'Crown Zenith', code: 'SWSH12.5' },
-  // Sun & Moon Era
-  { name: 'Sun & Moon - Base Set', code: 'SM01' },
-  { name: 'Burning Shadows', code: 'SM03' },
-  { name: 'Ultra Prism', code: 'SM05' },
-  { name: 'Cosmic Eclipse', code: 'SM12' },
-  // Classic / XY / BW
-  { name: 'XY - Evolutions', code: 'XY12' },
-  { name: 'Generations', code: 'GEN' },
-  { name: 'Base Set (1999)', code: 'BS' },
-  { name: 'Jungle', code: 'JU' },
-  { name: 'Fossil', code: 'FO' },
-  // Promos & Special
-  { name: 'Promo Cards', code: 'PR' },
-  { name: 'Trainer Gallery', code: 'TG' },
-  { name: 'Khác', code: 'OTHER' },
-];
-
-// ────────────────────────────────────────────
-// One Piece
-// ────────────────────────────────────────────
-
-const ONE_PIECE_SETS: SetConfig[] = [
-  { name: 'OP-01 Romance Dawn', code: 'OP01' },
-  { name: 'OP-02 Paramount War', code: 'OP02' },
-  { name: 'OP-03 Pillars of Strength', code: 'OP03' },
-  { name: 'OP-04 Kingdoms of Intrigue', code: 'OP04' },
-  { name: 'OP-05 Awakening of the New Era', code: 'OP05' },
-  { name: 'OP-06 Wings of the Captain', code: 'OP06' },
-  { name: 'OP-07 500 Years in the Future', code: 'OP07' },
-  { name: 'OP-08 Two Legends', code: 'OP08' },
-  { name: 'OP-09 Emperors in the New World', code: 'OP09' },
-  { name: 'OP-10 Royal Blood', code: 'OP10' },
-  { name: 'OP-11 A Fist of Divine Speed', code: 'OP11' },
-  { name: 'OP-12 Legacy of the Master', code: 'OP12' },
-  // Starter Decks
-  { name: 'ST-01 Straw Hat Crew', code: 'ST01' },
-  { name: 'ST-02 Worst Generation', code: 'ST02' },
-  { name: 'ST-03 The Seven Warlords', code: 'ST03' },
-  { name: 'ST-04 Animal Kingdom Pirates', code: 'ST04' },
-  { name: 'ST-05 ONE PIECE FILM edition', code: 'ST05' },
-  // Extra / Premium
-  { name: 'Extra Booster -Memorial Collection-', code: 'EB01' },
-  { name: 'Premium Booster', code: 'PRB01' },
-  { name: 'Promo Cards', code: 'PR' },
-  { name: 'Khác', code: 'OTHER' },
-];
-
-// ────────────────────────────────────────────
-// Soccer / Bóng đá
+// Soccer / Bóng đá — Static sets
 // ────────────────────────────────────────────
 
 const SOCCER_PANINI_SETS: SetConfig[] = [
@@ -174,7 +103,7 @@ const SOCCER_SEASONS = [
 ];
 
 // ────────────────────────────────────────────
-// Basketball / Bóng rổ
+// Basketball / Bóng rổ — Static sets
 // ────────────────────────────────────────────
 
 const BASKETBALL_PANINI_SETS: SetConfig[] = [
@@ -200,11 +129,10 @@ const BASKETBALL_SEASONS = [
 ];
 
 // ────────────────────────────────────────────
-// Yu-Gi-Oh
+// Yu-Gi-Oh — Static sets (popular ones)
 // ────────────────────────────────────────────
 
 const YUGIOH_SETS: SetConfig[] = [
-  // Recent major sets
   { name: 'The Infinite Forbidden', code: 'INFO' },
   { name: 'Rage of the Abyss', code: 'ROTA' },
   { name: 'Legacy of Destruction', code: 'LEDE' },
@@ -215,22 +143,18 @@ const YUGIOH_SETS: SetConfig[] = [
   { name: 'Darkwing Blast', code: 'DABL' },
   { name: 'Power of the Elements', code: 'POTE' },
   { name: 'Dimension Force', code: 'DIFO' },
-  // Tins & Special Products
   { name: '25th Anniversary Rarity Collection', code: 'RA02' },
   { name: 'Maximum Gold: El Dorado', code: 'MGED' },
   { name: 'Ghosts From the Past', code: 'GFTP' },
   { name: 'Legendary Duelists Collections' },
   { name: 'Structure Deck' },
-  // Classic
   { name: 'Legend of Blue-Eyes White Dragon', code: 'LOB' },
   { name: 'Metal Raiders', code: 'MRD' },
-  { name: 'Magic Ruler', code: 'MRL' },
-  { name: 'Pharaoh\'s Servant', code: 'PSV' },
   { name: 'Khác', code: 'OTHER' },
 ];
 
 // ────────────────────────────────────────────
-// F1
+// F1 — Static sets
 // ────────────────────────────────────────────
 
 const F1_TOPPS_SETS: SetConfig[] = [
@@ -257,8 +181,10 @@ export const CARD_CATALOG: CategoryConfig[] = [
     labelEn: 'Pokémon',
     value: 'Pokémon',
     hasSeasons: false,
+    dbSets: true,
+    dbSetSource: { view: 'pokemon_sets_en' },
     publishers: [
-      { name: 'The Pokémon Company', sets: POKEMON_SETS },
+      { name: 'The Pokémon Company', sets: [] }, // sets loaded from DB
     ],
   },
   {
@@ -287,8 +213,10 @@ export const CARD_CATALOG: CategoryConfig[] = [
     labelEn: 'One Piece',
     value: 'One Piece',
     hasSeasons: false,
+    dbSets: true,
+    dbSetSource: { categoryId: 68 },
     publishers: [
-      { name: 'Bandai', sets: ONE_PIECE_SETS },
+      { name: 'Bandai', sets: [] }, // sets loaded from DB
     ],
   },
   {
@@ -345,23 +273,62 @@ export function getPublishers(categoryValue: string): string[] {
   return config.publishers.map(p => p.name);
 }
 
-/** Get sets for a category + publisher combo */
-export function getSets(categoryValue: string, publisherName?: string): SetConfig[] {
+/** Get STATIC sets for a category + publisher combo (for non-DB categories) */
+export function getStaticSets(categoryValue: string, publisherName?: string): SetConfig[] {
   const config = getCategoryConfig(categoryValue);
-  if (!config) return [];
+  if (!config || config.dbSets) return [];
 
   if (publisherName) {
     const pub = config.publishers.find(p => p.name === publisherName);
     return pub ? pub.sets : [];
   }
 
-  // If only one publisher, return its sets
   if (config.publishers.length === 1) {
     return config.publishers[0].sets;
   }
 
-  // Merge all publishers' sets
   return config.publishers.flatMap(p => p.sets);
+}
+
+/**
+ * Fetch sets from the database for DB-driven categories (Pokemon, One Piece).
+ * Returns an array of set names sorted alphabetically.
+ */
+export async function fetchDbSets(categoryValue: string): Promise<string[]> {
+  const config = getCategoryConfig(categoryValue);
+  if (!config?.dbSets || !config.dbSetSource) return [];
+
+  const supabase = getSupabaseClient();
+
+  try {
+    if (config.dbSetSource.view) {
+      // Use materialized view (e.g. pokemon_sets_en)
+      const { data, error } = await supabase
+        .from(config.dbSetSource.view)
+        .select('set_name');
+
+      if (error) throw error;
+      return (data || []).map((d: any) => d.set_name).filter(Boolean).sort();
+    }
+
+    if (config.dbSetSource.categoryId) {
+      // Query tcgcsv_products for unique set names
+      const { data, error } = await supabase
+        .from('tcgcsv_products')
+        .select('set_name')
+        .eq('category_id', config.dbSetSource.categoryId)
+        .not('set_name', 'is', null)
+        .limit(2000);
+
+      if (error) throw error;
+      const uniqueSets = Array.from(new Set((data || []).map((d: any) => d.set_name))).filter(Boolean).sort();
+      return uniqueSets as string[];
+    }
+  } catch (err) {
+    console.error('Failed to fetch DB sets for', categoryValue, err);
+  }
+
+  return [];
 }
 
 /** Get seasons for a category */
@@ -381,4 +348,10 @@ export function isSinglePublisher(categoryValue: string): boolean {
 export function isFreeText(categoryValue: string): boolean {
   const config = getCategoryConfig(categoryValue);
   return !!config?.freeText;
+}
+
+/** Check if category uses DB-driven sets */
+export function isDbSets(categoryValue: string): boolean {
+  const config = getCategoryConfig(categoryValue);
+  return !!config?.dbSets;
 }
