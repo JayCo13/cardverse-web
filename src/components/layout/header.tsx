@@ -3,7 +3,7 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { CircleUser, Menu, Search, Headphones, Camera, Crown, Zap, Diamond } from "lucide-react"
+import { CircleUser, Menu, Search, Headphones, Camera, Crown, Zap, Diamond, Wallet, Package, Settings } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { NotificationBell } from "@/components/notification-bell"
 import { LanguageSelector } from "@/components/language-selector"
@@ -108,21 +108,42 @@ export function Header() {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link href="/profile">{t('profile')}</Link>
+              <Link href="/profile" className="flex items-center gap-2">
+                <CircleUser className="h-4 w-4" />
+                {t('profile')}
+              </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <Link href="/collection">Collection</Link>
+              <Link href="/collection" className="flex items-center gap-2">
+                <Diamond className="h-4 w-4" />
+                Collection
+              </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <Link href="/profile">{t('my_listings')}</Link>
+              <Link href="/orders" className="flex items-center gap-2">
+                <Package className="h-4 w-4" />
+                Đơn hàng
+              </Link>
             </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/wallet" className="flex items-center gap-2">
+                <Wallet className="h-4 w-4" />
+                Ví
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link href="/pricing" className="text-orange-500 font-medium flex items-center gap-2">
                 <Crown className="w-4 h-4" />
                 {t('pricing_title') || 'Upgrade & Billing'}
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem>{t('settings')}</DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/profile/edit" className="flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                {t('settings')}
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={(e) => {
