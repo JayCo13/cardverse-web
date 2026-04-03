@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useLocalization } from '@/context/localization-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Upload, ShieldAlert, X, Loader2 } from 'lucide-react';
+import { Upload, ShieldAlert, X, Loader2, Info } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useSupabase, useUser } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
@@ -25,11 +25,21 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { uploadImageToCloudinary } from '@/lib/cloudinary';
+import {
+  getCategories,
+  getCategoryConfig,
+  getPublishers,
+  getSets,
+  getSeasons,
+  isSinglePublisher,
+  isFreeText,
+} from '@/lib/card-catalog';
 
 const getFormSchema = (t: (key: string) => string) => z.object({
   name: z.string().min(5, { message: "Title must be at least 5 characters." }),
   category: z.string({ required_error: "Please select a category." }),
   publisher: z.string({ required_error: "Please select a publisher." }),
+  setName: z.string().optional(),
   season: z.string().optional(),
   quantity: z.preprocess(
     (a) => {
@@ -62,6 +72,10 @@ const getFormSchema = (t: (key: string) => string) => z.object({
   ),
   description: z.string().min(10, { message: "Description must be at least 10 characters." }),
   images: z.array(z.instanceof(File)).min(1, "Please upload at least one image.").max(4, "You can upload a maximum of 4 images."),
+  // Free text fallbacks for "Khác" category
+  freePublisher: z.string().optional(),
+  freeSetName: z.string().optional(),
+  freeSeason: z.string().optional(),
 }).refine(data => {
   if (data.listingType === 'sale') return data.price !== undefined;
   return true;
@@ -110,14 +124,28 @@ export default function CreateListingPage() {
       condition: undefined,
       psaGrade: 10,
       publisher: undefined,
+      setName: "",
       season: "",
       quantity: 1,
+      freePublisher: "",
+      freeSetName: "",
+      freeSeason: "",
     },
   });
 
   const listingType = form.watch('listingType');
   const isPsaGraded = form.watch('isPsaGraded');
   const images = form.watch('images');
+  const selectedCategory = form.watch('category');
+  const selectedPublisher = form.watch('publisher');
+
+  // Derived state from catalog
+  const categoryConfig = selectedCategory ? getCategoryConfig(selectedCategory) : undefined;
+  const availablePublishers = selectedCategory ? getPublishers(selectedCategory) : [];
+  const availableSets = selectedCategory ? getSets(selectedCategory, selectedPublisher) : [];
+  const availableSeasons = selectedCategory ? getSeasons(selectedCategory) : [];
+  const singlePublisher = selectedCategory ? isSinglePublisher(selectedCategory) : false;
+  const freeTextMode = selectedCategory ? isFreeText(selectedCategory) : false;
 
   useEffect(() => {
     if (!user) {
@@ -136,11 +164,20 @@ export default function CreateListingPage() {
     }
   }, [isPsaGraded, form]);
 
-  const categories = locale === 'en-US'
-    ? ['Pokémon', 'Soccer', 'Basketball', 'One Piece', 'Yu-Gi-Oh', 'F1', 'Other']
-    : ['Pokémon', 'Bóng đá', 'Bóng rổ', 'One Piece', 'Yu-Gi-Oh', 'F1', 'Khác'];
+  // Auto-set publisher when category has only one option
+  useEffect(() => {
+    if (selectedCategory && singlePublisher && availablePublishers.length === 1) {
+      form.setValue('publisher', availablePublishers[0]);
+    }
+  }, [selectedCategory, singlePublisher, availablePublishers, form]);
 
-  const publishers = ['Panini', 'Topps', 'Daka', 'Namco Bandai', 'Khác'];
+  // Reset set/season when category or publisher changes
+  useEffect(() => {
+    form.setValue('setName', '');
+    form.setValue('season', '');
+  }, [selectedCategory, selectedPublisher, form]);
+
+  const categories = getCategories(locale);
 
   const conditions = locale === 'en-US'
     ? ['Mint', 'Near Mint', 'Excellent', 'Good', 'Played']
@@ -162,13 +199,10 @@ export default function CreateListingPage() {
   };
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    console.log('Form submitted with values:', values);
     if (!user) {
-      console.log('No user, opening auth modal');
       setOpen(true);
       return;
     }
-    console.log('Starting submission...');
     setIsSubmitting(true);
 
     try {
@@ -189,6 +223,17 @@ export default function CreateListingPage() {
         ? `PSA ${values.psaGrade}`
         : values.condition;
 
+      // Resolve publisher/set/season — either from dropdowns or free text
+      const resolvedPublisher = freeTextMode
+        ? (values.freePublisher || 'Khác')
+        : values.publisher;
+      const resolvedSetName = freeTextMode
+        ? (values.freeSetName || '')
+        : (values.setName || '');
+      const resolvedSeason = freeTextMode
+        ? (values.freeSeason || '')
+        : (values.season || '');
+
       const cardData: any = {
         seller_id: user.id,
         name: values.name,
@@ -198,8 +243,9 @@ export default function CreateListingPage() {
         listing_type: values.listingType,
         image_url: uploadedUrls[0],
         image_urls: uploadedUrls,
-        publisher: values.publisher,
-        season: values.season || '',
+        publisher: resolvedPublisher,
+        set_name: resolvedSetName,
+        season: resolvedSeason,
         quantity: values.quantity || 1,
         status: 'active',
       };
@@ -253,6 +299,7 @@ export default function CreateListingPage() {
         <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
           console.log('Form validation errors:', errors);
         })} className="space-y-8">
+          {/* Card Title */}
           <FormField
             control={form.control}
             name="name"
@@ -267,6 +314,7 @@ export default function CreateListingPage() {
             )}
           />
 
+          {/* Category & Condition */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <FormField
               control={form.control}
@@ -274,14 +322,23 @@ export default function CreateListingPage() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className='text-lg font-semibold'>{t('category_label')}</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select
+                    onValueChange={(val) => {
+                      field.onChange(val);
+                      // Reset publisher when category changes (unless single publisher auto-sets)
+                      form.setValue('publisher', '');
+                      form.setValue('setName', '');
+                      form.setValue('season', '');
+                    }}
+                    defaultValue={field.value}
+                  >
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder={t('category_placeholder')} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {categories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
+                      {categories.map(cat => <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -310,46 +367,196 @@ export default function CreateListingPage() {
             />
           </div>
 
-          {/* Publisher, Season, Quantity Row */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <FormField
-              control={form.control}
-              name="publisher"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-lg font-semibold'>Nhà phát hành</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Chọn nhà phát hành..." />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {publishers.map(pub => <SelectItem key={pub} value={pub}>{pub}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
+          {/* ─── Dynamic Publisher / Set / Season Section ─── */}
+          {selectedCategory && (
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 space-y-5">
+              <div className="flex items-center gap-2">
+                <Info className="h-4 w-4 text-primary" />
+                <h3 className="text-base font-semibold text-primary">
+                  Thông tin chi tiết — {categoryConfig?.label || selectedCategory}
+                </h3>
+              </div>
+
+              {freeTextMode ? (
+                /* ─── Free Text Mode (for "Khác" category) ─── */
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="freePublisher"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Nhà phát hành</FormLabel>
+                        <FormControl>
+                          <Input placeholder="VD: Panini, Topps..." {...field} value={field.value ?? ''} />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="freeSetName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tên Set / Bộ sưu tập</FormLabel>
+                        <FormControl>
+                          <Input placeholder="VD: Chrome, Prizm..." {...field} value={field.value ?? ''} />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="freeSeason"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Mùa / Năm</FormLabel>
+                        <FormControl>
+                          <Input placeholder="VD: 2024-25, Season 1..." {...field} value={field.value ?? ''} />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              ) : (
+                /* ─── Structured Dropdowns ─── */
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Publisher */}
+                  <FormField
+                    control={form.control}
+                    name="publisher"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Nhà phát hành</FormLabel>
+                        {singlePublisher ? (
+                          <div className="h-10 px-3 py-2 rounded-md border bg-muted text-sm flex items-center">
+                            {availablePublishers[0]}
+                          </div>
+                        ) : (
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Chọn nhà phát hành" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {availablePublishers.map(pub => (
+                                <SelectItem key={pub} value={pub}>{pub}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Set Name */}
+                  <FormField
+                    control={form.control}
+                    name="setName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Set / Bộ sưu tập</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Chọn set..." />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent className="max-h-[280px]">
+                            {availableSets.map(set => (
+                              <SelectItem key={set.name} value={set.name}>
+                                {set.code ? `[${set.code}] ${set.name}` : set.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Season (only if category uses seasons) */}
+                  {categoryConfig?.hasSeasons ? (
+                    <FormField
+                      control={form.control}
+                      name="season"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Mùa / Năm</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Chọn mùa/năm" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {availableSeasons.map(season => (
+                                <SelectItem key={season} value={season}>{season}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  ) : (
+                    /* Quantity fills the 3rd column when no season */
+                    <FormField
+                      control={form.control}
+                      name="quantity"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Số lượng</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="1"
+                              placeholder="1"
+                              value={field.value ?? ''}
+                              onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+                </div>
               )}
-            />
-            <FormField
-              control={form.control}
-              name="season"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-lg font-semibold'>Mùa/Năm</FormLabel>
-                  <FormControl>
-                    <Input placeholder="VD: 2023, Season 1..." value={field.value ?? ''} onChange={field.onChange} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+
+              {/* If has seasons, show quantity on a separate row */}
+              {categoryConfig?.hasSeasons && !freeTextMode && (
+                <FormField
+                  control={form.control}
+                  name="quantity"
+                  render={({ field }) => (
+                    <FormItem className="max-w-[200px]">
+                      <FormLabel>Số lượng</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="1"
+                          placeholder="1"
+                          value={field.value ?? ''}
+                          onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               )}
-            />
+            </div>
+          )}
+
+          {/* Quantity standalone (only when no category selected yet) */}
+          {!selectedCategory && (
             <FormField
               control={form.control}
               name="quantity"
               render={({ field }) => (
-                <FormItem>
+                <FormItem className="max-w-[200px]">
                   <FormLabel className='text-lg font-semibold'>Số lượng</FormLabel>
                   <FormControl>
                     <Input
@@ -364,8 +571,9 @@ export default function CreateListingPage() {
                 </FormItem>
               )}
             />
-          </div>
+          )}
 
+          {/* PSA Graded */}
           <FormField
             control={form.control}
             name="isPsaGraded"
@@ -413,6 +621,7 @@ export default function CreateListingPage() {
             )}
           />
 
+          {/* Images */}
           <FormField
             control={form.control}
             name="images"
@@ -472,6 +681,7 @@ export default function CreateListingPage() {
             )}
           />
 
+          {/* Listing Type */}
           <FormField
             control={form.control}
             name="listingType"
@@ -509,6 +719,7 @@ export default function CreateListingPage() {
             )}
           />
 
+          {/* Price Fields */}
           {listingType === 'sale' && (
             <FormField
               control={form.control}
@@ -586,6 +797,7 @@ export default function CreateListingPage() {
             </div>
           )}
 
+          {/* Description */}
           <FormField
             control={form.control}
             name="description"

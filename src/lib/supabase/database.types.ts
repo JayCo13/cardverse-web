@@ -114,6 +114,7 @@ export interface Database {
                     status: 'active' | 'sold' | 'expired' | 'in_transaction'
                     publisher: string | null
                     season: string | null
+                    set_name: string | null
                     quantity: number
                     created_at: string
                     updated_at: string
@@ -139,6 +140,7 @@ export interface Database {
                     status?: 'active' | 'sold' | 'expired' | 'in_transaction'
                     publisher?: string | null
                     season?: string | null
+                    set_name?: string | null
                     quantity?: number
                     created_at?: string
                     updated_at?: string
@@ -164,6 +166,7 @@ export interface Database {
                     status?: 'active' | 'sold' | 'expired' | 'in_transaction'
                     publisher?: string | null
                     season?: string | null
+                    set_name?: string | null
                     quantity?: number
                     created_at?: string
                     updated_at?: string
