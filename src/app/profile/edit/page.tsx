@@ -421,7 +421,7 @@ export default function EditProfilePage() {
                                             <div>
                                                 {subscription ? (
                                                     <div className="space-y-1">
-                                                        <h3 className="text-2xl font-bold text-primary">{subscription.plan_id.toUpperCase()}</h3>
+                                                        <h3 className="text-2xl font-bold text-primary">{(subscription.plan_id || 'VIP').toUpperCase()}</h3>
                                                         <p className="text-sm text-muted-foreground font-medium">Trạng thái: <span className="text-green-600">Đang kích hoạt</span></p>
                                                         <p className="text-xs text-muted-foreground mt-2">Hết hạn vào: {new Date(subscription.current_period_end).toLocaleDateString('vi-VN')}</p>
                                                     </div>

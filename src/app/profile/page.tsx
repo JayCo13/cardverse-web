@@ -57,6 +57,15 @@ export default function ProfilePage() {
     const [addressSaving, setAddressSaving] = useState(false);
     const [hasExistingAddress, setHasExistingAddress] = useState(false);
 
+    // Auto-fill phone and address from profile (KYC verified data)
+    useEffect(() => {
+        if (userProfile) {
+            if (userProfile.phone_number && !sellerPhone) {
+                setSellerPhone(userProfile.phone_number);
+            }
+        }
+    }, [userProfile]);
+
     // Use centralized currency formatting
     const { formatPrice } = useCurrency();
 
@@ -441,7 +450,20 @@ export default function ProfilePage() {
                                             variant="link"
                                             size="sm"
                                             className="text-blue-400 p-0 h-auto mt-1"
-                                            onClick={() => setHasExistingAddress(true)}
+                                            onClick={() => {
+                                                // Pre-populate existing address for editing
+                                                setSellerPhone(userProfile.phone_number || '');
+                                                setSellerAddress({
+                                                    provinceId: userProfile.address_province_id || 0,
+                                                    provinceName: userProfile.address_province_name || '',
+                                                    districtId: userProfile.address_district_id || 0,
+                                                    districtName: userProfile.address_district_name || '',
+                                                    wardCode: userProfile.address_ward_code || '',
+                                                    wardName: userProfile.address_ward_name || '',
+                                                    detail: userProfile.address_detail || '',
+                                                });
+                                                setHasExistingAddress(true);
+                                            }}
                                         >
                                             Cập nhật địa chỉ
                                         </Button>
