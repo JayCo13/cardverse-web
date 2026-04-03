@@ -33,6 +33,8 @@ export interface CategoryConfig {
   dbSetSource?: {
     /** Table or view name to query */
     view?: string;
+    /** Additional view for JP sets (Pokemon) */
+    viewJp?: string;
     /** category_id to filter tcgcsv_products */
     categoryId?: number;
   };
@@ -182,7 +184,7 @@ export const CARD_CATALOG: CategoryConfig[] = [
     value: 'Pokémon',
     hasSeasons: false,
     dbSets: true,
-    dbSetSource: { view: 'pokemon_sets_en' },
+    dbSetSource: { view: 'pokemon_sets_en', viewJp: 'pokemon_sets_jp' },
     publishers: [
       { name: 'The Pokémon Company', sets: [] }, // sets loaded from DB
     ],
@@ -292,27 +294,50 @@ export function getStaticSets(categoryValue: string, publisherName?: string): Se
 
 /**
  * Fetch sets from the database for DB-driven categories (Pokemon, One Piece).
- * Returns an array of set names sorted alphabetically.
+ * Returns a deduplicated, sorted array of non-empty set names.
  */
 export async function fetchDbSets(categoryValue: string): Promise<string[]> {
   const config = getCategoryConfig(categoryValue);
   if (!config?.dbSets || !config.dbSetSource) return [];
 
   const supabase = getSupabaseClient();
+  const allSetNames: string[] = [];
 
   try {
+    // Fetch from primary view (e.g. pokemon_sets_en)
     if (config.dbSetSource.view) {
-      // Use materialized view (e.g. pokemon_sets_en)
       const { data, error } = await supabase
         .from(config.dbSetSource.view)
         .select('set_name');
 
-      if (error) throw error;
-      return (data || []).map((d: any) => d.set_name).filter(Boolean).sort();
+      if (!error && data) {
+        for (const d of data) {
+          const name = (d as any).set_name;
+          if (name && typeof name === 'string' && name.trim()) {
+            allSetNames.push(name.trim());
+          }
+        }
+      }
     }
 
+    // Fetch from JP view if exists (e.g. pokemon_sets_jp)
+    if (config.dbSetSource.viewJp) {
+      const { data, error } = await supabase
+        .from(config.dbSetSource.viewJp)
+        .select('set_name');
+
+      if (!error && data) {
+        for (const d of data) {
+          const name = (d as any).set_name;
+          if (name && typeof name === 'string' && name.trim()) {
+            allSetNames.push(name.trim());
+          }
+        }
+      }
+    }
+
+    // Fetch from tcgcsv_products by category_id
     if (config.dbSetSource.categoryId) {
-      // Query tcgcsv_products for unique set names
       const { data, error } = await supabase
         .from('tcgcsv_products')
         .select('set_name')
@@ -320,15 +345,22 @@ export async function fetchDbSets(categoryValue: string): Promise<string[]> {
         .not('set_name', 'is', null)
         .limit(2000);
 
-      if (error) throw error;
-      const uniqueSets = Array.from(new Set((data || []).map((d: any) => d.set_name))).filter(Boolean).sort();
-      return uniqueSets as string[];
+      if (!error && data) {
+        for (const d of data) {
+          const name = (d as any).set_name;
+          if (name && typeof name === 'string' && name.trim()) {
+            allSetNames.push(name.trim());
+          }
+        }
+      }
     }
   } catch (err) {
     console.error('Failed to fetch DB sets for', categoryValue, err);
   }
 
-  return [];
+  // Deduplicate and sort
+  const unique = Array.from(new Set(allSetNames)).sort();
+  return unique;
 }
 
 /** Get seasons for a category */

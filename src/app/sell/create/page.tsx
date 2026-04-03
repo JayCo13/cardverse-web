@@ -489,8 +489,10 @@ export default function CreateListingPage() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent className="max-h-[300px]">
-                            {availableSets.map(set => (
-                              <SelectItem key={set.name} value={set.name}>
+                            {availableSets
+                              .filter(set => set.name && set.name.trim())
+                              .map((set, idx) => (
+                              <SelectItem key={`${set.name}-${idx}`} value={set.name}>
                                 {set.code ? `[${set.code}] ${set.name}` : set.name}
                               </SelectItem>
                             ))}
