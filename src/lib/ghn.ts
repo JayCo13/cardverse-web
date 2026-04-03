@@ -1,7 +1,9 @@
 // GHN (Giao Hàng Nhanh) API Client
 // Docs: https://api.ghn.vn/home/docs/detail
 
-const GHN_BASE_URL = 'https://online-gateway.ghn.vn/shiip/public-api/v2';
+const GHN_BASE_URL = process.env.GHN_ENV === 'production'
+    ? 'https://online-gateway.ghn.vn/shiip/public-api/v2'
+    : 'https://dev-online-gateway.ghn.vn/shiip/public-api';
 const GHN_TOKEN = process.env.GHN_TOKEN || '';
 const GHN_SHOP_ID = process.env.GHN_SHOP_ID || '';
 
