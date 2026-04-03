@@ -11,10 +11,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { User, Camera, Save, ArrowLeft, Lock, Crown, MapPin, Activity, Zap } from "lucide-react";
+import { User, Camera, Save, ArrowLeft, Lock, Crown, MapPin, Activity, Zap, Truck, Phone, CheckCircle, Loader2, Package } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useAuthModal } from "@/components/auth-modal";
+import { AddressPicker, type AddressData } from "@/components/address-picker";
+import { useToast } from "@/hooks/use-toast";
 
 export default function EditProfilePage() {
     const router = useRouter();
@@ -22,6 +24,7 @@ export default function EditProfilePage() {
     const { user, profile, isLoading: isUserLoading } = useUser();
     const { refreshProfile } = useAuth();
     const { setOpen } = useAuthModal();
+    const { toast } = useToast();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // General
@@ -29,10 +32,16 @@ export default function EditProfilePage() {
     const [phoneNumber, setPhoneNumber] = useState("");
     const [profileImageUrl, setProfileImageUrl] = useState("");
     
-    // Address
+    // Address (legacy simple fields)
     const [address, setAddress] = useState("");
     const [city, setCity] = useState("");
     
+    // Shipping address (GHN structured)
+    const [shippingAddress, setShippingAddress] = useState<AddressData | null>(null);
+    const [shippingPhone, setShippingPhone] = useState("");
+    const [isShippingSaving, setIsShippingSaving] = useState(false);
+    const [shippingSuccess, setShippingSuccess] = useState(false);
+
     // VIP
     const [scanUsage, setScanUsage] = useState<any>(null);
     const [subscription, setSubscription] = useState<any>(null);
@@ -55,6 +64,23 @@ export default function EditProfilePage() {
             setAddress(profile.address || "");
             setCity(profile.city || "");
             setProfileImageUrl(profile.profile_image_url || "");
+
+            // Auto-fill shipping phone from KYC verified phone
+            setShippingPhone(profile.phone_number || "");
+
+            // Pre-populate shipping address if exists
+            const p = profile as any;
+            if (p.address_district_id) {
+                setShippingAddress({
+                    provinceId: p.address_province_id || 0,
+                    provinceName: p.address_province_name || '',
+                    districtId: p.address_district_id || 0,
+                    districtName: p.address_district_name || '',
+                    wardCode: p.address_ward_code || '',
+                    wardName: p.address_ward_name || '',
+                    detail: p.address_detail || '',
+                });
+            }
             
             const fetchVIPData = async () => {
                 const [scanRes, subRes] = await Promise.all([
@@ -83,13 +109,11 @@ export default function EditProfilePage() {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        // Validate file size (max 5MB)
         if (file.size > 5 * 1024 * 1024) {
             setError("Ảnh phải nhỏ hơn 5MB");
             return;
         }
 
-        // Validate file type
         if (!file.type.startsWith("image/")) {
             setError("Vui lòng chọn file hình ảnh");
             return;
@@ -127,6 +151,7 @@ export default function EditProfilePage() {
         return publicUrl;
     };
 
+    // Save general profile info
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) return;
@@ -138,19 +163,17 @@ export default function EditProfilePage() {
         try {
             let newImageUrl = profileImageUrl;
 
-            // Upload new image if selected
             if (imageFile) {
                 const uploadedUrl = await uploadImage(imageFile);
                 if (uploadedUrl) {
                     newImageUrl = uploadedUrl;
                 } else {
-                    setError("Failed to upload image");
+                    setError("Không thể tải ảnh lên");
                     setIsSaving(false);
                     return;
                 }
             }
 
-            // Update profile in database
             const { error: updateError } = await supabase
                 .from("profiles")
                 .update({
@@ -172,15 +195,57 @@ export default function EditProfilePage() {
                 setImagePreview(null);
                 await refreshProfile();
                 
-                // Keep success message visible for a bit
                 setTimeout(() => {
                     setSuccess(false);
                 }, 3000);
             }
         } catch (err) {
-            setError("An unexpected error occurred");
+            setError("Đã xảy ra lỗi không mong muốn");
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    // Save shipping address
+    const handleSaveShipping = async () => {
+        if (!shippingAddress || !user) return;
+        
+        setIsShippingSaving(true);
+        setShippingSuccess(false);
+
+        try {
+            const { error } = await supabase
+                .from('profiles')
+                .update({
+                    address_province_id: shippingAddress.provinceId,
+                    address_province_name: shippingAddress.provinceName,
+                    address_district_id: shippingAddress.districtId,
+                    address_district_name: shippingAddress.districtName,
+                    address_ward_code: shippingAddress.wardCode,
+                    address_ward_name: shippingAddress.wardName,
+                    address_detail: shippingAddress.detail,
+                    phone_number: shippingPhone,
+                    updated_at: new Date().toISOString(),
+                } as never)
+                .eq('id', user.id);
+
+            if (error) throw error;
+
+            setShippingSuccess(true);
+            await refreshProfile();
+            toast({
+                title: '✅ Đã lưu',
+                description: 'Địa chỉ giao hàng đã được cập nhật thành công.',
+            });
+            setTimeout(() => setShippingSuccess(false), 3000);
+        } catch (err: any) {
+            toast({
+                variant: 'destructive',
+                title: 'Lỗi',
+                description: err.message || 'Không thể lưu địa chỉ',
+            });
+        } finally {
+            setIsShippingSaving(false);
         }
     };
 
@@ -214,6 +279,8 @@ export default function EditProfilePage() {
         );
     }
 
+    const hasShippingAddress = !!(profile as any)?.address_district_id;
+
     return (
         <>
             <Header />
@@ -227,35 +294,41 @@ export default function EditProfilePage() {
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight">Cài đặt tài khoản</h1>
                         <p className="text-muted-foreground mt-1">
-                            Quản lý thông tin hồ sơ, địa chỉ, bảo mật và gói VIP của bạn.
+                            Quản lý hồ sơ, địa chỉ giao hàng, bảo mật và gói VIP.
                         </p>
                     </div>
                 </div>
 
                 <Tabs defaultValue="general" className="flex flex-col md:flex-row gap-6">
-                    {/* Vertical Tabs Sidebar on Desktop, Horizontal on Mobile */}
-                    <TabsList className="flex flex-row md:flex-col h-auto w-full md:w-64 bg-transparent space-x-2 md:space-x-0 space-y-0 md:space-y-2 justify-start overflow-x-auto shrink-0 md:items-stretch py-1 md:py-0 px-0">
-                        <TabsTrigger value="general" className="flex justify-start gap-3 w-full data-[state=active]:bg-primary/5 data-[state=active]:text-primary border border-transparent data-[state=active]:border-primary/20 py-2.5 px-4 rounded-lg">
+                    {/* Sidebar Tabs */}
+                    <TabsList className="flex flex-row md:flex-col h-auto w-full md:w-64 bg-transparent space-x-2 md:space-x-0 space-y-0 md:space-y-1.5 justify-start overflow-x-auto shrink-0 md:items-stretch py-1 md:py-0 px-0">
+                        <TabsTrigger value="general" className="flex justify-start gap-3 w-full data-[state=active]:bg-primary/5 data-[state=active]:text-primary border border-transparent data-[state=active]:border-primary/20 py-2.5 px-4 rounded-lg transition-all">
                             <User className="h-4 w-4" />
-                            Hồ sơ cá nhân
+                            <span className="hidden sm:inline">Hồ sơ cá nhân</span>
+                            <span className="sm:hidden">Hồ sơ</span>
                         </TabsTrigger>
-                        <TabsTrigger value="address" className="flex justify-start gap-3 w-full data-[state=active]:bg-primary/5 data-[state=active]:text-primary border border-transparent data-[state=active]:border-primary/20 py-2.5 px-4 rounded-lg">
-                            <MapPin className="h-4 w-4" />
-                            Địa chỉ & Giao hàng
+                        <TabsTrigger value="address" className="flex justify-start gap-3 w-full data-[state=active]:bg-primary/5 data-[state=active]:text-primary border border-transparent data-[state=active]:border-primary/20 py-2.5 px-4 rounded-lg transition-all">
+                            <Truck className="h-4 w-4" />
+                            <span className="hidden sm:inline">Địa chỉ & Giao hàng</span>
+                            <span className="sm:hidden">Địa chỉ</span>
+                            {hasShippingAddress && (
+                                <CheckCircle className="h-3.5 w-3.5 text-green-500 ml-auto" />
+                            )}
                         </TabsTrigger>
-                        <TabsTrigger value="vip" className="flex justify-start gap-3 w-full data-[state=active]:bg-primary/5 data-[state=active]:text-primary border border-transparent data-[state=active]:border-primary/20 py-2.5 px-4 rounded-lg">
+                        <TabsTrigger value="vip" className="flex justify-start gap-3 w-full data-[state=active]:bg-primary/5 data-[state=active]:text-primary border border-transparent data-[state=active]:border-primary/20 py-2.5 px-4 rounded-lg transition-all">
                             <Crown className="h-4 w-4" />
-                            Gói VIP & Dịch vụ
+                            <span className="hidden sm:inline">Gói VIP & Dịch vụ</span>
+                            <span className="sm:hidden">VIP</span>
                         </TabsTrigger>
-                        <TabsTrigger value="security" className="flex justify-start gap-3 w-full data-[state=active]:bg-primary/5 data-[state=active]:text-primary border border-transparent data-[state=active]:border-primary/20 py-2.5 px-4 rounded-lg">
+                        <TabsTrigger value="security" className="flex justify-start gap-3 w-full data-[state=active]:bg-primary/5 data-[state=active]:text-primary border border-transparent data-[state=active]:border-primary/20 py-2.5 px-4 rounded-lg transition-all">
                             <Lock className="h-4 w-4" />
-                            Bảo mật
+                            <span className="hidden sm:inline">Bảo mật</span>
                         </TabsTrigger>
                     </TabsList>
 
                     {/* Tab Contents */}
                     <div className="flex-1 w-full min-w-0">
-                        {/* 1. GENERAL TAB */}
+                        {/* ─── 1. GENERAL TAB ─── */}
                         <TabsContent value="general" className="mt-0 outline-none">
                             <Card className="border-border">
                                 <CardHeader>
@@ -297,7 +370,7 @@ export default function EditProfilePage() {
                                                     />
                                                 </div>
                                                 <p className="text-xs text-muted-foreground text-center max-w-[120px]">
-                                                    Dung lượng tối đa 5MB. Định dạng JPG, PNG.
+                                                    Tối đa 5MB. JPG, PNG.
                                                 </p>
                                             </div>
 
@@ -337,11 +410,20 @@ export default function EditProfilePage() {
                                         </div>
 
                                         {error && <p className="text-sm text-red-500">{error}</p>}
-                                        {success && <p className="text-sm text-green-500 font-medium">Hồ sơ cá nhân đã được cập nhật thành công!</p>}
+                                        {success && (
+                                            <div className="flex items-center gap-2 text-sm text-green-500 font-medium bg-green-500/5 border border-green-500/20 rounded-lg px-4 py-2.5">
+                                                <CheckCircle className="h-4 w-4" />
+                                                Hồ sơ cá nhân đã được cập nhật thành công!
+                                            </div>
+                                        )}
                                         
                                         <div className="flex justify-end pt-4 border-t border-border">
                                             <Button type="submit" disabled={isSaving} className="min-w-[140px]">
-                                                {isSaving ? "Đang lưu..." : <><Save className="w-4 h-4 mr-2" /> Lưu thay đổi</>}
+                                                {isSaving ? (
+                                                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Đang lưu...</>
+                                                ) : (
+                                                    <><Save className="w-4 h-4 mr-2" /> Lưu thay đổi</>
+                                                )}
                                             </Button>
                                         </div>
                                     </form>
@@ -349,12 +431,110 @@ export default function EditProfilePage() {
                             </Card>
                         </TabsContent>
 
-                        {/* 2. ADDRESS TAB */}
-                        <TabsContent value="address" className="mt-0 outline-none">
+                        {/* ─── 2. ADDRESS & SHIPPING TAB ─── */}
+                        <TabsContent value="address" className="mt-0 outline-none space-y-6">
+                            {/* Shipping Address Card — GHN */}
+                            <Card className="border-blue-500/20">
+                                <CardHeader className="pb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 rounded-lg bg-blue-500/10">
+                                            <Truck className="h-5 w-5 text-blue-400" />
+                                        </div>
+                                        <div>
+                                            <CardTitle className="text-lg">Địa chỉ giao hàng</CardTitle>
+                                            <CardDescription>
+                                                Địa chỉ dùng để tạo đơn vận chuyển GHN khi bạn mua/bán thẻ trên sàn.
+                                            </CardDescription>
+                                        </div>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="space-y-5">
+                                    {/* Current saved address display */}
+                                    {hasShippingAddress && (
+                                        <div className="p-4 rounded-xl bg-gradient-to-r from-green-500/5 to-emerald-500/5 border border-green-500/20">
+                                            <div className="flex items-start gap-3">
+                                                <div className="p-1.5 rounded-full bg-green-500/10 mt-0.5">
+                                                    <CheckCircle className="h-4 w-4 text-green-500" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-semibold text-green-500 mb-1">Địa chỉ hiện tại</p>
+                                                    <p className="text-sm text-foreground/80 leading-relaxed">
+                                                        {[(profile as any).address_detail, (profile as any).address_ward_name, (profile as any).address_district_name, (profile as any).address_province_name].filter(Boolean).join(', ')}
+                                                    </p>
+                                                    {profile?.phone_number && (
+                                                        <p className="text-sm text-muted-foreground flex items-center gap-1.5 mt-1.5">
+                                                            <Phone className="h-3.5 w-3.5" /> {profile.phone_number}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Shipping phone */}
+                                    <div className="space-y-2">
+                                        <Label className="text-sm font-medium flex items-center gap-2">
+                                            <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                                            Số điện thoại nhận/gửi hàng
+                                        </Label>
+                                        <Input
+                                            value={shippingPhone}
+                                            onChange={e => setShippingPhone(e.target.value)}
+                                            placeholder="0901234567"
+                                            className="max-w-sm"
+                                        />
+                                        <p className="text-[11px] text-muted-foreground">
+                                            Shipper sẽ liên hệ số này khi giao/lấy hàng.
+                                        </p>
+                                    </div>
+
+                                    {/* AddressPicker */}
+                                    <div className="space-y-2">
+                                        <AddressPicker
+                                            label="Địa chỉ giao hàng"
+                                            onChange={setShippingAddress}
+                                            value={shippingAddress || undefined}
+                                            detailPlaceholder="Số nhà, tên đường, toà nhà..."
+                                        />
+                                    </div>
+
+                                    {/* Success message */}
+                                    {shippingSuccess && (
+                                        <div className="flex items-center gap-2 text-sm text-green-500 font-medium bg-green-500/5 border border-green-500/20 rounded-lg px-4 py-2.5">
+                                            <CheckCircle className="h-4 w-4" />
+                                            Địa chỉ giao hàng đã được cập nhật thành công!
+                                        </div>
+                                    )}
+
+                                    {/* Save button */}
+                                    <div className="flex justify-end pt-4 border-t border-border">
+                                        <Button
+                                            onClick={handleSaveShipping}
+                                            disabled={!shippingAddress || !shippingPhone || isShippingSaving}
+                                            className="min-w-[160px] bg-blue-600 hover:bg-blue-700"
+                                        >
+                                            {isShippingSaving ? (
+                                                <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Đang lưu...</>
+                                            ) : (
+                                                <><Save className="h-4 w-4 mr-2" /> Lưu địa chỉ giao hàng</>
+                                            )}
+                                        </Button>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            {/* Simple Address Card (legacy / general) */}
                             <Card className="border-border">
-                                <CardHeader>
-                                    <CardTitle>Địa chỉ & Giao hàng</CardTitle>
-                                    <CardDescription>Thông tin nhận thẻ khi giao dịch trên sàn Marketplace.</CardDescription>
+                                <CardHeader className="pb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 rounded-lg bg-muted">
+                                            <MapPin className="h-5 w-5 text-muted-foreground" />
+                                        </div>
+                                        <div>
+                                            <CardTitle className="text-lg">Địa chỉ hiển thị</CardTitle>
+                                            <CardDescription>Thông tin địa chỉ hiển thị trên hồ sơ công khai.</CardDescription>
+                                        </div>
+                                    </div>
                                 </CardHeader>
                                 <CardContent>
                                     <form onSubmit={handleSubmit} className="space-y-4">
@@ -377,24 +557,14 @@ export default function EditProfilePage() {
                                                     placeholder="TP. Hồ Chí Minh"
                                                 />
                                             </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="addressPhone">Số điện thoại nhận hàng</Label>
-                                                <Input
-                                                    id="addressPhone"
-                                                    value={phoneNumber}
-                                                    onChange={(e) => setPhoneNumber(e.target.value)}
-                                                    placeholder="0912 345 678"
-                                                />
-                                                <p className="text-[11px] text-muted-foreground mt-1">Đồng bộ với số điện thoại cá nhân</p>
-                                            </div>
                                         </div>
-
-                                        {error && <p className="text-sm text-red-500">{error}</p>}
-                                        {success && <p className="text-sm text-green-500 font-medium">Địa chỉ đã được cập nhật thành công!</p>}
-                                        
-                                        <div className="flex justify-end pt-4 mt-6 border-t border-border">
+                                        <div className="flex justify-end pt-4 border-t border-border">
                                             <Button type="submit" disabled={isSaving} className="min-w-[140px]">
-                                                {isSaving ? "Đang lưu..." : <><Save className="w-4 h-4 mr-2" /> Lưu địa chỉ</>}
+                                                {isSaving ? (
+                                                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Đang lưu...</>
+                                                ) : (
+                                                    <><Save className="w-4 h-4 mr-2" /> Lưu thay đổi</>
+                                                )}
                                             </Button>
                                         </div>
                                     </form>
@@ -402,7 +572,7 @@ export default function EditProfilePage() {
                             </Card>
                         </TabsContent>
 
-                        {/* 3. VIP TAB */}
+                        {/* ─── 3. VIP TAB ─── */}
                         <TabsContent value="vip" className="mt-0 outline-none">
                             <div className="space-y-6">
                                 <Card className="border-primary/20 bg-primary/5 shadow-sm overflow-hidden relative">
@@ -414,7 +584,7 @@ export default function EditProfilePage() {
                                             <Crown className="w-5 h-5 text-primary" />
                                             <CardTitle className="text-xl">Gói thành viên hiện tại</CardTitle>
                                         </div>
-                                        <CardDescription>Trạng thái gói nâng cấp và quyền lợi quét thẻ AI của bạn.</CardDescription>
+                                        <CardDescription>Trạng thái gói nâng cấp và quyền lợi quét thẻ của bạn.</CardDescription>
                                     </CardHeader>
                                     <CardContent className="relative z-10">
                                         <div className="flex flex-col md:flex-row gap-6 md:items-end justify-between">
@@ -491,7 +661,7 @@ export default function EditProfilePage() {
                             </div>
                         </TabsContent>
 
-                        {/* 4. SECURITY TAB */}
+                        {/* ─── 4. SECURITY TAB ─── */}
                         <TabsContent value="security" className="mt-0 outline-none">
                             <Card className="border-border border-red-500/10">
                                 <CardHeader>
@@ -502,21 +672,21 @@ export default function EditProfilePage() {
                                     <CardDescription>Quản lý mật khẩu và bảo vệ tài khoản CardVerse của bạn.</CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="space-y-6">
-                                        <div className="flex items-center justify-between p-4 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800">
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 hover:border-zinc-200 dark:hover:border-zinc-700 transition-colors">
                                             <div>
                                                 <h4 className="font-medium text-sm">Mật khẩu</h4>
-                                                <p className="text-xs text-muted-foreground mt-1">Nên đổi mật khẩu định kỳ 6 tháng một lần để đảm bảo an toàn.</p>
+                                                <p className="text-xs text-muted-foreground mt-1">Nên đổi mật khẩu định kỳ 6 tháng một lần.</p>
                                             </div>
                                             <Link href="/reset-password">
                                                 <Button variant="outline" size="sm">Đổi mật khẩu</Button>
                                             </Link>
                                         </div>
                                         
-                                        <div className="flex items-center justify-between p-4 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800">
+                                        <div className="flex items-center justify-between p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800">
                                             <div>
                                                 <h4 className="font-medium text-sm">Xác thực 2 lớp (2FA)</h4>
-                                                <p className="text-xs text-muted-foreground mt-1">Tính năng này sắp được ra mắt trên hệ thống.</p>
+                                                <p className="text-xs text-muted-foreground mt-1">Tính năng này sắp được ra mắt.</p>
                                             </div>
                                             <Button variant="secondary" size="sm" disabled>Sắp ra mắt</Button>
                                         </div>

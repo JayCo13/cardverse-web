@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSupabase, useUser } from "@/lib/supabase";
 import { useAuthModal } from "@/components/auth-modal";
@@ -12,19 +12,15 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
     User, ShoppingBag, Tag, Gavel, Ticket, TrendingUp, TrendingDown,
     Star, Shield, Crown, Award, Package, DollarSign, Clock, CheckCircle,
-    XCircle, AlertTriangle, ChevronRight, MapPin, Truck, Loader2, Save, Phone
+    XCircle, AlertTriangle, ChevronRight
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
-import { AddressPicker, type AddressData } from "@/components/address-picker";
-import { useToast } from "@/hooks/use-toast";
 
 // Rank definitions
 const RANKS = [
@@ -49,22 +45,6 @@ export default function ProfilePage() {
     const [buyTransactions, setBuyTransactions] = useState<Transaction[]>([]);
     const [sellTransactions, setSellTransactions] = useState<Transaction[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const { toast } = useToast();
-
-    // Shipping address state
-    const [sellerAddress, setSellerAddress] = useState<AddressData | null>(null);
-    const [sellerPhone, setSellerPhone] = useState('');
-    const [addressSaving, setAddressSaving] = useState(false);
-    const [hasExistingAddress, setHasExistingAddress] = useState(false);
-
-    // Auto-fill phone and address from profile (KYC verified data)
-    useEffect(() => {
-        if (userProfile) {
-            if (userProfile.phone_number && !sellerPhone) {
-                setSellerPhone(userProfile.phone_number);
-            }
-        }
-    }, [userProfile]);
 
     // Use centralized currency formatting
     const { formatPrice } = useCurrency();
@@ -418,132 +398,6 @@ export default function ProfilePage() {
                         </CardContent>
                     </CardUI>
                 </div>
-
-                {/* Seller Shipping Address Section */}
-                {userProfile?.seller_verified && (
-                    <CardUI className="mb-8 border-blue-500/20">
-                        <CardHeader className="pb-3">
-                            <CardTitle className="flex items-center gap-2 text-lg">
-                                <Truck className="h-5 w-5 text-blue-400" />
-                                Địa chỉ gửi hàng
-                            </CardTitle>
-                            <CardDescription>
-                                Địa chỉ này được dùng khi tạo đơn vận chuyển GHN. Bắt buộc điền trước khi giao hàng.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            {/* Show saved address if exists */}
-                            {userProfile?.address_district_name && !hasExistingAddress && (
-                                <div className="p-3 rounded-lg bg-green-500/5 border border-green-500/20 flex items-start gap-2">
-                                    <MapPin className="h-4 w-4 text-green-400 mt-0.5 flex-shrink-0" />
-                                    <div className="text-sm">
-                                        <p className="font-medium text-green-400">Đã lưu</p>
-                                        <p className="text-muted-foreground">
-                                            {[userProfile.address_detail, userProfile.address_ward_name, userProfile.address_district_name, userProfile.address_province_name].filter(Boolean).join(', ')}
-                                        </p>
-                                        {userProfile.phone_number && (
-                                            <p className="text-muted-foreground flex items-center gap-1 mt-0.5">
-                                                <Phone className="h-3 w-3" /> {userProfile.phone_number}
-                                            </p>
-                                        )}
-                                        <Button
-                                            variant="link"
-                                            size="sm"
-                                            className="text-blue-400 p-0 h-auto mt-1"
-                                            onClick={() => {
-                                                // Pre-populate existing address for editing
-                                                setSellerPhone(userProfile.phone_number || '');
-                                                setSellerAddress({
-                                                    provinceId: userProfile.address_province_id || 0,
-                                                    provinceName: userProfile.address_province_name || '',
-                                                    districtId: userProfile.address_district_id || 0,
-                                                    districtName: userProfile.address_district_name || '',
-                                                    wardCode: userProfile.address_ward_code || '',
-                                                    wardName: userProfile.address_ward_name || '',
-                                                    detail: userProfile.address_detail || '',
-                                                });
-                                                setHasExistingAddress(true);
-                                            }}
-                                        >
-                                            Cập nhật địa chỉ
-                                        </Button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Show form if no address OR editing */}
-                            {(!userProfile?.address_district_name || hasExistingAddress) && (
-                                <>
-                                    <div>
-                                        <Label className="text-sm font-medium mb-1.5 block">Số điện thoại</Label>
-                                        <Input
-                                            value={sellerPhone}
-                                            onChange={e => setSellerPhone(e.target.value)}
-                                            placeholder="0901234567"
-                                            className="h-9 text-sm max-w-xs"
-                                        />
-                                    </div>
-
-                                    <AddressPicker
-                                        label="Địa chỉ lấy hàng"
-                                        onChange={setSellerAddress}
-                                        value={sellerAddress || undefined}
-                                        detailPlaceholder="Số nhà, tên đường..."
-                                    />
-
-                                    <Button
-                                        onClick={async () => {
-                                            if (!sellerAddress || !user) return;
-                                            setAddressSaving(true);
-                                            try {
-                                                const { error } = await supabase
-                                                    .from('profiles')
-                                                    .update({
-                                                        address_province_id: sellerAddress.provinceId,
-                                                        address_province_name: sellerAddress.provinceName,
-                                                        address_district_id: sellerAddress.districtId,
-                                                        address_district_name: sellerAddress.districtName,
-                                                        address_ward_code: sellerAddress.wardCode,
-                                                        address_ward_name: sellerAddress.wardName,
-                                                        address_detail: sellerAddress.detail,
-                                                        phone_number: sellerPhone,
-                                                    } as never)
-                                                    .eq('id', user.id);
-
-                                                if (error) throw error;
-
-                                                toast({
-                                                    title: '✅ Đã lưu',
-                                                    description: 'Địa chỉ gửi hàng đã được cập nhật.',
-                                                });
-                                                setHasExistingAddress(false);
-                                                // Refresh the page to reflect changes
-                                                window.location.reload();
-                                            } catch (err: any) {
-                                                toast({
-                                                    variant: 'destructive',
-                                                    title: 'Lỗi',
-                                                    description: err.message,
-                                                });
-                                            } finally {
-                                                setAddressSaving(false);
-                                            }
-                                        }}
-                                        disabled={!sellerAddress || addressSaving}
-                                        className="bg-blue-600 hover:bg-blue-700"
-                                    >
-                                        {addressSaving ? (
-                                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                        ) : (
-                                            <Save className="h-4 w-4 mr-2" />
-                                        )}
-                                        Lưu địa chỉ gửi hàng
-                                    </Button>
-                                </>
-                            )}
-                        </CardContent>
-                    </CardUI>
-                )}
 
                 {/* Tabs */}
                 <Tabs defaultValue="selling" className="w-full">
