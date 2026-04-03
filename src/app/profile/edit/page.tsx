@@ -32,7 +32,7 @@ export default function EditProfilePage() {
     const [phoneNumber, setPhoneNumber] = useState("");
     const [profileImageUrl, setProfileImageUrl] = useState("");
     
-    // Address (legacy simple fields)
+    // Address (legacy simple fields — kept for backward compat)
     const [address, setAddress] = useState("");
     const [city, setCity] = useState("");
     
@@ -65,9 +65,6 @@ export default function EditProfilePage() {
             setCity(profile.city || "");
             setProfileImageUrl(profile.profile_image_url || "");
 
-            // Auto-fill shipping phone from KYC verified phone
-            setShippingPhone(profile.phone_number || "");
-
             // Pre-populate shipping address if exists
             const p = profile as any;
             if (p.address_district_id) {
@@ -82,7 +79,8 @@ export default function EditProfilePage() {
                 });
             }
             
-            const fetchVIPData = async () => {
+            const fetchAdditionalData = async () => {
+                // Fetch VIP data
                 const [scanRes, subRes] = await Promise.all([
                     supabase.from('user_scan_usage').select('*').eq('user_id', user.id).single(),
                     supabase.from('user_subscriptions')
@@ -96,9 +94,29 @@ export default function EditProfilePage() {
                 
                 if (scanRes.data) setScanUsage(scanRes.data);
                 if (subRes.data) setSubscription(subRes.data);
+
+                // Fetch KYC verified phone if profile phone is empty
+                let verifiedPhone = profile.phone_number || '';
+                if (!verifiedPhone) {
+                    const { data: kycData } = await supabase
+                        .from('seller_verifications')
+                        .select('phone_number')
+                        .eq('user_id', user.id)
+                        .eq('status', 'approved')
+                        .single() as { data: { phone_number: string } | null };
+                    
+                    if (kycData?.phone_number) {
+                        verifiedPhone = kycData.phone_number;
+                        setPhoneNumber(verifiedPhone);
+                    }
+                }
+
+                // Auto-fill shipping phone from best available source
+                setShippingPhone(verifiedPhone || '');
+
                 setIsLoading(false);
             };
-            fetchVIPData();
+            fetchAdditionalData();
         } else if (!isUserLoading && !user) {
             setIsLoading(false);
         }
@@ -520,54 +538,6 @@ export default function EditProfilePage() {
                                             )}
                                         </Button>
                                     </div>
-                                </CardContent>
-                            </Card>
-
-                            {/* Simple Address Card (legacy / general) */}
-                            <Card className="border-border">
-                                <CardHeader className="pb-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 rounded-lg bg-muted">
-                                            <MapPin className="h-5 w-5 text-muted-foreground" />
-                                        </div>
-                                        <div>
-                                            <CardTitle className="text-lg">Địa chỉ hiển thị</CardTitle>
-                                            <CardDescription>Thông tin địa chỉ hiển thị trên hồ sơ công khai.</CardDescription>
-                                        </div>
-                                    </div>
-                                </CardHeader>
-                                <CardContent>
-                                    <form onSubmit={handleSubmit} className="space-y-4">
-                                        <div className="grid md:grid-cols-2 gap-4">
-                                            <div className="space-y-2 md:col-span-2">
-                                                <Label htmlFor="address">Địa chỉ đường, tòa nhà</Label>
-                                                <Input
-                                                    id="address"
-                                                    value={address}
-                                                    onChange={(e) => setAddress(e.target.value)}
-                                                    placeholder="Ví dụ: Số 20, Đường Lê Lợi, Phường Bến Nghé"
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="city">Thành phố / Tỉnh</Label>
-                                                <Input
-                                                    id="city"
-                                                    value={city}
-                                                    onChange={(e) => setCity(e.target.value)}
-                                                    placeholder="TP. Hồ Chí Minh"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="flex justify-end pt-4 border-t border-border">
-                                            <Button type="submit" disabled={isSaving} className="min-w-[140px]">
-                                                {isSaving ? (
-                                                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Đang lưu...</>
-                                                ) : (
-                                                    <><Save className="w-4 h-4 mr-2" /> Lưu thay đổi</>
-                                                )}
-                                            </Button>
-                                        </div>
-                                    </form>
                                 </CardContent>
                             </Card>
                         </TabsContent>
