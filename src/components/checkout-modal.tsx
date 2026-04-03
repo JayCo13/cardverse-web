@@ -1,16 +1,17 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import { Wallet, CreditCard, Loader2, CheckCircle, ShieldCheck, ExternalLink } from 'lucide-react';
+import { Wallet, CreditCard, Loader2, CheckCircle, ShieldCheck, ExternalLink, Truck } from 'lucide-react';
 import { useAuth } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
+import { AddressPicker, type AddressData } from '@/components/address-picker';
 import Image from 'next/image';
 
 type Card = {
@@ -28,9 +29,13 @@ type CheckoutModalProps = {
   onOpenChange: (open: boolean) => void;
   card: Card | null;
   onSuccess?: () => void;
+  sellerAddress?: {
+    districtId: number;
+    wardCode: string;
+  } | null;
 };
 
-export function CheckoutModal({ open, onOpenChange, card, onSuccess }: CheckoutModalProps) {
+export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddress }: CheckoutModalProps) {
   const { user } = useAuth();
   const { setOpen: setAuthOpen } = useAuthModal();
   const { toast } = useToast();
@@ -38,7 +43,14 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess }: CheckoutM
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [isLoadingWallet, setIsLoadingWallet] = useState(true);
   const [isPurchasing, setIsPurchasing] = useState(false);
-  const [shippingAddress, setShippingAddress] = useState('');
+
+  // Shipping
+  const [buyerAddress, setBuyerAddress] = useState<AddressData | null>(null);
+  const [buyerName, setBuyerName] = useState('');
+  const [buyerPhone, setBuyerPhone] = useState('');
+  const [shippingFee, setShippingFee] = useState<number | null>(null);
+  const [loadingFee, setLoadingFee] = useState(false);
+  const [feeError, setFeeError] = useState('');
 
   useEffect(() => {
     if (open && user) {
@@ -59,14 +71,53 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess }: CheckoutM
     }
   };
 
+  // Calculate shipping fee when buyer selects address
+  const calculateFee = useCallback(async (address: AddressData | null) => {
+    setBuyerAddress(address);
+    setShippingFee(null);
+    setFeeError('');
+
+    if (!address || !sellerAddress) {
+      return;
+    }
+
+    setLoadingFee(true);
+    try {
+      const params = new URLSearchParams({
+        from_district_id: sellerAddress.districtId.toString(),
+        from_ward_code: sellerAddress.wardCode,
+        to_district_id: address.districtId.toString(),
+        to_ward_code: address.wardCode,
+        insurance_value: card ? card.price.toString() : '0',
+      });
+
+      const res = await fetch(`/api/shipping/fee?${params}`);
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error);
+
+      setShippingFee(data.shipping_fee);
+    } catch (err: any) {
+      console.error('Fee calculation error:', err);
+      setFeeError('Không thể tính phí ship. Vui lòng thử lại.');
+    } finally {
+      setLoadingFee(false);
+    }
+  }, [sellerAddress, card]);
+
   const formatVND = (amount: number) => new Intl.NumberFormat('vi-VN').format(amount) + 'đ';
+
+  const totalAmount = (card?.price || 0) + (shippingFee || 0);
+  const insufficientBalance = walletBalance < totalAmount;
+
+  const canPurchase = buyerAddress && buyerName.trim() && buyerPhone.trim() && shippingFee !== null && !loadingFee;
 
   const handlePurchase = async () => {
     if (!user) {
       setAuthOpen(true);
       return;
     }
-    if (!card) return;
+    if (!card || !buyerAddress || !canPurchase) return;
 
     setIsPurchasing(true);
     try {
@@ -76,7 +127,17 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess }: CheckoutM
         body: JSON.stringify({
           card_id: card.id,
           payment_method: paymentMethod,
-          shipping_address: shippingAddress,
+          shipping_fee: shippingFee,
+          to_name: buyerName,
+          to_phone: buyerPhone,
+          to_district_id: buyerAddress.districtId,
+          to_district_name: buyerAddress.districtName,
+          to_province_id: buyerAddress.provinceId,
+          to_province_name: buyerAddress.provinceName,
+          to_ward_code: buyerAddress.wardCode,
+          to_ward_name: buyerAddress.wardName,
+          to_address_detail: buyerAddress.detail,
+          shipping_address: `${buyerAddress.detail}, ${buyerAddress.wardName}, ${buyerAddress.districtName}, ${buyerAddress.provinceName}`,
         }),
       });
 
@@ -85,14 +146,12 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess }: CheckoutM
       if (!res.ok) throw new Error(data.error);
 
       if (data.payment_method === 'direct_payos' && data.checkoutUrl) {
-        // Redirect to PayOS checkout
         window.open(data.checkoutUrl, '_blank');
         toast({
           title: 'Đang chuyển hướng...',
           description: 'Vui lòng hoàn tất thanh toán trên trang PayOS.',
         });
       } else {
-        // Wallet payment success
         toast({
           title: '🎉 Mua thành công!',
           description: `Bạn đã mua "${card.name}". Xem đơn hàng tại trang Quản lý đơn hàng.`,
@@ -110,11 +169,9 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess }: CheckoutM
 
   if (!card) return null;
 
-  const insufficientBalance = walletBalance < card.price;
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-orange-500" />
@@ -138,16 +195,58 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess }: CheckoutM
             </div>
           </div>
 
-          {/* Shipping Address */}
-          <div>
-            <Label htmlFor="address" className="text-sm">Địa chỉ nhận hàng</Label>
-            <Input
-              id="address"
-              value={shippingAddress}
-              onChange={e => setShippingAddress(e.target.value)}
-              placeholder="Nhập địa chỉ nhận hàng của bạn..."
-            />
+          {/* Buyer Info */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Thông tin nhận hàng</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                value={buyerName}
+                onChange={e => setBuyerName(e.target.value)}
+                placeholder="Tên người nhận"
+                className="h-9 text-sm"
+              />
+              <Input
+                value={buyerPhone}
+                onChange={e => setBuyerPhone(e.target.value)}
+                placeholder="Số điện thoại"
+                className="h-9 text-sm"
+              />
+            </div>
           </div>
+
+          {/* Shipping Address */}
+          <AddressPicker
+            label="Địa chỉ nhận hàng"
+            onChange={calculateFee}
+            detailPlaceholder="Số nhà, tên đường..."
+          />
+
+          {/* Shipping Fee */}
+          <div className="flex items-center justify-between p-3 rounded-lg bg-accent/30 border border-border/50">
+            <div className="flex items-center gap-2 text-sm">
+              <Truck className="h-4 w-4 text-blue-400" />
+              <span className="text-muted-foreground">Phí vận chuyển (GHN):</span>
+            </div>
+            <div>
+              {loadingFee ? (
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              ) : shippingFee !== null ? (
+                <span className="font-semibold text-sm">{formatVND(shippingFee)}</span>
+              ) : feeError ? (
+                <span className="text-xs text-red-400">{feeError}</span>
+              ) : (
+                <span className="text-xs text-muted-foreground">Chọn địa chỉ để tính</span>
+              )}
+            </div>
+          </div>
+
+          {/* Total */}
+          {shippingFee !== null && (
+            <div className="flex items-center justify-between p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
+              <span className="font-semibold text-sm">Tổng thanh toán:</span>
+              <span className="text-lg font-bold text-orange-400">{formatVND(totalAmount)}</span>
+            </div>
+          )}
 
           {/* Payment Method */}
           <div>
@@ -178,10 +277,17 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess }: CheckoutM
           {/* Insufficient balance warning */}
           {paymentMethod === 'wallet' && insufficientBalance && !isLoadingWallet && (
             <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-xs text-red-400">
-              Số dư ví không đủ. Bạn cần thêm {formatVND(card.price - walletBalance)}.
+              Số dư ví không đủ. Bạn cần thêm {formatVND(totalAmount - walletBalance)}.
               <Button variant="link" size="sm" className="text-orange-400 p-0 h-auto ml-1" asChild>
                 <a href="/wallet" target="_blank">Nạp tiền ngay <ExternalLink className="h-3 w-3 ml-1" /></a>
               </Button>
+            </div>
+          )}
+
+          {/* Missing seller address warning */}
+          {!sellerAddress && (
+            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 text-xs text-yellow-400">
+              ⚠️ Người bán chưa cập nhật địa chỉ gửi hàng. Phí ship sẽ được tính sau khi đặt hàng.
             </div>
           )}
         </div>
@@ -190,7 +296,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess }: CheckoutM
           <Button variant="outline" onClick={() => onOpenChange(false)}>Hủy</Button>
           <Button
             onClick={handlePurchase}
-            disabled={isPurchasing || (paymentMethod === 'wallet' && insufficientBalance)}
+            disabled={isPurchasing || !canPurchase || (paymentMethod === 'wallet' && insufficientBalance)}
             className="bg-orange-500 hover:bg-orange-600 text-white font-bold"
           >
             {isPurchasing ? (
@@ -198,7 +304,12 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess }: CheckoutM
             ) : (
               <CheckCircle className="h-4 w-4 mr-2" />
             )}
-            {paymentMethod === 'wallet' ? `Thanh toán ${formatVND(card.price)}` : `Thanh toán qua PayOS`}
+            {shippingFee !== null
+              ? `Thanh toán ${formatVND(totalAmount)}`
+              : paymentMethod === 'wallet'
+                ? 'Chọn địa chỉ trước'
+                : 'Thanh toán qua PayOS'
+            }
           </Button>
         </DialogFooter>
       </DialogContent>

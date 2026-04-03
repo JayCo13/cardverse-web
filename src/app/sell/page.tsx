@@ -418,7 +418,7 @@ export default function SellPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      toast({ title: '✅ Đã gửi yêu cầu xác minh!', description: 'AI đã tiền duyệt hồ sơ. Admin sẽ xác nhận lần cuối trong vài giờ.' });
+      toast({ title: '✅ Đã gửi yêu cầu xác minh!', description: 'Hệ thống đã tiền duyệt hồ sơ. Admin sẽ xác nhận lần cuối trong vài giờ.' });
       fetchVerification();
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Lỗi', description: err.message });
@@ -481,7 +481,7 @@ export default function SellPage() {
               <Clock className="h-16 w-16 text-yellow-500 mx-auto" />
               <h2 className="text-2xl font-bold text-yellow-400">Đang chờ Admin duyệt lần cuối</h2>
               <p className="text-muted-foreground">
-                Hồ sơ của bạn đã được AI tiền duyệt thành công.
+                Hồ sơ của bạn đã được hệ thống tiền duyệt thành công.
                 Admin sẽ xác nhận lần cuối trong thời gian sớm nhất.
               </p>
               <p className="text-xs text-muted-foreground">
@@ -633,7 +633,7 @@ export default function SellPage() {
 
   // ── KYC FORM — 3-STEP WIZARD ──
   const steps = [
-    { number: 1, title: 'Xác minh danh tính (AI)', icon: <Sparkles className="h-4 w-4" /> },
+    { number: 1, title: 'Xác minh danh tính', icon: <Sparkles className="h-4 w-4" /> },
     { number: 2, title: 'Xác minh số điện thoại', icon: <Phone className="h-4 w-4" /> },
     { number: 3, title: 'Xác nhận & Gửi', icon: <FileCheck className="h-4 w-4" /> },
   ];
@@ -708,10 +708,10 @@ export default function SellPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Sparkles className="h-5 w-5 text-orange-500" />
-                  Bước 1: Xác minh danh tính bằng AI
+                  Bước 1: Xác minh danh tính tự động
                 </CardTitle>
                 <CardDescription>
-                  Tải lên ảnh CCCD và ảnh App Ngân hàng. AI sẽ tự động so sánh tên và trích xuất số tài khoản.
+                  Tải lên ảnh CCCD và ảnh App Ngân hàng. Hệ thống sẽ tự động so sánh tên và trích xuất số tài khoản.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -748,7 +748,7 @@ export default function SellPage() {
                     <div className="flex items-center justify-between">
                       <h4 className="font-semibold flex items-center gap-2">
                         <Sparkles className="h-4 w-4 text-orange-500" />
-                        Kết quả xác minh AI
+                        Kết quả xác minh
                       </h4>
                       <span className={`text-xs font-bold px-3 py-1 rounded-full ${
                         aiResult.confidence >= 0.7
@@ -1053,7 +1053,7 @@ export default function SellPage() {
                         <p className="font-medium">{fullName}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground text-xs">AI Confidence</p>
+                        <p className="text-muted-foreground text-xs">Độ tin cậy</p>
                         <p className={`font-semibold ${(aiResult?.confidence || 0) >= 0.7 ? 'text-green-500' : 'text-yellow-500'}`}>
                           {Math.round((aiResult?.confidence || 0) * 100)}%
                         </p>
@@ -1063,11 +1063,11 @@ export default function SellPage() {
                         <p className="font-medium">{bankName}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground text-xs">Số tài khoản (AI đọc)</p>
+                        <p className="text-muted-foreground text-xs">Số tài khoản</p>
                         <p className="font-mono font-medium">{aiResult?.bank_account_number || '—'}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground text-xs">Tên chủ TK (AI đọc)</p>
+                        <p className="text-muted-foreground text-xs">Tên chủ tài khoản</p>
                         <p className="font-medium">{aiResult?.bank_account_name || '—'}</p>
                       </div>
                       <div>
@@ -1100,7 +1100,7 @@ export default function SellPage() {
                 </div>
 
                 <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 text-xs text-yellow-400">
-                  ⚠️ Sau khi gửi, AI sẽ tiền duyệt hồ sơ ngay lập tức. Admin sẽ xác nhận lần cuối trong thời gian sớm nhất để bạn bắt đầu bán hàng.
+                  ⚠️ Sau khi gửi, hệ thống sẽ tiền duyệt hồ sơ ngay lập tức. Admin sẽ xác nhận lần cuối trong thời gian sớm nhất để bạn bắt đầu bán hàng.
                 </div>
 
                 <div className="flex gap-3">

@@ -15,7 +15,17 @@ export async function POST(request: NextRequest) {
         }
 
         const body = await request.json();
-        const { card_id, payment_method, shipping_address } = body;
+        const {
+            card_id, payment_method, shipping_address,
+            shipping_fee: clientShippingFee,
+            to_name, to_phone,
+            to_district_id, to_district_name,
+            to_province_id, to_province_name,
+            to_ward_code, to_ward_name,
+            to_address_detail,
+        } = body;
+
+        const shippingFee = Math.max(0, parseInt(clientShippingFee) || 0);
 
         if (!card_id || !payment_method) {
             return NextResponse.json({ error: 'card_id and payment_method are required' }, { status: 400 });
@@ -45,7 +55,7 @@ export async function POST(request: NextRequest) {
 
         const amount = Number(card.price);
         const platformFee = Math.round(amount * PLATFORM_FEE_RATE);
-        const totalPaid = amount; // Buyer pays the listed price; platform fee is deducted from seller payout
+        const totalPaid = amount + shippingFee; // Buyer pays listed price + shipping fee
 
         if (payment_method === 'wallet') {
             // ── WALLET PAYMENT ──
@@ -101,9 +111,19 @@ export async function POST(request: NextRequest) {
                     amount,
                     platform_fee: platformFee,
                     total_paid: totalPaid,
+                    shipping_fee: shippingFee,
                     payment_method: 'wallet',
                     status: 'paid',
                     shipping_address: shipping_address || null,
+                    to_name: to_name || null,
+                    to_phone: to_phone || null,
+                    to_district_id: to_district_id || null,
+                    to_district_name: to_district_name || null,
+                    to_province_id: to_province_id || null,
+                    to_province_name: to_province_name || null,
+                    to_ward_code: to_ward_code || null,
+                    to_ward_name: to_ward_name || null,
+                    to_address_detail: to_address_detail || null,
                 } as never)
                 .select()
                 .single();
@@ -156,10 +176,20 @@ export async function POST(request: NextRequest) {
                     amount,
                     platform_fee: platformFee,
                     total_paid: totalPaid,
+                    shipping_fee: shippingFee,
                     payment_method: 'direct_payos',
                     payment_order_id: paymentOrder.id,
                     status: 'pending_payment',
                     shipping_address: shipping_address || null,
+                    to_name: to_name || null,
+                    to_phone: to_phone || null,
+                    to_district_id: to_district_id || null,
+                    to_district_name: to_district_name || null,
+                    to_province_id: to_province_id || null,
+                    to_province_name: to_province_name || null,
+                    to_ward_code: to_ward_code || null,
+                    to_ward_name: to_ward_name || null,
+                    to_address_detail: to_address_detail || null,
                 } as never)
                 .select()
                 .single();

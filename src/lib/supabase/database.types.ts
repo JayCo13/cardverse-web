@@ -24,6 +24,16 @@ export interface Database {
                     cancelled_transactions: number
                     daily_cancellations: number
                     last_cancellation_date: string | null
+                    seller_verified: boolean
+                    seller_rating: number
+                    seller_review_count: number
+                    address_province_id: number | null
+                    address_province_name: string | null
+                    address_district_id: number | null
+                    address_district_name: string | null
+                    address_ward_code: string | null
+                    address_ward_name: string | null
+                    address_detail: string | null
                     created_at: string
                     updated_at: string
                 }
@@ -41,6 +51,16 @@ export interface Database {
                     cancelled_transactions?: number
                     daily_cancellations?: number
                     last_cancellation_date?: string | null
+                    seller_verified?: boolean
+                    seller_rating?: number
+                    seller_review_count?: number
+                    address_province_id?: number | null
+                    address_province_name?: string | null
+                    address_district_id?: number | null
+                    address_district_name?: string | null
+                    address_ward_code?: string | null
+                    address_ward_name?: string | null
+                    address_detail?: string | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -58,6 +78,16 @@ export interface Database {
                     cancelled_transactions?: number
                     daily_cancellations?: number
                     last_cancellation_date?: string | null
+                    seller_verified?: boolean
+                    seller_rating?: number
+                    seller_review_count?: number
+                    address_province_id?: number | null
+                    address_province_name?: string | null
+                    address_district_id?: number | null
+                    address_district_name?: string | null
+                    address_ward_code?: string | null
+                    address_ward_name?: string | null
+                    address_detail?: string | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -274,6 +304,116 @@ export interface Database {
                     transaction_id?: string
                     reason?: string
                     created_at?: string
+                }
+            }
+            orders: {
+                Row: {
+                    id: string
+                    card_id: string
+                    seller_id: string
+                    buyer_id: string
+                    offer_id: string | null
+                    amount: number
+                    platform_fee: number
+                    total_paid: number
+                    shipping_fee: number
+                    payment_method: string
+                    payment_order_id: string | null
+                    status: string
+                    tracking_number: string | null
+                    shipping_provider: string | null
+                    shipping_address: string | null
+                    ghn_order_code: string | null
+                    ghn_shipping_fee: number | null
+                    ghn_expected_delivery: string | null
+                    ghn_status: string | null
+                    to_province_id: number | null
+                    to_province_name: string | null
+                    to_district_id: number | null
+                    to_district_name: string | null
+                    to_ward_code: string | null
+                    to_ward_name: string | null
+                    to_address_detail: string | null
+                    to_name: string | null
+                    to_phone: string | null
+                    buyer_confirmed_at: string | null
+                    auto_complete_at: string | null
+                    dispute_reason: string | null
+                    dispute_evidence_url: string | null
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    card_id: string
+                    seller_id: string
+                    buyer_id: string
+                    offer_id?: string | null
+                    amount: number
+                    platform_fee?: number
+                    total_paid: number
+                    shipping_fee?: number
+                    payment_method: string
+                    payment_order_id?: string | null
+                    status?: string
+                    tracking_number?: string | null
+                    shipping_provider?: string | null
+                    shipping_address?: string | null
+                    ghn_order_code?: string | null
+                    ghn_shipping_fee?: number | null
+                    ghn_expected_delivery?: string | null
+                    ghn_status?: string | null
+                    to_province_id?: number | null
+                    to_province_name?: string | null
+                    to_district_id?: number | null
+                    to_district_name?: string | null
+                    to_ward_code?: string | null
+                    to_ward_name?: string | null
+                    to_address_detail?: string | null
+                    to_name?: string | null
+                    to_phone?: string | null
+                    buyer_confirmed_at?: string | null
+                    auto_complete_at?: string | null
+                    dispute_reason?: string | null
+                    dispute_evidence_url?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    card_id?: string
+                    seller_id?: string
+                    buyer_id?: string
+                    offer_id?: string | null
+                    amount?: number
+                    platform_fee?: number
+                    total_paid?: number
+                    shipping_fee?: number
+                    payment_method?: string
+                    payment_order_id?: string | null
+                    status?: string
+                    tracking_number?: string | null
+                    shipping_provider?: string | null
+                    shipping_address?: string | null
+                    ghn_order_code?: string | null
+                    ghn_shipping_fee?: number | null
+                    ghn_expected_delivery?: string | null
+                    ghn_status?: string | null
+                    to_province_id?: number | null
+                    to_province_name?: string | null
+                    to_district_id?: number | null
+                    to_district_name?: string | null
+                    to_ward_code?: string | null
+                    to_ward_name?: string | null
+                    to_address_detail?: string | null
+                    to_name?: string | null
+                    to_phone?: string | null
+                    buyer_confirmed_at?: string | null
+                    auto_complete_at?: string | null
+                    dispute_reason?: string | null
+                    dispute_evidence_url?: string | null
+                    created_at?: string
+                    updated_at?: string
                 }
             }
         }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createShippingOrder, cancelOrder as cancelGHNOrder } from '@/lib/ghn';
 
 // GET: Fetch orders for current user
 export async function GET(request: NextRequest) {
@@ -76,7 +77,7 @@ export async function PATCH(request: NextRequest) {
 
         switch (action) {
             case 'ship': {
-                // Seller ships the order
+                // Seller ships the order — auto-create GHN shipping order
                 if (order.seller_id !== user.id) {
                     return NextResponse.json({ error: 'Only seller can ship' }, { status: 403 });
                 }
@@ -84,13 +85,77 @@ export async function PATCH(request: NextRequest) {
                     return NextResponse.json({ error: 'Order must be paid to ship' }, { status: 400 });
                 }
 
+                // Get seller's address from profile
+                const { data: sellerProfile } = await supabase
+                    .from('profiles')
+                    .select('address_district_id, address_ward_code, address_ward_name, address_detail, address_district_name, address_province_name, display_name, phone_number')
+                    .eq('id', user.id)
+                    .single();
+
+                if (!sellerProfile?.address_district_id || !sellerProfile?.address_ward_code) {
+                    return NextResponse.json({
+                        error: 'Vui lòng cập nhật địa chỉ gửi hàng trong hồ sơ trước khi giao hàng.',
+                        code: 'MISSING_SELLER_ADDRESS',
+                    }, { status: 400 });
+                }
+
+                // Buyer address from order
+                if (!order.to_district_id || !order.to_ward_code) {
+                    return NextResponse.json({
+                        error: 'Đơn hàng thiếu thông tin địa chỉ người nhận.',
+                    }, { status: 400 });
+                }
+
+                let ghnOrderCode: string | null = null;
+                let ghnExpectedDelivery: string | null = null;
+                let ghnFee: number | null = null;
+                let finalTrackingNumber: string | null = tracking_number || null;
+
+                try {
+                    // Create GHN shipping order
+                    const ghnResult = await createShippingOrder({
+                        to_name: order.to_name || 'Người nhận',
+                        to_phone: order.to_phone || '',
+                        to_address: `${order.to_address_detail || ''}, ${order.to_ward_name || ''}, ${order.to_district_name || ''}`,
+                        to_ward_code: order.to_ward_code,
+                        to_district_id: order.to_district_id,
+                        from_name: sellerProfile.display_name || 'Người gửi',
+                        from_phone: sellerProfile.phone_number || '',
+                        from_address: `${sellerProfile.address_detail || ''}, ${sellerProfile.address_ward_name || ''}, ${sellerProfile.address_district_name || ''}`,
+                        from_ward_name: sellerProfile.address_ward_name || '',
+                        from_district_id: sellerProfile.address_district_id,
+                        client_order_code: order_id.substring(0, 20),
+                        insurance_value: Math.min(order.amount || 0, 5000000),
+                        note: 'Thẻ bài - Xử lý cẩn thận',
+                        required_note: 'CHOTHUHANG',
+                    });
+
+                    ghnOrderCode = ghnResult.order_code;
+                    ghnExpectedDelivery = ghnResult.expected_delivery_time;
+                    ghnFee = ghnResult.total_fee;
+                    finalTrackingNumber = ghnResult.order_code; // GHN order code IS the tracking number
+                } catch (ghnError: any) {
+                    console.error('GHN create order failed:', ghnError);
+                    // Fallback: still allow shipping with manual tracking
+                    if (!tracking_number) {
+                        return NextResponse.json({
+                            error: `Không thể tạo đơn GHN: ${ghnError.message}. Vui lòng thử lại hoặc nhập mã vận đơn thủ công.`,
+                            code: 'GHN_ERROR',
+                        }, { status: 500 });
+                    }
+                }
+
                 const { error: updateError } = await supabase
                     .from('orders')
                     .update({
                         status: 'shipping',
-                        tracking_number: tracking_number || null,
-                        shipping_provider: shipping_provider || null,
-                        auto_complete_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(), // 72h from now
+                        tracking_number: finalTrackingNumber,
+                        shipping_provider: ghnOrderCode ? 'GHN' : (shipping_provider || 'Manual'),
+                        ghn_order_code: ghnOrderCode,
+                        ghn_expected_delivery: ghnExpectedDelivery,
+                        ghn_shipping_fee: ghnFee,
+                        ghn_status: ghnOrderCode ? 'ready_to_pick' : null,
+                        auto_complete_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
                         updated_at: new Date().toISOString(),
                     } as never)
                     .eq('id', order_id);
@@ -102,11 +167,18 @@ export async function PATCH(request: NextRequest) {
                     user_id: order.buyer_id,
                     type: 'order_shipped',
                     title: 'Đơn hàng đã được gửi!',
-                    message: `Đơn hàng của bạn đang được vận chuyển${tracking_number ? `. Mã theo dõi: ${tracking_number}` : ''}.`,
+                    message: ghnOrderCode
+                        ? `Đơn hàng đang được GHN vận chuyển. Mã theo dõi: ${ghnOrderCode}`
+                        : `Đơn hàng đang được vận chuyển${finalTrackingNumber ? `. Mã theo dõi: ${finalTrackingNumber}` : ''}.`,
                     card_id: order.card_id,
                 } as never);
 
-                return NextResponse.json({ success: true, status: 'shipping' });
+                return NextResponse.json({
+                    success: true,
+                    status: 'shipping',
+                    ghn_order_code: ghnOrderCode,
+                    tracking_number: finalTrackingNumber,
+                });
             }
 
             case 'confirm_received': {

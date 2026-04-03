@@ -1635,14 +1635,14 @@ export function MarketSpotlight() {
                                         </div>
 
                                         {/* Image */}
-                                        <div className="relative w-12 h-16 flex-shrink-0 rounded-lg overflow-hidden bg-black/40">
+                                        <div className="relative w-14 sm:w-16 h-[75px] sm:h-[85px] flex-shrink-0 rounded-lg overflow-hidden bg-black/40">
                                             {result.product.image_url ? (
                                                 <Image
                                                     src={result.product.image_url}
                                                     alt={result.product.name}
                                                     fill
                                                     className="object-contain p-0.5"
-                                                    sizes="48px"
+                                                    sizes="64px"
                                                 />
                                             ) : (
                                                 <div className="w-full h-full flex items-center justify-center text-xl">⚡</div>
@@ -1680,11 +1680,21 @@ export function MarketSpotlight() {
                                             </div>
                                         </div>
 
-                                        {/* Price */}
-                                        <div className="flex-shrink-0 text-right">
-                                            <p className={`text-sm font-bold ${index === 0 ? 'text-yellow-400' : 'text-green-400'}`}>
-                                                {formatPrice(result.product.market_price)}
-                                            </p>
+                                        {/* Language Tag instead of Price */}
+                                        <div className="flex-shrink-0 text-right pl-2">
+                                            {result.product.category_id === 85 ? (
+                                                <span className="px-2 py-1 text-[10px] font-bold tracking-wider rounded border bg-red-500/10 border-red-500/30 text-red-500">
+                                                    JP
+                                                </span>
+                                            ) : result.product.category_id === 3 ? (
+                                                <span className="px-2 py-1 text-[10px] font-bold tracking-wider rounded border bg-blue-500/10 border-blue-500/30 text-blue-400">
+                                                    EN
+                                                </span>
+                                            ) : (
+                                                <span className="px-2 py-1 text-[10px] font-bold tracking-wider rounded border bg-zinc-500/10 border-zinc-500/30 text-zinc-400">
+                                                    OT
+                                                </span>
+                                            )}
                                         </div>
                                     </button>
                                 ))}

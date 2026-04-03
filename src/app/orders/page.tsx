@@ -5,11 +5,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Package, Truck, CheckCircle, XCircle, AlertTriangle, Clock, Loader2, ShoppingBag, Store } from 'lucide-react';
+import { Package, Truck, CheckCircle, XCircle, AlertTriangle, Clock, Loader2, ShoppingBag, Store, ExternalLink, MapPin } from 'lucide-react';
 import { useAuth } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
@@ -25,13 +25,23 @@ type Order = {
   amount: number;
   platform_fee: number;
   total_paid: number;
+  shipping_fee: number;
   payment_method: string;
   status: string;
   tracking_number: string | null;
   shipping_provider: string | null;
   shipping_address: string | null;
+  ghn_order_code: string | null;
+  ghn_status: string | null;
+  ghn_expected_delivery: string | null;
   auto_complete_at: string | null;
   dispute_reason: string | null;
+  to_name: string | null;
+  to_phone: string | null;
+  to_district_name: string | null;
+  to_province_name: string | null;
+  to_ward_name: string | null;
+  to_address_detail: string | null;
   created_at: string;
   updated_at: string;
   card: { id: string; name: string; image_url: string; category: string; condition: string } | null;
@@ -50,6 +60,41 @@ const STATUS_CONFIG: Record<string, { label: string; icon: React.ReactNode; colo
   cancelled: { label: 'Đã hủy', icon: <XCircle className="h-4 w-4" />, color: 'text-muted-foreground', bgColor: 'bg-muted/50' },
 };
 
+const GHN_STATUS_LABELS: Record<string, string> = {
+  ready_to_pick: 'Chờ lấy hàng',
+  picking: 'Đang lấy hàng',
+  picked: 'Đã lấy hàng',
+  storing: 'Đang lưu kho',
+  transporting: 'Đang vận chuyển',
+  sorting: 'Đang phân loại',
+  delivering: 'Đang giao hàng',
+  delivered: 'Đã giao hàng',
+  delivery_fail: 'Giao thất bại',
+  cancel: 'Đã hủy',
+  returning: 'Đang trả hàng',
+  returned: 'Đã hoàn',
+};
+
+const TRACKING_STEPS = [
+  { key: 'created', label: 'Đã tạo đơn' },
+  { key: 'picked', label: 'Đã lấy hàng' },
+  { key: 'transporting', label: 'Vận chuyển' },
+  { key: 'delivering', label: 'Đang giao' },
+  { key: 'delivered', label: 'Đã giao' },
+];
+
+function getGHNStep(status: string | null): number {
+  if (!status) return 0;
+  const map: Record<string, number> = {
+    ready_to_pick: 1, picking: 1,
+    picked: 2, storing: 2,
+    transporting: 3, sorting: 3,
+    delivering: 4, money_collect_delivering: 4,
+    delivered: 5,
+  };
+  return map[status] || 0;
+}
+
 export default function OrdersPage() {
   const { user, isLoading: authLoading } = useAuth();
   const { setOpen } = useAuthModal();
@@ -59,14 +104,12 @@ export default function OrdersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  // Ship dialog
-  const [shipDialog, setShipDialog] = useState<{ open: boolean; orderId: string }>({ open: false, orderId: '' });
-  const [trackingNumber, setTrackingNumber] = useState('');
-  const [shippingProvider, setShippingProvider] = useState('');
-
   // Dispute dialog
   const [disputeDialog, setDisputeDialog] = useState<{ open: boolean; orderId: string }>({ open: false, orderId: '' });
   const [disputeReason, setDisputeReason] = useState('');
+
+  // Tracking dialog
+  const [trackingDialog, setTrackingDialog] = useState<{ open: boolean; order: Order | null }>({ open: false, order: null });
 
   useEffect(() => {
     if (!authLoading && !user) setOpen(true);
@@ -100,20 +143,64 @@ export default function OrdersPage() {
         body: JSON.stringify({ order_id: orderId, action, ...extra }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
 
-      toast({ title: '✅ Thành công', description: `Đơn hàng đã được cập nhật.` });
+      if (!res.ok) {
+        // Handle missing seller address
+        if (data.code === 'MISSING_SELLER_ADDRESS') {
+          toast({
+            variant: 'destructive',
+            title: 'Chưa có địa chỉ gửi hàng',
+            description: 'Vui lòng cập nhật địa chỉ trong Hồ sơ trước khi giao hàng.',
+          });
+          return;
+        }
+        throw new Error(data.error);
+      }
+
+      toast({ title: '✅ Thành công', description: 'Đơn hàng đã được cập nhật.' });
       fetchOrders(activeTab);
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Lỗi', description: err.message });
     } finally {
       setActionLoading(null);
-      setShipDialog({ open: false, orderId: '' });
       setDisputeDialog({ open: false, orderId: '' });
-      setTrackingNumber('');
-      setShippingProvider('');
       setDisputeReason('');
     }
+  };
+
+  const renderTrackingStepper = (order: Order) => {
+    if (!order.ghn_order_code) return null;
+    const currentStep = getGHNStep(order.ghn_status);
+
+    return (
+      <div className="mt-3 p-3 rounded-lg bg-accent/30 border border-border/30">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-muted-foreground">Theo dõi GHN</span>
+          <span className="text-[10px] text-muted-foreground font-mono">
+            {GHN_STATUS_LABELS[order.ghn_status || ''] || order.ghn_status}
+          </span>
+        </div>
+        <div className="flex items-center gap-1">
+          {TRACKING_STEPS.map((step, i) => (
+            <div key={step.key} className="flex-1 flex flex-col items-center">
+              <div className={`w-full h-1.5 rounded-full transition-colors ${
+                i < currentStep ? 'bg-green-500' :
+                i === currentStep ? 'bg-yellow-400 animate-pulse' :
+                'bg-white/10'
+              }`} />
+              <span className={`text-[8px] mt-1 ${i <= currentStep ? 'text-white/70' : 'text-white/30'}`}>
+                {step.label}
+              </span>
+            </div>
+          ))}
+        </div>
+        {order.ghn_expected_delivery && (
+          <p className="text-[10px] text-muted-foreground mt-2">
+            Dự kiến: {new Date(order.ghn_expected_delivery).toLocaleDateString('vi-VN')}
+          </p>
+        )}
+      </div>
+    );
   };
 
   const renderOrderCard = (order: Order) => {
@@ -146,32 +233,67 @@ export default function OrdersPage() {
                 </span>
               </div>
 
-              <div className="flex items-center gap-4 mt-2 text-sm">
+              <div className="flex items-center gap-4 mt-2 text-sm flex-wrap">
                 <span className="font-semibold text-orange-400">{formatVND(order.amount)}</span>
-                {order.tracking_number && (
+                {order.shipping_fee > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    + Ship: <span className="text-foreground">{formatVND(order.shipping_fee)}</span>
+                  </span>
+                )}
+                {order.ghn_order_code && (
+                  <span className="text-xs text-blue-400 font-mono">
+                    GHN: {order.ghn_order_code}
+                  </span>
+                )}
+                {!order.ghn_order_code && order.tracking_number && (
                   <span className="text-xs text-muted-foreground">
                     Tracking: <span className="text-foreground">{order.tracking_number}</span>
                   </span>
                 )}
               </div>
 
+              {/* Shipping address (for seller view) */}
+              {!isBuyer && order.to_address_detail && (
+                <div className="flex items-start gap-1.5 mt-1.5 text-xs text-muted-foreground">
+                  <MapPin className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                  <span className="line-clamp-1">
+                    {order.to_name} • {order.to_address_detail}, {order.to_ward_name}, {order.to_district_name}, {order.to_province_name}
+                  </span>
+                </div>
+              )}
+
               {/* Counterparty info */}
               <p className="text-xs text-muted-foreground mt-1">
                 {isBuyer ? `Người bán: ${order.seller?.display_name || order.seller?.email || '—'}` : `Người mua: ${order.buyer?.display_name || order.buyer?.email || '—'}`}
               </p>
 
+              {/* GHN Tracking Stepper */}
+              {(order.status === 'shipping' || order.status === 'delivered') && renderTrackingStepper(order)}
+
               {/* Actions */}
               <div className="flex gap-2 mt-3 flex-wrap">
-                {/* Seller actions */}
+                {/* Seller: Ship with GHN (1-click) */}
                 {!isBuyer && order.status === 'paid' && (
                   <Button
                     size="sm"
-                    onClick={() => setShipDialog({ open: true, orderId: order.id })}
+                    onClick={() => handleAction(order.id, 'ship')}
                     disabled={actionLoading === order.id}
                     className="bg-blue-600 hover:bg-blue-700"
                   >
                     {actionLoading === order.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Truck className="h-3 w-3 mr-1" />}
-                    Xác nhận giao hàng
+                    Tạo đơn GHN & Gửi hàng
+                  </Button>
+                )}
+
+                {/* Track on GHN */}
+                {order.ghn_order_code && ['shipping', 'delivered'].includes(order.status) && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => window.open(`https://tracking.ghn.dev/?order_code=${order.ghn_order_code}`, '_blank')}
+                  >
+                    <ExternalLink className="h-3 w-3 mr-1" />
+                    Theo dõi GHN
                   </Button>
                 )}
 
@@ -274,36 +396,6 @@ export default function OrdersPage() {
         </div>
       </main>
       <Footer />
-
-      {/* Ship Dialog */}
-      <Dialog open={shipDialog.open} onOpenChange={open => setShipDialog({ ...shipDialog, open })}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Xác nhận giao hàng</DialogTitle>
-            <DialogDescription>Nhập thông tin vận chuyển để người mua theo dõi.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">Đơn vị vận chuyển</label>
-              <Input placeholder="VD: GHN, GHTK, J&T, Viettel Post..." value={shippingProvider} onChange={e => setShippingProvider(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Mã vận đơn (Tracking Number)</label>
-              <Input placeholder="Nhập mã vận đơn..." value={trackingNumber} onChange={e => setTrackingNumber(e.target.value)} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShipDialog({ open: false, orderId: '' })}>Hủy</Button>
-            <Button
-              onClick={() => handleAction(shipDialog.orderId, 'ship', { tracking_number: trackingNumber, shipping_provider: shippingProvider })}
-              disabled={actionLoading === shipDialog.orderId}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              {actionLoading === shipDialog.orderId ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Xác nhận đã gửi hàng'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Dispute Dialog */}
       <Dialog open={disputeDialog.open} onOpenChange={open => setDisputeDialog({ ...disputeDialog, open })}>
