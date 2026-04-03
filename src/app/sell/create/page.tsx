@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -176,22 +176,26 @@ export default function CreateListingPage() {
     }
   }, [isPsaGraded, form]);
 
-  // Auto-set publisher when category has only one option
+  // Handle category change: reset fields, auto-set publisher, fetch DB sets
+  const prevCategoryRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (selectedCategory && singlePublisher && availablePublishers.length === 1) {
-      form.setValue('publisher', availablePublishers[0]);
+    if (selectedCategory === prevCategoryRef.current) return;
+    prevCategoryRef.current = selectedCategory;
+
+    if (!selectedCategory) return;
+
+    // Reset dependent fields
+    form.setValue('setName', undefined);
+    form.setValue('season', undefined);
+
+    // Auto-set publisher for single-publisher categories
+    const pubs = getPublishers(selectedCategory);
+    if (pubs.length === 1) {
+      form.setValue('publisher', pubs[0]);
     }
-  }, [selectedCategory, singlePublisher, availablePublishers, form]);
 
-  // Reset set/season when category or publisher changes
-  useEffect(() => {
-    form.setValue('setName', '');
-    form.setValue('season', '');
-  }, [selectedCategory, selectedPublisher, form]);
-
-  // Fetch DB-driven sets when category changes (Pokemon, One Piece)
-  useEffect(() => {
-    if (selectedCategory && isDbSets(selectedCategory)) {
+    // Fetch DB-driven sets (Pokemon, One Piece)
+    if (isDbSets(selectedCategory)) {
       setLoadingDbSets(true);
       fetchDbSets(selectedCategory).then(sets => {
         setDbSetNames(sets);
@@ -200,7 +204,20 @@ export default function CreateListingPage() {
     } else {
       setDbSetNames([]);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategory]);
+
+  // When publisher changes (for multi-publisher categories like Soccer), reset set
+  const prevPublisherRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (selectedPublisher === prevPublisherRef.current) return;
+    prevPublisherRef.current = selectedPublisher;
+    // Only reset set if publisher actually changed by user (not auto-set)
+    if (selectedPublisher && !isSinglePublisher(selectedCategory)) {
+      form.setValue('setName', undefined);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPublisher]);
 
   const categories = getCategories(locale);
 
@@ -350,10 +367,6 @@ export default function CreateListingPage() {
                   <Select
                     onValueChange={(val) => {
                       field.onChange(val);
-                      // Reset publisher when category changes (unless single publisher auto-sets)
-                      form.setValue('publisher', '');
-                      form.setValue('setName', '');
-                      form.setValue('season', '');
                     }}
                     defaultValue={field.value}
                   >
@@ -457,7 +470,7 @@ export default function CreateListingPage() {
                             {availablePublishers[0]}
                           </div>
                         ) : (
-                          <Select onValueChange={field.onChange} value={field.value}>
+                          <Select onValueChange={field.onChange} value={field.value || undefined}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Chọn nhà phát hành" />
@@ -482,7 +495,7 @@ export default function CreateListingPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Set / Bộ sưu tập {loadingDbSets && <span className="text-xs text-muted-foreground">(đang tải...)</span>}</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value} disabled={loadingDbSets}>
+                        <Select onValueChange={field.onChange} value={field.value || undefined} disabled={loadingDbSets}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder={loadingDbSets ? "Đang tải sets..." : "Chọn set..."} />
@@ -511,7 +524,7 @@ export default function CreateListingPage() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Mùa / Năm</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
+                          <Select onValueChange={field.onChange} value={field.value || undefined}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Chọn mùa/năm" />
