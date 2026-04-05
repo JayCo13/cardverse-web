@@ -34,9 +34,12 @@ import {
   isSinglePublisher,
   isFreeText,
   isDbSets,
-  fetchDbSets,
+  fetchDbSetsGrouped,
   type SetConfig,
+  type GroupedSets,
 } from '@/lib/card-catalog';
+import { CardPickerDialog, type SelectedCatalogCard } from '@/components/card-picker-dialog';
+import { SearchableSetPicker } from '@/components/searchable-set-picker';
 
 const getFormSchema = (t: (key: string) => string) => z.object({
   name: z.string().min(5, { message: "Title must be at least 5 characters." }),
@@ -143,7 +146,7 @@ export default function CreateListingPage() {
   const selectedPublisher = form.watch('publisher');
 
   // DB-driven sets state
-  const [dbSetNames, setDbSetNames] = useState<string[]>([]);
+  const [dbGroupedSets, setDbGroupedSets] = useState<GroupedSets>({ en: [], jp: [], other: [] });
   const [loadingDbSets, setLoadingDbSets] = useState(false);
 
   // Derived state from catalog
@@ -151,10 +154,6 @@ export default function CreateListingPage() {
   const availablePublishers = selectedCategory ? getPublishers(selectedCategory) : [];
   const staticSets = selectedCategory ? getStaticSets(selectedCategory, selectedPublisher) : [];
   const useDbSets = selectedCategory ? isDbSets(selectedCategory) : false;
-  // For DB-driven categories, convert DB set names to SetConfig; otherwise use static
-  const availableSets: SetConfig[] = useDbSets
-    ? dbSetNames.map(name => ({ name }))
-    : staticSets;
   const availableSeasons = selectedCategory ? getSeasons(selectedCategory) : [];
   const singlePublisher = selectedCategory ? isSinglePublisher(selectedCategory) : false;
   const freeTextMode = selectedCategory ? isFreeText(selectedCategory) : false;
@@ -197,12 +196,12 @@ export default function CreateListingPage() {
     // Fetch DB-driven sets (Pokemon, One Piece)
     if (isDbSets(selectedCategory)) {
       setLoadingDbSets(true);
-      fetchDbSets(selectedCategory).then(sets => {
-        setDbSetNames(sets);
+      fetchDbSetsGrouped(selectedCategory).then(grouped => {
+        setDbGroupedSets(grouped);
         setLoadingDbSets(false);
       });
     } else {
-      setDbSetNames([]);
+      setDbGroupedSets({ en: [], jp: [], other: [] });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategory]);
@@ -232,6 +231,40 @@ export default function CreateListingPage() {
       const combined = [...currentFiles, ...newFiles].slice(0, 4);
       form.setValue('images', combined, { shouldValidate: true });
     }
+  };
+
+  /** Handle card picked from the collection dialog — auto-fill form fields */
+  const handleCardPicked = (card: SelectedCatalogCard) => {
+    // Set category (this triggers the useEffect to fetch sets)
+    form.setValue('category', card.category);
+    prevCategoryRef.current = card.category;
+
+    // Set publisher
+    form.setValue('publisher', card.publisher);
+
+    // Set name
+    form.setValue('name', card.name);
+
+    // Set the set name (with slight delay to let category effect settle)
+    setTimeout(() => {
+      form.setValue('setName', card.setName);
+    }, 100);
+
+    // Fetch DB sets for the selected category
+    if (isDbSets(card.category)) {
+      setLoadingDbSets(true);
+      fetchDbSetsGrouped(card.category).then(grouped => {
+        setDbGroupedSets(grouped);
+        setLoadingDbSets(false);
+        // Set the setName after data is loaded
+        form.setValue('setName', card.setName);
+      });
+    }
+
+    toast({
+      title: '✅ Đã điền thông tin',
+      description: `${card.name} — ${card.setName}`,
+    });
   };
 
   const removeImage = (index: number) => {
@@ -341,6 +374,16 @@ export default function CreateListingPage() {
         <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
           console.log('Form validation errors:', errors);
         })} className="space-y-8">
+
+          {/* ─── Quick Fill from Collection ─── */}
+          <div className="flex items-center gap-4 p-4 rounded-xl border border-dashed border-primary/30 bg-primary/5">
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-primary">Điền nhanh từ cơ sở dữ liệu</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Chọn thẻ có sẵn để tự động điền thông tin</p>
+            </div>
+            <CardPickerDialog onSelect={handleCardPicked} />
+          </div>
+
           {/* Card Title */}
           <FormField
             control={form.control}
@@ -494,23 +537,17 @@ export default function CreateListingPage() {
                     name="setName"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Set / Bộ sưu tập {loadingDbSets && <span className="text-xs text-muted-foreground">(đang tải...)</span>}</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || undefined} disabled={loadingDbSets}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder={loadingDbSets ? "Đang tải sets..." : "Chọn set..."} />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent className="max-h-[300px]">
-                            {availableSets
-                              .filter(set => set.name && set.name.trim())
-                              .map((set, idx) => (
-                              <SelectItem key={`${set.name}-${idx}`} value={set.name}>
-                                {set.code ? `[${set.code}] ${set.name}` : set.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <FormLabel>Set / Bộ sưu tập</FormLabel>
+                        <FormControl>
+                          <SearchableSetPicker
+                            value={field.value || undefined}
+                            onChange={field.onChange}
+                            groupedSets={useDbSets ? dbGroupedSets : undefined}
+                            flatSets={!useDbSets ? staticSets : undefined}
+                            loading={loadingDbSets}
+                            disabled={loadingDbSets}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}

@@ -297,11 +297,37 @@ export function getStaticSets(categoryValue: string, publisherName?: string): Se
  * Returns a deduplicated, sorted array of non-empty set names.
  */
 export async function fetchDbSets(categoryValue: string): Promise<string[]> {
+  const grouped = await fetchDbSetsGrouped(categoryValue);
+  // Merge all groups into a single deduplicated array
+  const all = [...grouped.en, ...grouped.jp, ...grouped.other];
+  return Array.from(new Set(all)).sort();
+}
+
+/** Grouped set result for multi-language categories */
+export interface GroupedSets {
+  en: string[];
+  jp: string[];
+  other: string[];
+}
+
+/**
+ * Fetch sets grouped by language (EN/JP) for categories that have both.
+ * For Pokemon: EN = pokemon_sets_en, JP = pokemon_sets_jp
+ * For others: all sets go into "other"
+ */
+export async function fetchDbSetsGrouped(categoryValue: string): Promise<GroupedSets> {
   const config = getCategoryConfig(categoryValue);
-  if (!config?.dbSets || !config.dbSetSource) return [];
+  if (!config?.dbSets || !config.dbSetSource) return { en: [], jp: [], other: [] };
 
   const supabase = getSupabaseClient();
-  const allSetNames: string[] = [];
+  const result: GroupedSets = { en: [], jp: [], other: [] };
+
+  const extractNames = (data: any[]): string[] => {
+    return data
+      .map((d: any) => d.set_name)
+      .filter((name: any) => name && typeof name === 'string' && name.trim())
+      .map((name: string) => name.trim());
+  };
 
   try {
     // Fetch from primary view (e.g. pokemon_sets_en)
@@ -309,14 +335,8 @@ export async function fetchDbSets(categoryValue: string): Promise<string[]> {
       const { data, error } = await supabase
         .from(config.dbSetSource.view)
         .select('set_name');
-
       if (!error && data) {
-        for (const d of data) {
-          const name = (d as any).set_name;
-          if (name && typeof name === 'string' && name.trim()) {
-            allSetNames.push(name.trim());
-          }
-        }
+        result.en = Array.from(new Set(extractNames(data))).sort();
       }
     }
 
@@ -325,18 +345,12 @@ export async function fetchDbSets(categoryValue: string): Promise<string[]> {
       const { data, error } = await supabase
         .from(config.dbSetSource.viewJp)
         .select('set_name');
-
       if (!error && data) {
-        for (const d of data) {
-          const name = (d as any).set_name;
-          if (name && typeof name === 'string' && name.trim()) {
-            allSetNames.push(name.trim());
-          }
-        }
+        result.jp = Array.from(new Set(extractNames(data))).sort();
       }
     }
 
-    // Fetch from tcgcsv_products by category_id
+    // Fetch from tcgcsv_products by category_id (One Piece, etc.)
     if (config.dbSetSource.categoryId) {
       const { data, error } = await supabase
         .from('tcgcsv_products')
@@ -344,23 +358,15 @@ export async function fetchDbSets(categoryValue: string): Promise<string[]> {
         .eq('category_id', config.dbSetSource.categoryId)
         .not('set_name', 'is', null)
         .limit(2000);
-
       if (!error && data) {
-        for (const d of data) {
-          const name = (d as any).set_name;
-          if (name && typeof name === 'string' && name.trim()) {
-            allSetNames.push(name.trim());
-          }
-        }
+        result.other = Array.from(new Set(extractNames(data))).sort();
       }
     }
   } catch (err) {
     console.error('Failed to fetch DB sets for', categoryValue, err);
   }
 
-  // Deduplicate and sort
-  const unique = Array.from(new Set(allSetNames)).sort();
-  return unique;
+  return result;
 }
 
 /** Get seasons for a category */
