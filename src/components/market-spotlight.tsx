@@ -725,23 +725,38 @@ export function MarketSpotlight() {
                 const categoryId = isJapanese ? CATEGORY_POKEMON_JAPANESE : CATEGORY_POKEMON_ENGLISH;
                 const altCategoryId = isJapanese ? CATEGORY_POKEMON_ENGLISH : CATEGORY_POKEMON_JAPANESE;
 
-                // 10 second timeout (reduced for speed)
-                const searchController = new AbortController();
-                const searchTimeoutId = setTimeout(() => searchController.abort(), 10000);
+                // Each fetch gets its OWN timeout — no shared AbortController
+                // This prevents one slow request from killing all other searches
+                const PER_FETCH_TIMEOUT = 15000; // 15s per individual fetch
 
-                const searchFetch = (url: string) => fetch(url, {
-                    headers: {
-                        'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-                        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
-                    },
-                    signal: searchController.signal,
-                });
+                const searchFetch = async (url: string): Promise<Response> => {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), PER_FETCH_TIMEOUT);
+                    try {
+                        const response = await fetch(url, {
+                            headers: {
+                                'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+                                'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+                            },
+                            signal: controller.signal,
+                        });
+                        clearTimeout(timeoutId);
+                        return response;
+                    } catch (err) {
+                        clearTimeout(timeoutId);
+                        if (err instanceof Error && err.name === 'AbortError') {
+                            console.warn(`Search fetch timed out (${PER_FETCH_TIMEOUT / 1000}s): ${url.substring(0, 120)}...`);
+                        } else {
+                            console.warn('Search fetch error:', err);
+                        }
+                        throw err;
+                    }
+                };
 
                 const buildNameUrl = (name: string, catId: number, limit = 10) =>
                     `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&name=ilike.*${encodeURIComponent(name)}*&market_price=not.is.null&order=market_price.desc&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=${limit}`;
 
                 // --- REUSABLE SCORING FUNCTION ---
-                // Scores a candidate product against ALL AI-provided signals
                 type ScoredProduct = { product: TcgcsvProduct; score: number; breakdown: string };
 
                 const scoreProduct = (p: { name: string; number: string | null; set_name: string | null; market_price: number }, numberFormats: string[]): ScoredProduct => {
@@ -833,10 +848,10 @@ export function MarketSpotlight() {
                     return { product: p as TcgcsvProduct, score, breakdown: reasons.join(' ') };
                 };
 
-                try {
-                    // --- GATHER ALL CANDIDATES from multiple search strategies ---
+                // ─── Runnable search logic (extracted for retry) ───
+                const runSearch = async (): Promise<TcgcsvProduct[]> => {
                     const allCandidates: TcgcsvProduct[] = [];
-                    const seenIds = new Set<number>(); // Deduplicate by product_id
+                    const seenIds = new Set<number>();
 
                     const addCandidates = (products: TcgcsvProduct[]) => {
                         for (const p of products) {
@@ -883,17 +898,23 @@ export function MarketSpotlight() {
                         altFormatsArray = Array.from(altFormats);
                     }
 
-                    // Helper: fetch both categories in parallel for a given URL builder
+                    // Helper: fetch both categories in parallel
                     const searchBothCategories = async (buildUrl: (catId: number) => string, label: string) => {
                         const results = await Promise.allSettled(
                             [categoryId, altCategoryId].map(async (catId) => {
-                                const response = await searchFetch(buildUrl(catId));
-                                if (response.ok) {
-                                    const products = await response.json();
-                                    if (products?.length > 0) {
-                                        console.log(`  Found ${products.length} by ${label} (cat: ${catId})`);
-                                        return products;
+                                try {
+                                    const response = await searchFetch(buildUrl(catId));
+                                    if (response.ok) {
+                                        const products = await response.json();
+                                        if (products?.length > 0) {
+                                            console.log(`  Found ${products.length} by ${label} (cat: ${catId})`);
+                                            return products;
+                                        }
+                                    } else {
+                                        console.warn(`  ${label} search returned ${response.status} (cat: ${catId})`);
                                     }
+                                } catch (fetchErr) {
+                                    console.warn(`  ${label} search failed (cat: ${catId}):`, fetchErr instanceof Error ? fetchErr.message : fetchErr);
                                 }
                                 return [];
                             })
@@ -903,7 +924,7 @@ export function MarketSpotlight() {
                         }
                     };
 
-                    // --- SEARCH STRATEGY 1: By card number (both categories in parallel) ---
+                    // --- STRATEGY 1: By card number ---
                     if (altFormatsArray.length > 0) {
                         const numberClauses = altFormatsArray.map((n: string) => `number.eq.${encodeURIComponent(n)}`).join(',');
                         console.log(`TCGCSV: Number search: ${altFormatsArray.join(', ')}`);
@@ -913,31 +934,25 @@ export function MarketSpotlight() {
                         );
                     }
 
-                    // --- SEARCH STRATEGIES 2 & 3: By name + base name (all in parallel) ---
+                    // --- STRATEGIES 2 & 3: By name + base name ---
                     if (cardName) {
                         const baseName = cardName.replace(/\s*(ex|EX|Ex|V|GX|Gx|VMAX|Vmax|VSTAR|Vstar)\s*$/i, '').trim();
                         const nameSearches: Promise<void>[] = [];
 
-                        // Strategy 2: Full name search (both categories)
                         console.log(`TCGCSV: Name search: "${cardName}"`);
                         nameSearches.push(searchBothCategories((catId) => buildNameUrl(cardName, catId, 10), 'name'));
 
-                        // Strategy 3: Base name search (both categories, only if different)
                         if (baseName && baseName !== cardName) {
                             console.log(`TCGCSV: Base name search: "${baseName}"`);
                             nameSearches.push(searchBothCategories((catId) => buildNameUrl(baseName, catId, 10), 'base name'));
                         }
 
-                        // Run strategies 2 & 3 simultaneously
                         await Promise.allSettled(nameSearches);
                     }
 
-                    // --- SEARCH STRATEGY 4: Word-split fallback for compound names ---
-                    // e.g. AI returns "KochiKing ex" but DB has "Kochiking ex" or different transliteration
+                    // --- STRATEGY 4: Word-split fallback ---
                     if (cardName && allCandidates.length === 0) {
-                        // Split camelCase/PascalCase compound names (e.g. "KochiKing" -> ["Kochi", "King"])
                         const splitCamel = cardName.replace(/([a-z])([A-Z])/g, '$1 $2');
-                        // Also strip suffixes like ex/V/GX for broader search
                         const cleanedName = splitCamel.replace(/\s*(ex|EX|Ex|V|GX|Gx|VMAX|Vmax|VSTAR|Vstar)\s*$/i, '').trim();
                         const words = cleanedName.split(/\s+/).filter((w: string) => w.length >= 3);
 
@@ -960,16 +975,64 @@ export function MarketSpotlight() {
                         }
                     }
 
-                    clearTimeout(searchTimeoutId);
+                    return allCandidates;
+                };
 
-                    // --- SCORE ALL CANDIDATES TOGETHER ---
+                try {
+                    // ─── Pre-warm REST API before searching (handles stale connections) ───
+                    try {
+                        const warmController = new AbortController();
+                        const warmTimeout = setTimeout(() => warmController.abort(), 5000);
+                        await fetch(`${SUPABASE_URL}/rest/v1/tcgcsv_products?select=product_id&limit=1`, {
+                            headers: { 'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '' },
+                            signal: warmController.signal,
+                        });
+                        clearTimeout(warmTimeout);
+                        console.log('REST API connection verified before search');
+                    } catch {
+                        console.warn('REST API pre-warm failed, proceeding with search anyway');
+                    }
+
+                    // ─── Run search with automatic retry ───
+                    let allCandidates = await runSearch();
+
+                    // If first attempt returned 0 results, retry once (stale connection recovery)
+                    if (allCandidates.length === 0 && cardName) {
+                        console.log('⚠️ First search returned 0 results — retrying after 1s...');
+                        setScanStatus('Retrying search...');
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        allCandidates = await runSearch();
+                    }
+
+                    // ─── Score all candidates ───
+                    // Rebuild altFormatsArray for scoring (same logic as in runSearch)
+                    let scoringFormats: string[] = [];
+                    if (cardNumber) {
+                        let cleanNumber = cardNumber.replace(/[^\d/]/g, '').trim();
+                        if (!cleanNumber.includes('/') && /^\d+$/.test(cleanNumber) && cleanNumber.length >= 4 && cleanNumber.length % 2 === 0) {
+                            const midPoint = Math.floor(cleanNumber.length / 2);
+                            cleanNumber = cleanNumber.substring(0, midPoint) + '/' + cleanNumber.substring(midPoint);
+                        }
+                        const parts = cleanNumber.split('/');
+                        const formats = new Set<string>([cleanNumber]);
+                        if (parts.length === 2) {
+                            const col = parseInt(parts[0], 10);
+                            const total = parseInt(parts[1], 10);
+                            for (const c of [col.toString(), col.toString().padStart(2, '0'), col.toString().padStart(3, '0')]) {
+                                for (const t of [total.toString(), total.toString().padStart(2, '0'), total.toString().padStart(3, '0')]) {
+                                    formats.add(c + '/' + t);
+                                }
+                            }
+                        }
+                        scoringFormats = Array.from(formats);
+                    }
+
                     if (allCandidates.length > 0) {
                         console.log(`\nScoring ${allCandidates.length} total candidates:`);
 
-                        const scored = allCandidates.map(p => scoreProduct(p, altFormatsArray));
+                        const scored = allCandidates.map(p => scoreProduct(p, scoringFormats));
                         scored.sort((a, b) => b.score - a.score || (b.product.market_price || 0) - (a.product.market_price || 0));
 
-                        // Log top 5 for debugging
                         scored.slice(0, 5).forEach((s, i) => {
                             console.log(`  ${i + 1}. [${s.score}pts] ${s.product.name} #${s.product.number} (${s.product.set_name}) — ${s.breakdown}`);
                         });
@@ -978,19 +1041,17 @@ export function MarketSpotlight() {
                         console.log(`\n✅ Best match: ${bestMatch.product.name} #${bestMatch.product.number} (score: ${bestMatch.score}/100)`);
 
                         await displayProductResult(bestMatch.product);
-                        // Store top 5 for the selection dialog
                         setScanResults(scored.slice(0, 5));
                         setShowScanResultsDialog(true);
 
-                        // Only count scan usage when results were found
                         if (shouldIncrementUsage) {
                             await incrementUsage();
                         }
                     } else {
+                        console.error(`❌ No candidates found after retry for "${cardName}"`);
                         setSearchError(`No cards found for "${cardName}"`);
                     }
                 } catch (searchErr: unknown) {
-                    clearTimeout(searchTimeoutId);
                     if (searchErr instanceof Error && searchErr.name === 'AbortError') {
                         console.log('Search timed out');
                         setSearchError('Database search timed out. Please try again.');
