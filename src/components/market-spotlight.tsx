@@ -182,6 +182,8 @@ export function MarketSpotlight() {
     const fileInputRef = React.useRef<HTMLInputElement>(null); // Camera capture
     const galleryInputRef = React.useRef<HTMLInputElement>(null); // Gallery upload
     const scanInProgressRef = React.useRef(false); // Sync flag to prevent concurrent scans
+    const warmupPromiseRef = useRef<Promise<boolean> | null>(null); // Track ongoing warmup
+    const isWarmRef = useRef(false); // Whether function is known to be warm
 
     const [showCropModal, setShowCropModal] = useState(false);
     const [cropImageSrc, setCropImageSrc] = useState<string>('');
@@ -545,14 +547,49 @@ export function MarketSpotlight() {
         setIsScanning(true);
         setIsLoading(true);
         setSearchError(null);
-        setScanStatus('Identifying card...');
+        setScanStatus('Preparing scanner...');
 
         try {
             setIsScannedResult(true);
 
+            // ─── WARM-UP: Ensure Edge Function is ready before scanning ───
+            if (!isWarmRef.current) {
+                console.log('Edge function may be cold, warming up before scan...');
+                try {
+                    // If there's already a warm-up in progress (from button click), wait for it
+                    if (warmupPromiseRef.current) {
+                        const warmResult = await Promise.race([
+                            warmupPromiseRef.current,
+                            new Promise<boolean>(resolve => setTimeout(() => resolve(false), 15000)),
+                        ]);
+                        if (warmResult) {
+                            console.log('Pre-triggered warm-up succeeded');
+                            isWarmRef.current = true;
+                        }
+                    }
+
+                    // If still not warm, do an explicit warm-up now
+                    if (!isWarmRef.current) {
+                        setScanStatus('Waking up AI engine...');
+                        const warmSuccess = await warmUpEdgeFunction();
+                        if (warmSuccess) {
+                            isWarmRef.current = true;
+                            console.log('Inline warm-up succeeded');
+                        } else {
+                            console.warn('Warm-up did not succeed, proceeding anyway with extended timeout');
+                        }
+                    }
+                } catch (warmErr) {
+                    console.warn('Warm-up error, proceeding with scan:', warmErr);
+                }
+            }
+
+            setScanStatus('Identifying card...');
+
             // Automatic retry with exponential backoff
-            const RETRY_TIMEOUTS = [12000, 15000, 18000]; // 12s, 15s, 18s (reduced for speed)
-            const RETRY_DELAYS = [0, 1000, 1500]; // 0s, 1s, 1.5s delay before retry
+            // First timeout is 30s to handle residual cold start; subsequent are shorter (function is warm)
+            const RETRY_TIMEOUTS = [30000, 18000, 18000]; // 30s, 18s, 18s
+            const RETRY_DELAYS = [0, 1500, 2000]; // 0s, 1.5s, 2s delay before retry
             const STATUS_MESSAGES = [
                 'Identifying card...',
                 'Still working... retrying...',
@@ -1315,13 +1352,48 @@ export function MarketSpotlight() {
         processScannedImage(enhancedBase64, true);
     }, [cropImageSrc, processScannedImage, canScan]);
 
+    // ─── Edge Function warm-up utility ───
+    const warmUpEdgeFunction = useCallback(async (): Promise<boolean> => {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
+            const res = await fetch(`${SUPABASE_URL}/functions/v1/identify-card`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+                },
+                body: JSON.stringify({ ping: true }),
+                signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+            if (res.ok || res.status === 400) {
+                // 400 = function processed the ping but rejected it — still means it's warm
+                isWarmRef.current = true;
+                return true;
+            }
+            return false;
+        } catch {
+            return false;
+        }
+    }, []);
+
+    // Trigger warm-up eagerly (non-blocking) — called when user shows intent to scan
+    const triggerEagerWarmup = useCallback(() => {
+        if (isWarmRef.current) return; // Already warm
+        console.log('Eagerly warming up Edge Function...');
+        warmupPromiseRef.current = warmUpEdgeFunction();
+    }, [warmUpEdgeFunction]);
+
     // Trigger camera input click
     const handleScanClick = () => {
+        triggerEagerWarmup(); // Start warming as soon as user clicks scan
         fileInputRef.current?.click();
     };
 
     // Trigger gallery input click
     const handleUploadClick = () => {
+        triggerEagerWarmup(); // Start warming as soon as user clicks upload
         galleryInputRef.current?.click();
     };
 
@@ -1340,21 +1412,11 @@ export function MarketSpotlight() {
             }
         };
 
-        // Pre-warm the identify-card Edge Function
+        // Pre-warm identify-card and track the promise + warm state
         const prewarmIdentifyFunction = async () => {
-            try {
-                await fetch(`${SUPABASE_URL}/functions/v1/identify-card`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
-                    },
-                    body: JSON.stringify({ ping: true }),
-                });
-                console.log('Identify function pre-warmed');
-            } catch (e) {
-                // Ignore errors - this is just a pre-warm
-            }
+            const success = await warmUpEdgeFunction();
+            if (success) console.log('Identify function pre-warmed successfully');
+            else console.log('Identify function pre-warm failed (will retry on scan)');
         };
 
         // Pre-warm the translate-jp Edge Function
@@ -1378,6 +1440,56 @@ export function MarketSpotlight() {
         prewarmIdentifyFunction();
         prewarmTranslateFunction();
         fetchFeaturedProduct();
+
+        // ─── Keep-alive: Ping Edge Function every 45s to prevent cold starts ───
+        // Only ping when the tab is visible to save resources
+        const KEEP_ALIVE_INTERVAL = 45000; // 45 seconds
+        let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+
+        const startKeepAlive = () => {
+            if (keepAliveTimer) return;
+            keepAliveTimer = setInterval(() => {
+                // Only ping if tab is visible
+                if (document.visibilityState === 'visible') {
+                    fetch(`${SUPABASE_URL}/functions/v1/identify-card`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+                        },
+                        body: JSON.stringify({ ping: true }),
+                    }).then(() => {
+                        isWarmRef.current = true;
+                    }).catch(() => {
+                        isWarmRef.current = false;
+                    });
+                }
+            }, KEEP_ALIVE_INTERVAL);
+        };
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                // Tab just became visible — warm up immediately
+                isWarmRef.current = false; // Assume cold after being away
+                warmUpEdgeFunction();
+                startKeepAlive();
+            } else {
+                // Tab hidden — stop keep-alive to save resources
+                if (keepAliveTimer) {
+                    clearInterval(keepAliveTimer);
+                    keepAliveTimer = null;
+                }
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        startKeepAlive();
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            if (keepAliveTimer) clearInterval(keepAliveTimer);
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Use centralized currency formatting from context
