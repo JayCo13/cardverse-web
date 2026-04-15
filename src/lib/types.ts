@@ -33,6 +33,14 @@ export interface Card {
   publisher?: string;
   season?: string;
   quantity?: number;
+  setName?: string;
+  sellerName?: string;
+  sellerAvatar?: string;
+  isBundle?: boolean;
+  bundleItems?: { title: string; price: number }[];
+  acceptOffers?: boolean;
+  /** If true, price is already in VND (marketplace listings). If false/undefined, price is in USD. */
+  priceIsVnd?: boolean;
 }
 
 export interface Offer {

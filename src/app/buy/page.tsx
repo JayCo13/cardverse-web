@@ -38,12 +38,13 @@ export default function BuyPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [checkoutCard, setCheckoutCard] = useState<Card | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [sellerAddress, setSellerAddress] = useState<{ districtId: number; wardCode: string } | null>(null);
 
   useEffect(() => {
     const fetchCards = async () => {
       const { data, error } = await supabase
         .from('cards')
-        .select('*')
+        .select('*, profiles:seller_id(display_name, profile_image_url)')
         .eq('listing_type', 'sale')
         .eq('status', 'active');
 
@@ -64,13 +65,20 @@ export default function BuyPage() {
           razzEntries: c.razz_entries,
           totalTickets: c.total_tickets,
           sellerId: c.seller_id,
-          author: c.seller_id,
+          author: c.profiles?.display_name || 'Unknown Seller',
+          sellerName: c.profiles?.display_name || 'Unknown Seller',
+          sellerAvatar: c.profiles?.profile_image_url || null,
           description: c.description,
           lastSoldPrice: c.last_sold_price,
           status: c.status,
           publisher: c.publisher,
+          setName: c.set_name,
           season: c.season,
           quantity: c.quantity,
+          isBundle: c.is_bundle,
+          bundleItems: c.bundle_items,
+          acceptOffers: c.accept_offers,
+          priceIsVnd: true, // Marketplace listings are entered in VND
         }));
         setSaleCards(cards);
       }
@@ -140,7 +148,7 @@ export default function BuyPage() {
       return (
         <div className="flex flex-col gap-4">
           {filteredAndSortedCards.map((card) => (
-            <CardItem key={card.id} card={card} layout="list" onBuyClick={(c) => {
+            <CardItem key={card.id} card={card} layout="list" onBuyClick={async (c) => {
               setCheckoutCard({
                 ...c,
                 id: c.id,
@@ -151,6 +159,27 @@ export default function BuyPage() {
                 condition: c.condition,
                 sellerId: c.sellerId,
               } as any);
+
+              // Fetch seller address for shipping fee calculation
+              try {
+                const { data: sellerProfile } = await supabase
+                  .from('profiles')
+                  .select('address_district_id, address_ward_code')
+                  .eq('id', c.sellerId)
+                  .single();
+
+                if (sellerProfile?.address_district_id && sellerProfile?.address_ward_code) {
+                  setSellerAddress({
+                    districtId: sellerProfile.address_district_id,
+                    wardCode: sellerProfile.address_ward_code,
+                  });
+                } else {
+                  setSellerAddress(null);
+                }
+              } catch {
+                setSellerAddress(null);
+              }
+
               setCheckoutOpen(true);
             }} />
           ))}
@@ -228,8 +257,8 @@ export default function BuyPage() {
           condition: checkoutCard.condition || '',
           seller_id: checkoutCard.sellerId,
         } : null}
+        sellerAddress={sellerAddress}
         onSuccess={() => {
-          // Refresh cards list
           window.location.reload();
         }}
       />

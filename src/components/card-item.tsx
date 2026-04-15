@@ -15,7 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Clock, Tag, Ticket, Hammer, Zap, Sparkles, Target, Trophy, Star, Gem, Crown, Settings } from "lucide-react";
+import { Clock, Tag, Ticket, Hammer, Zap, Sparkles, Target, Trophy, Star, Gem, Crown, Settings, User } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useLocalization } from "@/context/localization-context";
 import { useCurrency } from "@/contexts/currency-context";
@@ -84,6 +84,12 @@ const getCategoryStyle = (category: string) => {
   };
 };
 
+/** Format price directly in VND without conversion */
+const formatVnd = (price: number | null | undefined): string => {
+  if (price === null || price === undefined) return '-';
+  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
+};
+
 interface CardItemProps {
   card: CardType;
   layout?: 'grid' | 'list';
@@ -96,6 +102,12 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
   const { setOpen } = useAuthModal();
   const { user } = useUser();
   const router = useRouter();
+
+  /** Use direct VND format for marketplace listings, otherwise use currency conversion */
+  const displayPrice = (price: number | null | undefined) => {
+    if (card.priceIsVnd) return formatVnd(price);
+    return formatPrice(price ?? 0);
+  };
 
   // Check if current user is the owner of this card
   const isOwner = user?.id === card.sellerId;
@@ -131,11 +143,11 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
       return (
         <div className="flex flex-col items-center gap-0.5 sm:gap-1 w-full">
           <div className="text-base sm:text-lg md:text-xl font-bold text-primary">
-            {card.listingType === 'sale' && card.price ? formatPrice(card.price) :
-              card.listingType === 'auction' && card.currentBid ? formatPrice(card.currentBid) :
-                card.listingType === 'razz' && card.ticketPrice ? formatPrice(card.ticketPrice) : 'N/A'}
+            {card.listingType === 'sale' && card.price ? displayPrice(card.price) :
+              card.listingType === 'auction' && card.currentBid ? displayPrice(card.currentBid) :
+                card.listingType === 'razz' && card.ticketPrice ? displayPrice(card.ticketPrice) : 'N/A'}
           </div>
-          <span className="text-xs text-muted-foreground mb-1">Your Listing</span>
+          <span className="text-xs text-muted-foreground mb-1">Bài đăng của bạn</span>
           <Button
             size="sm"
             variant="secondary"
@@ -143,7 +155,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
             onClick={handleManageClick}
           >
             <Settings className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-            Manage
+            Quản lý
           </Button>
         </div>
       );
@@ -157,7 +169,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
             <div className="flex flex-col items-end gap-0.5 sm:gap-1 w-full">
               <div className="text-xs text-muted-foreground">Giá đã bán</div>
               <div className="text-base sm:text-lg md:text-xl font-bold text-green-500 flex items-center gap-1 sm:gap-2">
-                {card.lastSoldPrice ? formatPrice(card.lastSoldPrice) : formatPrice(card.price || 0)}
+                {card.lastSoldPrice ? displayPrice(card.lastSoldPrice) : displayPrice(card.price || 0)}
               </div>
               <Button
                 size="sm"
@@ -174,15 +186,18 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           <div className="flex flex-col items-end gap-0.5 sm:gap-1 w-full">
             <div className="text-base sm:text-lg md:text-xl font-bold text-primary flex items-center gap-1 sm:gap-2">
               <Tag className="h-3 w-3 sm:h-4 sm:w-4 md:h-5 md:w-5 text-muted-foreground" />
-              {card.price ? formatPrice(card.price) : 'N/A'}
+              {card.price ? displayPrice(card.price) : 'N/A'}
             </div>
+            {card.acceptOffers && (
+              <span className="text-[10px] text-amber-500 font-medium">Nhận offer</span>
+            )}
             <Button size="sm" aria-label={`Buy ${card.name} now`} className="w-full mt-1 sm:mt-2 text-xs sm:text-sm h-7 sm:h-8 md:h-9" onClick={handleActionClick}>{t('card_item_buy_now')}</Button>
           </div>
         );
       case 'auction':
         return (
           <div className="flex flex-col items-end gap-0.5 sm:gap-1 text-right w-full">
-            <div className="text-sm sm:text-base md:text-lg font-bold text-primary">{card.currentBid ? formatPrice(card.currentBid) : 'N/A'}</div>
+            <div className="text-sm sm:text-base md:text-lg font-bold text-primary">{card.currentBid ? displayPrice(card.currentBid) : 'N/A'}</div>
             <span className="text-xs sm:text-sm text-muted-foreground hidden sm:block">{t('card_item_current_bid')}</span>
             {card.auctionEnds && (
               <div className="flex items-center text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">
@@ -197,7 +212,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
         const progress = ((card.razzEntries ?? 0) / (card.totalTickets ?? 1)) * 100;
         return (
           <div className="w-full space-y-1 sm:space-y-2 text-right">
-            <span className="text-sm sm:text-base md:text-lg font-bold text-primary">{card.ticketPrice ? t('card_item_ticket_price').replace('{price}', formatPrice(card.ticketPrice)) : 'N/A'}</span>
+            <span className="text-sm sm:text-base md:text-lg font-bold text-primary">{card.ticketPrice ? t('card_item_ticket_price').replace('{price}', displayPrice(card.ticketPrice)) : 'N/A'}</span>
             <div>
               <Progress value={progress} className="h-1.5 sm:h-2" />
               <div className="flex justify-between text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1">
@@ -238,13 +253,33 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
               {card.status === 'sold' && (
                 <Badge className="bg-green-500 text-white text-xs">Đã bán</Badge>
               )}
+              {card.isBundle && (
+                <Badge variant="outline" className="border-violet-500/50 text-violet-500 text-xs">Combo {card.bundleItems?.length || 0} thẻ</Badge>
+              )}
             </div>
             <CardDescription className="text-sm">{card.category}</CardDescription>
-            {card.condition && (
-              <div className="mt-2">
+            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              {card.condition && (
                 <Badge variant={getBadgeVariant(card.condition)} className="self-start">{card.condition}</Badge>
-              </div>
-            )}
+              )}
+              {card.publisher && (
+                <Badge variant="outline" className="text-xs">{card.publisher}</Badge>
+              )}
+              {card.setName && (
+                <Badge variant="outline" className="text-xs text-muted-foreground">{card.setName}</Badge>
+              )}
+            </div>
+            {/* Seller info */}
+            <div className="flex items-center gap-2 mt-3">
+              {card.sellerAvatar ? (
+                <Image src={card.sellerAvatar} alt={card.sellerName || ''} width={20} height={20} className="rounded-full object-cover" />
+              ) : (
+                <div className="h-5 w-5 rounded-full bg-muted flex items-center justify-center">
+                  <User className="h-3 w-3 text-muted-foreground" />
+                </div>
+              )}
+              <span className="text-xs text-muted-foreground">{card.sellerName || card.author}</span>
+            </div>
           </div>
           <div className="md:w-2/5 flex flex-col justify-center items-end mt-4 md:mt-0">
             {renderPriceInfo()}
@@ -314,23 +349,31 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           {card.name}
         </h3>
 
-        {/* Category subtitle */}
-        <p className="text-xs sm:text-sm text-muted-foreground mb-1 sm:mb-2">
+        {/* Category & details */}
+        <p className="text-xs sm:text-sm text-muted-foreground mb-1">
           {card.category}
+          {card.setName && <span className="text-muted-foreground/60"> · {card.setName}</span>}
         </p>
 
-        {/* Description - using author as description placeholder */}
-        <p className="text-[11px] sm:text-xs md:text-sm text-muted-foreground/80 line-clamp-2 flex-grow">
-          {card.listingType === 'sale' ? t('card_item_buy_now') : card.listingType === 'auction' ? t('card_item_place_bid') : t('card_item_buy_ticket')} - {card.author}
-        </p>
+        {/* Seller info */}
+        <div className="flex items-center gap-1.5 mb-1 sm:mb-2">
+          {card.sellerAvatar ? (
+            <Image src={card.sellerAvatar} alt={card.sellerName || ''} width={16} height={16} className="rounded-full object-cover" />
+          ) : (
+            <div className="h-4 w-4 rounded-full bg-muted flex items-center justify-center">
+              <User className="h-2.5 w-2.5 text-muted-foreground" />
+            </div>
+          )}
+          <span className="text-[11px] sm:text-xs text-muted-foreground/80 truncate">{card.sellerName || card.author}</span>
+        </div>
 
         {/* Footer with price and button */}
-        <div className="flex flex-col items-center mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-border/30 gap-2 sm:gap-3">
+        <div className="flex flex-col items-center mt-auto pt-3 sm:pt-4 border-t border-border/30 gap-2 sm:gap-3">
           {/* Price - centered on top */}
           <span className="font-bold text-base sm:text-lg md:text-xl text-primary">
-            {card.listingType === 'sale' && card.price ? formatPrice(card.price) :
-              card.listingType === 'auction' && card.currentBid ? formatPrice(card.currentBid) :
-                card.listingType === 'razz' && card.ticketPrice ? formatPrice(card.ticketPrice) : 'N/A'}
+            {card.listingType === 'sale' && card.price ? displayPrice(card.price) :
+              card.listingType === 'auction' && card.currentBid ? displayPrice(card.currentBid) :
+                card.listingType === 'razz' && card.ticketPrice ? displayPrice(card.ticketPrice) : 'N/A'}
           </span>
 
           {/* Buy Now button with arrow - below price */}
