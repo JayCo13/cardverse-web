@@ -14,12 +14,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useLocalization } from '@/context/localization-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Upload, ShieldAlert, X, Loader2, Info } from 'lucide-react';
+import { Upload, ShieldAlert, X, Loader2, Info, HandCoins, Plus, Trash2, Layers } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useSupabase, useUser } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
+import { Switch } from '@/components/ui/switch';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -41,8 +42,16 @@ import {
 import { CardPickerDialog, type SelectedCatalogCard } from '@/components/card-picker-dialog';
 import { SearchableSetPicker } from '@/components/searchable-set-picker';
 
+/** Individual card in a bundle */
+interface BundleItem {
+  id: string;
+  title: string;
+  price: number | undefined;
+}
+
 const getFormSchema = (t: (key: string) => string) => z.object({
   name: z.string().min(5, { message: "Title must be at least 5 characters." }),
+  isBundle: z.boolean().default(false),
   category: z.string({ required_error: "Please select a category." }),
   publisher: z.string({ required_error: "Please select a publisher." }),
   setName: z.string().optional(),
@@ -78,6 +87,16 @@ const getFormSchema = (t: (key: string) => string) => z.object({
   ),
   description: z.string().min(10, { message: "Description must be at least 10 characters." }),
   images: z.array(z.instanceof(File)).min(1, "Please upload at least one image.").max(4, "You can upload a maximum of 4 images."),
+  // Offer settings
+  acceptOffers: z.boolean().default(false),
+  minOfferPercent: z.preprocess(
+    (a) => {
+      if (typeof a === 'number') return a;
+      if (typeof a === 'string') return parseInt(a, 10) || 0;
+      return 0;
+    },
+    z.number().min(0).max(99).default(0)
+  ),
   // Free text fallbacks for "Khác" category
   freePublisher: z.string().optional(),
   freeSetName: z.string().optional(),
@@ -133,6 +152,9 @@ export default function CreateListingPage() {
       setName: "",
       season: "",
       quantity: 1,
+      isBundle: false,
+      acceptOffers: false,
+      minOfferPercent: 0,
       freePublisher: "",
       freeSetName: "",
       freeSeason: "",
@@ -144,6 +166,41 @@ export default function CreateListingPage() {
   const images = form.watch('images');
   const selectedCategory = form.watch('category');
   const selectedPublisher = form.watch('publisher');
+  const acceptOffers = form.watch('acceptOffers');
+  const watchedPrice = form.watch('price');
+  const isBundle = form.watch('isBundle');
+
+  // Bundle items state (managed outside react-hook-form for flexibility)
+  const [bundleItems, setBundleItems] = useState<BundleItem[]>([
+    { id: crypto.randomUUID(), title: '', price: undefined },
+    { id: crypto.randomUUID(), title: '', price: undefined },
+  ]);
+
+  const addBundleItem = () => {
+    setBundleItems(prev => [...prev, { id: crypto.randomUUID(), title: '', price: undefined }]);
+  };
+
+  const removeBundleItem = (id: string) => {
+    if (bundleItems.length <= 2) return; // minimum 2 items in a bundle
+    setBundleItems(prev => prev.filter(item => item.id !== id));
+  };
+
+  const updateBundleItem = (id: string, field: 'title' | 'price', value: string) => {
+    setBundleItems(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      if (field === 'price') {
+        return { ...item, price: value ? parseFloat(value) : undefined };
+      }
+      return { ...item, [field]: value };
+    }));
+  };
+
+  // Computed bundle price range
+  const bundlePriceRange = (() => {
+    const prices = bundleItems.map(i => i.price).filter((p): p is number => p !== undefined && p > 0);
+    if (prices.length === 0) return null;
+    return { min: Math.min(...prices), max: Math.max(...prices), total: prices.reduce((a, b) => a + b, 0) };
+  })();
 
   // DB-driven sets state
   const [dbGroupedSets, setDbGroupedSets] = useState<GroupedSets>({ en: [], jp: [], other: [] });
@@ -309,6 +366,20 @@ export default function CreateListingPage() {
         ? (values.freeSeason || '')
         : (values.season || '');
 
+      // Bundle validation
+      if (values.isBundle) {
+        const validItems = bundleItems.filter(i => i.title.trim() && i.price && i.price > 0);
+        if (validItems.length < 2) {
+          toast({
+            variant: 'destructive',
+            title: 'Lỗi',
+            description: 'Bán nhiều thẻ cần ít nhất 2 thẻ với đầy đủ tên và giá.',
+          });
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       const cardData: any = {
         seller_id: user.id,
         name: values.name,
@@ -321,12 +392,18 @@ export default function CreateListingPage() {
         publisher: resolvedPublisher,
         set_name: resolvedSetName,
         season: resolvedSeason,
-        quantity: values.quantity || 1,
+        quantity: values.isBundle ? bundleItems.filter(i => i.title.trim()).length : (values.quantity || 1),
         status: 'active',
+        accept_offers: values.acceptOffers || false,
+        min_offer_percent: values.acceptOffers ? (values.minOfferPercent || 0) : 0,
+        is_bundle: values.isBundle || false,
+        bundle_items: values.isBundle
+          ? bundleItems.filter(i => i.title.trim() && i.price && i.price > 0).map(i => ({ title: i.title, price: i.price }))
+          : null,
       };
 
       if (values.listingType === 'sale') {
-        cardData.price = values.price;
+        cardData.price = values.isBundle ? values.price : values.price;
       } else if (values.listingType === 'auction') {
         cardData.current_bid = values.startingBid;
         cardData.starting_bid = values.startingBid;
@@ -378,22 +455,57 @@ export default function CreateListingPage() {
           {/* ─── Quick Fill from Collection ─── */}
           <div className="flex items-center gap-4 p-4 rounded-xl border border-dashed border-primary/30 bg-primary/5">
             <div className="flex-1">
-              <h3 className="text-sm font-semibold text-primary">Điền nhanh từ cơ sở dữ liệu</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">Chọn thẻ có sẵn để tự động điền thông tin</p>
+              <h3 className="text-sm font-semibold text-primary">Điền nhanh từ bộ sưu tập</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Chọn thẻ từ bộ sưu tập của bạn để tự động điền thông tin</p>
             </div>
             <CardPickerDialog onSelect={handleCardPicked} />
           </div>
 
-          {/* Card Title */}
+          {/* ─── Bundle Toggle ─── */}
+          <FormField
+            control={form.control}
+            name="isBundle"
+            render={({ field }) => (
+              <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4">
+                <FormItem className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
+                      <Layers className="h-5 w-5 text-violet-500" />
+                    </div>
+                    <div>
+                      <FormLabel className="text-base font-semibold cursor-pointer">Bán nhiều thẻ</FormLabel>
+                      <p className="text-xs text-muted-foreground mt-0.5">Đăng bán nhiều thẻ trong cùng một bài viết</p>
+                    </div>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </FormItem>
+              </div>
+            )}
+          />
+
+          {/* Card Title (Main) */}
           <FormField
             control={form.control}
             name="name"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className='text-lg font-semibold'>{t('card_title_label')}</FormLabel>
+                <FormLabel className='text-lg font-semibold'>
+                  {isBundle ? 'Tiêu đề bài bán' : t('card_title_label')}
+                </FormLabel>
                 <FormControl>
-                  <Input placeholder={t('card_title_placeholder')} {...field} />
+                  <Input
+                    placeholder={isBundle ? 'VD: Bộ sưu tập Pokémon Base Set hàng hiếm' : t('card_title_placeholder')}
+                    {...field}
+                  />
                 </FormControl>
+                {isBundle && (
+                  <p className="text-xs text-muted-foreground">Đây là tiêu đề chính hiển thị trên chợ</p>
+                )}
                 <FormMessage />
               </FormItem>
             )}
@@ -777,6 +889,7 @@ export default function CreateListingPage() {
                       </FormControl>
                       <FormLabel className="font-normal text-base">{t('buy_now_label')}</FormLabel>
                     </FormItem>
+                    {/* Tạm ẩn Đấu giá và Razz
                     <FormItem className="flex items-center space-x-3 space-y-0">
                       <FormControl>
                         <RadioGroupItem value="auction" />
@@ -789,12 +902,95 @@ export default function CreateListingPage() {
                       </FormControl>
                       <FormLabel className="font-normal text-base">{t('razz_label')}</FormLabel>
                     </FormItem>
+                    */}
                   </RadioGroup>
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
+
+          {/* ─── Bundle Items ─── */}
+          {isBundle && (
+            <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Layers className="h-4 w-4 text-violet-500" />
+                  <h3 className="text-base font-semibold text-violet-500">Danh sách thẻ</h3>
+                  <span className="text-xs text-muted-foreground">({bundleItems.length} thẻ)</span>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addBundleItem}
+                  className="gap-1.5 border-violet-500/30 text-violet-500 hover:bg-violet-500/10"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Thêm thẻ
+                </Button>
+              </div>
+
+              <div className="space-y-3">
+                {bundleItems.map((item, index) => (
+                  <div
+                    key={item.id}
+                    className="flex items-start gap-3 p-3 rounded-lg border border-violet-500/10 bg-background/50 group animate-in slide-in-from-top-1 duration-150"
+                  >
+                    <span className="flex items-center justify-center h-8 w-8 rounded-full bg-violet-500/10 text-violet-500 text-sm font-bold shrink-0 mt-0.5">
+                      {index + 1}
+                    </span>
+                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-[1fr_140px] gap-2">
+                      <Input
+                        placeholder={`Tên thẻ #${index + 1}, VD: Holo Charizard`}
+                        value={item.title}
+                        onChange={(e) => updateBundleItem(item.id, 'title', e.target.value)}
+                        className="text-sm"
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Giá ($)"
+                        value={item.price ?? ''}
+                        onChange={(e) => updateBundleItem(item.id, 'price', e.target.value)}
+                        className="text-sm"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeBundleItem(item.id)}
+                      disabled={bundleItems.length <= 2}
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Bundle summary */}
+              {bundlePriceRange && (
+                <div className="flex items-center justify-between pt-3 border-t border-violet-500/10 text-sm">
+                  <span className="text-muted-foreground">Giá hiển thị trên chợ:</span>
+                  <span className="font-semibold text-violet-500">
+                    {bundlePriceRange.min === bundlePriceRange.max
+                      ? `$${bundlePriceRange.min.toFixed(2)}`
+                      : `$${bundlePriceRange.min.toFixed(2)} — $${bundlePriceRange.max.toFixed(2)}`
+                    }
+                  </span>
+                </div>
+              )}
+              {bundlePriceRange && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Tổng giá trị:</span>
+                  <span className="font-bold text-green-500">
+                    ${bundlePriceRange.total.toFixed(2)}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Price Fields */}
           {listingType === 'sale' && (
@@ -803,10 +999,25 @@ export default function CreateListingPage() {
               name="price"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className='text-lg font-semibold'>{t('price_label')}</FormLabel>
+                  <FormLabel className='text-lg font-semibold'>
+                    {isBundle ? 'Giá bán cả bộ' : t('price_label')}
+                  </FormLabel>
                   <FormControl>
-                    <Input type="number" placeholder={locale === 'en-US' ? 'Enter your price in USD' : 'Nhập giá của bạn bằng VND'} {...field} value={field.value ?? ''} />
+                    <Input
+                      type="number"
+                      placeholder={isBundle
+                        ? 'Nhập giá bán cho cả bộ (có thể khác tổng giá từng thẻ)'
+                        : (locale === 'en-US' ? 'Enter your price in USD' : 'Nhập giá của bạn bằng VND')
+                      }
+                      {...field}
+                      value={field.value ?? ''}
+                    />
                   </FormControl>
+                  {isBundle && bundlePriceRange && (
+                    <p className="text-xs text-muted-foreground">
+                      💡 Tổng giá từng thẻ: ${bundlePriceRange.total.toFixed(2)} — Bạn có thể đặt giá bán cả bộ thấp hơn hoặc cao hơn
+                    </p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
@@ -871,6 +1082,74 @@ export default function CreateListingPage() {
                   </FormItem>
                 )}
               />
+            </div>
+          )}
+
+          {/* ─── Accept Offers ─── */}
+          {listingType === 'sale' && (
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-5 space-y-4">
+              <FormField
+                control={form.control}
+                name="acceptOffers"
+                render={({ field }) => (
+                  <FormItem className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
+                        <HandCoins className="h-5 w-5 text-amber-500" />
+                      </div>
+                      <div>
+                        <FormLabel className="text-base font-semibold cursor-pointer">Nhận offer</FormLabel>
+                        <p className="text-xs text-muted-foreground mt-0.5">Cho phép người mua gửi đề nghị giá cho thẻ này</p>
+                      </div>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+
+              {acceptOffers && (
+                <FormField
+                  control={form.control}
+                  name="minOfferPercent"
+                  render={({ field }) => (
+                    <FormItem className="rounded-lg border border-amber-500/10 bg-background/50 p-4 space-y-3 animate-in slide-in-from-top-2 duration-200">
+                      <div className="flex items-center justify-between">
+                        <FormLabel className="text-sm font-medium">Không nhận offer dưới</FormLabel>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-2xl font-bold text-amber-500 tabular-nums">{field.value || 0}</span>
+                          <span className="text-sm font-semibold text-muted-foreground">%</span>
+                        </div>
+                      </div>
+                      <FormControl>
+                        <Slider
+                          min={0}
+                          max={99}
+                          step={5}
+                          defaultValue={[field.value || 0]}
+                          onValueChange={(value) => field.onChange(value[0])}
+                          className="[&_[role=slider]]:bg-amber-500 [&_[role=slider]]:border-amber-600"
+                        />
+                      </FormControl>
+                      <div className="flex justify-between text-[11px] text-muted-foreground">
+                        <span>Nhận mọi offer</span>
+                        <span>Chỉ nhận gần giá gốc</span>
+                      </div>
+                      {watchedPrice && Number(watchedPrice) > 0 && field.value > 0 && (
+                        <p className="text-xs text-amber-500/80 border-t border-amber-500/10 pt-3 mt-1">
+                          💡 Offer tối thiểu: <span className="font-semibold">${(Number(watchedPrice) * (field.value / 100)).toFixed(2)}</span>
+                          {' '}(từ giá gốc ${Number(watchedPrice).toFixed(2)})
+                        </p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
             </div>
           )}
 
