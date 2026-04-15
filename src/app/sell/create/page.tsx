@@ -394,16 +394,24 @@ export default function CreateListingPage() {
         season: resolvedSeason,
         quantity: values.isBundle ? bundleItems.filter(i => i.title.trim()).length : (values.quantity || 1),
         status: 'active',
-        accept_offers: values.acceptOffers || false,
-        min_offer_percent: values.acceptOffers ? (values.minOfferPercent || 0) : 0,
-        is_bundle: values.isBundle || false,
-        bundle_items: values.isBundle
-          ? bundleItems.filter(i => i.title.trim() && i.price && i.price > 0).map(i => ({ title: i.title, price: i.price }))
-          : null,
       };
 
+      // Add offer fields if enabled
+      if (values.acceptOffers) {
+        cardData.accept_offers = true;
+        cardData.min_offer_percent = values.minOfferPercent || 0;
+      }
+
+      // Add bundle fields if enabled
+      if (values.isBundle) {
+        cardData.is_bundle = true;
+        cardData.bundle_items = bundleItems
+          .filter(i => i.title.trim() && i.price && i.price > 0)
+          .map(i => ({ title: i.title, price: i.price }));
+      }
+
       if (values.listingType === 'sale') {
-        cardData.price = values.isBundle ? values.price : values.price;
+        cardData.price = values.price;
       } else if (values.listingType === 'auction') {
         cardData.current_bid = values.startingBid;
         cardData.starting_bid = values.startingBid;
@@ -414,11 +422,16 @@ export default function CreateListingPage() {
         cardData.razz_entries = 0;
       }
 
-      await supabase.from('cards').insert(cardData);
+      const { error: insertError } = await supabase.from('cards').insert(cardData);
+
+      if (insertError) {
+        console.error('Supabase insert error:', insertError);
+        throw new Error(insertError.message);
+      }
 
       toast({
-        title: "Listing Created!",
-        description: "Your card is now live on the marketplace.",
+        title: "Đăng bán thành công!",
+        description: "Thẻ của bạn đã được đăng trên chợ.",
       });
 
       router.push('/buy');
@@ -949,7 +962,7 @@ export default function CreateListingPage() {
                       />
                       <Input
                         type="number"
-                        placeholder="Giá ($)"
+                        placeholder="Giá (VNĐ)"
                         value={item.price ?? ''}
                         onChange={(e) => updateBundleItem(item.id, 'price', e.target.value)}
                         className="text-sm"
@@ -975,8 +988,8 @@ export default function CreateListingPage() {
                   <span className="text-muted-foreground">Giá hiển thị trên chợ:</span>
                   <span className="font-semibold text-violet-500">
                     {bundlePriceRange.min === bundlePriceRange.max
-                      ? `$${bundlePriceRange.min.toFixed(2)}`
-                      : `$${bundlePriceRange.min.toFixed(2)} — $${bundlePriceRange.max.toFixed(2)}`
+                      ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(bundlePriceRange.min)
+                      : `${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(bundlePriceRange.min)} — ${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(bundlePriceRange.max)}`
                     }
                   </span>
                 </div>
@@ -985,7 +998,7 @@ export default function CreateListingPage() {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Tổng giá trị:</span>
                   <span className="font-bold text-green-500">
-                    ${bundlePriceRange.total.toFixed(2)}
+                    {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(bundlePriceRange.total)}
                   </span>
                 </div>
               )}
@@ -1015,7 +1028,7 @@ export default function CreateListingPage() {
                   </FormControl>
                   {isBundle && bundlePriceRange && (
                     <p className="text-xs text-muted-foreground">
-                      💡 Tổng giá từng thẻ: ${bundlePriceRange.total.toFixed(2)} — Bạn có thể đặt giá bán cả bộ thấp hơn hoặc cao hơn
+                      💡 Tổng giá từng thẻ: {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(bundlePriceRange.total)} — Bạn có thể đặt giá bán cả bộ thấp hơn hoặc cao hơn
                     </p>
                   )}
                   <FormMessage />
@@ -1141,8 +1154,8 @@ export default function CreateListingPage() {
                       </div>
                       {watchedPrice && Number(watchedPrice) > 0 && field.value > 0 && (
                         <p className="text-xs text-amber-500/80 border-t border-amber-500/10 pt-3 mt-1">
-                          💡 Offer tối thiểu: <span className="font-semibold">${(Number(watchedPrice) * (field.value / 100)).toFixed(2)}</span>
-                          {' '}(từ giá gốc ${Number(watchedPrice).toFixed(2)})
+                          💡 Offer tối thiểu: <span className="font-semibold">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(watchedPrice) * (field.value / 100))}</span>
+                          {' '}(từ giá gốc {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(watchedPrice))})
                         </p>
                       )}
                       <FormMessage />
