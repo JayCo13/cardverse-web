@@ -3,7 +3,7 @@
 
 const GHN_BASE_URL = process.env.GHN_ENV === 'production'
     ? 'https://online-gateway.ghn.vn/shiip/public-api/v2'
-    : 'https://dev-online-gateway.ghn.vn/shiip/public-api';
+    : 'https://dev-online-gateway.ghn.vn/shiip/public-api/v2';
 const GHN_TOKEN = process.env.GHN_TOKEN || '';
 const GHN_SHOP_ID = process.env.GHN_SHOP_ID || '';
 
