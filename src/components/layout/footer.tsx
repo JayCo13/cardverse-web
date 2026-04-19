@@ -45,15 +45,14 @@ export function Footer() {
             </div>
           </div>
           <div className="flex flex-col gap-3">
-            <h3 className="font-semibold">{t('footer_marketplace')}</h3>
-            <Link href="/buy" className="text-muted-foreground hover:text-foreground transition-colors">{t('nav_buy')}</Link>
-            <Link href="/sell" className="text-muted-foreground hover:text-foreground transition-colors">{t('nav_sell')}</Link>
-            <Link href="/bid" className="text-muted-foreground hover:text-foreground transition-colors">{t('nav_bid')}</Link>
-            <Link href="/razz" className="text-muted-foreground hover:text-foreground transition-colors">{t('nav_razz')}</Link>
+            <h3 className="font-semibold">Card Database</h3>
+            <Link href="/pokemon" className="text-muted-foreground hover:text-foreground transition-colors">Pokémon</Link>
+            <Link href="/soccer" className="text-muted-foreground hover:text-foreground transition-colors">Soccer</Link>
+            <Link href="/onepiece" className="text-muted-foreground hover:text-foreground transition-colors">One Piece</Link>
+            <Link href="/collection" className="text-muted-foreground hover:text-foreground transition-colors">Portfolio</Link>
           </div>
           <div className="flex flex-col gap-3">
             <h3 className="font-semibold">{t('footer_community')}</h3>
-            <Link href="/forum" className="text-muted-foreground hover:text-foreground transition-colors">{t('nav_forum')}</Link>
             <span onClick={handleComingSoon} className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors">{t('footer_blog')}</span>
             <span onClick={handleComingSoon} className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors">{t('footer_events')}</span>
           </div>

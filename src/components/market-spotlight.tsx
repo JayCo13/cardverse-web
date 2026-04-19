@@ -199,10 +199,22 @@ export function MarketSpotlight() {
     const [scanResults, setScanResults] = useState<ScoredResult[]>([]);
     const [showScanResultsDialog, setShowScanResultsDialog] = useState(false);
     const [scanStatus, setScanStatus] = useState<string>('');
+    const [scannedImagePreview, setScannedImagePreview] = useState<string | null>(null);
+    // Soccer AI prediction (for displaying in results dialog)
+    const [soccerAiPrediction, setSoccerAiPrediction] = useState<{
+        player_name?: string; brand?: string; set_name?: string;
+        autograph?: string; patch?: string; numbering?: string;
+    } | null>(null);
 
     // Collection state
     const [isAddingToCollection, setIsAddingToCollection] = useState(false);
     const [addedToCollection, setAddedToCollection] = useState(false);
+
+    // TCGCSV Category IDs (from mobile app's app_constants.dart)
+    const CATEGORY_POKEMON_ENGLISH = 3;
+    const CATEGORY_POKEMON_JAPANESE = 85;
+    const CATEGORY_ONEPIECE = 68;
+    const CATEGORY_SOCCER = 99;
 
     // Add to collection function using Supabase client
     const addToCollection = async () => {
@@ -224,7 +236,7 @@ export function MarketSpotlight() {
                     market_price: product.market_price,
                     low_price: product.low_price,
                     high_price: product.high_price,
-                    category: 'Pokemon',
+                    category: product.category_id === CATEGORY_SOCCER ? 'Soccer' : (product.category_id === CATEGORY_ONEPIECE ? 'One Piece' : 'Pokemon'),
                     rarity: product.rarity,
                 });
 
@@ -247,9 +259,6 @@ export function MarketSpotlight() {
         }
     };
 
-    // TCGCSV Category IDs (from mobile app's app_constants.dart)
-    const CATEGORY_POKEMON_ENGLISH = 3;
-    const CATEGORY_POKEMON_JAPANESE = 85;
 
     // Search Pokemon cards directly from database (like mobile app's tcg_repository.dart)
     // Supports both English and Japanese cards
@@ -551,6 +560,7 @@ export function MarketSpotlight() {
 
         try {
             setIsScannedResult(true);
+            setScannedImagePreview(`data:image/jpeg;base64,${imageBase64}`);
 
             // ─── WARM-UP: Ensure Edge Function is ready before scanning ───
             if (!isWarmRef.current) {
@@ -680,8 +690,8 @@ export function MarketSpotlight() {
 
             // Automatic card detection: reject non-card images without charging credits
             if (identification.is_card === false) {
-                console.log('AI detected image is NOT a Pokemon card');
-                setSearchError(t('scan_not_a_card') || 'This doesn\'t look like a Pokemon card. Please upload a clear photo of a Pokemon trading card.');
+                console.log('AI detected image is NOT a trading card');
+                setSearchError(t('scan_not_a_card') || 'This doesn\'t look like a trading card. Please upload a clear photo of a trading card.');
                 return;
             }
 
@@ -718,12 +728,198 @@ export function MarketSpotlight() {
             // UNIFIED SCORING: Gather candidates from multiple search strategies,
             // then score them ALL together for the best possible match
             console.log(`Category from AI: "${identification.category}" -> using TCG search`);
+
+            // ─── Determine which category IDs to search ───
+            const isOnePiece = category === 'onepiece' || category === 'one piece';
+            const isSoccer = category === 'soccer';
+
+            // ═══════════════════════════════════════════════════════
+            // SOCCER: Hybrid real-time eBay search (no DB views)
+            // ═══════════════════════════════════════════════════════
+            if (isSoccer) {
+                console.log('Step 3: Soccer card detected — calling identify-soccer-card for detailed analysis...');
+                setScanStatus('Analyzing soccer card details...');
+
+                try {
+                    // ── Call the specialized Soccer AI for precise fields ──
+                    let soccerDetails: any = null;
+                    try {
+                        const soccerAiResponse = await fetch(
+                            `${SUPABASE_URL}/functions/v1/identify-soccer-card`,
+                            {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+                                },
+                                body: JSON.stringify({ image: imageBase64 }),
+                            }
+                        );
+                        if (soccerAiResponse.ok) {
+                            soccerDetails = await soccerAiResponse.json();
+                            console.log('Soccer AI details:', soccerDetails);
+                            setSoccerAiPrediction(soccerDetails);
+                        } else {
+                            console.warn('Soccer AI failed, falling back to generic identification');
+                        }
+                    } catch (soccerAiErr) {
+                        console.warn('Soccer AI error, falling back:', soccerAiErr);
+                    }
+
+                    // ── Build precise eBay query from Soccer AI result ──
+                    const playerName = soccerDetails?.player_name || cardName;
+                    const brand = soccerDetails?.brand || null;
+                    const setName = soccerDetails?.set_name || setCode || null;
+                    const numbering = soccerDetails?.numbering || null;
+                    const isAuto = soccerDetails?.autograph === 'auto';
+                    const isPatch = soccerDetails?.patch === 'patch';
+
+                    // Build a targeted query
+                    const queryParts: string[] = [];
+                    if (playerName) queryParts.push(playerName);
+                    if (brand) queryParts.push(brand);
+                    if (setName) queryParts.push(setName);
+                    if (isAuto) queryParts.push('auto');
+                    if (isPatch) queryParts.push('patch');
+                    if (numbering) queryParts.push(`/${numbering}`);
+                    queryParts.push('-pack -box -lot -break -case');
+
+                    const searchQuery = queryParts.join(' ');
+                    console.log(`Soccer eBay query: "${searchQuery}"`);
+                    setScanStatus('Searching eBay for matching soccer cards...');
+
+                    const ebayResponse = await fetch(
+                        `${SUPABASE_URL}/functions/v1/search-ebay`,
+                        {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+                            },
+                            body: JSON.stringify({ query: searchQuery, soldOnly: false }),
+                        }
+                    );
+
+                    if (!ebayResponse.ok) throw new Error(`eBay search failed: ${ebayResponse.status}`);
+                    const ebayData = await ebayResponse.json();
+                    const ebayItems = ebayData.items || [];
+
+                    console.log(`eBay returned ${ebayItems.length} items`);
+
+                    if (ebayItems.length === 0) {
+                        setSearchError(`No cards found for "${cardName}"`);
+                        return;
+                    }
+
+                    // Filter out non-single items and items with $0 price
+                    const validItems = ebayItems.filter((item: any) => {
+                        const price = parseFloat(item.price);
+                        if (price <= 0) return false;
+                        const titleLower = item.title?.toLowerCase() || '';
+                        const excludes = ['mystery', 'pack', 'box', 'lot', 'bundle', 'break', 'case', 'hobby', 'blaster'];
+                        return !excludes.some((ex: string) => titleLower.includes(ex));
+                    });
+
+                    if (validItems.length === 0) {
+                        setSearchError(`No matching cards found for "${cardName}"`);
+                        return;
+                    }
+
+                    // Calculate median price
+                    const prices = validItems.map((item: any) => parseFloat(item.price)).sort((a: number, b: number) => a - b);
+                    const medianPrice = prices.length % 2 === 0
+                        ? (prices[prices.length / 2 - 1] + prices[prices.length / 2]) / 2
+                        : prices[Math.floor(prices.length / 2)];
+                    const lowPrice = prices[0];
+                    const highPrice = prices[prices.length - 1];
+
+                    console.log(`Soccer prices — Median: $${medianPrice.toFixed(2)}, Low: $${lowPrice}, High: $${highPrice}, Samples: ${prices.length}`);
+
+                    // Score eBay items by relevance to AI identification
+                    const scoredEbayItems: ScoredResult[] = validItems.slice(0, 10).map((item: any, idx: number) => {
+                        let score = 0;
+                        const titleLower = (item.title || '').toLowerCase();
+                        const aiNameLower = (cardName || '').toLowerCase();
+
+                        // Name match scoring
+                        if (aiNameLower && titleLower.includes(aiNameLower)) {
+                            score += 40;
+                        } else if (aiNameLower) {
+                            const words = aiNameLower.split(/\s+/).filter((w: string) => w.length >= 3);
+                            const matchedWords = words.filter((w: string) => titleLower.includes(w));
+                            score += Math.round((matchedWords.length / Math.max(words.length, 1)) * 30);
+                        }
+
+                        // Set/brand match
+                        if (setCode && titleLower.includes(setCode.toLowerCase())) {
+                            score += 20;
+                        }
+
+                        // Price proximity to median (closer = higher score)
+                        const itemPrice = parseFloat(item.price);
+                        const priceDelta = Math.abs(itemPrice - medianPrice) / medianPrice;
+                        if (priceDelta < 0.2) score += 15;
+                        else if (priceDelta < 0.5) score += 10;
+                        else if (priceDelta < 1) score += 5;
+
+                        // Boost first results (eBay relevance)
+                        score += Math.max(0, 10 - idx * 2);
+
+                        // Convert eBay item to TcgcsvProduct-like structure
+                        const fakeProduct: TcgcsvProduct = {
+                            product_id: idx + 90000, // fake ID
+                            name: item.title || 'Unknown Soccer Card',
+                            image_url: item.imageUrl ? item.imageUrl.replace(/s-l\d+\./, 's-l800.') : null,
+                            set_name: setCode || null,
+                            rarity: null,
+                            market_price: medianPrice,
+                            low_price: lowPrice,
+                            mid_price: medianPrice,
+                            high_price: highPrice,
+                            number: cardNumber || null,
+                            tcgplayer_url: item.ebayLink || null,
+                            extended_data: JSON.stringify({ player: cardName, ebay_url: item.ebayLink, condition: item.condition }),
+                            category_id: CATEGORY_SOCCER,
+                        };
+
+                        return { product: fakeProduct, score, breakdown: `name:${score}` };
+                    });
+
+                    // Sort by score
+                    scoredEbayItems.sort((a, b) => b.score - a.score);
+                    const top5 = scoredEbayItems.slice(0, 5);
+
+                    // Override the best match's price to median
+                    const bestMatch = top5[0];
+                    bestMatch.product.market_price = medianPrice;
+                    bestMatch.product.low_price = lowPrice;
+                    bestMatch.product.high_price = highPrice;
+
+                    console.log(`✅ Soccer best match: ${bestMatch.product.name} (score: ${bestMatch.score})`);
+
+                    await displayProductResult(bestMatch.product);
+                    setScanResults(top5);
+                    setShowScanResultsDialog(true);
+
+                    if (shouldIncrementUsage) {
+                        await incrementUsage();
+                    }
+                } catch (soccerErr) {
+                    console.error('Soccer search error:', soccerErr);
+                    setSearchError(`Failed to search soccer cards. Please try again.`);
+                }
+            } else {
+            // ═══════════════════════════════════════════════════════
+            // POKEMON / ONE PIECE: Standard TCGCSV DB search
+            // ═══════════════════════════════════════════════════════
             {
-                console.log('Step 3: Searching TCGCSV database for TCG card...');
+                console.log(`Step 3: Searching database for ${isOnePiece ? 'One Piece' : 'TCG'} card...`);
 
                 const isJapanese = language?.toLowerCase() === 'japanese';
-                const categoryId = isJapanese ? CATEGORY_POKEMON_JAPANESE : CATEGORY_POKEMON_ENGLISH;
-                const altCategoryId = isJapanese ? CATEGORY_POKEMON_ENGLISH : CATEGORY_POKEMON_JAPANESE;
+                let categoryId = CATEGORY_POKEMON_ENGLISH;
+                let altCategoryId = CATEGORY_POKEMON_JAPANESE;
+                if (isOnePiece) { categoryId = CATEGORY_ONEPIECE; altCategoryId = CATEGORY_ONEPIECE; }
+                else if (isJapanese) { categoryId = CATEGORY_POKEMON_JAPANESE; altCategoryId = CATEGORY_POKEMON_ENGLISH; }
 
                 // Each fetch gets its OWN timeout — no shared AbortController
                 // This prevents one slow request from killing all other searches
@@ -753,8 +949,9 @@ export function MarketSpotlight() {
                     }
                 };
 
-                const buildNameUrl = (name: string, catId: number, limit = 10) =>
-                    `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&name=ilike.*${encodeURIComponent(name)}*&market_price=not.is.null&order=market_price.desc&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=${limit}`;
+                const buildNameUrl = (name: string, catId: number, limit = 10) => {
+                    return `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&name=ilike.*${encodeURIComponent(name)}*&market_price=not.is.null&order=market_price.desc&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=${limit}`;
+                };
 
                 // --- REUSABLE SCORING FUNCTION ---
                 type ScoredProduct = { product: TcgcsvProduct; score: number; breakdown: string };
@@ -929,7 +1126,9 @@ export function MarketSpotlight() {
                         const numberClauses = altFormatsArray.map((n: string) => `number.eq.${encodeURIComponent(n)}`).join(',');
                         console.log(`TCGCSV: Number search: ${altFormatsArray.join(', ')}`);
                         await searchBothCategories(
-                            (catId) => `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&or=(${numberClauses})&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=20`,
+                            (catId) => {
+                                return `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&or=(${numberClauses})&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=20`;
+                            },
                             'number'
                         );
                     }
@@ -1061,6 +1260,7 @@ export function MarketSpotlight() {
                     }
                 }
             }
+            }
 
         } catch (error: unknown) {
             console.error('Error processing scanned image:', error);
@@ -1137,6 +1337,14 @@ export function MarketSpotlight() {
         setSearchError(null);
 
         // Fetch price history using REST API (faster than Supabase client)
+        // Skip for Soccer — no chart data available (real-time eBay search)
+        if (featured.category_id === CATEGORY_SOCCER) {
+            console.log('[PRICE HISTORY] Skipped for Soccer (real-time eBay data)');
+            setChartData([]);
+            setFullChartData([]);
+            setPriceChange(null);
+            setUseMockData(false);
+        } else {
         try {
             const historyUrl = `${SUPABASE_URL}/rest/v1/tcgcsv_price_history?product_id=eq.${featured.product_id}&order=recorded_at.asc&select=recorded_at,market_price&limit=365`;
             const historyResponse = await fetch(historyUrl, {
@@ -1228,6 +1436,7 @@ export function MarketSpotlight() {
             setPriceChange(0);
             setUseMockData(true);
         }
+        } // end else (non-soccer chart fetch)
     };
 
     /**
@@ -1679,7 +1888,7 @@ export function MarketSpotlight() {
                                 className="hidden"
                             />
                             {/* Smart Scan Status Badge — adapts to subscription type */}
-                            {user && (() => {
+                            {(() => {
                                 // Calculate hours left for Day Pass
                                 const hoursLeft = scanSub?.expires_at
                                     ? Math.max(0, Math.ceil((new Date(scanSub.expires_at).getTime() - Date.now()) / (1000 * 60 * 60)))
@@ -1789,6 +1998,68 @@ export function MarketSpotlight() {
                                 </DialogTitle>
                                 <p className="text-xs text-white/50 mt-1">{t('scan_top_matches') || 'Top matches from scan — tap to select'}</p>
                             </DialogHeader>
+
+                            {/* Scanned Image Preview */}
+                            {scannedImagePreview && (
+                                <div className="px-5 pt-3 pb-2 flex items-center gap-3 border-b border-white/5">
+                                    <div className="relative w-16 h-[85px] flex-shrink-0 rounded-lg overflow-hidden border-2 border-orange-500/40 bg-black/60 shadow-[0_0_10px_rgba(249,115,22,0.15)]">
+                                        <img
+                                            src={scannedImagePreview}
+                                            alt="Your scanned card"
+                                            className="w-full h-full object-contain p-0.5"
+                                        />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold text-orange-400 uppercase tracking-wider">Your Scan</p>
+                                        <p className="text-[11px] text-white/40 mt-0.5">Select the best match below</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Soccer AI Prediction Banner */}
+                            {soccerAiPrediction && scanResults[0]?.product?.category_id === CATEGORY_SOCCER && (
+                                <div className="mx-5 mt-2 mb-1 space-y-2">
+                                    <div className="p-3 rounded-xl bg-green-500/10 border border-green-500/20">
+                                        <p className="text-[11px] font-bold text-green-400 uppercase tracking-wider mb-1.5">⚽ AI Prediction</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {soccerAiPrediction.player_name && (
+                                                <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-white/10 text-white border border-white/10">
+                                                    {soccerAiPrediction.player_name}
+                                                </span>
+                                            )}
+                                            {soccerAiPrediction.brand && (
+                                                <span className="px-2 py-0.5 text-[11px] rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/20">
+                                                    {soccerAiPrediction.brand}
+                                                </span>
+                                            )}
+                                            {soccerAiPrediction.set_name && (
+                                                <span className="px-2 py-0.5 text-[11px] rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/20">
+                                                    {soccerAiPrediction.set_name}
+                                                </span>
+                                            )}
+                                            {soccerAiPrediction.autograph === 'auto' && (
+                                                <span className="px-2 py-0.5 text-[11px] rounded-full bg-yellow-500/15 text-yellow-300 border border-yellow-500/20">
+                                                    ✍️ Auto
+                                                </span>
+                                            )}
+                                            {soccerAiPrediction.patch === 'patch' && (
+                                                <span className="px-2 py-0.5 text-[11px] rounded-full bg-red-500/15 text-red-300 border border-red-500/20">
+                                                    🧵 Patch
+                                                </span>
+                                            )}
+                                            {soccerAiPrediction.numbering && (
+                                                <span className="px-2 py-0.5 text-[11px] rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/20">
+                                                    /{soccerAiPrediction.numbering}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] text-white/30 leading-relaxed px-1">
+                                        ⚠️ Soccer card matching is approximate. If results don&apos;t match, try searching eBay directly with the predicted name above.
+                                    </p>
+                                </div>
+                            )}
+
                             <div className="px-3 py-3 max-h-[60vh] overflow-y-auto space-y-2">
                                 {scanResults.map((result, index) => (
                                     <button
@@ -1862,6 +2133,14 @@ export function MarketSpotlight() {
                                             ) : result.product.category_id === 3 ? (
                                                 <span className="px-2 py-1 text-[10px] font-bold tracking-wider rounded border bg-blue-500/10 border-blue-500/30 text-blue-400">
                                                     EN
+                                                </span>
+                                            ) : result.product.category_id === 68 ? (
+                                                <span className="px-2 py-1 text-[10px] font-bold tracking-wider rounded border bg-rose-500/10 border-rose-500/30 text-rose-400">
+                                                    OP
+                                                </span>
+                                            ) : result.product.category_id === CATEGORY_SOCCER ? (
+                                                <span className="px-2 py-1 text-[10px] font-bold tracking-wider rounded border bg-green-500/10 border-green-500/30 text-green-400">
+                                                    ⚽
                                                 </span>
                                             ) : (
                                                 <span className="px-2 py-1 text-[10px] font-bold tracking-wider rounded border bg-zinc-500/10 border-zinc-500/30 text-zinc-400">
@@ -2067,8 +2346,8 @@ export function MarketSpotlight() {
                                     )}
                                 </Button>
 
-                                {/* View PSA Button - Only for Pokemon */}
-                                {(product.category_id === 3 || product.category_id === 85) && (
+                                {/* View PSA Button - For Pokemon and One Piece (disabled for Soccer) */}
+                                {(product.category_id === 3 || product.category_id === 85 || product.category_id === 68) && (
                                     <Dialog>
                                         <DialogTrigger asChild>
                                             <Button

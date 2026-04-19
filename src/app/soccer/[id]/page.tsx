@@ -17,6 +17,8 @@ import {
 import Image from "next/image";
 import { useCurrency } from "@/contexts/currency-context";
 import { useLocalization } from "@/context/localization-context";
+import { useSubscription } from "@/hooks/useSubscription";
+import { Lock } from "lucide-react";
 
 interface SoccerCardData {
     id: string;
@@ -46,6 +48,8 @@ export default function SoccerCardDetailsPage() {
 
     const { formatPrice, currency } = useCurrency();
     const { t } = useLocalization();
+    const { scanType } = useSubscription();
+    const isVip = scanType !== 'free';
 
     // Get grader color
     const getGraderColor = (grader: string | null) => {
@@ -258,19 +262,29 @@ export default function SoccerCardDetailsPage() {
                             </Card>
 
                             <div className="flex flex-col gap-3 justify-center">
-                                <Button
-                                    onClick={addToCollection}
-                                    disabled={isAddingToCollection}
-                                    className={`w-full gap-2 h-14 text-lg transition-all ${addedToCollection ? 'bg-green-600 hover:bg-green-700' : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500'}`}
-                                >
-                                    {isAddingToCollection ? (
-                                        <><Loader2 className="h-5 w-5 animate-spin" /> {t('adding_to_collection')}</>
-                                    ) : addedToCollection ? (
-                                        <><Check className="h-5 w-5" /> {t('added_to_collection')}</>
-                                    ) : (
-                                        <><Plus className="h-5 w-5" /> {t('add_to_collection')}</>
-                                    )}
-                                </Button>
+                                {isVip ? (
+                                    <Button
+                                        onClick={addToCollection}
+                                        disabled={isAddingToCollection}
+                                        className={`w-full gap-2 h-14 text-lg transition-all ${addedToCollection ? 'bg-green-600 hover:bg-green-700' : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500'}`}
+                                    >
+                                        {isAddingToCollection ? (
+                                            <><Loader2 className="h-5 w-5 animate-spin" /> {t('adding_to_collection')}</>
+                                        ) : addedToCollection ? (
+                                            <><Check className="h-5 w-5" /> {t('added_to_collection')}</>
+                                        ) : (
+                                            <><Plus className="h-5 w-5" /> {t('add_to_collection')}</>
+                                        )}
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        disabled
+                                        className="w-full gap-2 h-14 text-lg bg-white/5 border border-white/10 text-white/40 cursor-not-allowed"
+                                    >
+                                        <Lock className="h-5 w-5" />
+                                        VIP Only — Save to Collection
+                                    </Button>
+                                )}
                                 
                                 <Button
                                     onClick={handleViewOnEbay}

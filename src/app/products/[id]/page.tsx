@@ -21,6 +21,8 @@ import {
 import { useCurrency } from "@/contexts/currency-context";
 import { useLocalization } from "@/context/localization-context";
 import { PSAGradedPrices } from "@/components/psa-graded-prices";
+import { useSubscription } from "@/hooks/useSubscription";
+import { Lock, Crown } from "lucide-react";
 
 interface ProductCard {
     product_id: number;
@@ -58,8 +60,9 @@ export default function ProductDetailsPage() {
     const [isAddingToCollection, setIsAddingToCollection] = useState(false);
     const [addedToCollection, setAddedToCollection] = useState(false);
 
-    // Use centralized currency formatting
     const { formatPrice } = useCurrency();
+    const { scanType } = useSubscription();
+    const isVip = scanType !== 'free';
 
     const addToCollection = async () => {
         if (!user) {
@@ -254,19 +257,29 @@ export default function ProductDetailsPage() {
                                 )}
                             </div>
 
-                            <Button
-                                onClick={addToCollection}
-                                disabled={isAddingToCollection}
-                                className={`mt-4 w-full gap-2 transition-all ${addedToCollection ? 'bg-green-600 hover:bg-green-700' : ''}`}
-                            >
-                                {isAddingToCollection ? (
-                                    <><Loader2 className="h-4 w-4 animate-spin" /> {t('adding_to_collection')}</>
-                                ) : addedToCollection ? (
-                                    <><Check className="h-4 w-4" /> {t('added_to_collection')}</>
-                                ) : (
-                                    <><Plus className="h-4 w-4" /> {t('add_to_collection')}</>
-                                )}
-                            </Button>
+                            {isVip ? (
+                                <Button
+                                    onClick={addToCollection}
+                                    disabled={isAddingToCollection}
+                                    className={`mt-4 w-full gap-2 transition-all ${addedToCollection ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                                >
+                                    {isAddingToCollection ? (
+                                        <><Loader2 className="h-4 w-4 animate-spin" /> {t('adding_to_collection')}</>
+                                    ) : addedToCollection ? (
+                                        <><Check className="h-4 w-4" /> {t('added_to_collection')}</>
+                                    ) : (
+                                        <><Plus className="h-4 w-4" /> {t('add_to_collection')}</>
+                                    )}
+                                </Button>
+                            ) : (
+                                <Button
+                                    disabled
+                                    className="mt-4 w-full gap-2 bg-white/5 border border-white/10 text-white/40 cursor-not-allowed"
+                                >
+                                    <Lock className="h-4 w-4" />
+                                    VIP Only — Save to Collection
+                                </Button>
+                            )}
                         </div>
                     </div>
 
@@ -300,39 +313,81 @@ export default function ProductDetailsPage() {
                             </Card>
                         </div>
 
-                        <Card className="border-white/10">
-                            <CardHeader className="pb-2">
-                                <div className="flex items-center justify-between">
+                        {isVip ? (
+                            <Card className="border-white/10">
+                                <CardHeader className="pb-2">
+                                    <div className="flex items-center justify-between">
+                                        <CardTitle className="text-lg flex items-center gap-2">
+                                            <TrendingUp className="h-5 w-5 text-primary" /> {t('price_history_title')}
+                                        </CardTitle>
+                                        <div className={`flex items-center gap-1 text-sm font-medium ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                            {priceChange >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+                                            {priceChange >= 0 ? '+' : ''}{priceChange}%
+                                            <span className="text-muted-foreground font-normal">30d</span>
+                                        </div>
+                                    </div>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="h-64">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <AreaChart data={priceHistory}>
+                                                <defs>
+                                                    <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="5%" stopColor={priceChange >= 0 ? "#22c55e" : "#ef4444"} stopOpacity={0.3} />
+                                                        <stop offset="95%" stopColor={priceChange >= 0 ? "#22c55e" : "#ef4444"} stopOpacity={0} />
+                                                    </linearGradient>
+                                                </defs>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
+                                                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#888', fontSize: 12 }} />
+                                                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#888', fontSize: 12 }} tickFormatter={(v) => `$${v}`} width={60} />
+                                                <Tooltip contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #333', borderRadius: '8px' }} formatter={(v: number) => [`$${v.toFixed(2)}`, 'Price']} />
+                                                <Area type="monotone" dataKey="price" stroke={priceChange >= 0 ? "#22c55e" : "#ef4444"} strokeWidth={2} fill="url(#priceGradient)" />
+                                            </AreaChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ) : (
+                            <Card className="border-white/10 relative overflow-hidden">
+                                <CardHeader className="pb-2">
                                     <CardTitle className="text-lg flex items-center gap-2">
                                         <TrendingUp className="h-5 w-5 text-primary" /> {t('price_history_title')}
                                     </CardTitle>
-                                    <div className={`flex items-center gap-1 text-sm font-medium ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                        {priceChange >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                                        {priceChange >= 0 ? '+' : ''}{priceChange}%
-                                        <span className="text-muted-foreground font-normal">30d</span>
-                                    </div>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="h-64">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <AreaChart data={priceHistory}>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="h-64 relative flex items-center justify-center overflow-hidden">
+                                        {/* Fake chart lines */}
+                                        <svg className="absolute inset-0 w-full h-full opacity-10" viewBox="0 0 400 200">
+                                            <path d="M0,150 Q50,80 100,120 T200,90 T300,110 T400,60" stroke="#22c55e" strokeWidth="2" fill="none" />
+                                            <path d="M0,150 Q50,80 100,120 T200,90 T300,110 T400,60 V200 H0 Z" fill="url(#fakeGradDetail)" />
                                             <defs>
-                                                <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
-                                                    <stop offset="5%" stopColor={priceChange >= 0 ? "#22c55e" : "#ef4444"} stopOpacity={0.3} />
-                                                    <stop offset="95%" stopColor={priceChange >= 0 ? "#22c55e" : "#ef4444"} stopOpacity={0} />
+                                                <linearGradient id="fakeGradDetail" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="0%" stopColor="#22c55e" stopOpacity="0.3" />
+                                                    <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
                                                 </linearGradient>
                                             </defs>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
-                                            <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#888', fontSize: 12 }} />
-                                            <YAxis axisLine={false} tickLine={false} tick={{ fill: '#888', fontSize: 12 }} tickFormatter={(v) => `$${v}`} width={60} />
-                                            <Tooltip contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #333', borderRadius: '8px' }} formatter={(v: number) => [`$${v.toFixed(2)}`, 'Price']} />
-                                            <Area type="monotone" dataKey="price" stroke={priceChange >= 0 ? "#22c55e" : "#ef4444"} strokeWidth={2} fill="url(#priceGradient)" />
-                                        </AreaChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            </CardContent>
-                        </Card>
+                                        </svg>
+                                        <div className="absolute inset-0 backdrop-blur-md bg-black/40" />
+                                        <div className="relative z-10 flex flex-col items-center gap-3 text-center px-6">
+                                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500/20 to-amber-500/10 border border-orange-500/30 flex items-center justify-center">
+                                                <Lock className="w-6 h-6 text-orange-400" />
+                                            </div>
+                                            <h3 className="text-white font-bold text-base">Price History & Analytics</h3>
+                                            <p className="text-white/40 text-sm max-w-[250px]">
+                                                Upgrade to VIP to unlock price charts and trend analysis.
+                                            </p>
+                                            <Button
+                                                onClick={() => window.location.href = '/pricing'}
+                                                className="mt-1 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold px-5 py-2 rounded-full text-sm"
+                                            >
+                                                <Crown className="w-4 h-4 mr-1.5" />
+                                                Upgrade to VIP
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
 
                         {/* PSA Graded Prices */}
                         {card.product_id && (

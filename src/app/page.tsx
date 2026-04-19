@@ -8,7 +8,7 @@ import { MarketTicker } from "@/components/market-ticker";
 const MarketSpotlight = dynamic(() => import("@/components/market-spotlight").then(mod => ({ default: mod.MarketSpotlight })), {
   loading: () => <div className="w-full h-[500px] flex items-center justify-center"><div className="w-full max-w-7xl mx-auto px-4"><Skeleton className="h-[400px] w-full rounded-2xl" /></div></div>
 });
-import { FeatureTeasers } from "@/components/feature-teasers";
+
 import { SupportSection } from "@/components/support-section";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, Suspense } from "react";
@@ -69,10 +69,6 @@ export default function Home() {
           <div className="stars-bg"></div>
           <div className="stars-md"></div>
           <div className="stars-sm"></div>
-
-          <div style={{ animationDelay: '300ms' }} className="animate-fade-in-up relative z-10">
-            <FeatureTeasers />
-          </div>
 
           <div style={{ animationDelay: '400ms' }} className="animate-fade-in-up relative z-10">
             <PopularCards />

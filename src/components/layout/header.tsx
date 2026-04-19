@@ -107,28 +107,11 @@ export function Header() {
               {user.email}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/profile" className="flex items-center gap-2">
-                <CircleUser className="h-4 w-4" />
-                {t('profile')}
-              </Link>
-            </DropdownMenuItem>
+
             <DropdownMenuItem asChild>
               <Link href="/collection" className="flex items-center gap-2">
                 <Diamond className="h-4 w-4" />
-                Collection
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/orders" className="flex items-center gap-2">
-                <Package className="h-4 w-4" />
-                Đơn hàng
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/wallet" className="flex items-center gap-2">
-                <Wallet className="h-4 w-4" />
-                Ví
+                Portfolio
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
@@ -218,39 +201,7 @@ export function Header() {
                   >
                     <Image src="/assets/logo-verse.png" width={140} height={35} alt="CardVerse logo" />
                   </Link>
-                  <div className="relative group">
-                    <Link href="/buy" className="text-muted-foreground hover:text-foreground flex items-center gap-1">
-                      {t('nav_buy')}
-                    </Link>
-                  </div>
-                  <div className="relative group">
-                    <Link href="/sell" className="text-muted-foreground hover:text-foreground flex items-center gap-1">
-                      {t('nav_sell')}
-                    </Link>
-                  </div>
-                  <div className="relative group">
-                    <Link href="/wallet" className="text-muted-foreground hover:text-foreground flex items-center gap-1">
-                      💰 Ví
-                    </Link>
-                  </div>
-                  <div className="relative group">
-                    <Link href="/orders" className="text-muted-foreground hover:text-foreground flex items-center gap-1">
-                      📦 Đơn hàng
-                    </Link>
-                  </div>
-                  <span onClick={handleComingSoon} className="cursor-pointer text-muted-foreground hover:text-foreground flex items-center gap-1">
-                    {t('nav_bid')}
-                    <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('beta')}</Badge>
-                  </span>
-                  <span onClick={handleComingSoon} className="cursor-pointer text-muted-foreground hover:text-foreground flex items-center gap-1">
-                    {t('nav_razz')}
-                    <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('soon')}</Badge>
-                  </span>
-                  <span onClick={handleComingSoon} className="cursor-pointer text-muted-foreground hover:text-foreground flex items-center gap-1">
-                    {t('nav_forum')}
-                    <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('soon')}</Badge>
-                  </span>
-                  <div className="border-t my-2 pt-2 grid gap-4">
+                  <div className="my-2 pt-2 grid gap-4">
                     <Link href="/pokemon" className="text-muted-foreground hover:text-foreground flex items-center gap-2">
                       <Image src="/assets/pok-logo.png" width={24} height={24} alt="Pokemon" className="object-contain" />
                       {t('nav_pokemon')}
@@ -279,50 +230,9 @@ export function Header() {
               </div>
             </div>
           </div>
-          <div className="flex-1 flex items-center justify-center">
-            <nav className="hidden md:flex flex-row items-center gap-6 lg:gap-8 whitespace-nowrap text-sm font-medium">
-              <div className="relative">
-                <Link
-                  href="/buy"
-                  className="text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors"
-                >
-                  {t('nav_buy')}
-                </Link>
-              </div>
-              <div className="relative">
-                <Link
-                  href="/sell"
-                  className="text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors"
-                >
-                  {t('nav_sell')}
-                </Link>
-              </div>
-              <span
-                onClick={handleComingSoon}
-                className="cursor-pointer text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors"
-              >
-                {t('nav_bid')}
-                <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('beta')}</Badge>
-              </span>
-              <span
-                onClick={handleComingSoon}
-                className="cursor-pointer text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors"
-              >
-                {t('nav_razz')}
-                <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('soon')}</Badge>
-              </span>
-              <span
-                onClick={handleComingSoon}
-                className="cursor-pointer text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors"
-              >
-                {t('nav_forum')}
-                <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('soon')}</Badge>
-              </span>
-            </nav>
-          </div>
-
-          <div className="flex-1 flex w-full items-center gap-4 md:ml-auto justify-end hidden md:flex">
-            <nav className="hidden md:flex items-center gap-2 text-sm font-medium">
+          {/* Desktop Left Nav */}
+          <div className="hidden md:flex flex-1 items-center justify-start">
+            <nav className="flex flex-row items-center gap-2 whitespace-nowrap text-sm font-medium">
               <Link
                 href="/pokemon"
                 prefetch={false}
@@ -357,6 +267,15 @@ export function Header() {
                 <span className="hidden group-hover:block whitespace-nowrap">{t('nav_soccer_price')}</span>
               </Link>
             </nav>
+          </div>
+
+          <div className="flex-1 flex w-full items-center gap-4 md:ml-auto justify-end hidden md:flex">
+            <Link href="/pricing" passHref>
+              <Button variant="outline" className="border-orange-500/50 text-orange-500 hover:bg-orange-500/10 flex items-center gap-2">
+                <Zap className="h-4 w-4" />
+                <span className="whitespace-nowrap">{t('buy_more_scans')}</span>
+              </Button>
+            </Link>
             <Button onClick={handleScanClick} className="bg-orange-500 hover:bg-orange-600 text-white font-bold whitespace-nowrap px-6">
               {t('scan_pokemon_card')}
             </Button>

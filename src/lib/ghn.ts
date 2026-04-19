@@ -2,10 +2,13 @@
 // Docs: https://api.ghn.vn/home/docs/detail
 
 const GHN_BASE_URL = process.env.GHN_ENV === 'production'
-    ? 'https://online-gateway.ghn.vn/shiip/public-api/v2'
-    : 'https://dev-online-gateway.ghn.vn/shiip/public-api/v2';
+    ? 'https://online-gateway.ghn.vn/shiip/public-api'
+    : 'https://dev-online-gateway.ghn.vn/shiip/public-api';
 const GHN_TOKEN = process.env.GHN_TOKEN || '';
 const GHN_SHOP_ID = process.env.GHN_SHOP_ID || '';
+
+// Shipping order endpoints need /v2 on both environments
+const GHN_V2_BASE_URL = `${GHN_BASE_URL}/v2`;
 
 // Default dimensions for trading cards (envelope)
 export const CARD_DEFAULTS = {
@@ -121,8 +124,9 @@ async function ghnFetch<T>(endpoint: string, options: {
     method?: 'GET' | 'POST';
     body?: Record<string, unknown>;
     shopId?: string;
+    useV2?: boolean;
 } = {}): Promise<T> {
-    const { method = 'POST', body, shopId = GHN_SHOP_ID } = options;
+    const { method = 'POST', body, shopId = GHN_SHOP_ID, useV2 = false } = options;
 
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -133,7 +137,8 @@ async function ghnFetch<T>(endpoint: string, options: {
         headers['ShopId'] = shopId;
     }
 
-    const res = await fetch(`${GHN_BASE_URL}${endpoint}`, {
+    const baseUrl = useV2 ? GHN_V2_BASE_URL : GHN_BASE_URL;
+    const res = await fetch(`${baseUrl}${endpoint}`, {
         method,
         headers,
         ...(body ? { body: JSON.stringify(body) } : {}),
@@ -170,6 +175,7 @@ export async function getWards(districtId: number): Promise<GHNWard[]> {
 
 export async function getAvailableServices(fromDistrictId: number, toDistrictId: number): Promise<GHNService[]> {
     return ghnFetch<GHNService[]>('/shipping-order/available-services', {
+        useV2: true,
         body: {
             shop_id: parseInt(GHN_SHOP_ID),
             from_district: fromDistrictId,
@@ -220,7 +226,7 @@ export async function calculateShippingFee(params: {
         body.service_id = serviceId;
     }
 
-    return ghnFetch<GHNShippingFee>('/shipping-order/fee', { body });
+    return ghnFetch<GHNShippingFee>('/shipping-order/fee', { useV2: true, body });
 }
 
 // ── Order Management ──
@@ -233,6 +239,7 @@ export async function createShippingOrder(params: CreateOrderParams): Promise<{
     trans_type: string;
 }> {
     return ghnFetch('/shipping-order/create', {
+        useV2: true,
         body: {
             payment_type_id: 1, // 1 = seller pays shipping fee upfront (we already collected from buyer)
             note: params.note || 'Thẻ bài - Xử lý cẩn thận',
@@ -269,12 +276,14 @@ export async function createShippingOrder(params: CreateOrderParams): Promise<{
 
 export async function getOrderInfo(orderCode: string): Promise<GHNOrderInfo> {
     return ghnFetch<GHNOrderInfo>('/shipping-order/detail', {
+        useV2: true,
         body: { order_code: orderCode },
     });
 }
 
 export async function cancelOrder(orderCodes: string[]): Promise<unknown> {
     return ghnFetch('/switch-status/cancel', {
+        useV2: true,
         body: { order_codes: orderCodes },
     });
 }

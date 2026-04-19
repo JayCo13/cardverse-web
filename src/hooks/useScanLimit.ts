@@ -4,12 +4,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { getSupabaseClient } from '@/lib/supabase/client';
 import { useUser } from '@/lib/supabase';
 import { useSubscription } from '@/hooks/useSubscription';
+import { getCachedDeviceFingerprint } from '@/lib/device-fingerprint';
 
-const ANONYMOUS_LIMIT = 2;
+const ANONYMOUS_LIMIT = 5;
 const FREE_USER_LIMIT = 5;
 const DAY_PASS_LIMIT = 500; // Fair use
 const VIP_PRO_MONTHLY_LIMIT = 3000; // Fair use
-const LOCAL_STORAGE_KEY = 'cardverse_scan_usage';
+const LOCAL_STORAGE_KEY = 'cardverse_scan_usage'; // Keep as fast cache
 
 interface ScanUsage {
     scanCount: number;
@@ -71,6 +72,7 @@ export function useScanLimit(): UseScanLimitReturn {
             const today = getTodayString();
 
             if (user) {
+                // ── Logged-in user: use user_scan_usage table ──
                 try {
                     const supabase = getSupabaseClient();
                     const { data, error } = await supabase
@@ -99,24 +101,62 @@ export function useScanLimit(): UseScanLimitReturn {
                     setScansUsed(0);
                 }
             } else {
+                // ── Anonymous user: use device fingerprint + server-side tracking ──
+                // Step 1: Show cached count instantly (avoids UI flash)
                 try {
                     const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
                     if (stored) {
                         const usage: ScanUsage = JSON.parse(stored);
                         if (usage.lastResetDate === today) {
                             setScansUsed(usage.scanCount);
+                        }
+                    }
+                } catch { /* ignore localStorage errors in incognito */ }
+
+                // Step 2: Fetch real count from server (source of truth)
+                try {
+                    const deviceId = getCachedDeviceFingerprint();
+                    const supabase = getSupabaseClient();
+
+                    const { data, error } = await supabase
+                        .from('device_scan_usage')
+                        .select('scan_count, last_reset_date')
+                        .eq('device_id', deviceId)
+                        .single();
+
+                    if (error && error.code !== 'PGRST116') {
+                        console.error('Error fetching device scan usage:', error);
+                    }
+
+                    if (data) {
+                        const record = data as { scan_count: number; last_reset_date: string };
+                        const lastReset = record.last_reset_date; // Already a date string
+                        if (lastReset === today) {
+                            setScansUsed(record.scan_count);
+                            // Sync localStorage cache
+                            try {
+                                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+                                    scanCount: record.scan_count,
+                                    lastResetDate: today,
+                                }));
+                            } catch { /* ignore */ }
                         } else {
+                            // New day — reset
                             setScansUsed(0);
-                            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
-                                scanCount: 0,
-                                lastResetDate: today,
-                            }));
+                            try {
+                                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+                                    scanCount: 0,
+                                    lastResetDate: today,
+                                }));
+                            } catch { /* ignore */ }
                         }
                     } else {
+                        // No record yet — fresh device
                         setScansUsed(0);
                     }
-                } catch {
-                    setScansUsed(0);
+                } catch (err) {
+                    console.error('Error loading device scan usage:', err);
+                    // Fall back to localStorage value (already set above)
                 }
             }
 
@@ -132,6 +172,7 @@ export function useScanLimit(): UseScanLimitReturn {
         const newCount = scansUsed + 1;
 
         if (user) {
+            // ── Logged-in user: same as before ──
             try {
                 const supabase = getSupabaseClient();
 
@@ -189,14 +230,39 @@ export function useScanLimit(): UseScanLimitReturn {
                 console.error('Error incrementing scan usage:', err);
             }
         } else {
+            // ── Anonymous user: upsert to device_scan_usage (server-side) ──
             try {
-                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
-                    scanCount: newCount,
-                    lastResetDate: today,
-                }));
+                const deviceId = getCachedDeviceFingerprint();
+                const supabase = getSupabaseClient();
+
+                const { error } = await supabase
+                    .from('device_scan_usage')
+                    .upsert({
+                        device_id: deviceId,
+                        scan_count: newCount,
+                        last_reset_date: today,
+                        updated_at: new Date().toISOString(),
+                    }, {
+                        onConflict: 'device_id',
+                    });
+
+                if (error) {
+                    console.error('Error updating device scan usage:', error);
+                } else {
+                    setScansUsed(newCount);
+                }
+
+                // Also sync to localStorage as cache
+                try {
+                    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+                        scanCount: newCount,
+                        lastResetDate: today,
+                    }));
+                } catch { /* ignore */ }
+            } catch (err) {
+                console.error('Error incrementing device scan usage:', err);
+                // Fallback: at least update UI
                 setScansUsed(newCount);
-            } catch {
-                console.error('Error saving scan usage to localStorage');
             }
         }
     }, [user, scansUsed, scanType, subscription, refreshSub]);

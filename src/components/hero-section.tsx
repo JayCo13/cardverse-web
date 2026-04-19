@@ -103,7 +103,7 @@ export function HeroSection() {
               <p>{t('hero_subtitle_5')}</p>
             </div>
             <div className="pt-4 flex gap-4">
-              <Link href="/forum">
+              <Link href="/collection">
                 <Button
                   size="lg"
                   className="bg-orange-500 hover:bg-orange-600 text-white border-none font-bold text-lg px-8 py-6 h-auto shadow-[0_0_15px_rgba(249,115,22,0.5)] hover:shadow-[0_0_25px_rgba(249,115,22,0.7)] transition-all duration-300 transform hover:scale-105 rounded-full"

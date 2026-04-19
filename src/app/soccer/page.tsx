@@ -12,15 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { SpinnerGap, SoccerBall, MagnifyingGlass, ArrowsClockwise, ArrowSquareOut, Camera, UploadSimple, Crop as CropIcon, X } from "@phosphor-icons/react";
+import { SpinnerGap, SoccerBall, MagnifyingGlass, ArrowsClockwise, ArrowSquareOut } from "@phosphor-icons/react";
 import Image from "next/image";
-import ReactCrop, { type Crop, centerCrop, makeAspectCrop } from 'react-image-crop';
-import 'react-image-crop/dist/ReactCrop.css';
 import { useCurrency } from "@/contexts/currency-context";
-import { useScanLimit } from "@/hooks/useScanLimit";
-import { ScanLimitModal } from "@/components/scan-limit-modal";
-import { useUser } from "@/lib/supabase/auth-provider";
-import { useToast } from "@/hooks/use-toast";
 
 interface EbayItem {
     itemId: string;
@@ -35,12 +29,6 @@ export default function SoccerPage() {
     const searchParams = useSearchParams();
     const { t } = useLocalization();
     const { currency, formatPrice } = useCurrency();
-    const { user } = useUser();
-    const { toast } = useToast();
-
-    // Scan limit tracking
-    const { canScan, scansUsed, scansLimit, scansRemaining, resetTime, incrementUsage, isLoading: scanLimitLoading } = useScanLimit();
-    const [showLimitModal, setShowLimitModal] = useState(false);
 
     // Initialize state from URL params
     const [cards, setCards] = useState<SoccerCard[]>([]);
@@ -53,17 +41,8 @@ export default function SoccerPage() {
     const [searchMode, setSearchMode] = useState<"database" | "ebay">(searchParams.get('mode') as "database" | "ebay" || "database");
     const [originalQuery, setOriginalQuery] = useState<string | null>(null);
 
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
-
     // Ref for aborting pending eBay requests
     const abortControllerRef = useRef<AbortController | null>(null);
-    const galleryInputRef = useRef<HTMLInputElement>(null);
-    const cropImgRef = useRef<HTMLImageElement>(null);
-
-    // Image crop state
-    const [showCropModal, setShowCropModal] = useState(false);
-    const [cropImageSrc, setCropImageSrc] = useState<string>('');
-    const [crop, setCrop] = useState<Crop>();
 
     // Update URL when filters change
     useEffect(() => {
@@ -142,7 +121,6 @@ export default function SoccerPage() {
     // Helper to get high-res eBay image
     const getHighResImageUrl = (url: string) => {
         if (!url) return "";
-        // Replace suffix like s-l225, s-l300, etc. with s-l1600 (max res)
         return url.replace(/s-l\d+\./, 's-l1600.');
     };
 
@@ -162,7 +140,6 @@ export default function SoccerPage() {
                 const cachedData = sessionStorage.getItem(cacheKey);
                 if (cachedData) {
                     const { results, timestamp } = JSON.parse(cachedData);
-                    // Use cache if less than 5 minutes old
                     if (Date.now() - timestamp < 5 * 60 * 1000 && results.length > 0) {
                         console.log('Using cached eBay results for:', termToSearch);
                         setEbayResults(results);
@@ -192,8 +169,7 @@ export default function SoccerPage() {
             const supabase = getSupabaseClient();
             let effectiveTerm = termToSearch;
 
-            // Check for non-ASCII characters (Vietnamese, Japanese, etc.) to trigger translation
-            // This regex matches any character that is NOT standard ASCII (A-Z, a-z, 0-9, common punctuation)
+            // Check for non-ASCII characters to trigger translation
             const hasNonAscii = /[^\x00-\x7F]/.test(termToSearch);
 
             if (hasNonAscii) {
@@ -224,7 +200,6 @@ export default function SoccerPage() {
                 .limit(60);
 
             if (!error && localResults && localResults.length > 0) {
-                // Found local results - use them
                 setCards(localResults);
                 setEbayResults([]);
                 setSearchMode("database");
@@ -258,21 +233,17 @@ export default function SoccerPage() {
                     });
 
                     if (validItems.length > 0) {
-                        break; // Found results, stop searching
+                        break;
                     }
                 }
 
-                // If no results, drop the last word to widen the search (results matching fewer words)
                 searchWords.pop();
-
-                // Add a small delay to avoid hitting rate limits instantly on multiple retries
                 await new Promise(resolve => setTimeout(resolve, 300));
             }
 
             setEbayResults(validItems);
             setCards([]);
 
-            // Cache the eBay results if any were found
             if (validItems.length > 0) {
                 try {
                     sessionStorage.setItem(cacheKey, JSON.stringify({
@@ -296,7 +267,6 @@ export default function SoccerPage() {
     };
 
     const handleEbayCardClick = (item: EbayItem) => {
-        // Convert EbayItem to SoccerCard format for details page
         const price = parseFloat(item.price?.value || "0");
         const highResImage = item.image?.imageUrl ? getHighResImageUrl(item.image.imageUrl) : null;
 
@@ -306,11 +276,11 @@ export default function SoccerPage() {
             image_url: highResImage,
             price: price,
             category: 'Soccer',
-            year: null, // AI or parsing could perform better here but null is safe
-            grader: null, // Could parse from title if desired
+            year: null,
+            grader: null,
             grade: null,
             set_name: null,
-            player_name: null, // Title parsing could extract this
+            player_name: null,
             ebay_id: item.itemId
         };
 
@@ -318,145 +288,16 @@ export default function SoccerPage() {
         router.push(`/soccer/${item.itemId}`);
     };
 
-    // Helper function to process scanned image with AI
-    const processScannedCard = async (base64String: string) => {
-        setIsAnalyzing(true);
-        try {
-            const supabase = getSupabaseClient();
-            const { data, error } = await supabase.functions.invoke('identify-soccer-card', {
-                body: { image: base64String },
-            });
-
-            if (error) throw error;
-            if (data?.error) throw new Error(data.error);
-
-            // Construct precise search query matching the required format: "Francesco Totti auto patch /10 Topps Dynasty 2025"
-            // We use "/10" instead of "03/10" because eBay listings rarely include the exact stamp number.
-            const queryParts = [];
-
-            if (data.player_name && data.player_name !== "Unknown") queryParts.push(data.player_name);
-            if (data.autograph) queryParts.push(data.autograph);
-            if (data.patch) queryParts.push(data.patch);
-            // Prefix the extracted denominator with a slash (e.g., "/10") which is the standard eBay meta-tag.
-            if (data.numbering) queryParts.push(`/${data.numbering}`);
-            if (data.brand) queryParts.push(data.brand);
-            if (data.set_name && data.set_name !== data.brand) queryParts.push(data.set_name);
-            if (data.year) queryParts.push(data.year);
-
-            // The resulting query is exactly what eBay needs
-            const query = queryParts.join(" ");
-            console.log("AI Identified:", data);
-            console.log("Search Query:", query);
-
-            setSearchTerm(query);
-            handleSmartSearch(query);
-        } catch (error) {
-            console.error("Identification failed:", error);
-            toast({
-                title: t('scan_failed_title') || "Scan Failed",
-                description: t('scan_failed_desc') || "Could not identify card. Please try again.",
-                variant: "destructive",
-            });
-        } finally {
-            setIsAnalyzing(false);
-        }
-    };
-
-    // Handle gallery upload (opens crop modal)
-    const handleGallerySelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const base64 = reader.result as string;
-            setCropImageSrc(base64);
-            setShowCropModal(true);
-            setCrop(undefined);
-        };
-        reader.readAsDataURL(file);
-        e.target.value = '';
-    };
-
-    // Initialize crop when image loads
-    const onCropImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
-        const { width, height } = e.currentTarget;
-        const newCrop = centerCrop(
-            makeAspectCrop({ unit: '%', width: 80 }, 3 / 4, width, height),
-            width,
-            height
-        );
-        setCrop(newCrop);
-    }, []);
-
-    // Complete crop and process
-    const handleCropComplete = useCallback(async () => {
-        if (!crop || !cropImgRef.current) return;
-
-        const image = cropImgRef.current;
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
-        const scaleX = image.naturalWidth / image.width;
-        const scaleY = image.naturalHeight / image.height;
-
-        const cropX = (crop.x / 100) * image.width * scaleX;
-        const cropY = (crop.y / 100) * image.height * scaleY;
-        const cropWidth = (crop.width / 100) * image.width * scaleX;
-        const cropHeight = (crop.height / 100) * image.height * scaleY;
-
-        canvas.width = cropWidth;
-        canvas.height = cropHeight;
-
-        ctx.drawImage(image, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
-
-        const croppedBase64 = canvas.toDataURL('image/jpeg', 0.95);
-        const base64Data = croppedBase64.split(',')[1];
-
-        setShowCropModal(false);
-        setCropImageSrc('');
-
-        if (!canScan) {
-            setShowLimitModal(true);
-            return;
-        }
-
-        await incrementUsage();
-        processScannedCard(base64Data);
-    }, [crop, canScan, incrementUsage]);
-
-    // Use original without cropping
-    const handleUseOriginal = useCallback(async () => {
-        if (!cropImageSrc) return;
-
-        const base64Data = cropImageSrc.split(',')[1];
-
-        setShowCropModal(false);
-        setCropImageSrc('');
-
-        if (!canScan) {
-            setShowLimitModal(true);
-            return;
-        }
-
-        await incrementUsage();
-        processScannedCard(base64Data);
-    }, [cropImageSrc, canScan, incrementUsage]);
-
     useEffect(() => {
-        // If there's a search term in URL, check cache first to avoid re-searching
         const initialQuery = searchParams.get('q');
         const mode = searchParams.get('mode');
 
         if (initialQuery) {
-            // Check for cached eBay results to prevent re-fetching
             const cacheKey = `soccer_ebay_${initialQuery.toLowerCase().trim()}`;
             try {
                 const cachedData = sessionStorage.getItem(cacheKey);
                 if (cachedData && mode === 'ebay') {
                     const { results, timestamp } = JSON.parse(cachedData);
-                    // Use cache if less than 5 minutes old
                     if (Date.now() - timestamp < 5 * 60 * 1000 && results.length > 0) {
                         console.log('Restoring cached eBay results on initial load for:', initialQuery);
                         setEbayResults(results);
@@ -470,7 +311,6 @@ export default function SoccerPage() {
                 console.error('Cache read error on load:', e);
             }
 
-            // Cache miss or stale - run the search
             handleSmartSearch(initialQuery);
         } else {
             fetchCards();
@@ -514,7 +354,7 @@ export default function SoccerPage() {
                         </div>
                     </div>
 
-                    {/* Search and Filters */}
+                    {/* Search and Filters — DB search only, no AI scan */}
                     <div className="flex flex-col sm:flex-row gap-4 mb-8">
                         <form onSubmit={handleSearch} className="flex-1 flex gap-2">
                             <div className="relative flex-1">
@@ -526,27 +366,7 @@ export default function SoccerPage() {
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     className="pl-10 bg-white/5 border-white/10 h-12"
                                 />
-                                <input
-                                    type="file"
-                                    ref={galleryInputRef}
-                                    onChange={handleGallerySelect}
-                                    accept="image/*"
-                                    className="hidden"
-                                />
                             </div>
-                            <Button
-                                type="button"
-                                onClick={() => galleryInputRef.current?.click()}
-                                disabled={isAnalyzing}
-                                className="h-12 w-12 px-0 bg-white/10 hover:bg-white/20 border border-white/10"
-                                title="Scan Image"
-                            >
-                                {isAnalyzing ? (
-                                    <SpinnerGap className="w-5 h-5 animate-spin" />
-                                ) : (
-                                    <UploadSimple className="w-5 h-5 text-white/70" />
-                                )}
-                            </Button>
                             <Button type="submit" className="h-12 px-6 bg-green-600 hover:bg-green-700 font-bold tracking-wide">
                                 {t('search_button')}
                             </Button>
@@ -608,7 +428,7 @@ export default function SoccerPage() {
                                 <p>{ebayResults.length} eBay listings found</p>
                                 {originalQuery && (
                                     <span className="text-xs bg-white/10 px-2 py-1 rounded-full text-green-400">
-                                        Translated from "{originalQuery}"
+                                        Translated from &quot;{originalQuery}&quot;
                                     </span>
                                 )}
                             </div>
@@ -664,94 +484,6 @@ export default function SoccerPage() {
                 </div>
             </main>
             <Footer />
-
-            {/* Image Crop Modal */}
-            {showCropModal && (
-                <div className="fixed inset-0 z-[60] bg-black/95 flex flex-col items-center justify-center p-4 overflow-hidden">
-                    {/* Header */}
-                    <div className="w-full max-w-2xl flex items-center justify-between mb-4">
-                        <h3 className="text-white text-lg font-semibold flex items-center gap-2">
-                            <CropIcon className="w-5 h-5" />
-                            {t('crop_image_title')}
-                        </h3>
-                        <Button
-                            onClick={() => {
-                                setShowCropModal(false);
-                                setCropImageSrc('');
-                            }}
-                            variant="ghost"
-                            className="text-white hover:bg-white/10 rounded-full h-10 w-10 p-0"
-                        >
-                            <X className="w-5 h-5" />
-                        </Button>
-                    </div>
-
-                    {/* Crop area */}
-                    <div className="relative w-full max-w-2xl flex-1 flex items-center justify-center overflow-hidden rounded-lg">
-                        <ReactCrop
-                            crop={crop}
-                            onChange={(_, percentCrop) => setCrop(percentCrop)}
-                            aspect={3 / 4}
-                            minWidth={50}
-                            className="max-h-full"
-                        >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                                ref={cropImgRef}
-                                src={cropImageSrc}
-                                alt="Crop preview"
-                                onLoad={onCropImageLoad}
-                                style={{ maxHeight: '60vh', maxWidth: '100%', objectFit: 'contain' }}
-                            />
-                        </ReactCrop>
-                    </div>
-
-                    {/* Instructions */}
-                    <p className="text-gray-400 text-sm mt-4 text-center">
-                        {t('crop_image_instructions')}
-                    </p>
-
-                    {/* Actions */}
-                    <div className="flex flex-wrap gap-3 mt-6 justify-center">
-                        <Button
-                            onClick={() => {
-                                setShowCropModal(false);
-                                setCropImageSrc('');
-                            }}
-                            variant="outline"
-                            className="bg-transparent border-white/20 text-white hover:bg-white/10"
-                        >
-                            {t('crop_cancel')}
-                        </Button>
-                        <Button
-                            onClick={handleUseOriginal}
-                            variant="outline"
-                            className="bg-transparent border-blue-500/50 text-blue-400 hover:bg-blue-500/10"
-                        >
-                            <Camera className="w-4 h-4 mr-2" />
-                            {t('crop_use_original')}
-                        </Button>
-                        <Button
-                            onClick={handleCropComplete}
-                            className="bg-green-600 hover:bg-green-700 text-white"
-                            disabled={!crop}
-                        >
-                            <CropIcon className="w-4 h-4 mr-2" />
-                            {t('crop_scan_cropped')}
-                        </Button>
-                    </div>
-                </div>
-            )}
-
-            {/* Scan Limit Modal */}
-            <ScanLimitModal
-                isOpen={showLimitModal}
-                onClose={() => setShowLimitModal(false)}
-                resetTime={resetTime}
-                scansUsed={scansUsed}
-                scansLimit={scansLimit}
-                isAnonymous={!user}
-            />
         </div>
     );
 }

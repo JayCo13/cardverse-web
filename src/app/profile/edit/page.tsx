@@ -15,7 +15,7 @@ import { User, Camera, Save, ArrowLeft, Lock, Crown, MapPin, Activity, Zap, Truc
 import Image from "next/image";
 import Link from "next/link";
 import { useAuthModal } from "@/components/auth-modal";
-import { AddressPicker, type AddressData } from "@/components/address-picker";
+
 import { useToast } from "@/hooks/use-toast";
 
 export default function EditProfilePage() {
@@ -36,11 +36,7 @@ export default function EditProfilePage() {
     const [address, setAddress] = useState("");
     const [city, setCity] = useState("");
     
-    // Shipping address (GHN structured)
-    const [shippingAddress, setShippingAddress] = useState<AddressData | null>(null);
-    const [shippingPhone, setShippingPhone] = useState("");
-    const [isShippingSaving, setIsShippingSaving] = useState(false);
-    const [shippingSuccess, setShippingSuccess] = useState(false);
+
 
     // VIP
     const [scanUsage, setScanUsage] = useState<any>(null);
@@ -65,19 +61,7 @@ export default function EditProfilePage() {
             setCity(profile.city || "");
             setProfileImageUrl(profile.profile_image_url || "");
 
-            // Pre-populate shipping address if exists
-            const p = profile as any;
-            if (p.address_district_id) {
-                setShippingAddress({
-                    provinceId: p.address_province_id || 0,
-                    provinceName: p.address_province_name || '',
-                    districtId: p.address_district_id || 0,
-                    districtName: p.address_district_name || '',
-                    wardCode: p.address_ward_code || '',
-                    wardName: p.address_ward_name || '',
-                    detail: p.address_detail || '',
-                });
-            }
+
             
             const fetchAdditionalData = async () => {
                 // Fetch VIP data
@@ -111,8 +95,7 @@ export default function EditProfilePage() {
                     }
                 }
 
-                // Auto-fill shipping phone from best available source
-                setShippingPhone(verifiedPhone || '');
+
 
                 setIsLoading(false);
             };
@@ -224,48 +207,7 @@ export default function EditProfilePage() {
         }
     };
 
-    // Save shipping address
-    const handleSaveShipping = async () => {
-        if (!shippingAddress || !user) return;
-        
-        setIsShippingSaving(true);
-        setShippingSuccess(false);
 
-        try {
-            const { error } = await supabase
-                .from('profiles')
-                .update({
-                    address_province_id: shippingAddress.provinceId,
-                    address_province_name: shippingAddress.provinceName,
-                    address_district_id: shippingAddress.districtId,
-                    address_district_name: shippingAddress.districtName,
-                    address_ward_code: shippingAddress.wardCode,
-                    address_ward_name: shippingAddress.wardName,
-                    address_detail: shippingAddress.detail,
-                    phone_number: shippingPhone,
-                    updated_at: new Date().toISOString(),
-                } as never)
-                .eq('id', user.id);
-
-            if (error) throw error;
-
-            setShippingSuccess(true);
-            await refreshProfile();
-            toast({
-                title: '✅ Đã lưu',
-                description: 'Địa chỉ giao hàng đã được cập nhật thành công.',
-            });
-            setTimeout(() => setShippingSuccess(false), 3000);
-        } catch (err: any) {
-            toast({
-                variant: 'destructive',
-                title: 'Lỗi',
-                description: err.message || 'Không thể lưu địa chỉ',
-            });
-        } finally {
-            setIsShippingSaving(false);
-        }
-    };
 
     // Show login prompt if not logged in
     if (!isUserLoading && !user) {
@@ -297,7 +239,7 @@ export default function EditProfilePage() {
         );
     }
 
-    const hasShippingAddress = !!(profile as any)?.address_district_id;
+
 
     return (
         <>
@@ -324,14 +266,6 @@ export default function EditProfilePage() {
                             <User className="h-4 w-4" />
                             <span className="hidden sm:inline">Hồ sơ cá nhân</span>
                             <span className="sm:hidden">Hồ sơ</span>
-                        </TabsTrigger>
-                        <TabsTrigger value="address" className="flex justify-start gap-3 w-full data-[state=active]:bg-primary/5 data-[state=active]:text-primary border border-transparent data-[state=active]:border-primary/20 py-2.5 px-4 rounded-lg transition-all">
-                            <Truck className="h-4 w-4" />
-                            <span className="hidden sm:inline">Địa chỉ & Giao hàng</span>
-                            <span className="sm:hidden">Địa chỉ</span>
-                            {hasShippingAddress && (
-                                <CheckCircle className="h-3.5 w-3.5 text-green-500 ml-auto" />
-                            )}
                         </TabsTrigger>
                         <TabsTrigger value="vip" className="flex justify-start gap-3 w-full data-[state=active]:bg-primary/5 data-[state=active]:text-primary border border-transparent data-[state=active]:border-primary/20 py-2.5 px-4 rounded-lg transition-all">
                             <Crown className="h-4 w-4" />
@@ -449,98 +383,6 @@ export default function EditProfilePage() {
                             </Card>
                         </TabsContent>
 
-                        {/* ─── 2. ADDRESS & SHIPPING TAB ─── */}
-                        <TabsContent value="address" className="mt-0 outline-none space-y-6">
-                            {/* Shipping Address Card — GHN */}
-                            <Card className="border-blue-500/20">
-                                <CardHeader className="pb-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 rounded-lg bg-blue-500/10">
-                                            <Truck className="h-5 w-5 text-blue-400" />
-                                        </div>
-                                        <div>
-                                            <CardTitle className="text-lg">Địa chỉ giao hàng</CardTitle>
-                                            <CardDescription>
-                                                Địa chỉ dùng để tạo đơn vận chuyển GHN khi bạn mua/bán thẻ trên sàn.
-                                            </CardDescription>
-                                        </div>
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="space-y-5">
-                                    {/* Current saved address display */}
-                                    {hasShippingAddress && (
-                                        <div className="p-4 rounded-xl bg-gradient-to-r from-green-500/5 to-emerald-500/5 border border-green-500/20">
-                                            <div className="flex items-start gap-3">
-                                                <div className="p-1.5 rounded-full bg-green-500/10 mt-0.5">
-                                                    <CheckCircle className="h-4 w-4 text-green-500" />
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-sm font-semibold text-green-500 mb-1">Địa chỉ hiện tại</p>
-                                                    <p className="text-sm text-foreground/80 leading-relaxed">
-                                                        {[(profile as any).address_detail, (profile as any).address_ward_name, (profile as any).address_district_name, (profile as any).address_province_name].filter(Boolean).join(', ')}
-                                                    </p>
-                                                    {profile?.phone_number && (
-                                                        <p className="text-sm text-muted-foreground flex items-center gap-1.5 mt-1.5">
-                                                            <Phone className="h-3.5 w-3.5" /> {profile.phone_number}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Shipping phone */}
-                                    <div className="space-y-2">
-                                        <Label className="text-sm font-medium flex items-center gap-2">
-                                            <Phone className="h-3.5 w-3.5 text-muted-foreground" />
-                                            Số điện thoại nhận/gửi hàng
-                                        </Label>
-                                        <Input
-                                            value={shippingPhone}
-                                            onChange={e => setShippingPhone(e.target.value)}
-                                            placeholder="0901234567"
-                                            className="max-w-sm"
-                                        />
-                                        <p className="text-[11px] text-muted-foreground">
-                                            Shipper sẽ liên hệ số này khi giao/lấy hàng.
-                                        </p>
-                                    </div>
-
-                                    {/* AddressPicker */}
-                                    <div className="space-y-2">
-                                        <AddressPicker
-                                            label="Địa chỉ giao hàng"
-                                            onChange={setShippingAddress}
-                                            value={shippingAddress || undefined}
-                                            detailPlaceholder="Số nhà, tên đường, toà nhà..."
-                                        />
-                                    </div>
-
-                                    {/* Success message */}
-                                    {shippingSuccess && (
-                                        <div className="flex items-center gap-2 text-sm text-green-500 font-medium bg-green-500/5 border border-green-500/20 rounded-lg px-4 py-2.5">
-                                            <CheckCircle className="h-4 w-4" />
-                                            Địa chỉ giao hàng đã được cập nhật thành công!
-                                        </div>
-                                    )}
-
-                                    {/* Save button */}
-                                    <div className="flex justify-end pt-4 border-t border-border">
-                                        <Button
-                                            onClick={handleSaveShipping}
-                                            disabled={!shippingAddress || !shippingPhone || isShippingSaving}
-                                            className="min-w-[160px] bg-blue-600 hover:bg-blue-700"
-                                        >
-                                            {isShippingSaving ? (
-                                                <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Đang lưu...</>
-                                            ) : (
-                                                <><Save className="h-4 w-4 mr-2" /> Lưu địa chỉ giao hàng</>
-                                            )}
-                                        </Button>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </TabsContent>
 
                         {/* ─── 3. VIP TAB ─── */}
                         <TabsContent value="vip" className="mt-0 outline-none">

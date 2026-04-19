@@ -211,10 +211,7 @@ export function PopularCards() {
                     <h3 className="font-bold text-base sm:text-lg mb-1 line-clamp-2 drop-shadow-lg">
                       {card.name}
                     </h3>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] sm:text-xs bg-white/20 backdrop-blur-sm rounded px-2 py-1">
-                        {card.setName?.slice(0, 20)}
-                      </span>
+                    <div className="flex items-center justify-start mt-1">
                       <span className="text-lg sm:text-xl font-bold text-primary drop-shadow-lg">
                         {getDisplayPrice(card)}
                       </span>
