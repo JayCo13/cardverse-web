@@ -6,7 +6,7 @@ import { useUser } from '@/lib/supabase';
 import { useSubscription } from '@/hooks/useSubscription';
 import { getCachedDeviceFingerprint } from '@/lib/device-fingerprint';
 
-const ANONYMOUS_LIMIT = 5;
+const ANONYMOUS_LIMIT = 2;
 const FREE_USER_LIMIT = 5;
 const DAY_PASS_LIMIT = 500; // Fair use
 const VIP_PRO_MONTHLY_LIMIT = 3000; // Fair use
@@ -101,21 +101,13 @@ export function useScanLimit(): UseScanLimitReturn {
                     setScansUsed(0);
                 }
             } else {
-                // ── Anonymous user: use device fingerprint + server-side tracking ──
-                // Step 1: Show cached count instantly (avoids UI flash)
-                try {
-                    const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-                    if (stored) {
-                        const usage: ScanUsage = JSON.parse(stored);
-                        if (usage.lastResetDate === today) {
-                            setScansUsed(usage.scanCount);
-                        }
-                    }
-                } catch { /* ignore localStorage errors in incognito */ }
+                // ── Anonymous user: SERVER is the ONLY source of truth ──
+                // Do NOT show localStorage cache first — it causes stale '5 remaining' in incognito
+                let serverCount: number | null = null;
 
-                // Step 2: Fetch real count from server (source of truth)
                 try {
                     const deviceId = getCachedDeviceFingerprint();
+                    console.log('[ScanLimit] Device fingerprint:', deviceId);
                     const supabase = getSupabaseClient();
 
                     const { data, error } = await supabase
@@ -132,31 +124,46 @@ export function useScanLimit(): UseScanLimitReturn {
                         const record = data as { scan_count: number; last_reset_date: string };
                         const lastReset = record.last_reset_date; // Already a date string
                         if (lastReset === today) {
-                            setScansUsed(record.scan_count);
-                            // Sync localStorage cache
-                            try {
-                                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
-                                    scanCount: record.scan_count,
-                                    lastResetDate: today,
-                                }));
-                            } catch { /* ignore */ }
+                            serverCount = record.scan_count;
                         } else {
                             // New day — reset
-                            setScansUsed(0);
-                            try {
-                                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
-                                    scanCount: 0,
-                                    lastResetDate: today,
-                                }));
-                            } catch { /* ignore */ }
+                            serverCount = 0;
                         }
                     } else {
                         // No record yet — fresh device
-                        setScansUsed(0);
+                        serverCount = 0;
                     }
                 } catch (err) {
                     console.error('Error loading device scan usage:', err);
-                    // Fall back to localStorage value (already set above)
+                }
+
+                // If server responded, use it; otherwise fall back to localStorage cache
+                if (serverCount !== null) {
+                    setScansUsed(serverCount);
+                    // Sync to localStorage for next time
+                    try {
+                        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+                            scanCount: serverCount,
+                            lastResetDate: today,
+                        }));
+                    } catch { /* ignore */ }
+                } else {
+                    // Server failed — try localStorage as last resort
+                    try {
+                        const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+                        if (stored) {
+                            const usage: ScanUsage = JSON.parse(stored);
+                            if (usage.lastResetDate === today) {
+                                setScansUsed(usage.scanCount);
+                            } else {
+                                setScansUsed(0);
+                            }
+                        } else {
+                            setScansUsed(0);
+                        }
+                    } catch {
+                        setScansUsed(0);
+                    }
                 }
             }
 

@@ -131,6 +131,17 @@ export function MarketSpotlight() {
     const [isLoading, setIsLoading] = useState(true);
     const [useMockData, setUseMockData] = useState(false);
     const [isScannedResult, setIsScannedResult] = useState(false);
+    const [hasSelectedCard, setHasSelectedCard] = useState(false);
+
+    // Mockup chart data for default state (gentle upward curve)
+    const MOCKUP_CHART_DATA = React.useMemo(() => [
+        { date: 'Jan', price: 42 }, { date: 'Feb', price: 45 },
+        { date: 'Mar', price: 44 }, { date: 'Apr', price: 48 },
+        { date: 'May', price: 52 }, { date: 'Jun', price: 50 },
+        { date: 'Jul', price: 55 }, { date: 'Aug', price: 58 },
+        { date: 'Sep', price: 56 }, { date: 'Oct', price: 62 },
+        { date: 'Nov', price: 65 }, { date: 'Dec', price: 68 },
+    ], []);
 
     // Filter chart data based on selected timeframe
     const filterChartDataByTimeframe = React.useCallback((data: Array<{ date: string; price: number; dateObj: Date }>, tf: string) => {
@@ -899,6 +910,7 @@ export function MarketSpotlight() {
 
                     await displayProductResult(bestMatch.product);
                     setScanResults(top5);
+                    setHasSelectedCard(false); // Reset to default while modal is open
                     setShowScanResultsDialog(true);
 
                     if (shouldIncrementUsage) {
@@ -965,11 +977,29 @@ export function MarketSpotlight() {
                         score += 30;
                         reasons.push(`num:exact(30)`);
                     } else if (p.number && cardNumber) {
-                        const pNum = p.number.split('/')[0]?.replace(/^0+/, '');
-                        const aiNum = cardNumber.replace(/[^\d/]/g, '').split('/')[0]?.replace(/^0+/, '');
-                        if (pNum && aiNum && pNum === aiNum) {
-                            score += 20;
-                            reasons.push(`num:partial(20)`);
+                        // Handle OP format: compare by stripping prefix
+                        const opDbMatch = p.number.match(/^(OP|ST|EB|P)(\d+)-(\d+)$/i);
+                        const opAiMatch = cardNumber.match(/^(OP|ST|EB|P)\s*-?\s*(\d+)\s*-\s*(\d+)$/i);
+                        if (opDbMatch && opAiMatch) {
+                            // Compare prefix+set and card number separately
+                            if (opDbMatch[1].toUpperCase() === opAiMatch[1].toUpperCase()
+                                && parseInt(opDbMatch[2]) === parseInt(opAiMatch[2])
+                                && parseInt(opDbMatch[3]) === parseInt(opAiMatch[3])) {
+                                score += 30;
+                                reasons.push(`num:op_exact(30)`);
+                            } else if (parseInt(opDbMatch[3]) === parseInt(opAiMatch[3])) {
+                                // Same card number, different set
+                                score += 10;
+                                reasons.push(`num:op_cardonly(10)`);
+                            }
+                        } else {
+                            // Pokemon fallback: strip non-digits, compare collector number
+                            const pNum = p.number.split('/')[0]?.replace(/^0+/, '');
+                            const aiNum = cardNumber.replace(/[^\d/]/g, '').split('/')[0]?.replace(/^0+/, '');
+                            if (pNum && aiNum && pNum === aiNum) {
+                                score += 20;
+                                reasons.push(`num:partial(20)`);
+                            }
                         }
                     }
 
@@ -1062,33 +1092,59 @@ export function MarketSpotlight() {
                     // Build number format variations
                     let altFormatsArray: string[] = [];
                     if (cardNumber) {
-                        let cleanNumber = cardNumber.replace(/[^\d/]/g, '').trim();
-                        if (!cleanNumber.includes('/') && /^\d+$/.test(cleanNumber) && cleanNumber.length >= 4 && cleanNumber.length % 2 === 0) {
-                            const midPoint = Math.floor(cleanNumber.length / 2);
-                            cleanNumber = cleanNumber.substring(0, midPoint) + '/' + cleanNumber.substring(midPoint);
-                        }
+                        const altFormats = new Set<string>();
 
-                        const parts = cleanNumber.split('/');
-                        const altFormats = new Set<string>([cleanNumber]);
+                        // ═══ One Piece / ST / EB format: "OP15-118", "ST09-001", "EB02-052" ═══
+                        const opMatch = cardNumber.match(/^(OP|ST|EB|P)\s*-?\s*(\d+)\s*-\s*(\d+)$/i);
+                        if (opMatch && isOnePiece) {
+                            const prefix = opMatch[1].toUpperCase();
+                            const setNum = opMatch[2];
+                            const cardNum = parseInt(opMatch[3], 10);
 
-                        if (parts.length === 2) {
-                            const collectorInt = parseInt(parts[0], 10);
-                            const setTotalInt = parseInt(parts[1], 10);
-
-                            const collectorVariations = [
-                                collectorInt.toString(),
-                                collectorInt.toString().padStart(2, '0'),
-                                collectorInt.toString().padStart(3, '0'),
-                            ];
-                            const setTotalVariations = [
-                                setTotalInt.toString(),
-                                setTotalInt.toString().padStart(2, '0'),
-                                setTotalInt.toString().padStart(3, '0'),
+                            // Generate variations: OP15-118, OP15-118, with different zero-padding
+                            const cardNumVariations = [
+                                cardNum.toString(),
+                                cardNum.toString().padStart(2, '0'),
+                                cardNum.toString().padStart(3, '0'),
                             ];
 
-                            for (const col of collectorVariations) {
-                                for (const total of setTotalVariations) {
-                                    altFormats.add(col + '/' + total);
+                            for (const cn of cardNumVariations) {
+                                altFormats.add(`${prefix}${setNum}-${cn}`);
+                            }
+
+                            // Also add the original as-is
+                            altFormats.add(cardNumber.trim());
+                            console.log(`OP number formats: ${Array.from(altFormats).join(', ')}`);
+                        } else {
+                            // ═══ Pokémon format: "114/086", "4/102" ═══
+                            let cleanNumber = cardNumber.replace(/[^\d/]/g, '').trim();
+                            if (!cleanNumber.includes('/') && /^\d+$/.test(cleanNumber) && cleanNumber.length >= 4 && cleanNumber.length % 2 === 0) {
+                                const midPoint = Math.floor(cleanNumber.length / 2);
+                                cleanNumber = cleanNumber.substring(0, midPoint) + '/' + cleanNumber.substring(midPoint);
+                            }
+
+                            const parts = cleanNumber.split('/');
+                            altFormats.add(cleanNumber);
+
+                            if (parts.length === 2) {
+                                const collectorInt = parseInt(parts[0], 10);
+                                const setTotalInt = parseInt(parts[1], 10);
+
+                                const collectorVariations = [
+                                    collectorInt.toString(),
+                                    collectorInt.toString().padStart(2, '0'),
+                                    collectorInt.toString().padStart(3, '0'),
+                                ];
+                                const setTotalVariations = [
+                                    setTotalInt.toString(),
+                                    setTotalInt.toString().padStart(2, '0'),
+                                    setTotalInt.toString().padStart(3, '0'),
+                                ];
+
+                                for (const col of collectorVariations) {
+                                    for (const total of setTotalVariations) {
+                                        altFormats.add(col + '/' + total);
+                                    }
                                 }
                             }
                         }
@@ -1207,19 +1263,31 @@ export function MarketSpotlight() {
                     // Rebuild altFormatsArray for scoring (same logic as in runSearch)
                     let scoringFormats: string[] = [];
                     if (cardNumber) {
-                        let cleanNumber = cardNumber.replace(/[^\d/]/g, '').trim();
-                        if (!cleanNumber.includes('/') && /^\d+$/.test(cleanNumber) && cleanNumber.length >= 4 && cleanNumber.length % 2 === 0) {
-                            const midPoint = Math.floor(cleanNumber.length / 2);
-                            cleanNumber = cleanNumber.substring(0, midPoint) + '/' + cleanNumber.substring(midPoint);
-                        }
-                        const parts = cleanNumber.split('/');
-                        const formats = new Set<string>([cleanNumber]);
-                        if (parts.length === 2) {
-                            const col = parseInt(parts[0], 10);
-                            const total = parseInt(parts[1], 10);
-                            for (const c of [col.toString(), col.toString().padStart(2, '0'), col.toString().padStart(3, '0')]) {
-                                for (const t of [total.toString(), total.toString().padStart(2, '0'), total.toString().padStart(3, '0')]) {
-                                    formats.add(c + '/' + t);
+                        const formats = new Set<string>();
+                        const opMatch = cardNumber.match(/^(OP|ST|EB|P)\s*-?\s*(\d+)\s*-\s*(\d+)$/i);
+                        if (opMatch && isOnePiece) {
+                            const prefix = opMatch[1].toUpperCase();
+                            const setNum = opMatch[2];
+                            const cardNum = parseInt(opMatch[3], 10);
+                            for (const cn of [cardNum.toString(), cardNum.toString().padStart(2, '0'), cardNum.toString().padStart(3, '0')]) {
+                                formats.add(`${prefix}${setNum}-${cn}`);
+                            }
+                            formats.add(cardNumber.trim());
+                        } else {
+                            let cleanNumber = cardNumber.replace(/[^\d/]/g, '').trim();
+                            if (!cleanNumber.includes('/') && /^\d+$/.test(cleanNumber) && cleanNumber.length >= 4 && cleanNumber.length % 2 === 0) {
+                                const midPoint = Math.floor(cleanNumber.length / 2);
+                                cleanNumber = cleanNumber.substring(0, midPoint) + '/' + cleanNumber.substring(midPoint);
+                            }
+                            const parts = cleanNumber.split('/');
+                            formats.add(cleanNumber);
+                            if (parts.length === 2) {
+                                const col = parseInt(parts[0], 10);
+                                const total = parseInt(parts[1], 10);
+                                for (const c of [col.toString(), col.toString().padStart(2, '0'), col.toString().padStart(3, '0')]) {
+                                    for (const t of [total.toString(), total.toString().padStart(2, '0'), total.toString().padStart(3, '0')]) {
+                                        formats.add(c + '/' + t);
+                                    }
                                 }
                             }
                         }
@@ -1241,6 +1309,7 @@ export function MarketSpotlight() {
 
                         await displayProductResult(bestMatch.product);
                         setScanResults(scored.slice(0, 5));
+                        setHasSelectedCard(false); // Reset to default while modal is open
                         setShowScanResultsDialog(true);
 
                         if (shouldIncrementUsage) {
@@ -1280,6 +1349,7 @@ export function MarketSpotlight() {
         setIsLoading(true);
         await displayProductResult(result.product);
         setIsLoading(false);
+        setHasSelectedCard(true); // Now show real data
     };
 
     // Helper function to display a product result (extracted from fetchFeaturedProduct)
@@ -1821,7 +1891,27 @@ export function MarketSpotlight() {
                                     <DialogTitle className="text-2xl font-bold text-center tracking-tight font-display">{t('select_category_title')}</DialogTitle>
                                     <p className="text-center text-gray-400 text-sm">{t('select_category_desc')}</p>
                                 </DialogHeader>
-                                <div className="grid grid-cols-2 gap-4 p-6 relative z-10">
+                                <div className="grid grid-cols-3 gap-3 p-6 relative z-10">
+                                    <Button
+                                        onClick={() => router.push('/pokemon')}
+                                        className="h-48 flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-yellow-950 to-amber-950 hover:from-yellow-900 hover:to-amber-900 border border-yellow-500/20 hover:border-yellow-400/50 transition-all group relative overflow-hidden rounded-xl"
+                                    >
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+
+                                        <div className="relative w-20 h-20 transition-transform duration-300 group-hover:scale-110 drop-shadow-[0_0_15px_rgba(234,179,8,0.3)]">
+                                            <Image
+                                                src="/assets/pok-logo.png"
+                                                alt="Pokemon"
+                                                fill
+                                                className="object-contain"
+                                            />
+                                        </div>
+                                        <div className="relative text-center">
+                                            <span className="font-bold text-lg text-yellow-100 block tracking-wide">Pokémon</span>
+                                            <span className="text-[10px] text-yellow-400/80 font-medium uppercase tracking-wider mt-1 block">TCG Market</span>
+                                        </div>
+                                    </Button>
+
                                     <Button
                                         onClick={() => router.push('/soccer')}
                                         className="h-48 flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-emerald-950 to-green-950 hover:from-emerald-900 hover:to-green-900 border border-emerald-500/20 hover:border-emerald-400/50 transition-all group relative overflow-hidden rounded-xl"
@@ -1829,7 +1919,7 @@ export function MarketSpotlight() {
                                         <div className="absolute inset-0 bg-[url('/assets/pattern-soccer.png')] opacity-10 bg-repeat" />
                                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
 
-                                        <div className="relative w-24 h-24 transition-transform duration-300 group-hover:scale-110 drop-shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+                                        <div className="relative w-20 h-20 transition-transform duration-300 group-hover:scale-110 drop-shadow-[0_0_15px_rgba(16,185,129,0.3)]">
                                             <Image
                                                 src="/assets/soc-logo.png"
                                                 alt="Soccer"
@@ -1838,8 +1928,8 @@ export function MarketSpotlight() {
                                             />
                                         </div>
                                         <div className="relative text-center">
-                                            <span className="font-bold text-xl text-emerald-100 block tracking-wide">{t('nav_soccer')}</span>
-                                            <span className="text-xs text-emerald-400/80 font-medium uppercase tracking-wider mt-1 block">Sports Market</span>
+                                            <span className="font-bold text-lg text-emerald-100 block tracking-wide">{t('nav_soccer')}</span>
+                                            <span className="text-[10px] text-emerald-400/80 font-medium uppercase tracking-wider mt-1 block">Sports Market</span>
                                         </div>
                                     </Button>
 
@@ -1850,7 +1940,7 @@ export function MarketSpotlight() {
                                         <div className="absolute inset-0 bg-[url('/assets/pattern-onepiece.png')] opacity-10 bg-repeat" />
                                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
 
-                                        <div className="relative w-24 h-24 transition-transform duration-300 group-hover:scale-110 drop-shadow-[0_0_15px_rgba(239,68,68,0.3)]">
+                                        <div className="relative w-20 h-20 transition-transform duration-300 group-hover:scale-110 drop-shadow-[0_0_15px_rgba(239,68,68,0.3)]">
                                             <Image
                                                 src="/assets/one-logo.png"
                                                 alt="One Piece"
@@ -1859,8 +1949,8 @@ export function MarketSpotlight() {
                                             />
                                         </div>
                                         <div className="relative text-center">
-                                            <span className="font-bold text-xl text-red-100 block tracking-wide">{t('nav_onepiece')}</span>
-                                            <span className="text-xs text-red-400/80 font-medium uppercase tracking-wider mt-1 block">Anime TCG</span>
+                                            <span className="font-bold text-lg text-red-100 block tracking-wide">{t('nav_onepiece')}</span>
+                                            <span className="text-[10px] text-red-400/80 font-medium uppercase tracking-wider mt-1 block">Anime TCG</span>
                                         </div>
                                     </Button>
                                 </div>
@@ -2315,9 +2405,8 @@ export function MarketSpotlight() {
 
 
 
-                        {/* Add to Collection Button - Below Card Area */}
-                        {/* Action Buttons Row */}
-                        {!isLoading && product && (
+                        {/* Action Buttons Row — Only shown after user selects a card */}
+                        {!isLoading && product && hasSelectedCard && (
                             <div className="mt-6 flex flex-col sm:flex-row gap-3 w-full max-w-[500px] mx-auto">
                                 {/* Add to Collection Button */}
                                 <Button

@@ -125,7 +125,12 @@ export default function PokemonPage() {
 
             const { data, error } = await query.limit(80);
 
-            if (error) throw error;
+            if (error) {
+                console.error('Supabase error:', error.message, error.code, error.details, error.hint);
+                throw error;
+            }
+            
+            console.log('[Pokemon] Fetched cards:', data?.length || 0);
 
             const transformedCards: PokemonCard[] = (data || []).map(item => ({
                 id: item.product_id,

@@ -372,16 +372,16 @@ export default function ProductDetailsPage() {
                                             <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500/20 to-amber-500/10 border border-orange-500/30 flex items-center justify-center">
                                                 <Lock className="w-6 h-6 text-orange-400" />
                                             </div>
-                                            <h3 className="text-white font-bold text-base">Price History & Analytics</h3>
+                                            <h3 className="text-white font-bold text-base">{t('vip_feature_price_history')}</h3>
                                             <p className="text-white/40 text-sm max-w-[250px]">
-                                                Upgrade to VIP to unlock price charts and trend analysis.
+                                                {t('vip_feature_price_history_desc')}
                                             </p>
                                             <Button
                                                 onClick={() => window.location.href = '/pricing'}
                                                 className="mt-1 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold px-5 py-2 rounded-full text-sm"
                                             >
                                                 <Crown className="w-4 h-4 mr-1.5" />
-                                                Upgrade to VIP
+                                                {t('vip_upgrade_button')}
                                             </Button>
                                         </div>
                                     </div>
@@ -389,13 +389,42 @@ export default function ProductDetailsPage() {
                             </Card>
                         )}
 
-                        {/* PSA Graded Prices */}
+                        {/* PSA Graded Prices — VIP only */}
                         {card.product_id && (
-                            <PSAGradedPrices
-                                productId={card.product_id}
-                                productName={card.title}
-                                isScanned={true}
-                            />
+                            isVip ? (
+                                <PSAGradedPrices
+                                    productId={card.product_id}
+                                    productName={card.title}
+                                    isScanned={true}
+                                />
+                            ) : (
+                                <Card className="border-white/10 relative overflow-hidden">
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-lg flex items-center gap-2">
+                                            <Star className="h-5 w-5 text-yellow-500" /> {t('psa_graded_prices')}
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="h-40 relative flex items-center justify-center overflow-hidden rounded-lg bg-white/5">
+                                            <div className="absolute inset-0 backdrop-blur-sm bg-black/30" />
+                                            <div className="relative z-10 flex flex-col items-center gap-2.5 text-center px-6">
+                                                <Lock className="w-6 h-6 text-yellow-400" />
+                                                <p className="text-white/50 text-sm max-w-[220px]">
+                                                    {t('vip_feature_psa_desc')}
+                                                </p>
+                                                <Button
+                                                    onClick={() => window.location.href = '/pricing'}
+                                                    size="sm"
+                                                    className="bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white font-bold rounded-full text-xs px-4"
+                                                >
+                                                    <Crown className="w-3.5 h-3.5 mr-1" />
+                                                    {t('vip_upgrade_short')}
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )
                         )}
                     </div>
                 </div>
