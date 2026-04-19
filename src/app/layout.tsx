@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from 'next';
-import Script from 'next/script';
 import { Inter, Orbitron, Quantico } from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster"
@@ -67,11 +66,10 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
-        <Script
+        <script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3779491168688544"
           crossOrigin="anonymous"
-          strategy="afterInteractive"
         />
       </head>
       <body className={`${inter.variable} ${orbitron.variable} ${quantico.variable} font-body antialiased`}>
