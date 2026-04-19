@@ -13,6 +13,7 @@ import { SpinnerGap, MagnifyingGlass, Funnel, ArrowsClockwise, SortAscending, X,
 import { useLocalization } from "@/context/localization-context";
 import Image from "next/image";
 import type { PokemonCard } from "@/lib/types";
+import { AdBanner } from "@/components/ad-banner";
 
 export default function PokemonPage() {
     const { t } = useLocalization();
@@ -437,6 +438,12 @@ export default function PokemonPage() {
                     )}
                 </div>
             </main>
+
+            {/* AdSense Banner — hidden for VIP Pro */}
+            <div className="max-w-6xl mx-auto px-4 py-6">
+                <AdBanner slot="pokemon_list_bottom" format="auto" className="rounded-xl overflow-hidden" />
+            </div>
+
             <Footer />
         </div>
     );

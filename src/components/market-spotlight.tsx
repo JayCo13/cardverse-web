@@ -26,6 +26,7 @@ import { useScanLimit } from '@/hooks/useScanLimit';
 import { ScanLimitModal } from '@/components/scan-limit-modal';
 import { useCardCache } from '@/contexts/card-cache-context';
 import { PSAGradedPrices } from '@/components/psa-graded-prices';
+import { AdBanner } from '@/components/ad-banner';
 
 // Fallback mock data for when no real data exists
 const MOCK_DATA = [
@@ -2606,6 +2607,11 @@ export function MarketSpotlight() {
 
 
                     </div>
+                </div>
+
+                {/* AdSense Banner — hidden for VIP Pro */}
+                <div className="mt-8 max-w-3xl mx-auto">
+                    <AdBanner slot="market_spotlight_bottom" format="auto" className="rounded-xl overflow-hidden" />
                 </div>
             </div>
 

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SpinnerGap, MagnifyingGlass, ArrowsClockwise, Anchor } from "@phosphor-icons/react";
 import Image from "next/image";
+import { AdBanner } from "@/components/ad-banner";
 
 export default function OnePiecePage() {
     const { t } = useLocalization();
@@ -233,6 +234,12 @@ export default function OnePiecePage() {
                     )}
                 </div>
             </main>
+
+            {/* AdSense Banner — hidden for VIP Pro */}
+            <div className="max-w-6xl mx-auto px-4 py-6">
+                <AdBanner slot="onepiece_list_bottom" format="auto" className="rounded-xl overflow-hidden" />
+            </div>
+
             <Footer />
         </div>
     );

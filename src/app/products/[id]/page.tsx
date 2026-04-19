@@ -23,6 +23,7 @@ import { useLocalization } from "@/context/localization-context";
 import { PSAGradedPrices } from "@/components/psa-graded-prices";
 import { useSubscription } from "@/hooks/useSubscription";
 import { Lock, Crown } from "lucide-react";
+import { AdBanner } from "@/components/ad-banner";
 
 interface ProductCard {
     product_id: number;
@@ -426,6 +427,11 @@ export default function ProductDetailsPage() {
                                 </Card>
                             )
                         )}
+                    </div>
+
+                    {/* AdSense Banner — hidden for VIP Pro */}
+                    <div className="mt-8">
+                        <AdBanner slot="product_detail_bottom" format="auto" className="rounded-xl overflow-hidden" />
                     </div>
                 </div>
             </main>

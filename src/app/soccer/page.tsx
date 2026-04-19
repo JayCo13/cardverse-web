@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SpinnerGap, SoccerBall, MagnifyingGlass, ArrowsClockwise, ArrowSquareOut } from "@phosphor-icons/react";
+import { AdBanner } from "@/components/ad-banner";
 import Image from "next/image";
 import { useCurrency } from "@/contexts/currency-context";
 
@@ -483,6 +484,12 @@ export default function SoccerPage() {
                     )}
                 </div>
             </main>
+
+            {/* AdSense Banner — hidden for VIP Pro */}
+            <div className="max-w-6xl mx-auto px-4 py-6">
+                <AdBanner slot="soccer_list_bottom" format="auto" className="rounded-xl overflow-hidden" />
+            </div>
+
             <Footer />
         </div>
     );
