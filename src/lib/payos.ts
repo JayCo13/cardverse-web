@@ -18,20 +18,20 @@ export function getPayOS() {
 // Package definitions
 export const PACKAGES = {
     day_pass: {
-        name: 'BOX BREAK 24H',
-        amount: 69000,
+        name: 'DAY PASS',
+        amount: 29000,
         description: 'Day Pass 24H',
         durationHours: 24,
     },
     credit_pack: {
         name: 'COLLECTOR',
-        amount: 99000,
+        amount: 49000,
         description: 'Credit Pack 100',
         credits: 100,
     },
     vip_pro: {
-        name: 'MERCHANT VIP Pro',
-        amount: 299000,
+        name: 'VIP PRO',
+        amount: 149000,
         description: 'VIP Pro Monthly',
         durationDays: 30,
     },

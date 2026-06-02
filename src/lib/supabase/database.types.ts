@@ -27,6 +27,7 @@ export interface Database {
                     seller_verified: boolean
                     seller_rating: number
                     seller_review_count: number
+                    is_tester: boolean
                     address_province_id: number | null
                     address_province_name: string | null
                     address_district_id: number | null
@@ -54,6 +55,7 @@ export interface Database {
                     seller_verified?: boolean
                     seller_rating?: number
                     seller_review_count?: number
+                    is_tester?: boolean
                     address_province_id?: number | null
                     address_province_name?: string | null
                     address_district_id?: number | null
@@ -81,6 +83,7 @@ export interface Database {
                     seller_verified?: boolean
                     seller_rating?: number
                     seller_review_count?: number
+                    is_tester?: boolean
                     address_province_id?: number | null
                     address_province_name?: string | null
                     address_district_id?: number | null

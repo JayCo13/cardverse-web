@@ -9,19 +9,23 @@ export async function middleware(request: NextRequest) {
     // Note: OAuth ?code= handling is done by /auth/callback route directly.
     // The auth provider sets redirectTo to /auth/callback, so no middleware interception is needed.
 
-    // Phase 1 Beta Restrictions: Block access to upcoming features
-    const restrictedPaths = ['/bid', '/razz', '/forum'];
     const currentPath = request.nextUrl.pathname;
 
-    // Check if the current path exactly matches or starts with the restricted path (e.g. /sell/create)
-    const isRestricted = restrictedPaths.some(path => currentPath === path || currentPath.startsWith(`${path}/`));
-
-    if (isRestricted) {
+    const betaRedirect = () => {
         // Redirect to home page with a query parameter to show the "Coming Soon" toast
         const url = request.nextUrl.clone();
         url.pathname = '/';
         url.search = '?beta=true';
         return NextResponse.redirect(url);
+    };
+
+    const matchesAny = (paths: string[]) =>
+        paths.some(path => currentPath === path || currentPath.startsWith(`${path}/`));
+
+    // Always "Coming Soon" for everyone (feature not built yet).
+    const comingSoonPaths = ['/forum'];
+    if (matchesAny(comingSoonPaths)) {
+        return betaRedirect();
     }
 
     const supabase = createServerClient(
@@ -46,6 +50,26 @@ export async function middleware(request: NextRequest) {
             },
         }
     )
+
+    // Beta marketplace features: only admin-created tester accounts may enter.
+    // Normal users (and signed-out visitors) are redirected to the "Coming Soon" toast.
+    const testerOnlyPaths = ['/buy', '/sell', '/bid', '/razz', '/orders', '/wallet'];
+    if (matchesAny(testerOnlyPaths)) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            return betaRedirect();
+        }
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('is_tester')
+            .eq('id', user.id)
+            .single();
+        if (!profile?.is_tester) {
+            return betaRedirect();
+        }
+        // Tester verified — allow through (session already refreshed by getUser()).
+        return supabaseResponse;
+    }
 
     // Refresh the auth token on every request to keep the session alive.
     // Using getSession() instead of getUser() for performance:

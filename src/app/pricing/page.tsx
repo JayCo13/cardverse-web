@@ -8,7 +8,7 @@ import { useUser } from "@/lib/supabase";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useToast } from "@/hooks/use-toast";
 import { useLocalization } from "@/context/localization-context";
-import { Lightning, CreditCard, Crown, CheckCircle, Star, Lock, Timer, Package, Sparkle, ShieldCheck, Storefront, Gavel, Users } from "@phosphor-icons/react";
+import { Lightning, CreditCard, Crown, CheckCircle, Star, Lock, Timer, Package, Sparkle, ShieldCheck } from "@phosphor-icons/react";
 
 function PaymentStatusHandler() {
     const searchParams = useSearchParams();
@@ -137,7 +137,7 @@ export default function PricingPage() {
                 {/* Package Cards */}
                 <div className="max-w-6xl mx-auto px-4 grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
 
-                    {/* BOX BREAK 24H */}
+                    {/* DAY PASS */}
                     <div className="relative group rounded-2xl border border-white/10 bg-gradient-to-b from-white/5 to-transparent backdrop-blur-sm p-6 lg:p-8 hover:border-blue-500/30 transition-all duration-300 flex flex-col">
                         <div className="flex items-center gap-3 mb-4">
                             <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center">
@@ -150,7 +150,7 @@ export default function PricingPage() {
                         </div>
 
                         <div className="mb-6">
-                            <span className="text-3xl font-bold text-white">69,000</span>
+                            <span className="text-3xl font-bold text-white">29,000</span>
                             <span className="text-gray-400 ml-1">₫</span>
                         </div>
 
@@ -162,10 +162,7 @@ export default function PricingPage() {
                             <Feature icon={<Package weight="fill" className="text-blue-400" />} text={t('pricing_feat_daypass_2')} />
                             <Feature icon={<CheckCircle weight="fill" className="text-blue-400" />} text={t('pricing_feat_daypass_3')} />
 
-                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4">{t('pricing_phase2_ecosystem')}</h4>
-                            <Feature icon={<Storefront className="text-gray-600" />} text={t('pricing_feat_basic_p2')} muted />
-                            <Feature icon={<Gavel className="text-gray-600" />} text={t('pricing_feat_basic_p3')} muted />
-                            <Feature icon={<Users className="text-gray-600" />} text={t('pricing_feat_basic_p4')} muted />
+
                         </div>
 
                         <button
@@ -190,7 +187,7 @@ export default function PricingPage() {
                         </div>
 
                         <div className="mb-6">
-                            <span className="text-3xl font-bold text-white">99,000</span>
+                            <span className="text-3xl font-bold text-white">49,000</span>
                             <span className="text-gray-400 ml-1">₫</span>
                         </div>
 
@@ -202,10 +199,7 @@ export default function PricingPage() {
                             <Feature icon={<Package weight="fill" className="text-emerald-400" />} text={t('pricing_feat_credit_2')} />
                             <Feature icon={<CheckCircle weight="fill" className="text-emerald-400" />} text={t('pricing_feat_credit_3')} />
 
-                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4">{t('pricing_phase2_ecosystem')}</h4>
-                            <Feature icon={<Storefront className="text-gray-600" />} text={t('pricing_feat_basic_p2')} muted />
-                            <Feature icon={<Gavel className="text-gray-600" />} text={t('pricing_feat_basic_p3')} muted />
-                            <Feature icon={<Users className="text-gray-600" />} text={t('pricing_feat_basic_p4')} muted />
+
                         </div>
 
                         <button
@@ -217,7 +211,7 @@ export default function PricingPage() {
                         </button>
                     </div>
 
-                    {/* MERCHANT VIP Pro */}
+                    {/* VIP PRO */}
                     <div className="relative group rounded-2xl border-2 border-orange-500/40 bg-gradient-to-b from-orange-500/10 via-amber-500/5 to-transparent backdrop-blur-sm p-6 lg:p-8 hover:border-orange-400/60 transition-all duration-300 flex flex-col shadow-[0_0_30px_rgba(251,146,60,0.1)]">
                         {/* Popular badge */}
                         <div className="absolute -top-3 left-1/2 -translate-x-1/2">
@@ -238,9 +232,9 @@ export default function PricingPage() {
                         </div>
 
                         <div className="mb-6">
-                            <span className="text-3xl font-bold text-white">299,000</span>
+                            <span className="text-3xl font-bold text-white">149,000</span>
                             <span className="text-gray-400 ml-1">₫</span>
-                            <span className="text-gray-500 text-sm ml-2">/ month</span>
+                            <span className="text-gray-500 text-sm ml-2">/ {t('pricing_vippro_type').toLowerCase()}</span>
                         </div>
 
                         <p className="text-gray-400 text-sm mb-6">{t('pricing_vippro_desc')}</p>
@@ -250,30 +244,18 @@ export default function PricingPage() {
                                 <Star weight="fill" className="w-3 h-3" /> {t('pricing_phase1_perks')}
                             </h4>
                             <Feature icon={<Lightning weight="fill" className="text-orange-400" />} text={t('pricing_feat_vip_1')} highlight />
-                            <Feature icon={<Package weight="fill" className="text-orange-400" />} text={t('pricing_feat_vip_2')} highlight />
-                            <Feature icon={<Sparkle weight="fill" className="text-orange-400" />} text={t('pricing_feat_vip_3')} highlight />
-                            <Feature icon={<Crown weight="fill" className="text-orange-400" />} text={t('pricing_feat_vip_4')} highlight />
+                            <Feature icon={<ShieldCheck weight="fill" className="text-orange-400" />} text={t('pricing_feat_vip_2')} highlight />
+                            <Feature icon={<Package weight="fill" className="text-orange-400" />} text={t('pricing_feat_vip_3')} highlight />
+                            <Feature icon={<CheckCircle weight="fill" className="text-orange-400" />} text={t('pricing_feat_vip_4')} highlight />
 
                             <h4 className="text-xs font-semibold text-orange-500/70 uppercase tracking-wider mt-4 flex items-center gap-1">
-                                <Star weight="fill" className="w-3 h-3" /> {t('pricing_phase2')}
+                                <Star weight="fill" className="w-3 h-3" /> VIP Exclusive
                             </h4>
-                            <Feature icon={<ShieldCheck weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p2_1')} highlight />
-                            <Feature icon={<Storefront weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p2_2')} highlight />
-                            <Feature icon={<Sparkle weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p2_3')} highlight />
+                            <Feature icon={<Sparkle weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p2_1')} highlight />
+                            <Feature icon={<Crown weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p2_2')} highlight />
+                            <Feature icon={<Lock weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p2_3')} highlight />
 
-                            <h4 className="text-xs font-semibold text-orange-500/70 uppercase tracking-wider mt-4 flex items-center gap-1">
-                                <Star weight="fill" className="w-3 h-3" /> {t('pricing_phase3')}
-                            </h4>
-                            <Feature icon={<Gavel weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p3_1')} highlight />
-                            <Feature icon={<Lightning weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p3_2')} highlight />
-                            <Feature icon={<CheckCircle weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p3_3')} highlight />
 
-                            <h4 className="text-xs font-semibold text-orange-500/70 uppercase tracking-wider mt-4 flex items-center gap-1">
-                                <Star weight="fill" className="w-3 h-3" /> {t('pricing_phase4')}
-                            </h4>
-                            <Feature icon={<Crown weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p4_1')} highlight />
-                            <Feature icon={<Users weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p4_2')} highlight />
-                            <Feature icon={<Lock weight="fill" className="text-amber-400" />} text={t('pricing_feat_vip_p4_3')} highlight />
                         </div>
 
                         <button
