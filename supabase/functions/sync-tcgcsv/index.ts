@@ -201,7 +201,8 @@ async function syncGroup(categoryId: number, groupId: number, groupName: string)
             category_id: categoryId,
             group_id: groupId,
             name: p.name,
-            image_url: p.imageUrl || null,
+            // Use the high-res image (thumbnail _<N>w.jpg -> _in_1000x1000.jpg)
+            image_url: p.imageUrl ? p.imageUrl.replace(/_\d+w\.jpg$/, '_in_1000x1000.jpg') : null,
             set_name: groupName,
             number: getExtendedValue(p.extendedData, 'Number'),
             rarity: getExtendedValue(p.extendedData, 'Rarity'),

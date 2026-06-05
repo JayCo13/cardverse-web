@@ -110,7 +110,8 @@ async function processGroup(categoryId: number, group: TcgGroup): Promise<{ prod
                 category_id: categoryId,
                 group_id: group.groupId,
                 name: p.name,
-                image_url: p.imageUrl || null,
+                // Use the high-res image (thumbnail _<N>w.jpg -> _in_1000x1000.jpg)
+                image_url: p.imageUrl ? p.imageUrl.replace(/_\d+w\.jpg$/, '_in_1000x1000.jpg') : null,
                 set_name: group.name,
                 number: getExtended(p.extendedData, 'Number'),
                 rarity: getExtended(p.extendedData, 'Rarity'),
