@@ -155,10 +155,18 @@ async function syncGroup(categoryId: number, groupId: number, groupName: string)
     console.log(`Syncing group ${groupId}: ${groupName}`);
 
     // Fetch products and prices in parallel
-    const [products, prices] = await Promise.all([
+    const [allProducts, prices] = await Promise.all([
         fetchProducts(categoryId, groupId),
         fetchPrices(categoryId, groupId)
     ]);
+
+    // CARDS ONLY: real cards have a collector Number. Sealed products
+    // (booster packs/boxes, ETBs, tins, code cards, premium collections…)
+    // have none — drop them so they don't pollute the catalog.
+    const products = allProducts.filter(p => {
+        const num = getExtendedValue(p.extendedData, 'Number');
+        return num != null && String(num).trim() !== '';
+    });
 
     // Create price lookup map
     const priceMap = new Map<number, TcgPrice>();

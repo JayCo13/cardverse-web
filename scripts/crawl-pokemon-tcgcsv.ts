@@ -95,31 +95,45 @@ async function processGroup(categoryId: number, group: TcgGroup): Promise<{ prod
         for (const r of data ?? []) oldPriceMap.set(r.product_id, r.market_price);
     }
 
-    const dbProducts = products.map(p => {
-        const price = priceMap.get(p.productId);
-        return {
-            product_id: p.productId,
-            category_id: categoryId,
-            group_id: group.groupId,
-            name: p.name,
-            image_url: p.imageUrl || null,
-            set_name: group.name,
-            number: getExtended(p.extendedData, 'Number'),
-            rarity: getExtended(p.extendedData, 'Rarity'),
-            market_price: price?.marketPrice ?? null,
-            low_price: price?.lowPrice ?? null,
-            mid_price: price?.midPrice ?? null,
-            high_price: price?.highPrice ?? null,
-            extended_data: p.extendedData ? JSON.stringify(p.extendedData) : '{}',
-            tcgplayer_url: p.url || null,
-        };
-    });
+    const dbProducts = products
+        // CARDS ONLY: real cards have a collector Number in extendedData.
+        // Sealed products (booster packs/boxes, ETBs, tins, code cards,
+        // premium collections, cases…) have no Number — drop them.
+        .filter(p => {
+            const num = getExtended(p.extendedData, 'Number');
+            return num != null && String(num).trim() !== '';
+        })
+        .map(p => {
+            const price = priceMap.get(p.productId);
+            return {
+                product_id: p.productId,
+                category_id: categoryId,
+                group_id: group.groupId,
+                name: p.name,
+                image_url: p.imageUrl || null,
+                set_name: group.name,
+                number: getExtended(p.extendedData, 'Number'),
+                rarity: getExtended(p.extendedData, 'Rarity'),
+                market_price: price?.marketPrice ?? null,
+                low_price: price?.lowPrice ?? null,
+                mid_price: price?.midPrice ?? null,
+                high_price: price?.highPrice ?? null,
+                extended_data: p.extendedData ? JSON.stringify(p.extendedData) : '{}',
+                tcgplayer_url: p.url || null,
+            };
+        });
+
+    if (dbProducts.length === 0) return { products: 0, history: 0 };
 
     const { error: upErr } = await supabase.from('tcgcsv_products').upsert(dbProducts, { onConflict: 'product_id' });
     if (upErr) { console.error(`   ❌ ${group.name} products: ${upErr.message}`); return { products: 0, history: 0 }; }
 
+    // Only the cards we kept (history for sealed products is pointless).
+    const keptIds = new Set(dbProducts.map(p => p.product_id));
+
     // Price history — only products whose market price actually moved.
     const historyRows = prices
+        .filter(p => keptIds.has(p.productId))
         .filter(p => priceMap.get(p.productId) === p) // one row per product (the chosen subtype)
         .filter(p => p.marketPrice != null || p.lowPrice != null)
         .filter(p => !oldPriceMap.has(p.productId) || normPrice(p.marketPrice) !== normPrice(oldPriceMap.get(p.productId)))
