@@ -76,6 +76,8 @@ export const SoccerCardItem = React.memo(function SoccerCardItem({ card }: Socce
                         src={card.image_url}
                         alt={card.name}
                         fill
+                        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+                        loading="lazy"
                         className="object-contain transition-transform duration-500 group-hover:scale-105 p-2"
                     />
                 ) : (

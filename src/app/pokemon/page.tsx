@@ -15,6 +15,20 @@ import Image from "next/image";
 import type { PokemonCard } from "@/lib/types";
 import { AdBanner } from "@/components/ad-banner";
 
+// Build a compact page list with ellipses, e.g. [0,-1,4,5,6,-1,20] (-1 = "…").
+function getPageWindow(current: number, total: number): number[] {
+    const want = new Set<number>([0, total - 1, current - 1, current, current + 1]);
+    const pages = [...want].filter(p => p >= 0 && p < total).sort((a, b) => a - b);
+    const out: number[] = [];
+    let prev = -2;
+    for (const p of pages) {
+        if (p - prev > 1) out.push(-1);
+        out.push(p);
+        prev = p;
+    }
+    return out;
+}
+
 export default function PokemonPage() {
     const { t } = useLocalization();
     const searchParams = useSearchParams();
@@ -34,7 +48,12 @@ export default function PokemonPage() {
     const [categoryFilter, setCategoryFilter] = useState(searchParams.get('cat') || "3"); // 3 = English, 85 = Japanese
     const [showFilters, setShowFilters] = useState(false);
     const [showSetDropdown, setShowSetDropdown] = useState(false);
+    const [page, setPage] = useState(0);            // 0-based page index
+    const [totalCount, setTotalCount] = useState(0); // total rows matching current filters
     const hasFetched = useRef(false);
+
+    const PAGE_SIZE = 48;
+    const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
     // Update URL when filters change
     useEffect(() => {
@@ -80,7 +99,7 @@ export default function PokemonPage() {
             const runOnce = () => {
                 let query = supabase
                     .from('tcgcsv_products')
-                    .select('product_id, name, image_url, set_name, number, rarity, market_price, low_price, tcgplayer_url')
+                    .select('product_id, name, image_url, set_name, number, rarity, market_price, low_price, tcgplayer_url', { count: 'exact' })
                     .eq('category_id', parseInt(categoryFilter))
                     .not('market_price', 'is', null)
                     .gt('market_price', 0);
@@ -128,7 +147,7 @@ export default function PokemonPage() {
                     query = query.order('product_id', { ascending: false });
                 }
 
-                return query.limit(80);
+                return query.range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
             };
 
             const noNarrowingFilters =
@@ -138,8 +157,9 @@ export default function PokemonPage() {
             // list (the "no cards found" bug). Retry a couple of times before
             // giving up — and treat an empty *unfiltered* result as a miss.
             let data: any[] = [];
+            let total = 0;
             for (let attempt = 1; attempt <= 3; attempt++) {
-                const { data: rows, error } = await runOnce();
+                const { data: rows, error, count } = await runOnce();
                 if (error) {
                     console.error(`[Pokemon] query error (attempt ${attempt}):`, error.message, error.code);
                     if (attempt === 3) throw error;
@@ -147,13 +167,16 @@ export default function PokemonPage() {
                     continue;
                 }
                 data = rows || [];
-                if (data.length === 0 && noNarrowingFilters && attempt < 3) {
+                total = count ?? total;
+                // On page 0, an empty unfiltered result means a cold/stale connection — retry.
+                if (data.length === 0 && noNarrowingFilters && page === 0 && attempt < 3) {
                     console.warn(`[Pokemon] empty result with no filters (attempt ${attempt}) — retrying`);
                     await new Promise(r => setTimeout(r, 500 * attempt));
                     continue;
                 }
                 break;
             }
+            setTotalCount(total);
             
             console.log('[Pokemon] Fetched cards:', data?.length || 0);
 
@@ -180,6 +203,11 @@ export default function PokemonPage() {
         } finally {
             setLoading(false);
         }
+    }, [searchTerm, priceFilter, rarityFilter, setFilter, sortBy, categoryFilter, page, PAGE_SIZE]);
+
+    // Reset to the first page whenever the filters/search/category/sort change.
+    useEffect(() => {
+        setPage(0);
     }, [searchTerm, priceFilter, rarityFilter, setFilter, sortBy, categoryFilter]);
 
     useEffect(() => {
@@ -201,6 +229,13 @@ export default function PokemonPage() {
         setSetFilter("all");
         setSortBy("price_desc");
         setCategoryFilter("3");
+        setPage(0);
+    };
+
+    const goToPage = (p: number) => {
+        const clamped = Math.min(Math.max(0, p), totalPages - 1);
+        setPage(clamped);
+        if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const hasActiveFilters = priceFilter !== "all" || rarityFilter !== "all" || setFilter !== "all" || searchTerm !== "";
@@ -432,8 +467,10 @@ export default function PokemonPage() {
                     {!loading && (
                         <div className="flex items-center justify-between mb-4">
                             <p className="text-sm text-white/50">
-                                {t('cards_found').replace('{count}', cards.length.toString())}
-                                {cards.length === 80 && t('showing_first_80')}
+                                {t('cards_found').replace('{count}', totalCount.toLocaleString())}
+                                {totalPages > 1 && (
+                                    <span className="text-white/30"> · {page + 1}/{totalPages}</span>
+                                )}
                             </p>
                         </div>
                     )}
@@ -457,6 +494,42 @@ export default function PokemonPage() {
                             <p className="text-sm text-white/30 mt-1">{t('try_adjusting_filters_short')}</p>
                             <Button onClick={clearFilters} variant="outline" className="mt-4 border-yellow-500/30 text-yellow-400">
                                 {t('clear_all_filters')}
+                            </Button>
+                        </div>
+                    )}
+
+                    {/* Pagination */}
+                    {!loading && totalPages > 1 && (
+                        <div className="flex items-center justify-center gap-1 mt-8 flex-wrap">
+                            <Button
+                                variant="outline" size="sm" disabled={page === 0}
+                                onClick={() => goToPage(page - 1)}
+                                className="border-yellow-500/30 text-yellow-400 disabled:opacity-40"
+                            >
+                                ‹
+                            </Button>
+                            {getPageWindow(page, totalPages).map((p, i) =>
+                                p === -1 ? (
+                                    <span key={`e${i}`} className="px-2 text-white/30">…</span>
+                                ) : (
+                                    <Button
+                                        key={p} size="sm"
+                                        variant={p === page ? "default" : "outline"}
+                                        onClick={() => goToPage(p)}
+                                        className={p === page
+                                            ? "bg-yellow-500 text-black hover:bg-yellow-400 min-w-9"
+                                            : "border-yellow-500/30 text-yellow-400 min-w-9"}
+                                    >
+                                        {p + 1}
+                                    </Button>
+                                )
+                            )}
+                            <Button
+                                variant="outline" size="sm" disabled={page >= totalPages - 1}
+                                onClick={() => goToPage(page + 1)}
+                                className="border-yellow-500/30 text-yellow-400 disabled:opacity-40"
+                            >
+                                ›
                             </Button>
                         </div>
                     )}

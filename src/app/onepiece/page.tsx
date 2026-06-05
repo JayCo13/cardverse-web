@@ -14,6 +14,20 @@ import { SpinnerGap, MagnifyingGlass, ArrowsClockwise, Anchor } from "@phosphor-
 import Image from "next/image";
 import { AdBanner } from "@/components/ad-banner";
 
+// Build a compact page list with ellipses, e.g. [0,-1,4,5,6,-1,20] (-1 = "…").
+function getPageWindow(current: number, total: number): number[] {
+    const want = new Set<number>([0, total - 1, current - 1, current, current + 1]);
+    const pages = [...want].filter(p => p >= 0 && p < total).sort((a, b) => a - b);
+    const out: number[] = [];
+    let prev = -2;
+    for (const p of pages) {
+        if (p - prev > 1) out.push(-1);
+        out.push(p);
+        prev = p;
+    }
+    return out;
+}
+
 export default function OnePiecePage() {
     const { t } = useLocalization();
     const searchParams = useSearchParams();
@@ -27,6 +41,11 @@ export default function OnePiecePage() {
     const [priceFilter, setPriceFilter] = useState(searchParams.get('price') || "all");
     const [rarityFilter, setRarityFilter] = useState(searchParams.get('rarity') || "all");
     const [setFilter, setSetFilter] = useState(searchParams.get('set') || "all");
+    const [page, setPage] = useState(0);
+    const [totalCount, setTotalCount] = useState(0);
+
+    const PAGE_SIZE = 48;
+    const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
     // Update URL when filters change
     useEffect(() => {
@@ -72,51 +91,76 @@ export default function OnePiecePage() {
         setLoading(true);
         try {
             const supabase = getSupabaseClient();
-            let query = supabase
-                .from('tcgcsv_products')
-                .select('product_id, name, image_url, set_name, number, rarity, market_price, low_price, tcgplayer_url')
-                .eq('category_id', 68) // One Piece category
-                .not('market_price', 'is', null)
-                .gt('market_price', 0);
 
-            // Apply search
-            if (searchTerm) {
-                query = query.ilike('name', `%${searchTerm}%`);
+            const runOnce = () => {
+                let query = supabase
+                    .from('tcgcsv_products')
+                    .select('product_id, name, image_url, set_name, number, rarity, market_price, low_price, tcgplayer_url', { count: 'exact' })
+                    .eq('category_id', 68) // One Piece category
+                    .not('market_price', 'is', null)
+                    .gt('market_price', 0);
+
+                if (searchTerm) {
+                    query = query.ilike('name', `%${searchTerm}%`);
+                }
+
+                if (priceFilter === "under10") {
+                    query = query.lt('market_price', 10);
+                } else if (priceFilter === "10to50") {
+                    query = query.gte('market_price', 10).lt('market_price', 50);
+                } else if (priceFilter === "50to200") {
+                    query = query.gte('market_price', 50).lt('market_price', 200);
+                } else if (priceFilter === "over200") {
+                    query = query.gte('market_price', 200);
+                }
+
+                if (rarityFilter !== "all") {
+                    query = query.ilike('rarity', `%${rarityFilter}%`);
+                }
+
+                if (setFilter !== "all") {
+                    query = query.eq('set_name', setFilter);
+                }
+
+                return query
+                    .order('market_price', { ascending: false })
+                    .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+            };
+
+            const noNarrowingFilters =
+                !searchTerm && setFilter === "all" && priceFilter === "all" && rarityFilter === "all";
+
+            // Retry to survive a stale/cold REST connection (empty "no cards").
+            let data: any[] = [];
+            let total = 0;
+            for (let attempt = 1; attempt <= 3; attempt++) {
+                const { data: rows, error, count } = await runOnce();
+                if (error) {
+                    if (attempt === 3) throw error;
+                    await new Promise(r => setTimeout(r, 500 * attempt));
+                    continue;
+                }
+                data = rows || [];
+                total = count ?? total;
+                if (data.length === 0 && noNarrowingFilters && page === 0 && attempt < 3) {
+                    await new Promise(r => setTimeout(r, 500 * attempt));
+                    continue;
+                }
+                break;
             }
 
-            // Apply price filter
-            if (priceFilter === "under10") {
-                query = query.lt('market_price', 10);
-            } else if (priceFilter === "10to50") {
-                query = query.gte('market_price', 10).lt('market_price', 50);
-            } else if (priceFilter === "50to200") {
-                query = query.gte('market_price', 50).lt('market_price', 200);
-            } else if (priceFilter === "over200") {
-                query = query.gte('market_price', 200);
-            }
-
-            // Apply rarity filter
-            if (rarityFilter !== "all") {
-                query = query.ilike('rarity', `%${rarityFilter}%`);
-            }
-
-            // Apply set filter
-            if (setFilter !== "all") {
-                query = query.eq('set_name', setFilter);
-            }
-
-            const { data, error } = await query
-                .order('market_price', { ascending: false })
-                .limit(60);
-
-            if (error) throw error;
-
+            setTotalCount(total);
             setCards(data || []);
         } catch (err) {
             console.error('Fetch error:', err);
         } finally {
             setLoading(false);
         }
+    }, [searchTerm, priceFilter, rarityFilter, setFilter, page, PAGE_SIZE]);
+
+    // Reset to first page when filters/search change.
+    useEffect(() => {
+        setPage(0);
     }, [searchTerm, priceFilter, rarityFilter, setFilter]);
 
     useEffect(() => {
@@ -125,7 +169,12 @@ export default function OnePiecePage() {
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
-        fetchCards();
+    };
+
+    const goToPage = (p: number) => {
+        const clamped = Math.min(Math.max(0, p), totalPages - 1);
+        setPage(clamped);
+        if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     return (
@@ -218,12 +267,40 @@ export default function OnePiecePage() {
                         </div>
                     ) : cards.length > 0 ? (
                         <>
-                            <p className="text-white/50 mb-4">{t('cards_found').replace('{count}', cards.length.toString())}</p>
+                            <p className="text-white/50 mb-4">
+                                {t('cards_found').replace('{count}', totalCount.toLocaleString())}
+                                {totalPages > 1 && <span className="text-white/30"> · {page + 1}/{totalPages}</span>}
+                            </p>
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                                 {cards.map((card) => (
                                     <OnePieceCardItem key={card.product_id} card={card} />
                                 ))}
                             </div>
+
+                            {totalPages > 1 && (
+                                <div className="flex items-center justify-center gap-1 mt-8 flex-wrap">
+                                    <Button variant="outline" size="sm" disabled={page === 0}
+                                        onClick={() => goToPage(page - 1)}
+                                        className="border-red-500/30 text-red-400 disabled:opacity-40">‹</Button>
+                                    {getPageWindow(page, totalPages).map((p, i) =>
+                                        p === -1 ? (
+                                            <span key={`e${i}`} className="px-2 text-white/30">…</span>
+                                        ) : (
+                                            <Button key={p} size="sm"
+                                                variant={p === page ? "default" : "outline"}
+                                                onClick={() => goToPage(p)}
+                                                className={p === page
+                                                    ? "bg-red-500 text-white hover:bg-red-400 min-w-9"
+                                                    : "border-red-500/30 text-red-400 min-w-9"}>
+                                                {p + 1}
+                                            </Button>
+                                        )
+                                    )}
+                                    <Button variant="outline" size="sm" disabled={page >= totalPages - 1}
+                                        onClick={() => goToPage(page + 1)}
+                                        className="border-red-500/30 text-red-400 disabled:opacity-40">›</Button>
+                                </div>
+                            )}
                         </>
                     ) : (
                         <div className="flex flex-col items-center justify-center py-20 text-center">

@@ -25,6 +25,20 @@ interface EbayItem {
     itemWebUrl?: string;
 }
 
+// Build a compact page list with ellipses, e.g. [0,-1,4,5,6,-1,20] (-1 = "…").
+function getPageWindow(current: number, total: number): number[] {
+    const want = new Set<number>([0, total - 1, current - 1, current, current + 1]);
+    const pages = [...want].filter(p => p >= 0 && p < total).sort((a, b) => a - b);
+    const out: number[] = [];
+    let prev = -2;
+    for (const p of pages) {
+        if (p - prev > 1) out.push(-1);
+        out.push(p);
+        prev = p;
+    }
+    return out;
+}
+
 export default function SoccerPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -41,9 +55,15 @@ export default function SoccerPage() {
     const [graderFilter, setGraderFilter] = useState(searchParams.get('grader') || "all");
     const [searchMode, setSearchMode] = useState<"database" | "ebay">(searchParams.get('mode') as "database" | "ebay" || "database");
     const [originalQuery, setOriginalQuery] = useState<string | null>(null);
+    const [page, setPage] = useState(0);
+    const [totalCount, setTotalCount] = useState(0);
+
+    const PAGE_SIZE = 48;
+    const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
     // Ref for aborting pending eBay requests
     const abortControllerRef = useRef<AbortController | null>(null);
+    const didMountRef = useRef(false);
 
     // Update URL when filters change
     useEffect(() => {
@@ -86,21 +106,41 @@ export default function SoccerPage() {
                 query = query.eq('grader', graderFilter);
             }
 
-            const { data, error } = await query
+            const { data, error, count } = await query
                 .order('year', { ascending: false })
                 .order('created_at', { ascending: false })
-                .limit(60);
+                .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
 
             if (error) throw error;
 
             setCards(data || []);
+            setTotalCount(count ?? 0);
             setEbayResults([]);
         } catch (err) {
             console.error('Fetch error:', err);
         } finally {
             setLoading(false);
         }
+    }, [yearFilter, graderFilter, page, PAGE_SIZE]);
+
+    // Auto-refetch the DB browse when year/grader/page change (skips the very
+    // first run; the mount effect below does the initial load / smart-search).
+    useEffect(() => {
+        if (!didMountRef.current) { didMountRef.current = true; return; }
+        fetchCards();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [fetchCards]);
+
+    // Reset to first page when the DB filters change.
+    useEffect(() => {
+        setPage(0);
     }, [yearFilter, graderFilter]);
+
+    const goToPage = (p: number) => {
+        const clamped = Math.min(Math.max(0, p), totalPages - 1);
+        setPage(clamped);
+        if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
 
     // Normalize search text (handle accented characters like Mbappé → Mbappe)
     const normalizeSearch = (text: string): string => {
@@ -329,6 +369,7 @@ export default function SoccerPage() {
         setYearFilter("all");
         setGraderFilter("all");
         setSearchMode("database");
+        setPage(0);
         fetchCards();
     };
 
@@ -469,12 +510,40 @@ export default function SoccerPage() {
                         </>
                     ) : cards.length > 0 ? (
                         <>
-                            <p className="text-white/50 mb-4">{t('cards_found').replace('{count}', cards.length.toString())}</p>
+                            <p className="text-white/50 mb-4">
+                                {t('cards_found').replace('{count}', (searchTerm ? cards.length : totalCount).toLocaleString())}
+                                {!searchTerm && totalPages > 1 && <span className="text-white/30"> · {page + 1}/{totalPages}</span>}
+                            </p>
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                                 {cards.map((card) => (
                                     <SoccerCardItem key={card.id} card={card} />
                                 ))}
                             </div>
+
+                            {!searchTerm && totalPages > 1 && (
+                                <div className="flex items-center justify-center gap-1 mt-8 flex-wrap">
+                                    <Button variant="outline" size="sm" disabled={page === 0}
+                                        onClick={() => goToPage(page - 1)}
+                                        className="border-green-500/30 text-green-400 disabled:opacity-40">‹</Button>
+                                    {getPageWindow(page, totalPages).map((p, i) =>
+                                        p === -1 ? (
+                                            <span key={`e${i}`} className="px-2 text-white/30">…</span>
+                                        ) : (
+                                            <Button key={p} size="sm"
+                                                variant={p === page ? "default" : "outline"}
+                                                onClick={() => goToPage(p)}
+                                                className={p === page
+                                                    ? "bg-green-600 text-white hover:bg-green-500 min-w-9"
+                                                    : "border-green-500/30 text-green-400 min-w-9"}>
+                                                {p + 1}
+                                            </Button>
+                                        )
+                                    )}
+                                    <Button variant="outline" size="sm" disabled={page >= totalPages - 1}
+                                        onClick={() => goToPage(page + 1)}
+                                        className="border-green-500/30 text-green-400 disabled:opacity-40">›</Button>
+                                </div>
+                            )}
                         </>
                     ) : (
                         <div className="flex flex-col items-center justify-center py-20 text-center">
