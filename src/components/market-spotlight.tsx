@@ -733,6 +733,24 @@ export function MarketSpotlight() {
             const isOnePiece = category === 'onepiece' || category === 'one piece';
             const isSoccer = category === 'soccer';
 
+            // One Piece cards print a distinctive id like "OP15-077" / "ST29-012"
+            // / "EB03-031" / "P-001". The AI may put it in card_id, set_code or
+            // even the name. Normalize it to the exact DB format so we can match
+            // by number directly (the Pokemon-style number logic destroys it).
+            const extractOpId = (s?: string | null): string | null => {
+                if (!s) return null;
+                const u = s.toUpperCase().replace(/\s+/g, '');
+                const m = u.match(/(OP|ST|EB|PRB)0*(\d{1,2})-0*(\d{1,3})/);
+                if (m) return `${m[1]}${m[2].padStart(2, '0')}-${m[3].padStart(3, '0')}`;
+                const p = u.match(/P-?0*(\d{1,3})(?!\d)/);
+                if (p) return `P-${p[1].padStart(3, '0')}`;
+                return null;
+            };
+            const opId = isOnePiece
+                ? (extractOpId(cardNumber) || extractOpId(setCode) || extractOpId(cardName))
+                : null;
+            if (opId) console.log(`One Piece card id detected: ${opId}`);
+
             // ═══════════════════════════════════════════════════════
             // SOCCER: Hybrid real-time eBay search (no DB views)
             // ═══════════════════════════════════════════════════════
@@ -773,6 +791,72 @@ export function MarketSpotlight() {
                     const numbering = soccerDetails?.numbering || null;
                     const isAuto = soccerDetails?.autograph === 'auto';
                     const isPatch = soccerDetails?.patch === 'patch';
+
+                    // ── DB-FIRST: match against our crawled soccer sold-listings.
+                    // These are real sold prices we control — more reliable than a
+                    // live eBay scrape. Fall back to eBay only if nothing matches.
+                    const dbTerm = (playerName || cardName || '').trim();
+                    if (dbTerm) {
+                        try {
+                            setScanStatus('Matching against database...');
+                            const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+                            const dbUrl = `${SUPABASE_URL}/rest/v1/crawled_cards?category=ilike.*soccer*&name=ilike.*${encodeURIComponent(dbTerm)}*&price=gt.0&order=price.desc&select=id,name,image_url,price,year,grader,grade,set_name,ebay_id&limit=40`;
+                            const dbResp = await fetch(dbUrl, { headers: { apikey: anon, Authorization: `Bearer ${anon}` } });
+                            if (dbResp.ok) {
+                                const rows: any[] = await dbResp.json();
+                                const valid = rows.filter((r: any) => {
+                                    const pr = parseFloat(r.price);
+                                    if (!(pr > 0)) return false;
+                                    const t = (r.name || '').toLowerCase();
+                                    return !['mystery', 'pack', 'box', 'lot', 'bundle', 'break', 'case', 'hobby', 'blaster'].some(x => t.includes(x));
+                                });
+                                if (valid.length > 0) {
+                                    const prices = valid.map((r: any) => parseFloat(r.price)).sort((a: number, b: number) => a - b);
+                                    const median = prices.length % 2 === 0 ? (prices[prices.length / 2 - 1] + prices[prices.length / 2]) / 2 : prices[Math.floor(prices.length / 2)];
+                                    const low = prices[0], high = prices[prices.length - 1];
+                                    const terms = [brand, setName, numbering, isAuto ? 'auto' : null, isPatch ? 'patch' : null]
+                                        .filter(Boolean).map((s: any) => String(s).toLowerCase());
+                                    const playerWords = (playerName || '').toLowerCase().split(/\s+/).filter((w: string) => w.length >= 3);
+                                    const scored: ScoredResult[] = valid.slice(0, 10).map((r: any, idx: number) => {
+                                        const t = (r.name || '').toLowerCase();
+                                        let score = 0;
+                                        const pw = playerWords.filter((w: string) => t.includes(w));
+                                        score += Math.round((pw.length / Math.max(playerWords.length, 1)) * 45);
+                                        for (const term of terms) if (term && t.includes(term)) score += 12;
+                                        const pd = Math.abs(parseFloat(r.price) - median) / (median || 1);
+                                        if (pd < 0.2) score += 10; else if (pd < 0.5) score += 5;
+                                        score += Math.max(0, 8 - idx);
+                                        const fake: TcgcsvProduct = {
+                                            product_id: 800000 + idx,
+                                            name: r.name || 'Soccer Card',
+                                            image_url: r.image_url ? r.image_url.replace(/s-l\d+\./, 's-l800.') : null,
+                                            set_name: r.set_name || setName || null,
+                                            rarity: (r.grader && r.grade) ? `${r.grader} ${r.grade}` : null,
+                                            market_price: median, low_price: low, mid_price: median, high_price: high,
+                                            number: numbering || null,
+                                            tcgplayer_url: null,
+                                            extended_data: JSON.stringify({ player: playerName, year: r.year, source: 'crawled' }),
+                                            category_id: CATEGORY_SOCCER,
+                                        };
+                                        return { product: fake, score, breakdown: `db:${score}` };
+                                    });
+                                    scored.sort((a, b) => b.score - a.score);
+                                    const top5 = scored.slice(0, 5);
+                                    top5[0].product.market_price = median;
+                                    top5[0].product.low_price = low;
+                                    top5[0].product.high_price = high;
+                                    console.log(`✅ Soccer DB match: ${top5[0].product.name} (score ${top5[0].score}, ${valid.length} listings)`);
+                                    await displayProductResult(top5[0].product);
+                                    setScanResults(top5);
+                                    setShowScanResultsDialog(true);
+                                    if (shouldIncrementUsage) await incrementUsage();
+                                    return;
+                                }
+                            }
+                        } catch (dbErr) {
+                            console.warn('Soccer DB-first search failed, falling back to eBay:', dbErr);
+                        }
+                    }
 
                     // Build a targeted query
                     const queryParts: string[] = [];
@@ -960,6 +1044,12 @@ export function MarketSpotlight() {
                     let score = 0;
                     const reasons: string[] = [];
 
+                    // --- ONE PIECE EXACT ID (0-50) ---
+                    if (opId && p.number && p.number.toUpperCase() === opId) {
+                        score += 50;
+                        reasons.push(`op:id(50)`);
+                    }
+
                     // --- NUMBER SCORE (0-30) ---
                     if (p.number && numberFormats.length > 0 && numberFormats.includes(p.number)) {
                         score += 30;
@@ -1121,8 +1211,17 @@ export function MarketSpotlight() {
                         }
                     };
 
-                    // --- STRATEGY 1: By card number ---
-                    if (altFormatsArray.length > 0) {
+                    // --- STRATEGY 0: One Piece exact card id (OP15-077 …) ---
+                    if (opId) {
+                        console.log(`TCGCSV: One Piece id search: ${opId}`);
+                        await searchBothCategories(
+                            (catId) => `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&number=eq.${encodeURIComponent(opId)}&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=20`,
+                            'op-id'
+                        );
+                    }
+
+                    // --- STRATEGY 1: By card number (Pokemon-style; skip for One Piece) ---
+                    if (!opId && altFormatsArray.length > 0) {
                         const numberClauses = altFormatsArray.map((n: string) => `number.eq.${encodeURIComponent(n)}`).join(',');
                         console.log(`TCGCSV: Number search: ${altFormatsArray.join(', ')}`);
                         await searchBothCategories(
