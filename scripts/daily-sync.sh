@@ -26,6 +26,25 @@ if [ -f .env ]; then
 fi
 export SUPABASE_URL SUPABASE_ANON_KEY
 
+# The .ts crawlers (One Piece / Soccer) read their config via `dotenv/config`,
+# which needs a .env file. In CI there isn't one, so materialize a temporary
+# .env from the environment and remove it on exit. (No-op locally: a real
+# .env already exists.)
+TMP_ENV=0
+if [ ! -f .env ]; then
+    {
+        printf 'NEXT_PUBLIC_SUPABASE_URL=%s\n'      "${NEXT_PUBLIC_SUPABASE_URL:-$SUPABASE_URL}"
+        printf 'NEXT_PUBLIC_SUPABASE_ANON_KEY=%s\n' "${NEXT_PUBLIC_SUPABASE_ANON_KEY:-$SUPABASE_ANON_KEY}"
+        printf 'SUPABASE_URL=%s\n'                  "${SUPABASE_URL}"
+        printf 'SUPABASE_ANON_KEY=%s\n'             "${SUPABASE_ANON_KEY}"
+        [ -n "${EBAY_APP_ID:-}" ]        && printf 'EBAY_APP_ID=%s\n'        "${EBAY_APP_ID}"
+        [ -n "${EBAY_CLIENT_SECRET:-}" ] && printf 'EBAY_CLIENT_SECRET=%s\n' "${EBAY_CLIENT_SECRET}"
+    } > .env
+    TMP_ENV=1
+    trap '[ "${TMP_ENV:-0}" = 1 ] && rm -f .env' EXIT
+    echo "[daily-sync] wrote a temporary .env for the ts crawlers (SUPABASE_URL len=${#SUPABASE_URL})"
+fi
+
 failures=()
 run() {
     local label="$1"; shift
