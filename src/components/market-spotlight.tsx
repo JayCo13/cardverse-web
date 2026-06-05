@@ -791,6 +791,13 @@ export function MarketSpotlight() {
                     const numbering = soccerDetails?.numbering || null;
                     const isAuto = soccerDetails?.autograph === 'auto';
                     const isPatch = soccerDetails?.patch === 'patch';
+                    // Richer attributes from the enhanced Soccer AI (used to match the
+                    // exact card variant, not just the player).
+                    const parallel = soccerDetails?.parallel && String(soccerDetails.parallel).toLowerCase() !== 'base'
+                        ? String(soccerDetails.parallel) : null;
+                    const team = soccerDetails?.team || null;
+                    const cardYear = soccerDetails?.year ? String(soccerDetails.year).match(/\d{4}/)?.[0] || null : null;
+                    const isRookie = soccerDetails?.rookie === 'rc';
 
                     // ── DB-FIRST: match against our crawled soccer sold-listings.
                     // These are real sold prices we control — more reliable than a
@@ -814,15 +821,25 @@ export function MarketSpotlight() {
                                     const prices = valid.map((r: any) => parseFloat(r.price)).sort((a: number, b: number) => a - b);
                                     const median = prices.length % 2 === 0 ? (prices[prices.length / 2 - 1] + prices[prices.length / 2]) / 2 : prices[Math.floor(prices.length / 2)];
                                     const low = prices[0], high = prices[prices.length - 1];
-                                    const terms = [brand, setName, numbering, isAuto ? 'auto' : null, isPatch ? 'patch' : null]
-                                        .filter(Boolean).map((s: any) => String(s).toLowerCase());
+                                    // Weighted attribute terms — parallel/numbering pin the exact variant.
+                                    const weightedTerms: Array<[string, number]> = [
+                                        ...(parallel ? [[String(parallel).toLowerCase(), 20] as [string, number]] : []),
+                                        ...(numbering ? [[`/${numbering}`.toLowerCase(), 18] as [string, number]] : []),
+                                        ...(setName ? [[String(setName).toLowerCase(), 14] as [string, number]] : []),
+                                        ...(brand ? [[String(brand).toLowerCase(), 10] as [string, number]] : []),
+                                        ...(cardYear ? [[cardYear.toLowerCase(), 10] as [string, number]] : []),
+                                        ...(team ? [[String(team).toLowerCase(), 8] as [string, number]] : []),
+                                        ...(isAuto ? [['auto', 12] as [string, number]] : []),
+                                        ...(isPatch ? [['patch', 10] as [string, number]] : []),
+                                        ...(isRookie ? [['rookie', 6] as [string, number], ['rc', 6] as [string, number]] : []),
+                                    ];
                                     const playerWords = (playerName || '').toLowerCase().split(/\s+/).filter((w: string) => w.length >= 3);
                                     const scored: ScoredResult[] = valid.slice(0, 10).map((r: any, idx: number) => {
                                         const t = (r.name || '').toLowerCase();
                                         let score = 0;
                                         const pw = playerWords.filter((w: string) => t.includes(w));
                                         score += Math.round((pw.length / Math.max(playerWords.length, 1)) * 45);
-                                        for (const term of terms) if (term && t.includes(term)) score += 12;
+                                        for (const [term, w] of weightedTerms) if (term && t.includes(term)) score += w;
                                         const pd = Math.abs(parseFloat(r.price) - median) / (median || 1);
                                         if (pd < 0.2) score += 10; else if (pd < 0.5) score += 5;
                                         score += Math.max(0, 8 - idx);
@@ -858,11 +875,13 @@ export function MarketSpotlight() {
                         }
                     }
 
-                    // Build a targeted query
+                    // Build a targeted query (player + every attribute we read)
                     const queryParts: string[] = [];
+                    if (cardYear) queryParts.push(cardYear);
                     if (playerName) queryParts.push(playerName);
                     if (brand) queryParts.push(brand);
                     if (setName) queryParts.push(setName);
+                    if (parallel) queryParts.push(parallel);
                     if (isAuto) queryParts.push('auto');
                     if (isPatch) queryParts.push('patch');
                     if (numbering) queryParts.push(`/${numbering}`);
