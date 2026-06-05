@@ -121,7 +121,7 @@ export function MarketSpotlight() {
     // Cache removed - always fetch fresh data
     // const { spotlight, setSpotlightCache } = useCardCache();
 
-    const [timeFrame, setTimeFrame] = useState('1M');
+    const [timeFrame, setTimeFrame] = useState('1Y');
     // No cache - always start fresh
     const [product, setProduct] = useState<ProductData | null>(null);
     const [chartData, setChartData] = useState<Array<{ date: string; price: number }>>([]);
