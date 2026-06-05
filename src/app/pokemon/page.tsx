@@ -24,10 +24,12 @@ export default function PokemonPage() {
     const [cards, setCards] = useState<PokemonCard[]>([]);
     const [sets, setSets] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
-    const [searchTerm, setSearchTerm] = useState(searchParams.get('q') || "");
-    const [priceFilter, setPriceFilter] = useState(searchParams.get('price') || "all");
-    const [rarityFilter, setRarityFilter] = useState(searchParams.get('rarity') || "all");
-    const [setFilter, setSetFilter] = useState(searchParams.get('set') || "all");
+    // Always start with a clean, unfiltered view on load. Stale filters
+    // (from shared/old URLs) were leaving the page on "no cards found".
+    const [searchTerm, setSearchTerm] = useState("");
+    const [priceFilter, setPriceFilter] = useState("all");
+    const [rarityFilter, setRarityFilter] = useState("all");
+    const [setFilter, setSetFilter] = useState("all");
     const [sortBy, setSortBy] = useState(searchParams.get('sort') || "price_desc");
     const [categoryFilter, setCategoryFilter] = useState(searchParams.get('cat') || "3"); // 3 = English, 85 = Japanese
     const [showFilters, setShowFilters] = useState(false);
@@ -74,61 +76,83 @@ export default function PokemonPage() {
         setLoading(true);
         try {
             const supabase = getSupabaseClient();
-            let query = supabase
-                .from('tcgcsv_products')
-                .select('product_id, name, image_url, set_name, number, rarity, market_price, low_price, tcgplayer_url')
-                .eq('category_id', parseInt(categoryFilter))
-                .not('market_price', 'is', null)
-                .gt('market_price', 0);
 
-            // Apply search
-            if (searchTerm) {
-                query = query.ilike('name', `%${searchTerm}%`);
-            }
+            const runOnce = () => {
+                let query = supabase
+                    .from('tcgcsv_products')
+                    .select('product_id, name, image_url, set_name, number, rarity, market_price, low_price, tcgplayer_url')
+                    .eq('category_id', parseInt(categoryFilter))
+                    .not('market_price', 'is', null)
+                    .gt('market_price', 0);
 
-            // Apply set filter
-            if (setFilter !== "all") {
-                query = query.eq('set_name', setFilter);
-            }
+                // Apply search
+                if (searchTerm) {
+                    query = query.ilike('name', `%${searchTerm}%`);
+                }
 
-            // Apply price filter
-            if (priceFilter === "under5") {
-                query = query.lt('market_price', 5);
-            } else if (priceFilter === "5to20") {
-                query = query.gte('market_price', 5).lt('market_price', 20);
-            } else if (priceFilter === "20to50") {
-                query = query.gte('market_price', 20).lt('market_price', 50);
-            } else if (priceFilter === "50to100") {
-                query = query.gte('market_price', 50).lt('market_price', 100);
-            } else if (priceFilter === "100to500") {
-                query = query.gte('market_price', 100).lt('market_price', 500);
-            } else if (priceFilter === "over500") {
-                query = query.gte('market_price', 500);
-            }
+                // Apply set filter
+                if (setFilter !== "all") {
+                    query = query.eq('set_name', setFilter);
+                }
 
-            // Apply rarity filter
-            if (rarityFilter !== "all") {
-                query = query.ilike('rarity', `%${rarityFilter}%`);
-            }
+                // Apply price filter
+                if (priceFilter === "under5") {
+                    query = query.lt('market_price', 5);
+                } else if (priceFilter === "5to20") {
+                    query = query.gte('market_price', 5).lt('market_price', 20);
+                } else if (priceFilter === "20to50") {
+                    query = query.gte('market_price', 20).lt('market_price', 50);
+                } else if (priceFilter === "50to100") {
+                    query = query.gte('market_price', 50).lt('market_price', 100);
+                } else if (priceFilter === "100to500") {
+                    query = query.gte('market_price', 100).lt('market_price', 500);
+                } else if (priceFilter === "over500") {
+                    query = query.gte('market_price', 500);
+                }
 
-            // Apply sort
-            if (sortBy === "price_desc") {
-                query = query.order('market_price', { ascending: false });
-            } else if (sortBy === "price_asc") {
-                query = query.order('market_price', { ascending: true });
-            } else if (sortBy === "name_asc") {
-                query = query.order('name', { ascending: true });
-            } else if (sortBy === "name_desc") {
-                query = query.order('name', { ascending: false });
-            } else if (sortBy === "newest") {
-                query = query.order('product_id', { ascending: false });
-            }
+                // Apply rarity filter
+                if (rarityFilter !== "all") {
+                    query = query.ilike('rarity', `%${rarityFilter}%`);
+                }
 
-            const { data, error } = await query.limit(80);
+                // Apply sort
+                if (sortBy === "price_desc") {
+                    query = query.order('market_price', { ascending: false });
+                } else if (sortBy === "price_asc") {
+                    query = query.order('market_price', { ascending: true });
+                } else if (sortBy === "name_asc") {
+                    query = query.order('name', { ascending: true });
+                } else if (sortBy === "name_desc") {
+                    query = query.order('name', { ascending: false });
+                } else if (sortBy === "newest") {
+                    query = query.order('product_id', { ascending: false });
+                }
 
-            if (error) {
-                console.error('Supabase error:', error.message, error.code, error.details, error.hint);
-                throw error;
+                return query.limit(80);
+            };
+
+            const noNarrowingFilters =
+                !searchTerm && setFilter === "all" && priceFilter === "all" && rarityFilter === "all";
+
+            // A stale/cold REST connection after inactivity returns an empty
+            // list (the "no cards found" bug). Retry a couple of times before
+            // giving up — and treat an empty *unfiltered* result as a miss.
+            let data: any[] = [];
+            for (let attempt = 1; attempt <= 3; attempt++) {
+                const { data: rows, error } = await runOnce();
+                if (error) {
+                    console.error(`[Pokemon] query error (attempt ${attempt}):`, error.message, error.code);
+                    if (attempt === 3) throw error;
+                    await new Promise(r => setTimeout(r, 500 * attempt));
+                    continue;
+                }
+                data = rows || [];
+                if (data.length === 0 && noNarrowingFilters && attempt < 3) {
+                    console.warn(`[Pokemon] empty result with no filters (attempt ${attempt}) — retrying`);
+                    await new Promise(r => setTimeout(r, 500 * attempt));
+                    continue;
+                }
+                break;
             }
             
             console.log('[Pokemon] Fetched cards:', data?.length || 0);
