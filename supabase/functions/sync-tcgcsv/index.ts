@@ -1,6 +1,7 @@
 // TCGCSV Sync Edge Function
 // Syncs Pokemon card data from tcgcsv.com to Supabase
-// Now includes price history tracking for charts
+// Price history is recorded ONLY when a product's market price changes
+// (plus a baseline for brand-new products), to avoid daily row bloat.
 // 
 // Usage: 
 // - POST /sync-tcgcsv                 - Sync all Pokemon groups
@@ -84,14 +85,35 @@ function getExtendedValue(extendedData: Array<{ name: string; value: string }> |
     return item?.value || null;
 }
 
-// Store price history for chart data
-async function storePriceHistory(prices: TcgPrice[]): Promise<number> {
+// Normalize a money value to 2dp for change comparison
+// (NUMERIC may arrive from PostgREST as a string).
+function normPrice(v: number | string | null | undefined): number | null {
+    if (v === null || v === undefined) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+}
+
+// Store price history for chart data — but ONLY for products whose market
+// price actually MOVED since the last sync. Unchanged prices (the bulk of
+// products on any given day) are skipped, which keeps tcgcsv_price_history
+// from growing ~60k rows/day. `oldPriceMap` holds the previously-stored
+// market price per product, read BEFORE the product upsert overwrites it.
+async function storePriceHistory(
+    prices: TcgPrice[],
+    oldPriceMap: Map<number, number | string | null>
+): Promise<number> {
     if (prices.length === 0) return 0;
 
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
     const historyRows = prices
         .filter(p => p.marketPrice != null || p.lowPrice != null)
+        .filter(p => {
+            // New product (no prior price) → record a baseline point.
+            if (!oldPriceMap.has(p.productId)) return true;
+            // Otherwise only record when the market price changed.
+            return normPrice(p.marketPrice) !== normPrice(oldPriceMap.get(p.productId));
+        })
         .map(p => ({
             product_id: p.productId,
             market_price: p.marketPrice || null,
@@ -103,7 +125,7 @@ async function storePriceHistory(prices: TcgPrice[]): Promise<number> {
 
     if (historyRows.length === 0) return 0;
 
-    // Upsert to handle re-runs on the same day
+    // Upsert handles re-runs / multiple price moves on the same day.
     const { error, count } = await supabase
         .from('tcgcsv_price_history')
         .upsert(historyRows, {
@@ -135,6 +157,22 @@ async function syncGroup(categoryId: number, groupId: number, groupName: string)
         const existing = priceMap.get(price.productId);
         if (!existing || price.subTypeName === 'Normal' || price.subTypeName === 'Holofoil') {
             priceMap.set(price.productId, price);
+        }
+    }
+
+    // Capture the previously-stored market price per product BEFORE the
+    // upsert below overwrites tcgcsv_products — used to skip unchanged
+    // price-history rows. Chunked to keep the IN() list small.
+    const productIds = products.map(p => p.productId);
+    const oldPriceMap = new Map<number, number | string | null>();
+    for (let i = 0; i < productIds.length; i += 500) {
+        const idChunk = productIds.slice(i, i + 500);
+        const { data: existing } = await supabase
+            .from('tcgcsv_products')
+            .select('product_id, market_price')
+            .in('product_id', idChunk);
+        for (const row of existing ?? []) {
+            oldPriceMap.set(row.product_id, row.market_price);
         }
     }
 
@@ -176,8 +214,8 @@ async function syncGroup(categoryId: number, groupId: number, groupName: string)
         }
     }
 
-    // Store price history for charts
-    const historyStored = await storePriceHistory(prices);
+    // Store price history for charts (only products whose price changed)
+    const historyStored = await storePriceHistory(prices, oldPriceMap);
 
     console.log(`Synced ${updatedCount}/${products.length} products, ${historyStored} price history records for ${groupName}`);
     return { products: products.length, updated: updatedCount, historyStored };
