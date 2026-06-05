@@ -58,10 +58,11 @@ run() {
     fi
 }
 
-run "Pokemon EN" bash scripts/crawl-pok-en.sh
-run "Pokemon JP" bash scripts/crawl-pok-jp.sh
-run "One Piece"  npx --yes tsx scripts/crawl-onepiece-tcgcsv.ts
-run "Soccer"     npx --yes tsx scripts/crawl-soccer-football.ts
+# Pokémon EN+JP via a LOCAL direct-TCGCSV crawler (the sync-tcgcsv edge
+# function is blocked: it runs on Supabase's cloud IP → TCGCSV 401).
+run "Pokemon (EN+JP)" npx --yes tsx scripts/crawl-pokemon-tcgcsv.ts
+run "One Piece"       npx --yes tsx scripts/crawl-onepiece-tcgcsv.ts
+run "Soccer"          npx --yes tsx scripts/crawl-soccer-football.ts
 
 echo ""
 echo "==================== SUMMARY — $(date -u '+%Y-%m-%d %H:%M:%SZ') ===================="

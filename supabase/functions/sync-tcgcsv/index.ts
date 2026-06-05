@@ -12,6 +12,15 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
 const TCGCSV_BASE_URL = 'https://tcgcsv.com/tcgplayer';
 
+// tcgcsv.com (Cloudflare) returns 401 to the default fetch User-Agent; a
+// browser UA is accepted. This is why the edge-function sync started failing
+// (HTTP 401) — it was never an IP block.
+const TCG_FETCH_OPTS = {
+    headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+    },
+};
+
 // Category IDs
 const CATEGORY_POKEMON = 3;
 const CATEGORY_POKEMON_JAPAN = 85;
@@ -56,7 +65,7 @@ interface TcgPrice {
 
 // Fetch all groups for a category
 async function fetchGroups(categoryId: number): Promise<TcgGroup[]> {
-    const response = await fetch(`${TCGCSV_BASE_URL}/${categoryId}/groups`);
+    const response = await fetch(`${TCGCSV_BASE_URL}/${categoryId}/groups`, TCG_FETCH_OPTS);
     if (!response.ok) throw new Error(`Failed to fetch groups: ${response.status}`);
     const data = await response.json();
     return data.results || [];
@@ -64,7 +73,7 @@ async function fetchGroups(categoryId: number): Promise<TcgGroup[]> {
 
 // Fetch products for a group
 async function fetchProducts(categoryId: number, groupId: number): Promise<TcgProduct[]> {
-    const response = await fetch(`${TCGCSV_BASE_URL}/${categoryId}/${groupId}/products`);
+    const response = await fetch(`${TCGCSV_BASE_URL}/${categoryId}/${groupId}/products`, TCG_FETCH_OPTS);
     if (!response.ok) throw new Error(`Failed to fetch products: ${response.status}`);
     const data = await response.json();
     return data.results || [];
@@ -72,7 +81,7 @@ async function fetchProducts(categoryId: number, groupId: number): Promise<TcgPr
 
 // Fetch prices for a group
 async function fetchPrices(categoryId: number, groupId: number): Promise<TcgPrice[]> {
-    const response = await fetch(`${TCGCSV_BASE_URL}/${categoryId}/${groupId}/prices`);
+    const response = await fetch(`${TCGCSV_BASE_URL}/${categoryId}/${groupId}/prices`, TCG_FETCH_OPTS);
     if (!response.ok) throw new Error(`Failed to fetch prices: ${response.status}`);
     const data = await response.json();
     return data.results || [];

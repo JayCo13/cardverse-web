@@ -27,6 +27,11 @@ const TCGCSV_BASE = 'https://tcgcsv.com/tcgplayer';
 // Initialize Supabase client
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// tcgcsv.com (Cloudflare) returns 401 to the default node/undici User-Agent;
+// a browser UA is accepted. Required from every host (it was never an IP block).
+const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+const TCG_FETCH_OPTS = { headers: { 'User-Agent': UA } };
+
 interface TcgGroup {
     groupId: number;
     name: string;
@@ -82,7 +87,7 @@ async function fetchGroups(): Promise<TcgGroup[]> {
     console.log('📦 Fetching One Piece groups from TCGCSV...');
 
     const url = `${TCGCSV_BASE}/${ONE_PIECE_CATEGORY_ID}/groups`;
-    const response = await fetch(url);
+    const response = await fetch(url, TCG_FETCH_OPTS);
 
     if (!response.ok) {
         throw new Error(`Failed to fetch groups: ${response.status}`);
@@ -95,7 +100,7 @@ async function fetchGroups(): Promise<TcgGroup[]> {
 
 async function fetchProducts(groupId: number): Promise<TcgProduct[]> {
     const url = `${TCGCSV_BASE}/${ONE_PIECE_CATEGORY_ID}/${groupId}/products`;
-    const response = await fetch(url);
+    const response = await fetch(url, TCG_FETCH_OPTS);
 
     if (!response.ok) {
         console.error(`   ❌ Failed to fetch products for group ${groupId}`);
@@ -108,7 +113,7 @@ async function fetchProducts(groupId: number): Promise<TcgProduct[]> {
 
 async function fetchPrices(groupId: number): Promise<TcgPrice[]> {
     const url = `${TCGCSV_BASE}/${ONE_PIECE_CATEGORY_ID}/${groupId}/prices`;
-    const response = await fetch(url);
+    const response = await fetch(url, TCG_FETCH_OPTS);
 
     if (!response.ok) {
         return [];
