@@ -422,12 +422,191 @@ export interface Database {
                     updated_at?: string
                 }
             }
+            soccer_sets: {
+                Row: {
+                    id: number
+                    brand: string
+                    set_name: string
+                    year: number
+                    season: string | null
+                    category: string
+                    external_ids: Json
+                    created_at: string
+                }
+                Insert: {
+                    id?: number
+                    brand: string
+                    set_name: string
+                    year: number
+                    season?: string | null
+                    category?: string
+                    external_ids?: Json
+                    created_at?: string
+                }
+                Update: {
+                    id?: number
+                    brand?: string
+                    set_name?: string
+                    year?: number
+                    season?: string | null
+                    category?: string
+                    external_ids?: Json
+                    created_at?: string
+                }
+            }
+            soccer_cards: {
+                Row: {
+                    id: number
+                    set_id: number | null
+                    brand: string
+                    year: number
+                    set_name: string
+                    player: string
+                    card_number: string | null
+                    parallel: string
+                    print_run: number | null
+                    is_rookie: boolean
+                    is_autograph: boolean
+                    is_memorabilia: boolean
+                    tier: number
+                    attributes: Json
+                    external_ids: Json
+                    search_name: string
+                    player_norm: string
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: number
+                    set_id?: number | null
+                    brand: string
+                    year: number
+                    set_name: string
+                    player: string
+                    card_number?: string | null
+                    parallel?: string
+                    print_run?: number | null
+                    is_rookie?: boolean
+                    is_autograph?: boolean
+                    is_memorabilia?: boolean
+                    tier?: number
+                    attributes?: Json
+                    external_ids?: Json
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: number
+                    set_id?: number | null
+                    brand?: string
+                    year?: number
+                    set_name?: string
+                    player?: string
+                    card_number?: string | null
+                    parallel?: string
+                    print_run?: number | null
+                    is_rookie?: boolean
+                    is_autograph?: boolean
+                    is_memorabilia?: boolean
+                    tier?: number
+                    attributes?: Json
+                    external_ids?: Json
+                    created_at?: string
+                    updated_at?: string
+                }
+            }
+            soccer_price_cache: {
+                Row: {
+                    card_id: number
+                    market_price: number | null
+                    low_price: number | null
+                    mid_price: number | null
+                    high_price: number | null
+                    currency: string
+                    sample_size: number
+                    source: string
+                    fetched_at: string
+                    expires_at: string
+                }
+                Insert: {
+                    card_id: number
+                    market_price?: number | null
+                    low_price?: number | null
+                    mid_price?: number | null
+                    high_price?: number | null
+                    currency?: string
+                    sample_size?: number
+                    source?: string
+                    fetched_at?: string
+                    expires_at?: string
+                }
+                Update: {
+                    card_id?: number
+                    market_price?: number | null
+                    low_price?: number | null
+                    mid_price?: number | null
+                    high_price?: number | null
+                    currency?: string
+                    sample_size?: number
+                    source?: string
+                    fetched_at?: string
+                    expires_at?: string
+                }
+            }
+            soccer_own_sales: {
+                Row: {
+                    id: number
+                    card_id: number
+                    order_id: string | null
+                    price: number
+                    currency: string
+                    sold_at: string
+                    created_at: string
+                }
+                Insert: {
+                    id?: number
+                    card_id: number
+                    order_id?: string | null
+                    price: number
+                    currency?: string
+                    sold_at?: string
+                    created_at?: string
+                }
+                Update: {
+                    id?: number
+                    card_id?: number
+                    order_id?: string | null
+                    price?: number
+                    currency?: string
+                    sold_at?: string
+                    created_at?: string
+                }
+            }
         }
         Views: {
             [_ in never]: never
         }
         Functions: {
-            [_ in never]: never
+            match_soccer_card: {
+                Args: {
+                    p_query: string
+                    p_brand?: string | null
+                    p_year?: number | null
+                    p_card_number?: string | null
+                    p_parallel?: string | null
+                    p_limit?: number | null
+                }
+                Returns: {
+                    id: number
+                    player: string
+                    set_name: string
+                    parallel: string
+                    card_number: string | null
+                    year: number
+                    tier: number
+                    score: number
+                }[]
+            }
         }
         Enums: {
             [_ in never]: never
