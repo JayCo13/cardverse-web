@@ -194,7 +194,7 @@ export function MarketSpotlight() {
     const [crop, setCrop] = useState<Crop>();
     const cropImgRef = useRef<HTMLImageElement>(null);
 
-    // Top 5 scan results dialog state
+    // Top 10 scan results dialog state
     type ScoredResult = { product: TcgcsvProduct; score: number; breakdown: string };
     const [scanResults, setScanResults] = useState<ScoredResult[]>([]);
     const [showScanResultsDialog, setShowScanResultsDialog] = useState(false);
@@ -847,7 +847,7 @@ export function MarketSpotlight() {
                                         ...(isRookie ? [['rookie', 6] as [string, number], ['rc', 6] as [string, number]] : []),
                                     ];
                                     const playerWords = (playerName || '').toLowerCase().split(/\s+/).filter((w: string) => w.length >= 3);
-                                    const scored: ScoredResult[] = valid.slice(0, 10).map((r: any, idx: number) => {
+                                    const scored: ScoredResult[] = valid.slice(0, 15).map((r: any, idx: number) => {
                                         const t = (r.name || '').toLowerCase();
                                         let score = 0;
                                         const pw = playerWords.filter((w: string) => t.includes(w));
@@ -871,13 +871,13 @@ export function MarketSpotlight() {
                                         return { product: fake, score, breakdown: `db:${score}` };
                                     });
                                     scored.sort((a, b) => b.score - a.score);
-                                    const top5 = scored.slice(0, 5);
-                                    top5[0].product.market_price = median;
-                                    top5[0].product.low_price = low;
-                                    top5[0].product.high_price = high;
-                                    console.log(`✅ Soccer DB match: ${top5[0].product.name} (score ${top5[0].score}, ${valid.length} listings)`);
-                                    await displayProductResult(top5[0].product);
-                                    setScanResults(top5);
+                                    const top10 = scored.slice(0, 10);
+                                    top10[0].product.market_price = median;
+                                    top10[0].product.low_price = low;
+                                    top10[0].product.high_price = high;
+                                    console.log(`✅ Soccer DB match: ${top10[0].product.name} (score ${top10[0].score}, ${valid.length} listings)`);
+                                    await displayProductResult(top10[0].product);
+                                    setScanResults(top10);
                                     setShowScanResultsDialog(true);
                                     if (shouldIncrementUsage) await incrementUsage();
                                     return;
@@ -888,60 +888,69 @@ export function MarketSpotlight() {
                         }
                     }
 
-                    // Build a targeted query (player + every attribute we read)
-                    const queryParts: string[] = [];
-                    if (cardYear) queryParts.push(cardYear);
-                    if (playerName) queryParts.push(playerName);
-                    if (brand) queryParts.push(brand);
-                    if (setName) queryParts.push(setName);
-                    if (parallel) queryParts.push(parallel);
-                    if (isAuto) queryParts.push('auto');
-                    if (isPatch) queryParts.push('patch');
-                    if (numbering) queryParts.push(`/${numbering}`);
-                    queryParts.push('-pack -box -lot -break -case');
-
-                    const searchQuery = queryParts.join(' ');
-                    console.log(`Soccer eBay query: "${searchQuery}"`);
                     setScanStatus('Searching eBay for matching soccer cards...');
 
-                    const ebayResponse = await fetch(
-                        `${SUPABASE_URL}/functions/v1/search-ebay`,
-                        {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
-                            },
-                            body: JSON.stringify({ query: searchQuery, soldOnly: false }),
-                        }
-                    );
+                    // Skip a junk/placeholder player name so we don't search for it.
+                    const validPlayer = playerName && !/^(scan result|unknown|n\/?a|card)$/i.test(String(playerName).trim())
+                        ? String(playerName).trim() : null;
 
-                    if (!ebayResponse.ok) throw new Error(`eBay search failed: ${ebayResponse.status}`);
-                    const ebayData = await ebayResponse.json();
-                    const ebayItems = ebayData.items || [];
+                    // Expanded keyword set, strongest-first. We START specific (use
+                    // ALL the card data, not just the player) and progressively DROP
+                    // the least-useful trailing term until eBay returns matches — so
+                    // it never dead-ends on "No cards found".
+                    const orderedTerms = [
+                        validPlayer,
+                        cardYear,
+                        brand,
+                        setName,
+                        parallel,
+                        isAuto ? 'auto' : null,
+                        isPatch ? 'patch' : null,
+                        numbering ? `/${numbering}` : null,
+                        team,
+                    ].filter(Boolean) as string[];
 
-                    console.log(`eBay returned ${ebayItems.length} items`);
-
-                    if (ebayItems.length === 0) {
-                        setSearchError(`No cards found for "${cardName}"`);
+                    if (orderedTerms.length === 0) {
+                        setSearchError('Could not read enough details from this card. Try a clearer, well-lit photo.');
                         return;
                     }
 
-                    // Filter out non-single items and items with $0 price
-                    const validItems = ebayItems.filter((item: any) => {
-                        const price = parseFloat(item.price);
-                        if (price <= 0) return false;
-                        const titleLower = item.title?.toLowerCase() || '';
-                        const excludes = ['mystery', 'pack', 'box', 'lot', 'bundle', 'break', 'case', 'hobby', 'blaster'];
-                        return !excludes.some((ex: string) => titleLower.includes(ex));
-                    });
+                    const NEG = '-pack -box -lot -break -case -bundle -mystery -repack';
+                    let validItems: any[] = [];
+                    let usedQuery = '';
+                    for (let take = orderedTerms.length; take >= 1 && validItems.length === 0; take--) {
+                        usedQuery = `${orderedTerms.slice(0, take).join(' ')} ${NEG}`.trim();
+                        if (take < orderedTerms.length) setScanStatus('Broadening eBay search...');
+                        console.log(`Soccer eBay query (take ${take}): "${usedQuery}"`);
+                        try {
+                            const resp = await fetch(`${SUPABASE_URL}/functions/v1/search-ebay`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+                                },
+                                body: JSON.stringify({ query: usedQuery, soldOnly: true }),
+                            });
+                            if (!resp.ok) continue;
+                            const data = await resp.json();
+                            const items = data.items || [];
+                            validItems = items.filter((item: any) => {
+                                const price = parseFloat(item.price);
+                                if (!(price > 0)) return false;
+                                const t = item.title?.toLowerCase() || '';
+                                return !['mystery', 'pack', 'box', 'lot', 'bundle', 'break', 'case', 'hobby', 'blaster', 'repack'].some((ex: string) => t.includes(ex));
+                            });
+                        } catch (e) {
+                            console.warn('eBay query attempt failed:', e);
+                        }
+                    }
 
                     if (validItems.length === 0) {
-                        setSearchError(`No matching cards found for "${cardName}"`);
+                        setSearchError(`No eBay matches for "${validPlayer || orderedTerms[0]}". Try a clearer photo.`);
                         return;
                     }
 
-                    // Calculate median price
+                    // Median price from the matched listings.
                     const prices = validItems.map((item: any) => parseFloat(item.price)).sort((a: number, b: number) => a - b);
                     const medianPrice = prices.length % 2 === 0
                         ? (prices[prices.length / 2 - 1] + prices[prices.length / 2]) / 2
@@ -949,72 +958,63 @@ export function MarketSpotlight() {
                     const lowPrice = prices[0];
                     const highPrice = prices[prices.length - 1];
 
-                    console.log(`Soccer prices — Median: $${medianPrice.toFixed(2)}, Low: $${lowPrice}, High: $${highPrice}, Samples: ${prices.length}`);
+                    console.log(`Soccer prices — Median: $${medianPrice.toFixed(2)}, Low: $${lowPrice}, High: $${highPrice}, Samples: ${prices.length}, query: "${usedQuery}"`);
 
-                    // Score eBay items by relevance to AI identification
-                    const scoredEbayItems: ScoredResult[] = validItems.slice(0, 10).map((item: any, idx: number) => {
+                    // Weighted attribute ranking — pins the exact variant.
+                    const rankTerms: Array<[string, number]> = [
+                        ...(validPlayer ? [[validPlayer.toLowerCase(), 40] as [string, number]] : []),
+                        ...(parallel ? [[String(parallel).toLowerCase(), 18] as [string, number]] : []),
+                        ...(numbering ? [[`/${numbering}`.toLowerCase(), 16] as [string, number]] : []),
+                        ...(setName ? [[String(setName).toLowerCase(), 14] as [string, number]] : []),
+                        ...(brand ? [[String(brand).toLowerCase(), 10] as [string, number]] : []),
+                        ...(cardYear ? [[cardYear.toLowerCase(), 10] as [string, number]] : []),
+                        ...(isAuto ? [['auto', 12] as [string, number]] : []),
+                        ...(isPatch ? [['patch', 10] as [string, number]] : []),
+                        ...(team ? [[String(team).toLowerCase(), 6] as [string, number]] : []),
+                    ];
+
+                    const scoredEbayItems: ScoredResult[] = validItems.slice(0, 15).map((item: any, idx: number) => {
                         let score = 0;
-                        const titleLower = (item.title || '').toLowerCase();
-                        const aiNameLower = (cardName || '').toLowerCase();
-
-                        // Name match scoring
-                        if (aiNameLower && titleLower.includes(aiNameLower)) {
-                            score += 40;
-                        } else if (aiNameLower) {
-                            const words = aiNameLower.split(/\s+/).filter((w: string) => w.length >= 3);
-                            const matchedWords = words.filter((w: string) => titleLower.includes(w));
-                            score += Math.round((matchedWords.length / Math.max(words.length, 1)) * 30);
+                        const t = (item.title || '').toLowerCase();
+                        for (const [term, w] of rankTerms) if (term && t.includes(term)) score += w;
+                        if (validPlayer && !t.includes(validPlayer.toLowerCase())) {
+                            const words = validPlayer.toLowerCase().split(/\s+/).filter((w: string) => w.length >= 3);
+                            const matched = words.filter((w: string) => t.includes(w));
+                            score += Math.round((matched.length / Math.max(words.length, 1)) * 25);
                         }
-
-                        // Set/brand match
-                        if (setCode && titleLower.includes(setCode.toLowerCase())) {
-                            score += 20;
-                        }
-
-                        // Price proximity to median (closer = higher score)
                         const itemPrice = parseFloat(item.price);
-                        const priceDelta = Math.abs(itemPrice - medianPrice) / medianPrice;
-                        if (priceDelta < 0.2) score += 15;
-                        else if (priceDelta < 0.5) score += 10;
-                        else if (priceDelta < 1) score += 5;
+                        const pd = Math.abs(itemPrice - medianPrice) / (medianPrice || 1);
+                        if (pd < 0.2) score += 12; else if (pd < 0.5) score += 7; else if (pd < 1) score += 3;
+                        score += Math.max(0, 8 - idx);
 
-                        // Boost first results (eBay relevance)
-                        score += Math.max(0, 10 - idx * 2);
-
-                        // Convert eBay item to TcgcsvProduct-like structure
                         const fakeProduct: TcgcsvProduct = {
-                            product_id: idx + 90000, // fake ID
+                            product_id: idx + 90000,
                             name: item.title || 'Unknown Soccer Card',
                             image_url: item.imageUrl ? item.imageUrl.replace(/s-l\d+\./, 's-l800.') : null,
-                            set_name: setCode || null,
+                            set_name: setName || setCode || null,
                             rarity: null,
                             market_price: medianPrice,
                             low_price: lowPrice,
                             mid_price: medianPrice,
                             high_price: highPrice,
-                            number: cardNumber || null,
+                            number: numbering || cardNumber || null,
                             tcgplayer_url: item.ebayLink || null,
-                            extended_data: JSON.stringify({ player: cardName, ebay_url: item.ebayLink, condition: item.condition }),
+                            extended_data: JSON.stringify({ player: validPlayer, ebay_url: item.ebayLink, condition: item.condition }),
                             category_id: CATEGORY_SOCCER,
                         };
-
-                        return { product: fakeProduct, score, breakdown: `name:${score}` };
+                        return { product: fakeProduct, score, breakdown: `ebay:${score}` };
                     });
 
-                    // Sort by score
                     scoredEbayItems.sort((a, b) => b.score - a.score);
-                    const top5 = scoredEbayItems.slice(0, 5);
+                    const top = scoredEbayItems.slice(0, 10);
+                    top[0].product.market_price = medianPrice;
+                    top[0].product.low_price = lowPrice;
+                    top[0].product.high_price = highPrice;
 
-                    // Override the best match's price to median
-                    const bestMatch = top5[0];
-                    bestMatch.product.market_price = medianPrice;
-                    bestMatch.product.low_price = lowPrice;
-                    bestMatch.product.high_price = highPrice;
+                    console.log(`✅ Soccer best match: ${top[0].product.name} (score: ${top[0].score})`);
 
-                    console.log(`✅ Soccer best match: ${bestMatch.product.name} (score: ${bestMatch.score})`);
-
-                    await displayProductResult(bestMatch.product);
-                    setScanResults(top5);
+                    await displayProductResult(top[0].product);
+                    setScanResults(top);
                     setShowScanResultsDialog(true);
 
                     if (shouldIncrementUsage) {
@@ -1363,7 +1363,7 @@ export function MarketSpotlight() {
                         const scored = allCandidates.map(p => scoreProduct(p, scoringFormats));
                         scored.sort((a, b) => b.score - a.score || (b.product.market_price || 0) - (a.product.market_price || 0));
 
-                        scored.slice(0, 5).forEach((s, i) => {
+                        scored.slice(0, 10).forEach((s, i) => {
                             console.log(`  ${i + 1}. [${s.score}pts] ${s.product.name} #${s.product.number} (${s.product.set_name}) — ${s.breakdown}`);
                         });
 
@@ -1371,7 +1371,7 @@ export function MarketSpotlight() {
                         console.log(`\n✅ Best match: ${bestMatch.product.name} #${bestMatch.product.number} (score: ${bestMatch.score}/100)`);
 
                         await displayProductResult(bestMatch.product);
-                        setScanResults(scored.slice(0, 5));
+                        setScanResults(scored.slice(0, 10));
                         setShowScanResultsDialog(true);
 
                         if (shouldIncrementUsage) {
@@ -2143,7 +2143,7 @@ export function MarketSpotlight() {
                         </p>
                     </div>
 
-                    {/* Top 5 Scan Results Dialog */}
+                    {/* Top 10 Scan Results Dialog */}
                     <Dialog open={showScanResultsDialog} onOpenChange={setShowScanResultsDialog}>
                         <DialogContent className="bg-zinc-950 border-white/10 text-white max-w-md sm:max-w-lg p-0 rounded-2xl overflow-hidden">
                             <DialogHeader className="px-5 pt-5 pb-3 border-b border-white/10">
