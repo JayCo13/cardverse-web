@@ -4,8 +4,10 @@ name: Daily card data sync
 # You can also trigger it manually from the Actions tab (Run workflow).
 on:
   schedule:
-    # 03:00 UTC = 10:00 Vietnam time (ICT, UTC+7), daily.
-    - cron: '0 3 * * *'
+    # 03:17 UTC ≈ 10:17 Vietnam time (ICT, UTC+7), daily.
+    # NOTE: avoid minute "0" — top-of-hour schedules are heavily delayed or
+    # dropped by GitHub under load. An off-peak minute is far more reliable.
+    - cron: '17 3 * * *'
   workflow_dispatch: {}
 
 # Never run two syncs at once.
