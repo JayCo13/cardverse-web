@@ -760,28 +760,41 @@ export function MarketSpotlight() {
 
                 try {
                     // ── Call the specialized Soccer AI for precise fields ──
+                    // Timeout + one retry so a cold/slow function never hangs the
+                    // scan; on total failure we fall back to the generic id below.
                     let soccerDetails: any = null;
-                    try {
-                        const soccerAiResponse = await fetch(
-                            `${SUPABASE_URL}/functions/v1/identify-soccer-card`,
-                            {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
-                                },
-                                body: JSON.stringify({ image: imageBase64 }),
+                    for (let sAttempt = 0; sAttempt < 2 && !soccerDetails; sAttempt++) {
+                        const sCtrl = new AbortController();
+                        const sTimer = setTimeout(() => sCtrl.abort(), sAttempt === 0 ? 22000 : 16000);
+                        try {
+                            if (sAttempt > 0) setScanStatus('Re-reading soccer card...');
+                            const soccerAiResponse = await fetch(
+                                `${SUPABASE_URL}/functions/v1/identify-soccer-card`,
+                                {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+                                    },
+                                    body: JSON.stringify({ image: imageBase64 }),
+                                    signal: sCtrl.signal,
+                                }
+                            );
+                            clearTimeout(sTimer);
+                            if (soccerAiResponse.ok) {
+                                const parsed = await soccerAiResponse.json();
+                                if (parsed && !parsed.error) {
+                                    soccerDetails = parsed;
+                                    console.log('Soccer AI details:', soccerDetails);
+                                    setSoccerAiPrediction(soccerDetails);
+                                }
+                            } else {
+                                console.warn(`Soccer AI returned ${soccerAiResponse.status} (attempt ${sAttempt + 1})`);
                             }
-                        );
-                        if (soccerAiResponse.ok) {
-                            soccerDetails = await soccerAiResponse.json();
-                            console.log('Soccer AI details:', soccerDetails);
-                            setSoccerAiPrediction(soccerDetails);
-                        } else {
-                            console.warn('Soccer AI failed, falling back to generic identification');
+                        } catch (soccerAiErr) {
+                            clearTimeout(sTimer);
+                            console.warn(`Soccer AI error (attempt ${sAttempt + 1}), will fall back:`, soccerAiErr);
                         }
-                    } catch (soccerAiErr) {
-                        console.warn('Soccer AI error, falling back:', soccerAiErr);
                     }
 
                     // ── Build precise eBay query from Soccer AI result ──
@@ -1574,14 +1587,16 @@ export function MarketSpotlight() {
                     return;
                 }
 
-                // Only resize if too large (max 1024px for speed — AI doesn't need higher)
-                const maxWidth = 1024;
+                // Cap the LONGEST side to 1024 (cards are usually portrait, so
+                // constraining only width left tall photos huge → slow/timeout).
+                const MAX_SIDE = 1024;
                 let width = img.width;
                 let height = img.height;
+                const longest = Math.max(width, height);
 
-                if (width > maxWidth) {
-                    const ratio = maxWidth / width;
-                    width = maxWidth;
+                if (longest > MAX_SIDE) {
+                    const ratio = MAX_SIDE / longest;
+                    width = Math.round(width * ratio);
                     height = Math.round(height * ratio);
                 }
 
@@ -1824,9 +1839,27 @@ export function MarketSpotlight() {
             }
         };
 
+        // Pre-warm the Soccer AI too, so a first soccer scan isn't a cold start.
+        const prewarmSoccerFunction = async () => {
+            try {
+                await fetch(`${SUPABASE_URL}/functions/v1/identify-soccer-card`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+                    },
+                    body: JSON.stringify({ ping: true }),
+                });
+                console.log('Soccer function pre-warmed');
+            } catch (e) {
+                // Ignore — just a pre-warm
+            }
+        };
+
         prewarmConnection();
         prewarmIdentifyFunction();
         prewarmTranslateFunction();
+        prewarmSoccerFunction();
         fetchFeaturedProduct();
 
         // ─── Keep-alive: Ping Edge Function every 45s to prevent cold starts ───
@@ -1839,18 +1872,22 @@ export function MarketSpotlight() {
             keepAliveTimer = setInterval(() => {
                 // Only ping if tab is visible
                 if (document.visibilityState === 'visible') {
+                    const auth = `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`;
                     fetch(`${SUPABASE_URL}/functions/v1/identify-card`, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
-                        },
+                        headers: { 'Content-Type': 'application/json', 'Authorization': auth },
                         body: JSON.stringify({ ping: true }),
                     }).then(() => {
                         isWarmRef.current = true;
                     }).catch(() => {
                         isWarmRef.current = false;
                     });
+                    // Keep the Soccer AI warm as well.
+                    fetch(`${SUPABASE_URL}/functions/v1/identify-soccer-card`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': auth },
+                        body: JSON.stringify({ ping: true }),
+                    }).catch(() => { });
                 }
             }, KEEP_ALIVE_INTERVAL);
         };
