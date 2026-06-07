@@ -33,3 +33,36 @@ export function getCloudinaryBlurUrl(url: string): string {
         '/upload/f_auto,q_10,w_10,e_blur:1000/'
     );
 }
+
+export function getCloudinaryJpgUrl(url: string): string {
+    if (!url || !url.includes('res.cloudinary.com')) return url;
+
+    let transformed = url.includes('/upload/f_jpg,q_auto/')
+        ? url
+        : url.replace('/upload/', '/upload/f_jpg,q_auto/');
+
+    transformed = transformed.replace(/\.(heic|heif)(\?.*)?$/i, '.jpg$2');
+    return transformed;
+}
+
+export function getCloudinaryKycScanUrl(url: string): string {
+    if (!url || !url.includes('res.cloudinary.com')) return url;
+
+    let transformed = url.includes('/upload/f_jpg,q_100/')
+        ? url
+        : url.replace('/upload/', '/upload/f_jpg,q_100/');
+
+    transformed = transformed.replace(/\.(heic|heif)(\?.*)?$/i, '.jpg$2');
+    return transformed;
+}
+
+export function getCloudinaryKycBackScanUrl(url: string): string {
+    if (!url || !url.includes('res.cloudinary.com')) return url;
+
+    let transformed = url.includes('/upload/f_jpg,q_100/')
+        ? url
+        : url.replace('/upload/', '/upload/f_jpg,q_100/');
+
+    transformed = transformed.replace(/\.(heic|heif)(\?.*)?$/i, '.jpg$2');
+    return transformed;
+}

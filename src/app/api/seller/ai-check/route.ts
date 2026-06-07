@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { normalizeVietnameseName } from '@/lib/kyc-verification';
 
 // ─── Rate Limiter (in-memory, per IP) ───
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 const RATE_LIMIT_MAX = 5; // max 5 attempts per window
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const IS_DEV = process.env.NODE_ENV !== 'production';
 
 function checkRateLimit(ip: string): { allowed: boolean; remaining: number; retryAfterSec: number } {
     const now = Date.now();
@@ -23,9 +26,36 @@ function checkRateLimit(ip: string): { allowed: boolean; remaining: number; retr
     return { allowed: true, remaining: RATE_LIMIT_MAX - entry.count, retryAfterSec: 0 };
 }
 
+type ParsedGroqResult = Record<string, any>;
+
+function buildFailureResponse(
+    error: string,
+    status: number,
+    failureType: 'unreadable' | 'wrong_side' | 'low_confidence' | 'network',
+    step: 'cccd_front' | 'cccd_back' | 'bank' | 'system',
+    debug?: Record<string, unknown>
+) {
+    return NextResponse.json(
+        {
+            error,
+            failure_type: failureType,
+            step,
+            ...(IS_DEV ? debug : {}),
+        },
+        { status }
+    );
+}
+
 // AI-powered KYC verification: Cross-check CCCD front+back + Bank screenshot
 export async function POST(request: NextRequest) {
+    const routeStart = Date.now();
     try {
+        const authClient = await createServerSupabaseClient();
+        const { data: { user }, error: authError } = await authClient.auth.getUser();
+        if (authError || !user) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
         // Rate limit check
         const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown';
         const rateCheck = checkRateLimit(ip);
@@ -35,10 +65,12 @@ export async function POST(request: NextRequest) {
             }, { status: 429 });
         }
 
-        const { cccd_front_image, cccd_back_image, bank_image, user_full_name } = await request.json();
-        if (!cccd_front_image) return NextResponse.json({ error: 'Missing CCCD front image' }, { status: 400 });
-        if (!cccd_back_image) return NextResponse.json({ error: 'Missing CCCD back image' }, { status: 400 });
-        if (!bank_image) return NextResponse.json({ error: 'Missing Bank screenshot' }, { status: 400 });
+        const { request_id, cccd_front_image_url, cccd_back_image_url, bank_image_url, user_full_name } = await request.json();
+        const requestId = request_id || `server-${Date.now()}`;
+        console.log(`[KYC API][${requestId}] Request received`);
+        if (!cccd_front_image_url) return NextResponse.json({ error: 'Missing CCCD front image' }, { status: 400 });
+        if (!cccd_back_image_url) return NextResponse.json({ error: 'Missing CCCD back image' }, { status: 400 });
+        if (!bank_image_url) return NextResponse.json({ error: 'Missing Bank screenshot' }, { status: 400 });
         if (!user_full_name) return NextResponse.json({ error: 'Missing full name' }, { status: 400 });
 
         const groqApiKey = process.env.GROQ_API_KEY;
@@ -49,6 +81,7 @@ export async function POST(request: NextRequest) {
 
 Determine if this is the FRONT side of a Vietnamese Citizen Identity Card (Căn Cước Công Dân).
 The FRONT side contains: a portrait photo, full name (Họ và tên), date of birth (Ngày sinh), gender, nationality, place of origin, place of residence, expiry date, and the 12-digit ID number.
+IMPORTANT: The uploaded image might be rotated sideways or upside down (90, 180, or 270 degrees). Please mentally rotate it to read the text. A rotated ID card is perfectly VALID and you must NOT reject it just because it is not perfectly upright.
 
 Extract the following and return ONLY a valid JSON object:
 1. "is_front_side": true if this is clearly the FRONT side of a CCCD, false if it's the back side or not a CCCD at all
@@ -65,6 +98,7 @@ Example: {"is_front_side":true,"full_name":"NGUYEN VAN ANH","id_number":"0791234
 
 Determine if this is the BACK side of a Vietnamese Citizen Identity Card (Căn Cước Công Dân).
 The BACK side contains: a QR code or MRZ code, the date of issue (Ngày cấp), and possibly a chip. It does NOT have a portrait photo or the person's name.
+IMPORTANT: The uploaded image might be rotated sideways or upside down (90, 180, or 270 degrees). Please mentally rotate it to read the text. A rotated ID card is perfectly VALID and you must NOT reject it just because it is not perfectly upright.
 
 Extract the following and return ONLY a valid JSON object:
 1. "is_back_side": true if this is clearly the BACK side of a CCCD, false if it's the front side or not a CCCD at all
@@ -96,7 +130,9 @@ Extract the following and return ONLY a valid JSON object:
 Example: {"account_holder_name":"NGUYEN VAN ANH","account_number":"0123456789012","bank_name":"MB Bank","is_valid_screenshot":true}`;
 
         // Run all 3 AI calls in parallel (with retry)
-        const makeGroqCall = async (prompt: string, imageBase64: string, label: string) => {
+        const makeGroqCall = async (prompt: string, imageUrl: string, label: string) => {
+            const startedAt = Date.now();
+            console.log(`[KYC API][${requestId}] ${label} started`);
             const doFetch = () => fetch('https://api.groq.com/openai/v1/chat/completions', {
                 method: 'POST',
                 headers: {
@@ -109,7 +145,7 @@ Example: {"account_holder_name":"NGUYEN VAN ANH","account_number":"0123456789012
                         role: 'user',
                         content: [
                             { type: 'text', text: prompt },
-                            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64}` } }
+                            { type: 'image_url', image_url: { url: imageUrl } }
                         ]
                     }],
                     max_tokens: 500,
@@ -128,14 +164,38 @@ Example: {"account_holder_name":"NGUYEN VAN ANH","account_number":"0123456789012
                 const errBody = await resp.text().catch(() => '');
                 throw new Error(`Groq ${label}: HTTP ${resp.status} - ${errBody.slice(0, 200)}`);
             }
+            console.log(`[KYC API][${requestId}] ${label} completed in ${Date.now() - startedAt}ms`);
             return resp.json();
         };
 
+        const makeBackFallbackCall = async (imageUrl: string) => {
+            const fallbackPrompt = `You are doing a strict SECOND PASS for the BACK side of a Vietnamese CCCD/CMND.
+
+The image may be rotated 90, 180, or 270 degrees. Mentally rotate it if needed.
+Do NOT classify it as front side unless you clearly see a portrait photo and the person's full name.
+
+For a valid BACK side, look for any of these clues:
+- QR code
+- MRZ lines
+- issue date
+- chip / back-side layout
+- no portrait photo
+
+Return ONLY valid JSON:
+{"is_back_side":true,"has_qr_or_mrz":true,"is_valid_back":true,"issue":"","confidence":"high"}
+or
+{"is_back_side":false,"has_qr_or_mrz":false,"is_valid_back":false,"issue":"MUST be in Vietnamese","confidence":"low"}`;
+
+            return makeGroqCall(fallbackPrompt, imageUrl, 'CCCD-Back-Fallback');
+        };
+
+        const groqBatchStart = Date.now();
         const [frontData, backData, bankData] = await Promise.all([
-            makeGroqCall(cccdFrontPrompt, cccd_front_image, 'CCCD-Front'),
-            makeGroqCall(cccdBackPrompt, cccd_back_image, 'CCCD-Back'),
-            makeGroqCall(bankPrompt, bank_image, 'Bank'),
+            makeGroqCall(cccdFrontPrompt, cccd_front_image_url, 'CCCD-Front'),
+            makeGroqCall(cccdBackPrompt, cccd_back_image_url, 'CCCD-Back'),
+            makeGroqCall(bankPrompt, bank_image_url, 'Bank'),
         ]);
+        console.log(`[KYC API][${requestId}] All Groq calls completed in ${Date.now() - groqBatchStart}ms`);
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const parseAIResponse = (data: any): any => {
@@ -147,25 +207,66 @@ Example: {"account_holder_name":"NGUYEN VAN ANH","account_number":"0123456789012
         };
 
         // Parse results
-        let frontResult, backResult, bankResult;
+        let frontResult: ParsedGroqResult, backResult: ParsedGroqResult, bankResult: ParsedGroqResult;
         const issues: string[] = [];
 
         try {
             frontResult = parseAIResponse(frontData);
         } catch {
-            return NextResponse.json({ error: 'Không thể đọc được ảnh CCCD mặt trước. Vui lòng chụp lại rõ hơn.', step: 'cccd_front' }, { status: 400 });
+            return buildFailureResponse(
+                'Không thể đọc được ảnh CCCD mặt trước. Vui lòng chụp lại rõ hơn.',
+                400,
+                'unreadable',
+                'cccd_front',
+                {
+                    debug_front_image_url: cccd_front_image_url,
+                }
+            );
         }
 
         try {
             backResult = parseAIResponse(backData);
         } catch {
-            return NextResponse.json({ error: 'Không thể đọc được ảnh CCCD mặt sau. Vui lòng chụp lại rõ hơn.', step: 'cccd_back' }, { status: 400 });
+            return buildFailureResponse(
+                'Không thể đọc được ảnh CCCD mặt sau. Vui lòng chụp lại rõ hơn.',
+                400,
+                'unreadable',
+                'cccd_back',
+                {
+                    debug_back_image_url: cccd_back_image_url,
+                }
+            );
         }
 
         try {
             bankResult = parseAIResponse(bankData);
         } catch {
-            return NextResponse.json({ error: 'Không thể đọc được ảnh ngân hàng. Vui lòng chụp lại rõ hơn.', step: 'bank' }, { status: 400 });
+            return buildFailureResponse(
+                'Không thể đọc được ảnh ngân hàng. Vui lòng chụp lại rõ hơn.',
+                400,
+                'unreadable',
+                'bank',
+                {
+                    debug_bank_image_url: bank_image_url,
+                }
+            );
+        }
+
+        if ((!backResult.is_back_side || !backResult.is_valid_back) && !backResult.has_qr_or_mrz) {
+            try {
+                const fallbackData = await makeBackFallbackCall(cccd_back_image_url);
+                const fallbackResult = parseAIResponse(fallbackData);
+                if (fallbackResult.is_back_side || fallbackResult.has_qr_or_mrz) {
+                    backResult = {
+                        ...backResult,
+                        ...fallbackResult,
+                        is_back_side: Boolean(fallbackResult.is_back_side),
+                        is_valid_back: Boolean(fallbackResult.is_valid_back || fallbackResult.has_qr_or_mrz),
+                    };
+                }
+            } catch (fallbackError) {
+                console.warn(`[KYC API][${requestId}] CCCD-Back fallback failed`, fallbackError);
+            }
         }
 
         // ─── Validate CCCD pair ───
@@ -186,21 +287,11 @@ Example: {"account_holder_name":"NGUYEN VAN ANH","account_number":"0123456789012
         }
 
         // ─── Cross-check names: CCCD vs Bank vs User input ───
-        const normalizeName = (name: string): string => {
-            return name
-                .toUpperCase()
-                .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, '')
-                .replace(/[^A-Z\s]/g, '')
-                .replace(/\s+/g, ' ')
-                .trim();
-        };
-
         const cccdName = frontResult.full_name || '';
         const bankName = bankResult.account_holder_name || '';
-        const normalizedCCCD = normalizeName(cccdName);
-        const normalizedBank = normalizeName(bankName);
-        const normalizedUser = normalizeName(user_full_name);
+        const normalizedCCCD = normalizeVietnameseName(cccdName);
+        const normalizedBank = normalizeVietnameseName(bankName);
+        const normalizedUser = normalizeVietnameseName(user_full_name);
 
         const isCccdBankMatch = normalizedCCCD === normalizedBank;
         const isCccdUserMatch = normalizedCCCD === normalizedUser;
@@ -221,13 +312,13 @@ Example: {"account_holder_name":"NGUYEN VAN ANH","account_number":"0123456789012
 
         // Calculate confidence
         let confidence = 0;
-        if (frontResult.is_front_side && frontResult.is_valid_id) confidence += 0.2;
-        if (backResult.is_back_side && backResult.is_valid_back) confidence += 0.1;
-        if (bankResult.is_valid_screenshot) confidence += 0.2;
-        if (isCccdBankMatch) confidence += 0.25;
-        if (isCccdUserMatch) confidence += 0.25;
+        if (frontResult.is_front_side && frontResult.is_valid_id) confidence += 0.35;
+        if (backResult.is_back_side && backResult.is_valid_back) confidence += 0.2;
+        if (bankResult.is_valid_screenshot) confidence += 0.25;
+        if (isCccdBankMatch) confidence += 0.1;
+        if (isCccdUserMatch) confidence += 0.1;
 
-        return NextResponse.json({
+        const payload = {
             // CCCD data
             cccd_name: cccdName,
             cccd_id_number: frontResult.id_number || null,
@@ -247,21 +338,68 @@ Example: {"account_holder_name":"NGUYEN VAN ANH","account_number":"0123456789012
             confidence: Math.round(confidence * 100) / 100,
             // Issues
             issues: issues.length > 0 ? issues : null,
+            failure_type: issues.length > 0
+                ? (!frontResult.is_front_side || !backResult.is_back_side ? 'wrong_side' : confidence < 0.7 ? 'low_confidence' : 'unreadable')
+                : null,
+        };
+
+        const { data: scan, error: insertError } = await authClient
+            .from('kyc_verification_scans')
+            .insert({
+                user_id: user.id,
+                cccd_name: payload.cccd_name,
+                cccd_id_number: payload.cccd_id_number,
+                cccd_dob: payload.cccd_dob,
+                is_valid_cccd: payload.is_valid_cccd,
+                is_valid_cccd_back: payload.is_valid_cccd_back,
+                bank_account_name_ai: payload.bank_account_name,
+                bank_account_number_ai: payload.bank_account_number,
+                bank_name_detected: payload.bank_name_detected,
+                is_valid_bank: payload.is_valid_bank,
+                ai_name_match: payload.is_name_match,
+                is_cccd_bank_match: payload.is_cccd_bank_match,
+                is_cccd_user_match: payload.is_cccd_user_match,
+                confidence: payload.confidence,
+                issues: payload.issues,
+                raw_front_response: frontResult,
+                raw_back_response: backResult,
+                raw_bank_response: bankResult,
+            } as never)
+            .select('id')
+            .single() as { data: { id: string } | null; error: { message?: string } | null };
+
+        if (insertError || !scan) {
+            throw new Error(insertError?.message || 'Failed to persist KYC scan');
+        }
+
+        console.log(`[KYC API][${requestId}] Total API time ${Date.now() - routeStart}ms`);
+
+        return NextResponse.json({
+            ...payload,
+            scan_id: scan.id,
+            ...(IS_DEV ? {
+                debug_front_image_url: cccd_front_image_url,
+                debug_back_image_url: cccd_back_image_url,
+                debug_bank_image_url: bank_image_url,
+                debug_front_result: frontResult,
+                debug_back_result: backResult,
+                debug_bank_result: bankResult,
+            } : {}),
         });
 
     } catch (error: any) {
-        console.error('AI KYC check error:', error);
+        console.error(`AI KYC check error after ${Date.now() - routeStart}ms:`, error);
         const msg = error.message || 'Internal server error';
         // Provide user-friendly error messages
         if (msg.includes('HTTP 429') || msg.includes('rate_limit')) {
-            return NextResponse.json({ error: 'Groq API đang quá tải. Vui lòng đợi 30 giây rồi thử lại.' }, { status: 429 });
+            return buildFailureResponse('Groq API đang quá tải. Vui lòng đợi 30 giây rồi thử lại.', 429, 'network', 'system');
         }
         if (msg.includes('HTTP 413') || msg.includes('too large')) {
-            return NextResponse.json({ error: 'Ảnh quá nặng. Vui lòng chọn ảnh nhỏ hơn hoặc chụp lại.' }, { status: 400 });
+            return buildFailureResponse('Ảnh quá nặng. Vui lòng chọn ảnh nhỏ hơn hoặc chụp lại.', 400, 'unreadable', 'system');
         }
         if (msg.includes('HTTP 5') || msg.includes('fetch failed')) {
-            return NextResponse.json({ error: 'Hệ thống AI đang gián đoạn tạm thời. Vui lòng thử lại sau vài giây.' }, { status: 502 });
+            return buildFailureResponse('Hệ thống của chúng tôi đang gián đoạn tạm thời. Vui lòng thử lại sau vài giây.', 502, 'network', 'system');
         }
-        return NextResponse.json({ error: `Lỗi xác minh: ${msg.slice(0, 150)}` }, { status: 500 });
+        return buildFailureResponse(`Lỗi xác minh: ${msg.slice(0, 150)}`, 500, 'network', 'system');
     }
 }
