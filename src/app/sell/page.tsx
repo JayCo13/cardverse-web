@@ -1,8 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { auth, RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from '@/lib/firebase';
+import { useState, useEffect } from 'react';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
@@ -16,7 +15,8 @@ import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
 import { useLocalization } from '@/context/localization-context';
 import { Skeleton } from '@/components/ui/skeleton';
-import { uploadImageToCloudinary } from '@/lib/cloudinary';
+import { getCloudinarySignature, uploadImageDirectToCloudinary, type CloudinarySignaturePayload } from '@/lib/cloudinary-direct';
+import { getCloudinaryKycBackScanUrl, getCloudinaryKycScanUrl } from '@/lib/cloudinary-url';
 import Link from 'next/link';
 import Image from 'next/image';
 
@@ -37,6 +37,7 @@ type SellerOrder = {
 };
 
 type AIResult = {
+  scan_id: string;
   cccd_name: string;
   cccd_id_number: string | null;
   cccd_dob: string | null;
@@ -51,6 +52,22 @@ type AIResult = {
   is_cccd_user_match: boolean;
   confidence: number;
   issues: string[] | null;
+  failure_type?: 'unreadable' | 'wrong_side' | 'low_confidence' | 'network' | null;
+  debug_front_image_url?: string | null;
+  debug_back_image_url?: string | null;
+  debug_bank_image_url?: string | null;
+  debug_front_result?: unknown;
+  debug_back_result?: unknown;
+  debug_bank_result?: unknown;
+};
+
+type UploadedKycAssets = {
+  frontOriginalUrl: string | null;
+  frontJpgUrl: string | null;
+  backOriginalUrl: string | null;
+  backJpgUrl: string | null;
+  bankOriginalUrl: string | null;
+  bankJpgUrl: string | null;
 };
 
 const BANKS = [
@@ -58,9 +75,6 @@ const BANKS = [
   'VPBank', 'ACB', 'Sacombank', 'TPBank', 'VIB',
   'SHB', 'HDBank', 'OCB', 'MSB', 'SeABank', 'Khác',
 ];
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 export default function SellPage() {
   const { t } = useLocalization();
@@ -90,12 +104,32 @@ export default function SellPage() {
   const [aiScanCooldown, setAiScanCooldown] = useState(0);
   const [aiScanAttempts, setAiScanAttempts] = useState(0);
   const [pendingReplacements, setPendingReplacements] = useState({ front: false, back: false, bank: false });
+  const [editableBankAccountName, setEditableBankAccountName] = useState('');
+  const [editableBankAccountNumber, setEditableBankAccountNumber] = useState('');
+  const [aiCheckStage, setAiCheckStage] = useState<string | null>(null);
+  const [slowStageHint, setSlowStageHint] = useState<string | null>(null);
+  const [uploadedKycAssets, setUploadedKycAssets] = useState<UploadedKycAssets>({
+    frontOriginalUrl: null,
+    frontJpgUrl: null,
+    backOriginalUrl: null,
+    backJpgUrl: null,
+    bankOriginalUrl: null,
+    bankJpgUrl: null,
+  });
+  const [kycUploadSignature, setKycUploadSignature] = useState<CloudinarySignaturePayload | null>(null);
   const AI_MAX_ATTEMPTS = 5;
 
   const handleFileChange = (type: 'front' | 'back' | 'bank', file: File | null) => {
     if (type === 'front') setIdFrontFile(file);
     if (type === 'back') setIdBackFile(file);
     if (type === 'bank') setBankScreenshotFile(file);
+
+    setUploadedKycAssets(prev => ({
+      ...prev,
+      ...(type === 'front' ? { frontOriginalUrl: null, frontJpgUrl: null } : {}),
+      ...(type === 'back' ? { backOriginalUrl: null, backJpgUrl: null } : {}),
+      ...(type === 'bank' ? { bankOriginalUrl: null, bankJpgUrl: null } : {}),
+    }));
 
     setPendingReplacements(prev => {
       const next = { ...prev, [type]: false };
@@ -107,16 +141,49 @@ export default function SellPage() {
     });
   };
 
+  const getOrCreateKycSignature = async () => {
+    if (kycUploadSignature) {
+      return kycUploadSignature;
+    }
+
+    const startedAt = performance.now();
+    const signature = await getCloudinarySignature();
+    console.log(`[KYC Upload] Batch signature ready in ${(performance.now() - startedAt).toFixed(0)}ms`);
+    setKycUploadSignature(signature);
+    return signature;
+  };
+
+  const buildKycFriendlyError = (data: Partial<AIResult> & { error?: string; failure_type?: string; step?: string }) => {
+    if (data.failure_type === 'wrong_side') {
+      return data.error || 'Hệ thống nhận diện sai mặt giấy tờ. Vui lòng thử lại với ảnh rõ hơn hoặc đổi góc chụp.';
+    }
+    if (data.failure_type === 'low_confidence') {
+      return data.error || 'Hệ thống đọc được ảnh nhưng độ chắc chắn còn thấp. Vui lòng thử lại với ảnh rõ hơn.';
+    }
+    if (data.failure_type === 'network') {
+      return data.error || 'Kết nối đến dịch vụ kiểm tra đang chậm. Vui lòng thử lại sau.';
+    }
+    if (data.failure_type === 'unreadable') {
+      return data.error || 'Không thể đọc được ảnh. Vui lòng chụp lại rõ hơn.';
+    }
+    return data.error || 'Hệ thống kiểm tra thất bại. Vui lòng thử lại.';
+  };
+
   // Step 2: Phone + OTP
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [otpCode, setOtpCode] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpVerified, setOtpVerified] = useState(false);
-  const [otpLoading, setOtpLoading] = useState(false);
-  const [otpError, setOtpError] = useState<string | null>(null);
-  const [cooldown, setCooldown] = useState(0);
-  const confirmationResultRef = useRef<ConfirmationResult | null>(null);
-  const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
+
+  const normalizeVietnameseName = (value: string) => value
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const isSubmittedNameMatch = !!aiResult?.cccd_name
+    && normalizeVietnameseName(fullName) === normalizeVietnameseName(aiResult.cccd_name)
+    && normalizeVietnameseName(editableBankAccountName) === normalizeVietnameseName(aiResult.cccd_name);
+  const canStartSystemScan = !!fullName.trim() && !!idFrontFile && !!idBackFile && !!bankScreenshotFile && !!bankName && !isAIChecking && aiScanCooldown <= 0 && aiScanAttempts < AI_MAX_ATTEMPTS;
 
   useEffect(() => {
     if (!authLoading && !user) setOpen(true);
@@ -157,30 +224,65 @@ export default function SellPage() {
     }
   };
 
-  // Convert file to compressed base64 (resize + JPEG quality reduction)
-  const fileToBase64 = (file: File, maxWidth = 800, quality = 0.7): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const img = new window.Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let { width, height } = img;
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d')!;
-        ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
-        resolve(dataUrl.split(',')[1]);
-      };
-      img.onerror = reject;
-      img.src = URL.createObjectURL(file);
-    });
+  const uploadKycFiles = async (frontFile: File, backFile: File, bankFile: File) => {
+    if (
+      uploadedKycAssets.frontOriginalUrl &&
+      uploadedKycAssets.frontJpgUrl &&
+      uploadedKycAssets.backOriginalUrl &&
+      uploadedKycAssets.backJpgUrl &&
+      uploadedKycAssets.bankOriginalUrl &&
+      uploadedKycAssets.bankJpgUrl
+    ) {
+      return uploadedKycAssets;
+    }
+
+    const uploadStart = performance.now();
+    setAiCheckStage('Đang tải ảnh lên Cloudinary...');
+    console.log('[KYC Flow] Starting Cloudinary upload batch');
+
+    const signature = await getOrCreateKycSignature();
+    const nextAssets: UploadedKycAssets = { ...uploadedKycAssets };
+
+    const uploadTasks: Promise<void>[] = [];
+
+    if (!nextAssets.frontOriginalUrl || !nextAssets.frontJpgUrl) {
+      uploadTasks.push(
+        uploadImageDirectToCloudinary(frontFile, signature).then(upload => {
+          nextAssets.frontOriginalUrl = upload.secureUrl;
+          nextAssets.frontJpgUrl = getCloudinaryKycScanUrl(upload.secureUrl);
+        })
+      );
+    }
+
+    if (!nextAssets.backOriginalUrl || !nextAssets.backJpgUrl) {
+      uploadTasks.push(
+        uploadImageDirectToCloudinary(backFile, signature).then(upload => {
+          nextAssets.backOriginalUrl = upload.secureUrl;
+          nextAssets.backJpgUrl = getCloudinaryKycBackScanUrl(upload.secureUrl);
+        })
+      );
+    }
+
+    if (!nextAssets.bankOriginalUrl || !nextAssets.bankJpgUrl) {
+      uploadTasks.push(
+        uploadImageDirectToCloudinary(bankFile, signature).then(upload => {
+          nextAssets.bankOriginalUrl = upload.secureUrl;
+          nextAssets.bankJpgUrl = getCloudinaryKycScanUrl(upload.secureUrl);
+        })
+      );
+    }
+
+    await Promise.all(uploadTasks);
+
+    console.log(
+      `[KYC Flow] Cloudinary upload batch completed in ${(performance.now() - uploadStart).toFixed(0)}ms`
+    );
+
+    setUploadedKycAssets(nextAssets);
+    return nextAssets;
   };
 
-  // Step 1: Run AI verification (all 3 images + user name)
+  // Step 1: Run system verification (all 3 images + user name)
   const handleAICheck = async (frontFile: File, backFile: File, bankFile: File, userName: string) => {
     if (aiScanAttempts >= AI_MAX_ATTEMPTS) {
       setAIError('Bạn đã sử dụng hết số lần kiểm tra. Vui lòng tải lại trang và thử lại sau.');
@@ -189,35 +291,61 @@ export default function SellPage() {
     setIsAIChecking(true);
     setAIError(null);
     setAIResult(null);
+    setAiCheckStage('Đang chuẩn bị quét...');
+    setSlowStageHint(null);
     setAiScanAttempts(prev => prev + 1);
+    const requestId = `kyc-${Date.now()}`;
+    const scanStart = performance.now();
+    console.log(`[KYC Flow][${requestId}] Scan started`);
 
     try {
-      const [frontBase64, backBase64, bankBase64] = await Promise.all([
-        fileToBase64(frontFile),
-        fileToBase64(backFile),
-        fileToBase64(bankFile),
-      ]);
+      const uploadedAssets = await uploadKycFiles(frontFile, backFile, bankFile);
+      setAiCheckStage('Đang đối chiếu CCCD và tài khoản...');
+      console.log(
+        `[KYC Flow][${requestId}] Upload phase done in ${(performance.now() - scanStart).toFixed(0)}ms`
+      );
 
+      const aiRequestStart = performance.now();
       const response = await fetch('/api/seller/ai-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cccd_front_image: frontBase64,
-          cccd_back_image: backBase64,
-          bank_image: bankBase64,
+          request_id: requestId,
+          cccd_front_image_url: uploadedAssets.frontJpgUrl,
+          cccd_back_image_url: uploadedAssets.backJpgUrl,
+          bank_image_url: uploadedAssets.bankJpgUrl,
           user_full_name: userName,
         }),
       });
+      console.log(
+        `[KYC Flow][${requestId}] /api/seller/ai-check responded in ${(performance.now() - aiRequestStart).toFixed(0)}ms`
+      );
 
       const data = await response.json();
 
       if (!response.ok) {
-        setAIError(data.error || 'Hệ thống kiểm tra thất bại. Vui lòng thử lại.');
+        if (data.debug_front_image_url || data.debug_back_image_url || data.debug_bank_image_url) {
+          console.log(`[KYC Flow][${requestId}] Debug image URLs`, {
+            front: data.debug_front_image_url,
+            back: data.debug_back_image_url,
+            bank: data.debug_bank_image_url,
+          });
+        }
+        setAIError(buildKycFriendlyError(data));
         return;
       }
 
       const result = data as AIResult;
+      if (result.debug_front_image_url || result.debug_back_image_url || result.debug_bank_image_url) {
+        console.log(`[KYC Flow][${requestId}] Debug image URLs`, {
+          front: result.debug_front_image_url,
+          back: result.debug_back_image_url,
+          bank: result.debug_bank_image_url,
+        });
+      }
       setAIResult(result);
+      setEditableBankAccountName(result.bank_account_name || '');
+      setEditableBankAccountNumber(result.bank_account_number || '');
 
       // Require user to replace ALL invalid images if there are multiple errors
       const errorCount = (!result.is_valid_cccd ? 1 : 0) + (!result.is_valid_cccd_back ? 1 : 0) + (!result.is_valid_bank ? 1 : 0);
@@ -245,28 +373,20 @@ export default function SellPage() {
       } else if (result.is_name_match && result.confidence >= 0.7) {
         toast({ title: '✅ Xác minh thành công!', description: 'Tất cả thông tin trùng khớp.' });
       } else {
-        toast({ variant: 'destructive', title: '⚠️ Cần kiểm tra lại', description: 'Thông tin trên các ảnh không khớp hoặc ảnh không rõ.' });
+        toast({ variant: 'destructive', title: '⚠️ Cần kiểm tra lại', description: 'Ảnh hợp lệ nhưng bạn nên kiểm tra và chỉnh sửa lại thông tin ngân hàng nếu hệ thống đọc sai.' });
       }
+      console.log(
+        `[KYC Flow][${requestId}] Total scan completed in ${(performance.now() - scanStart).toFixed(0)}ms`
+      );
     } catch (err: any) {
+      console.error(`[KYC Flow][${requestId}] Failed after ${(performance.now() - scanStart).toFixed(0)}ms`, err);
       setAIError(err.message || 'Lỗi kết nối hệ thống');
     } finally {
       setIsAIChecking(false);
+      setAiCheckStage(null);
       setAiScanCooldown(15); // 15s cooldown
     }
   };
-
-  // Auto-trigger AI check when name + all 3 images are ready (debounced for name input)
-  const allFilesReady = !!(idFrontFile && idBackFile && bankScreenshotFile);
-  useEffect(() => {
-    if (!allFilesReady || aiResult || isAIChecking || fullName.trim().length < 2 || aiScanCooldown > 0 || aiScanAttempts >= AI_MAX_ATTEMPTS) return;
-    const timer = setTimeout(() => {
-      if (idFrontFile && idBackFile && bankScreenshotFile) {
-        handleAICheck(idFrontFile, idBackFile, bankScreenshotFile, fullName.trim());
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allFilesReady, aiResult, isAIChecking, fullName, aiScanCooldown]);
 
   // AI scan cooldown timer
   useEffect(() => {
@@ -275,94 +395,28 @@ export default function SellPage() {
     return () => clearInterval(timer);
   }, [aiScanCooldown]);
 
-  // Cooldown timer for OTP resend
   useEffect(() => {
-    if (cooldown <= 0) return;
-    const timer = setInterval(() => setCooldown(c => c - 1), 1000);
-    return () => clearInterval(timer);
-  }, [cooldown]);
-
-  // Send OTP via Firebase Phone Auth
-  const handleSendOTP = async () => {
-    if (!isPhoneValid) return;
-    setOtpLoading(true);
-    setOtpError(null);
-    try {
-      // Clear previous reCAPTCHA before creating new one
-      if (recaptchaVerifierRef.current) {
-        recaptchaVerifierRef.current.clear();
-        recaptchaVerifierRef.current = null;
-      }
-      // Reset the container
-      const container = document.getElementById('recaptcha-container');
-      if (container) container.innerHTML = '';
-
-      // Initialize fresh reCAPTCHA verifier (invisible)
-      recaptchaVerifierRef.current = new RecaptchaVerifier(auth, 'recaptcha-container', {
-        size: 'invisible',
-      });
-
-      // Format: 0912345678 → +84912345678
-      const internationalPhone = '+84' + phoneNumber.substring(1);
-      const result = await signInWithPhoneNumber(auth, internationalPhone, recaptchaVerifierRef.current);
-      confirmationResultRef.current = result;
-      setOtpSent(true);
-      setCooldown(60);
-      toast({ title: '📱 Đã gửi mã OTP', description: `Mã xác minh đã gửi tới ${phoneNumber}` });
-    } catch (err: any) {
-      console.error('Firebase OTP error:', err);
-      // Reset reCAPTCHA on error
-      if (recaptchaVerifierRef.current) {
-        try { recaptchaVerifierRef.current.clear(); } catch {}
-      }
-      recaptchaVerifierRef.current = null;
-      const container = document.getElementById('recaptcha-container');
-      if (container) container.innerHTML = '';
-      if (err.code === 'auth/too-many-requests') {
-        setOtpError('Quá nhiều yêu cầu. Vui lòng đợi vài phút rồi thử lại.');
-      } else if (err.code === 'auth/invalid-phone-number') {
-        setOtpError('Số điện thoại không hợp lệ.');
-      } else {
-        setOtpError(err.message || 'Không thể gửi OTP. Vui lòng thử lại.');
-      }
-    } finally {
-      setOtpLoading(false);
+    if (!isAIChecking || !aiCheckStage) {
+      setSlowStageHint(null);
+      return;
     }
-  };
 
-  // Verify OTP via Firebase
-  const handleVerifyOTP = async () => {
-    if (otpCode.length !== 6 || !confirmationResultRef.current) return;
-    setOtpLoading(true);
-    setOtpError(null);
-    try {
-      await confirmationResultRef.current.confirm(otpCode);
-      setOtpVerified(true);
-      toast({ title: '✅ Xác minh thành công', description: 'Số điện thoại đã được xác minh!' });
-    } catch (err: any) {
-      if (err.code === 'auth/invalid-verification-code') {
-        setOtpError('Mã OTP không đúng. Vui lòng kiểm tra lại.');
-      } else if (err.code === 'auth/code-expired') {
-        setOtpError('Mã OTP đã hết hạn. Vui lòng gửi lại.');
-      } else {
-        setOtpError(err.message || 'Xác minh thất bại.');
-      }
-    } finally {
-      setOtpLoading(false);
+    if (aiCheckStage.includes('Cloudinary')) {
+      const timer = setTimeout(() => {
+        setSlowStageHint('Ảnh đang được tải lên. Với HEIC lớn, bước này có thể mất thêm vài giây.');
+      }, 8000);
+      return () => clearTimeout(timer);
     }
-  };
 
-  // Reset OTP state when phone number changes
+    const timer = setTimeout(() => {
+      setSlowStageHint('Hệ thống đang đọc chi tiết CCCD. Vui lòng đợi thêm một chút.');
+    }, 20000);
+    return () => clearTimeout(timer);
+  }, [isAIChecking, aiCheckStage]);
+
   const handlePhoneChange = (value: string) => {
     const cleaned = value.replace(/[^0-9]/g, '');
     setPhoneNumber(cleaned);
-    if (otpSent || otpVerified) {
-      setOtpSent(false);
-      setOtpVerified(false);
-      setOtpCode('');
-      setOtpError(null);
-      confirmationResultRef.current = null;
-    }
   };
 
   // Final submit
@@ -377,41 +431,38 @@ export default function SellPage() {
       return;
     }
 
-    if (!aiResult.is_name_match || aiResult.confidence < 0.7 || (aiResult.issues && aiResult.issues.length > 0)) {
-      toast({ variant: 'destructive', title: 'Kết quả xác minh chưa đạt', description: 'Vui lòng quay lại Bước 1 và kiểm tra ảnh/tên.' });
+    if (!aiResult.scan_id || aiResult.confidence < 0.7 || !aiResult.is_valid_cccd || !aiResult.is_valid_cccd_back || !aiResult.is_valid_bank) {
+      toast({ variant: 'destructive', title: 'Kết quả xác minh chưa đạt', description: 'Vui lòng quay lại Bước 1 và kiểm tra lại ảnh tải lên.' });
+      return;
+    }
+
+    if (!editableBankAccountName || !editableBankAccountNumber || !isSubmittedNameMatch) {
+      toast({ variant: 'destructive', title: 'Thông tin ngân hàng chưa khớp', description: 'Tên chủ tài khoản phải trùng với CCCD và họ tên đăng ký.' });
+      return;
+    }
+
+    if (!isPhoneValid) {
+      toast({ variant: 'destructive', title: 'Số điện thoại không hợp lệ', description: 'Vui lòng nhập số điện thoại Việt Nam hợp lệ.' });
       return;
     }
 
     setIsSubmitting(true);
     try {
-      // Upload all images in parallel
-      const uploads = await Promise.all([
-        uploadImageToCloudinary((() => { const fd = new FormData(); fd.append('file', idFrontFile!); return fd; })()),
-        uploadImageToCloudinary((() => { const fd = new FormData(); fd.append('file', idBackFile!); return fd; })()),
-        uploadImageToCloudinary((() => { const fd = new FormData(); fd.append('file', bankScreenshotFile!); return fd; })()),
-      ]);
-
-      if (uploads.some(u => !u.success)) {
-        throw new Error('Upload ảnh thất bại. Vui lòng thử lại.');
-      }
+      const uploadedAssets = await uploadKycFiles(idFrontFile!, idBackFile!, bankScreenshotFile!);
 
       const res = await fetch('/api/seller/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           full_name: fullName,
-          id_card_front_url: uploads[0].url,
-          id_card_back_url: uploads[1].url,
-          bank_screenshot_url: uploads[2].url,
+          id_card_front_url: uploadedAssets.frontOriginalUrl,
+          id_card_back_url: uploadedAssets.backOriginalUrl,
+          bank_screenshot_url: uploadedAssets.bankOriginalUrl,
           bank_name: bankName,
-          bank_account_number: aiResult.bank_account_number,
-          bank_account_name: aiResult.bank_account_name,
+          bank_account_number: editableBankAccountNumber,
+          bank_account_name: editableBankAccountName,
           phone_number: phoneNumber,
-          ai_cccd_name: aiResult.cccd_name,
-          ai_bank_name: aiResult.bank_account_name,
-          ai_bank_number: aiResult.bank_account_number,
-          ai_confidence: aiResult.confidence,
-          ai_name_match: aiResult.is_name_match,
+          scan_id: aiResult.scan_id,
         }),
       });
 
@@ -663,10 +714,20 @@ export default function SellPage() {
                 <h3 className="text-xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent mb-2" style={{ fontFamily: "'Orbitron', sans-serif" }}>
                   {t('kyc_verifying_title')}
                 </h3>
-                <p className="text-sm text-muted-foreground flex items-center justify-center gap-2 mt-4">
-                  <Loader2 className="h-4 w-4 animate-spin text-orange-500" />
-                  {t('kyc_verifying_subtitle')}
-                </p>
+                <div className="flex items-start justify-center gap-2 mt-4 text-sm text-muted-foreground max-w-[280px]">
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-orange-500 mt-0.5" />
+                  <span className="text-left leading-snug">{t('kyc_verifying_subtitle')}</span>
+                </div>
+                {aiCheckStage && (
+                  <p className="mt-3 text-xs text-orange-300/90">
+                    {aiCheckStage}
+                  </p>
+                )}
+                {slowStageHint && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {slowStageHint}
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -739,7 +800,7 @@ export default function SellPage() {
                 {/* AI Results */}
                 {aiResult && (
                   <div className={`border rounded-xl p-5 space-y-4 ${
-                    aiResult.is_name_match && aiResult.confidence >= 0.7 && !aiResult.issues
+                    aiResult.is_valid_cccd && aiResult.is_valid_cccd_back && aiResult.is_valid_bank && aiResult.confidence >= 0.7
                       ? 'bg-green-500/5 border-green-500/30'
                       : aiResult.issues && aiResult.issues.length > 0
                       ? 'bg-red-500/5 border-red-500/30'
@@ -808,8 +869,8 @@ export default function SellPage() {
                       </div>
                       <div>
                         <p className="text-muted-foreground text-xs mb-1">Khớp tên đăng ký</p>
-                        <p className={`font-semibold ${aiResult.is_name_match ? 'text-green-500' : 'text-red-500'}`}>
-                          {aiResult.is_name_match ? '✅ Khớp' : '❌ Không khớp'}
+                        <p className={`font-semibold ${isSubmittedNameMatch ? 'text-green-500' : 'text-red-500'}`}>
+                          {isSubmittedNameMatch ? '✅ Khớp sau chỉnh sửa' : '❌ Chưa khớp'}
                         </p>
                       </div>
                     </div>
@@ -887,15 +948,66 @@ export default function SellPage() {
                   </Select>
                 </div>
 
+                <Button
+                  type="button"
+                  onClick={() => {
+                    if (idFrontFile && idBackFile && bankScreenshotFile) {
+                      handleAICheck(idFrontFile, idBackFile, bankScreenshotFile, fullName.trim());
+                    }
+                  }}
+                  disabled={!canStartSystemScan}
+                  variant="outline"
+                  className="w-full border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
+                >
+                  {isAIChecking ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Hệ thống đang quét
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Bắt đầu quét bằng hệ thống
+                    </>
+                  )}
+                </Button>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="editableBankAccountName">Tên chủ tài khoản *</Label>
+                    <Input
+                      id="editableBankAccountName"
+                      value={editableBankAccountName}
+                      onChange={e => setEditableBankAccountName(e.target.value)}
+                      placeholder="Tên chủ tài khoản sau khi kiểm tra"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Hệ thống của chúng tôi  gợi ý: {aiResult?.bank_account_name || 'Chưa có'}
+                    </p>
+                  </div>
+                  <div>
+                    <Label htmlFor="editableBankAccountNumber">Số tài khoản *</Label>
+                    <Input
+                      id="editableBankAccountNumber"
+                      value={editableBankAccountNumber}
+                      onChange={e => setEditableBankAccountNumber(e.target.value.replace(/[^\d]/g, ''))}
+                      placeholder="Số tài khoản sau khi kiểm tra"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                   Hệ thống gợi ý: {aiResult?.bank_account_number || 'Chưa có'}
+                    </p>
+                  </div>
+                </div>
+
                 {/* Next */}
                 <Button
                   type="button"
                   onClick={() => setCurrentStep(2)}
                   disabled={
                     !aiResult || !fullName || !idFrontFile || !idBackFile || !bankScreenshotFile || !bankName ||
+                    !editableBankAccountName || !editableBankAccountNumber ||
                     !aiResult.is_valid_cccd || !aiResult.is_valid_cccd_back || !aiResult.is_valid_bank ||
-                    !aiResult.is_name_match || aiResult.confidence < 0.7 ||
-                    (aiResult.issues && aiResult.issues.length > 0)
+                    !isSubmittedNameMatch || aiResult.confidence < 0.7
                   }
                   className="w-full"
                   size="lg"
@@ -912,17 +1024,16 @@ export default function SellPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Phone className="h-5 w-5 text-orange-500" />
-                  Bước 2: Xác minh số điện thoại
+                  Bước 2: Số điện thoại liên hệ
                 </CardTitle>
                 <CardDescription>
-                  Số điện thoại để bưu tá liên hệ lấy thẻ khi có đơn hàng. Bạn sẽ nhận mã OTP qua SMS.
+                  Nhập số điện thoại Việt Nam để bưu tá liên hệ lấy thẻ khi có đơn hàng. Admin sẽ kiểm tra lại khi duyệt seller.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {/* Phone Input + Send OTP */}
                 <div>
                   <Label htmlFor="phone">Số điện thoại *</Label>
-                  <div className="flex gap-2 mt-1">
+                  <div className="mt-1">
                     <Input
                       id="phone"
                       type="tel"
@@ -930,84 +1041,18 @@ export default function SellPage() {
                       onChange={e => handlePhoneChange(e.target.value)}
                       placeholder="0912 345 678"
                       maxLength={10}
-                      disabled={otpVerified}
-                      className={otpVerified ? 'border-green-500/50 bg-green-500/5' : ''}
                       required
                     />
-                    {!otpVerified && (
-                      <Button
-                        type="button"
-                        onClick={handleSendOTP}
-                        disabled={!isPhoneValid || otpLoading || cooldown > 0}
-                        variant="outline"
-                        className="shrink-0 min-w-[120px]"
-                      >
-                        {otpLoading ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : cooldown > 0 ? (
-                          `${cooldown}s`
-                        ) : otpSent ? (
-                          'Gửi lại'
-                        ) : (
-                          'Gửi mã OTP'
-                        )}
-                      </Button>
-                    )}
                   </div>
                   {phoneNumber && !isPhoneValid && (
                     <p className="text-xs text-red-400 mt-1">Số điện thoại phải bắt đầu bằng 03, 05, 07, 08, 09 và gồm 10 chữ số</p>
                   )}
-                  {otpVerified && (
+                  {phoneNumber && isPhoneValid && (
                     <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
-                      <CheckCircle className="h-3 w-3" /> Số điện thoại đã xác minh
+                      <CheckCircle className="h-3 w-3" /> Số điện thoại hợp lệ để liên hệ
                     </p>
                   )}
                 </div>
-
-                {/* OTP Input */}
-                {otpSent && !otpVerified && (
-                  <div className="space-y-3">
-                    <Label htmlFor="otp">Nhập mã OTP (6 chữ số)</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        id="otp"
-                        type="text"
-                        inputMode="numeric"
-                        value={otpCode}
-                        onChange={e => setOtpCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
-                        placeholder="000000"
-                        maxLength={6}
-                        className="text-center text-2xl font-mono tracking-[0.5em] max-w-[200px]"
-                      />
-                      <Button
-                        type="button"
-                        onClick={handleVerifyOTP}
-                        disabled={otpCode.length !== 6 || otpLoading}
-                        className="bg-gradient-to-r from-green-500 to-emerald-600 text-white"
-                      >
-                        {otpLoading ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          'Xác minh'
-                        )}
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Mã OTP đã gửi tới <span className="font-mono font-medium">{phoneNumber}</span>. Có hiệu lực trong 5 phút.
-                    </p>
-                  </div>
-                )}
-
-                {/* OTP Error */}
-                {otpError && (
-                  <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-400 flex items-start gap-2">
-                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                    <div>{otpError}</div>
-                  </div>
-                )}
-
-                {/* Firebase reCAPTCHA (invisible) */}
-                <div id="recaptcha-container"></div>
 
                 {/* Navigation */}
                 <div className="flex gap-3">
@@ -1017,7 +1062,7 @@ export default function SellPage() {
                   <Button
                     type="button"
                     onClick={() => setCurrentStep(3)}
-                    disabled={!otpVerified}
+                    disabled={!isPhoneValid}
                     className="flex-1"
                     size="lg"
                   >
@@ -1063,17 +1108,17 @@ export default function SellPage() {
                         <p className="font-medium">{bankName}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground text-xs">Số tài khoản</p>
-                        <p className="font-mono font-medium">{aiResult?.bank_account_number || '—'}</p>
-                      </div>
+                      <p className="text-muted-foreground text-xs">Số tài khoản</p>
+                      <p className="font-mono font-medium">{editableBankAccountNumber || '—'}</p>
+                    </div>
                       <div>
                         <p className="text-muted-foreground text-xs">Tên chủ tài khoản</p>
-                        <p className="font-medium">{aiResult?.bank_account_name || '—'}</p>
+                        <p className="font-medium">{editableBankAccountName || '—'}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground text-xs">Tên trùng khớp</p>
-                        <p className={`font-semibold ${aiResult?.is_name_match ? 'text-green-500' : 'text-red-500'}`}>
-                          {aiResult?.is_name_match ? '✅ Khớp' : '❌ Không khớp'}
+                        <p className={`font-semibold ${isSubmittedNameMatch ? 'text-green-500' : 'text-red-500'}`}>
+                          {isSubmittedNameMatch ? '✅ Khớp' : '❌ Không khớp'}
                         </p>
                       </div>
                     </div>
@@ -1110,7 +1155,7 @@ export default function SellPage() {
                   <Button
                     type="button"
                     onClick={handleKYCSubmit}
-                    disabled={isSubmitting || !aiResult?.is_name_match || (aiResult?.confidence || 0) < 0.7}
+                    disabled={isSubmitting || !isSubmittedNameMatch || !isPhoneValid || (aiResult?.confidence || 0) < 0.7}
                     className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold"
                     size="lg"
                   >

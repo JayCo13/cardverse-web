@@ -118,6 +118,10 @@ export interface Database {
                     publisher: string | null
                     season: string | null
                     set_name: string | null
+                    accept_offers: boolean
+                    min_offer_percent: number
+                    is_bundle: boolean
+                    bundle_items: Json | null
                     quantity: number
                     created_at: string
                     updated_at: string
@@ -144,6 +148,10 @@ export interface Database {
                     publisher?: string | null
                     season?: string | null
                     set_name?: string | null
+                    accept_offers?: boolean
+                    min_offer_percent?: number
+                    is_bundle?: boolean
+                    bundle_items?: Json | null
                     quantity?: number
                     created_at?: string
                     updated_at?: string
@@ -170,6 +178,10 @@ export interface Database {
                     publisher?: string | null
                     season?: string | null
                     set_name?: string | null
+                    accept_offers?: boolean
+                    min_offer_percent?: number
+                    is_bundle?: boolean
+                    bundle_items?: Json | null
                     quantity?: number
                     created_at?: string
                     updated_at?: string
@@ -420,6 +432,157 @@ export interface Database {
                     dispute_evidence_url?: string | null
                     created_at?: string
                     updated_at?: string
+                }
+            }
+            seller_verifications: {
+                Row: {
+                    id: string
+                    user_id: string
+                    full_name: string
+                    id_card_front_url: string
+                    id_card_back_url: string
+                    bank_name: string
+                    bank_account_number: string
+                    bank_account_name: string
+                    bank_screenshot_url: string | null
+                    phone_number: string | null
+                    ai_cccd_name: string | null
+                    ai_bank_name: string | null
+                    ai_bank_number: string | null
+                    ai_confidence: number | null
+                    ai_name_match: boolean | null
+                    ai_scan_id: string | null
+                    phone_verified_at: string | null
+                    status: string
+                    reviewed_by: string | null
+                    reviewed_at: string | null
+                    rejection_reason: string | null
+                    created_at: string | null
+                    updated_at: string | null
+                }
+                Insert: {
+                    id?: string
+                    user_id: string
+                    full_name: string
+                    id_card_front_url: string
+                    id_card_back_url: string
+                    bank_name: string
+                    bank_account_number: string
+                    bank_account_name: string
+                    bank_screenshot_url?: string | null
+                    phone_number?: string | null
+                    ai_cccd_name?: string | null
+                    ai_bank_name?: string | null
+                    ai_bank_number?: string | null
+                    ai_confidence?: number | null
+                    ai_name_match?: boolean | null
+                    ai_scan_id?: string | null
+                    phone_verified_at?: string | null
+                    status?: string
+                    reviewed_by?: string | null
+                    reviewed_at?: string | null
+                    rejection_reason?: string | null
+                    created_at?: string | null
+                    updated_at?: string | null
+                }
+                Update: {
+                    id?: string
+                    user_id?: string
+                    full_name?: string
+                    id_card_front_url?: string
+                    id_card_back_url?: string
+                    bank_name?: string
+                    bank_account_number?: string
+                    bank_account_name?: string
+                    bank_screenshot_url?: string | null
+                    phone_number?: string | null
+                    ai_cccd_name?: string | null
+                    ai_bank_name?: string | null
+                    ai_bank_number?: string | null
+                    ai_confidence?: number | null
+                    ai_name_match?: boolean | null
+                    ai_scan_id?: string | null
+                    phone_verified_at?: string | null
+                    status?: string
+                    reviewed_by?: string | null
+                    reviewed_at?: string | null
+                    rejection_reason?: string | null
+                    created_at?: string | null
+                    updated_at?: string | null
+                }
+            }
+            kyc_verification_scans: {
+                Row: {
+                    id: string
+                    user_id: string
+                    cccd_name: string | null
+                    cccd_id_number: string | null
+                    cccd_dob: string | null
+                    is_valid_cccd: boolean
+                    is_valid_cccd_back: boolean
+                    bank_account_name_ai: string | null
+                    bank_account_number_ai: string | null
+                    bank_name_detected: string | null
+                    is_valid_bank: boolean
+                    ai_name_match: boolean
+                    is_cccd_bank_match: boolean
+                    is_cccd_user_match: boolean
+                    confidence: number
+                    issues: Json | null
+                    raw_front_response: Json | null
+                    raw_back_response: Json | null
+                    raw_bank_response: Json | null
+                    expires_at: string
+                    used_at: string | null
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    user_id: string
+                    cccd_name?: string | null
+                    cccd_id_number?: string | null
+                    cccd_dob?: string | null
+                    is_valid_cccd?: boolean
+                    is_valid_cccd_back?: boolean
+                    bank_account_name_ai?: string | null
+                    bank_account_number_ai?: string | null
+                    bank_name_detected?: string | null
+                    is_valid_bank?: boolean
+                    ai_name_match?: boolean
+                    is_cccd_bank_match?: boolean
+                    is_cccd_user_match?: boolean
+                    confidence?: number
+                    issues?: Json | null
+                    raw_front_response?: Json | null
+                    raw_back_response?: Json | null
+                    raw_bank_response?: Json | null
+                    expires_at?: string
+                    used_at?: string | null
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    user_id?: string
+                    cccd_name?: string | null
+                    cccd_id_number?: string | null
+                    cccd_dob?: string | null
+                    is_valid_cccd?: boolean
+                    is_valid_cccd_back?: boolean
+                    bank_account_name_ai?: string | null
+                    bank_account_number_ai?: string | null
+                    bank_name_detected?: string | null
+                    is_valid_bank?: boolean
+                    ai_name_match?: boolean
+                    is_cccd_bank_match?: boolean
+                    is_cccd_user_match?: boolean
+                    confidence?: number
+                    issues?: Json | null
+                    raw_front_response?: Json | null
+                    raw_back_response?: Json | null
+                    raw_bank_response?: Json | null
+                    expires_at?: string
+                    used_at?: string | null
+                    created_at?: string
                 }
             }
             soccer_sets: {

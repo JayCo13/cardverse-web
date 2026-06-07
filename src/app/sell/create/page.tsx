@@ -49,7 +49,7 @@ interface BundleItem {
   price: number | undefined;
 }
 
-const getFormSchema = (t: (key: string) => string) => z.object({
+const getFormSchema = (t: (key: any) => string) => z.object({
   name: z.string().min(5, { message: "Title must be at least 5 characters." }),
   isBundle: z.boolean().default(false),
   category: z.string({ required_error: "Please select a category." }),
@@ -130,6 +130,8 @@ export default function CreateListingPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingSellerAccess, setIsCheckingSellerAccess] = useState(true);
+  const [hasSellerAccess, setHasSellerAccess] = useState(false);
   const supabase = useSupabase();
 
   const formSchema = getFormSchema(t);
@@ -220,6 +222,38 @@ export default function CreateListingPage() {
       setOpen(true);
     }
   }, [user, setOpen]);
+
+  useEffect(() => {
+    if (!user) {
+      setIsCheckingSellerAccess(false);
+      setHasSellerAccess(false);
+      return;
+    }
+
+    const checkSellerAccess = async () => {
+      try {
+        const res = await fetch('/api/seller/verify');
+        const data = await res.json();
+        const approved = data.verification?.status === 'approved';
+        setHasSellerAccess(approved);
+        if (!approved) {
+          toast({
+            variant: 'destructive',
+            title: 'Truy cập bị từ chối',
+            description: 'Bạn cần hoàn tất và được duyệt KYC trước khi đăng bán.',
+          });
+          router.replace('/sell');
+        }
+      } catch {
+        setHasSellerAccess(false);
+        router.replace('/sell');
+      } finally {
+        setIsCheckingSellerAccess(false);
+      }
+    };
+
+    checkSellerAccess();
+  }, [user, router, toast]);
 
   useEffect(() => {
     if (isPsaGraded) {
@@ -335,6 +369,14 @@ export default function CreateListingPage() {
       setOpen(true);
       return;
     }
+    if (!hasSellerAccess) {
+      toast({
+        variant: 'destructive',
+        title: 'Seller verification required',
+        description: 'Bạn cần được duyệt KYC trước khi tạo bài đăng.',
+      });
+      return;
+    }
     setIsSubmitting(true);
 
     try {
@@ -422,11 +464,14 @@ export default function CreateListingPage() {
         cardData.razz_entries = 0;
       }
 
-      const { error: insertError } = await supabase.from('cards').insert(cardData);
-
-      if (insertError) {
-        console.error('Supabase insert error:', insertError);
-        throw new Error(insertError.message);
+      const res = await fetch('/api/marketplace/listings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cardData),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to create listing');
       }
 
       toast({
@@ -455,6 +500,26 @@ export default function CreateListingPage() {
           <ShieldAlert className="h-16 w-16 text-primary mb-4" />
           <h2 className="text-2xl font-semibold mb-2">{t('auth_required_title')}</h2>
           <p className="text-muted-foreground">{t('auth_required_desc')}</p>
+        </div>
+      );
+    }
+
+    if (isCheckingSellerAccess) {
+      return (
+        <div className="flex flex-col items-center justify-center text-center py-16">
+          <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+          <h2 className="text-xl font-semibold mb-2">Đang kiểm tra quyền người bán</h2>
+          <p className="text-muted-foreground">Vui lòng đợi trong giây lát.</p>
+        </div>
+      );
+    }
+
+    if (!hasSellerAccess) {
+      return (
+        <div className="flex flex-col items-center justify-center text-center py-16">
+          <ShieldAlert className="h-16 w-16 text-primary mb-4" />
+          <h2 className="text-2xl font-semibold mb-2">Bạn chưa được duyệt KYC</h2>
+          <p className="text-muted-foreground">Hoàn tất xác minh ở trang Seller để bắt đầu đăng bán.</p>
         </div>
       );
     }
