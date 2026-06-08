@@ -16,7 +16,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useLocalization } from '@/context/localization-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getCloudinarySignature, uploadImageDirectToCloudinary, type CloudinarySignaturePayload } from '@/lib/cloudinary-direct';
-import { getCloudinaryKycBackScanUrl, getCloudinaryKycScanUrl } from '@/lib/cloudinary-url';
+import { getCloudinaryKycBackScanUrl, getCloudinaryKycScanUrl, toDisplaySafeUrl } from '@/lib/cloudinary-url';
+import { isHeicFile, convertHeicToJpeg } from '@/lib/heic';
 import Link from 'next/link';
 import Image from 'next/image';
 
@@ -52,6 +53,12 @@ type AIResult = {
   is_cccd_user_match: boolean;
   confidence: number;
   issues: string[] | null;
+  duplicate?: {
+    cccdDuplicate: boolean;
+    bankDuplicate: boolean;
+    matchedCount: number;
+    notes: string | null;
+  } | null;
   failure_type?: 'unreadable' | 'wrong_side' | 'low_confidence' | 'network' | null;
   debug_front_image_url?: string | null;
   debug_back_image_url?: string | null;
@@ -98,6 +105,7 @@ export default function SellPage() {
   const [idBackFile, setIdBackFile] = useState<File | null>(null);
 
   const [bankScreenshotFile, setBankScreenshotFile] = useState<File | null>(null);
+  const [processingType, setProcessingType] = useState<'front' | 'back' | 'bank' | null>(null);
   const [isAIChecking, setIsAIChecking] = useState(false);
   const [aiResult, setAIResult] = useState<AIResult | null>(null);
   const [aiError, setAIError] = useState<string | null>(null);
@@ -119,10 +127,32 @@ export default function SellPage() {
   const [kycUploadSignature, setKycUploadSignature] = useState<CloudinarySignaturePayload | null>(null);
   const AI_MAX_ATTEMPTS = 5;
 
-  const handleFileChange = (type: 'front' | 'back' | 'bank', file: File | null) => {
-    if (type === 'front') setIdFrontFile(file);
-    if (type === 'back') setIdBackFile(file);
-    if (type === 'bank') setBankScreenshotFile(file);
+  const handleFileChange = async (type: 'front' | 'back' | 'bank', file: File | null) => {
+    let processed = file;
+
+    // Convert HEIC/HEIF to JPEG immediately on selection so nothing downstream
+    // ever has to deal with HEIC (preview, upload, scan all use JPEG).
+    if (file && isHeicFile(file)) {
+      try {
+        setProcessingType(type);
+        processed = await convertHeicToJpeg(file);
+      } catch (err) {
+        console.error('[KYC] HEIC → JPEG conversion failed:', err);
+        toast({
+          variant: 'destructive',
+          title: 'Không đọc được ảnh',
+          description: 'Vui lòng thử lại hoặc chọn ảnh định dạng JPG/PNG.',
+        });
+        setProcessingType(null);
+        return;
+      } finally {
+        setProcessingType(null);
+      }
+    }
+
+    if (type === 'front') setIdFrontFile(processed);
+    if (type === 'back') setIdBackFile(processed);
+    if (type === 'bank') setBankScreenshotFile(processed);
 
     setUploadedKycAssets(prev => ({
       ...prev,
@@ -190,23 +220,42 @@ export default function SellPage() {
   }, [authLoading, user, setOpen]);
 
   useEffect(() => {
+    if (authLoading) return;
     if (user) {
       fetchVerification();
+    } else {
+      setIsLoadingVerification(false);
     }
-  }, [user]);
+  }, [user, authLoading]);
 
-  const fetchVerification = async () => {
+  const fetchVerification = async (attempt = 0) => {
     try {
       const res = await fetch('/api/seller/verify');
+      if (!res.ok) {
+        // Right after a page refresh the Supabase auth cookie may not be synced
+        // server-side yet, so this returns 401. Retry a few times before giving
+        // up — otherwise an already-registered seller wrongly sees the signup
+        // form again instead of their pending/approved status.
+        if (attempt < 4) {
+          setTimeout(() => fetchVerification(attempt + 1), 600);
+          return;
+        }
+        setIsLoadingVerification(false);
+        return;
+      }
       const data = await res.json();
-      setVerification(data.verification);
+      setVerification(data.verification ?? null);
 
       if (data.verification?.status === 'approved') {
         fetchSellerOrders();
       }
+      setIsLoadingVerification(false);
     } catch (err) {
       console.error('Failed to fetch verification:', err);
-    } finally {
+      if (attempt < 4) {
+        setTimeout(() => fetchVerification(attempt + 1), 600);
+        return;
+      }
       setIsLoadingVerification(false);
     }
   };
@@ -248,7 +297,7 @@ export default function SellPage() {
     if (!nextAssets.frontOriginalUrl || !nextAssets.frontJpgUrl) {
       uploadTasks.push(
         uploadImageDirectToCloudinary(frontFile, signature).then(upload => {
-          nextAssets.frontOriginalUrl = upload.secureUrl;
+          nextAssets.frontOriginalUrl = toDisplaySafeUrl(frontFile.name, upload.secureUrl);
           nextAssets.frontJpgUrl = getCloudinaryKycScanUrl(upload.secureUrl);
         })
       );
@@ -257,7 +306,7 @@ export default function SellPage() {
     if (!nextAssets.backOriginalUrl || !nextAssets.backJpgUrl) {
       uploadTasks.push(
         uploadImageDirectToCloudinary(backFile, signature).then(upload => {
-          nextAssets.backOriginalUrl = upload.secureUrl;
+          nextAssets.backOriginalUrl = toDisplaySafeUrl(backFile.name, upload.secureUrl);
           nextAssets.backJpgUrl = getCloudinaryKycBackScanUrl(upload.secureUrl);
         })
       );
@@ -266,7 +315,7 @@ export default function SellPage() {
     if (!nextAssets.bankOriginalUrl || !nextAssets.bankJpgUrl) {
       uploadTasks.push(
         uploadImageDirectToCloudinary(bankFile, signature).then(upload => {
-          nextAssets.bankOriginalUrl = upload.secureUrl;
+          nextAssets.bankOriginalUrl = toDisplaySafeUrl(bankFile.name, upload.secureUrl);
           nextAssets.bankJpgUrl = getCloudinaryKycScanUrl(upload.secureUrl);
         })
       );
@@ -374,6 +423,15 @@ export default function SellPage() {
         toast({ title: '✅ Xác minh thành công!', description: 'Tất cả thông tin trùng khớp.' });
       } else {
         toast({ variant: 'destructive', title: '⚠️ Cần kiểm tra lại', description: 'Ảnh hợp lệ nhưng bạn nên kiểm tra và chỉnh sửa lại thông tin ngân hàng nếu hệ thống đọc sai.' });
+      }
+
+      // Cross-account duplicate warning (CCCD / bank already used elsewhere).
+      if (result.duplicate && (result.duplicate.cccdDuplicate || result.duplicate.bankDuplicate)) {
+        toast({
+          variant: 'destructive',
+          title: '⚠️ Thông tin đã được sử dụng',
+          description: result.duplicate.notes || 'CCCD hoặc số tài khoản này đã đăng ký ở tài khoản khác.',
+        });
       }
       console.log(
         `[KYC Flow][${requestId}] Total scan completed in ${(performance.now() - scanStart).toFixed(0)}ms`
@@ -822,6 +880,17 @@ export default function SellPage() {
                       </span>
                     </div>
 
+                    {/* Cross-account duplicate warning */}
+                    {aiResult.duplicate && (aiResult.duplicate.cccdDuplicate || aiResult.duplicate.bankDuplicate) && (
+                      <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm text-red-400 flex items-start gap-2">
+                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                        <div>
+                          <strong>Cảnh báo trùng thông tin.</strong> {aiResult.duplicate.notes || 'CCCD hoặc số tài khoản này đã được đăng ký ở một tài khoản khác.'}
+                          <div className="text-xs text-red-400/80 mt-1">Bạn vẫn có thể gửi hồ sơ, nhưng quản trị viên sẽ xem xét kỹ và có thể từ chối nếu phát hiện dùng chung giấy tờ.</div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Pending Replacements Notice */}
                     {Object.values(pendingReplacements).some(Boolean) && (
                       <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3 text-sm text-orange-400 flex items-start gap-2">
@@ -887,9 +956,14 @@ export default function SellPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Label>Ảnh CCCD mặt trước *</Label>
-                    <div className={`mt-1 border-2 rounded-lg p-4 text-center cursor-pointer transition-colors ${aiResult ? (aiResult.is_valid_cccd ? 'border-green-500/50' : 'border-red-500/50 bg-red-500/5') : 'border-dashed hover:border-orange-500/50'}`}
-                      onClick={() => document.getElementById('id-front')?.click()}>
-                      {idFrontFile ? (
+                    <div className={`mt-1 border-2 rounded-lg p-4 text-center transition-colors ${processingType === 'front' ? 'cursor-wait border-orange-500/50 bg-orange-500/5' : 'cursor-pointer'} ${aiResult ? (aiResult.is_valid_cccd ? 'border-green-500/50' : 'border-red-500/50 bg-red-500/5') : 'border-dashed hover:border-orange-500/50'}`}
+                      onClick={() => { if (processingType !== 'front') document.getElementById('id-front')?.click(); }}>
+                      {processingType === 'front' ? (
+                        <div className="flex items-center justify-center gap-2 py-1">
+                          <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
+                          <p className="text-sm text-orange-400">Đang xử lý ảnh...</p>
+                        </div>
+                      ) : idFrontFile ? (
                         <p className={`text-sm truncate ${aiResult && !aiResult.is_valid_cccd ? 'text-red-500' : 'text-green-400'}`}>{idFrontFile.name}</p>
                       ) : (
                         <>
@@ -903,9 +977,14 @@ export default function SellPage() {
                   </div>
                   <div>
                     <Label>Ảnh CCCD mặt sau *</Label>
-                    <div className={`mt-1 border-2 rounded-lg p-4 text-center cursor-pointer transition-colors ${aiResult ? (aiResult.is_valid_cccd_back ? 'border-green-500/50' : 'border-red-500/50 bg-red-500/5') : 'border-dashed hover:border-orange-500/50'}`}
-                      onClick={() => document.getElementById('id-back')?.click()}>
-                      {idBackFile ? (
+                    <div className={`mt-1 border-2 rounded-lg p-4 text-center transition-colors ${processingType === 'back' ? 'cursor-wait border-orange-500/50 bg-orange-500/5' : 'cursor-pointer'} ${aiResult ? (aiResult.is_valid_cccd_back ? 'border-green-500/50' : 'border-red-500/50 bg-red-500/5') : 'border-dashed hover:border-orange-500/50'}`}
+                      onClick={() => { if (processingType !== 'back') document.getElementById('id-back')?.click(); }}>
+                      {processingType === 'back' ? (
+                        <div className="flex items-center justify-center gap-2 py-1">
+                          <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
+                          <p className="text-sm text-orange-400">Đang xử lý ảnh...</p>
+                        </div>
+                      ) : idBackFile ? (
                         <p className={`text-sm truncate ${aiResult && !aiResult.is_valid_cccd_back ? 'text-red-500' : 'text-green-400'}`}>{idBackFile.name}</p>
                       ) : (
                         <>
@@ -922,9 +1001,14 @@ export default function SellPage() {
                 {/* Bank Screenshot */}
                 <div>
                   <Label>Ảnh chụp mục "QR của tôi" trên App Ngân hàng *</Label>
-                  <div className={`mt-1 border-2 rounded-lg p-4 text-center cursor-pointer transition-colors ${aiResult ? (aiResult.is_valid_bank ? 'border-green-500/50' : 'border-red-500/50 bg-red-500/5') : 'border-dashed hover:border-orange-500/50'}`}
-                    onClick={() => document.getElementById('bank-screenshot')?.click()}>
-                    {bankScreenshotFile ? (
+                  <div className={`mt-1 border-2 rounded-lg p-4 text-center transition-colors ${processingType === 'bank' ? 'cursor-wait border-orange-500/50 bg-orange-500/5' : 'cursor-pointer'} ${aiResult ? (aiResult.is_valid_bank ? 'border-green-500/50' : 'border-red-500/50 bg-red-500/5') : 'border-dashed hover:border-orange-500/50'}`}
+                    onClick={() => { if (processingType !== 'bank') document.getElementById('bank-screenshot')?.click(); }}>
+                    {processingType === 'bank' ? (
+                      <div className="flex items-center justify-center gap-2 py-1">
+                        <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
+                        <p className="text-sm text-orange-400">Đang xử lý ảnh...</p>
+                      </div>
+                    ) : bankScreenshotFile ? (
                       <p className={`text-sm truncate ${aiResult && !aiResult.is_valid_bank ? 'text-red-500' : 'text-green-400'}`}>{bankScreenshotFile.name}</p>
                     ) : (
                       <>

@@ -45,6 +45,23 @@ export function getCloudinaryJpgUrl(url: string): string {
     return transformed;
 }
 
+// File extensions browsers render natively. Anything outside this set (notably
+// HEIC/HEIF from iPhones) must be converted to JPEG for display.
+const FAMILIAR_IMG_EXT = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'];
+
+export function isFamiliarImageFile(fileName: string): boolean {
+    const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+    return FAMILIAR_IMG_EXT.includes(ext);
+}
+
+/**
+ * Return a display-safe URL: unfamiliar extensions (HEIC...) are forced to JPEG
+ * via Cloudinary so browsers can render them; familiar formats are kept as-is.
+ */
+export function toDisplaySafeUrl(fileName: string, secureUrl: string): string {
+    return isFamiliarImageFile(fileName) ? secureUrl : getCloudinaryJpgUrl(secureUrl);
+}
+
 export function getCloudinaryKycScanUrl(url: string): string {
     if (!url || !url.includes('res.cloudinary.com')) return url;
 

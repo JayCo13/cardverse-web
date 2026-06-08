@@ -17,44 +17,71 @@ export function getFromAddress() {
     return process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || 'noreply@cardverse.com';
 }
 
+function getAppUrl() {
+    return process.env.NEXT_PUBLIC_APP_URL || 'https://cardversehub.com';
+}
+
 function buildTemplate(title: string, body: string) {
+    const appUrl = getAppUrl();
+    const logoUrl = `${appUrl}/assets/logo-verse.png`;
+    const year = new Date().getFullYear();
+
     return `<!DOCTYPE html>
-<html>
+<html lang="vi">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <title>CardVerse</title>
 </head>
-<body style="margin: 0; padding: 0; background-color: #0a0a0a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #0a0a0a;">
+<body style="margin: 0; padding: 0; background-color: #08080a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+    <!-- Preheader (hidden) -->
+    <div style="display: none; max-height: 0; overflow: hidden; opacity: 0;">${title}</div>
+
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #08080a;">
         <tr>
-            <td align="center" style="padding: 40px 20px;">
-                <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="background-color: #18181b; border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); overflow: hidden;">
-                    <!-- Header -->
+            <td align="center" style="padding: 40px 16px;">
+                <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width: 100%; max-width: 600px; background-color: #131316; border-radius: 20px; border: 1px solid rgba(255,255,255,0.06); overflow: hidden; box-shadow: 0 24px 64px rgba(0,0,0,0.6);">
+                    <!-- Header with centered logo -->
                     <tr>
-                        <td style="padding: 32px 40px; background: linear-gradient(135deg, rgba(249,115,22,0.15), transparent); border-bottom: 1px solid rgba(255,255,255,0.05);">
-                            <h1 style="margin: 0; color: #f97316; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">CardVerse</h1>
+                        <td align="center" style="padding: 40px 40px 32px; background: linear-gradient(135deg, rgba(249,115,22,0.18) 0%, rgba(249,115,22,0.03) 55%, transparent 100%);">
+                            <img src="${logoUrl}" alt="CardVerse" height="40" style="display: block; height: 40px; width: auto; border: 0; outline: none; text-decoration: none;">
                         </td>
                     </tr>
-                    <!-- Subject -->
+                    <!-- Accent divider -->
                     <tr>
-                        <td style="padding: 32px 40px 16px;">
-                            <h2 style="margin: 0; color: #ffffff; font-size: 20px; font-weight: 600;">${title}</h2>
+                        <td style="height: 3px; line-height: 3px; font-size: 0; background: linear-gradient(90deg, transparent, #f97316 50%, transparent);">&nbsp;</td>
+                    </tr>
+                    <!-- Title -->
+                    <tr>
+                        <td style="padding: 36px 40px 12px;">
+                            <h2 style="margin: 0; color: #ffffff; font-size: 22px; font-weight: 700; letter-spacing: -0.4px; line-height: 1.35;">${title}</h2>
                         </td>
                     </tr>
                     <!-- Body -->
                     <tr>
-                        <td style="padding: 0 40px 32px;">
-                            <div style="color: #a1a1aa; font-size: 15px; line-height: 1.7;">
+                        <td style="padding: 0 40px 36px;">
+                            <div style="color: #b4b4bd; font-size: 15px; line-height: 1.75;">
                                 ${body}
                             </div>
                         </td>
                     </tr>
                     <!-- Footer -->
                     <tr>
-                        <td style="padding: 24px 40px; background-color: rgba(0,0,0,0.3); border-top: 1px solid rgba(255,255,255,0.05);">
-                            <p style="margin: 0; color: #52525b; font-size: 12px; text-align: center;">
-                                &copy; ${new Date().getFullYear()} CardVerse. All rights reserved.
+                        <td style="padding: 28px 40px; background-color: rgba(0,0,0,0.35); border-top: 1px solid rgba(255,255,255,0.06);">
+                            <p style="margin: 0 0 6px; color: #71717a; font-size: 13px; text-align: center; font-weight: 600;">CardVerse — Sàn giao dịch thẻ bài</p>
+                            <p style="margin: 0; color: #52525b; font-size: 12px; text-align: center; line-height: 1.6;">
+                                <a href="${appUrl}" style="color: #f97316; text-decoration: none;">${appUrl.replace(/^https?:\/\//, '')}</a>
+                                &nbsp;&middot;&nbsp; &copy; ${year} CardVerse. All rights reserved.
                             </p>
+                        </td>
+                    </tr>
+                </table>
+                <!-- Sub-footer note -->
+                <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width: 100%; max-width: 600px;">
+                    <tr>
+                        <td style="padding: 16px 40px 0; text-align: center;">
+                            <p style="margin: 0; color: #3f3f46; font-size: 11px; line-height: 1.6;">Email này được gửi tự động, vui lòng không trả lời trực tiếp.</p>
                         </td>
                     </tr>
                 </table>
@@ -92,17 +119,17 @@ export async function sendKYCSubmittedToUser(userEmail: string, fullName: string
     }
 }
 
-export async function sendKYCSubmittedToAdmin(fullName: string, userEmail: string) {
+export async function sendKYCSubmittedToAdmin(fullName: string, userEmail: string, adminEmails: string[]) {
     try {
-        const adminEmail = process.env.ADMIN_EMAIL || process.env.SMTP_USER;
-        if (!adminEmail) return;
+        if (!adminEmails || adminEmails.length === 0) return;
 
         const transporter = createMailTransporter();
         const from = getFromAddress();
 
         await transporter.sendMail({
             from,
-            to: adminEmail,
+            to: from,
+            bcc: adminEmails,
             subject: `🔔 KYC mới cần duyệt: ${fullName}`,
             html: buildTemplate(
                 '🔔 Hồ sơ KYC mới cần duyệt',
@@ -117,7 +144,7 @@ export async function sendKYCSubmittedToAdmin(fullName: string, userEmail: strin
                 </div>`
             ),
         });
-        console.log(`[Mail] KYC admin notification sent`);
+        console.log(`[Mail] KYC admin notification sent to ${adminEmails.length} admin(s)`);
     } catch (error) {
         console.error('[Mail] Failed to send KYC admin email:', error);
     }
