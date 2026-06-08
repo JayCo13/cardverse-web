@@ -1069,22 +1069,25 @@ export function MarketSpotlight() {
                     let score = 0;
                     const reasons: string[] = [];
 
-                    // --- ONE PIECE EXACT ID (0-50) ---
+                    // --- CARD NUMBER (decisive) ---
+                    // The printed number uniquely identifies a card; when the AI
+                    // reads it (Gemini is reliable), an exact match must outrank a
+                    // mere name/set match (which can collide across sets/variants).
                     if (opId && p.number && p.number.toUpperCase() === opId) {
-                        score += 50;
-                        reasons.push(`op:id(50)`);
-                    }
-
-                    // --- NUMBER SCORE (0-30) ---
-                    if (p.number && numberFormats.length > 0 && numberFormats.includes(p.number)) {
-                        score += 30;
-                        reasons.push(`num:exact(30)`);
+                        // One Piece exact id (OP15-118 …)
+                        score += 70;
+                        reasons.push(`op:id(70)`);
+                    } else if (p.number && numberFormats.length > 0 && numberFormats.some(f => f.toLowerCase() === p.number!.toLowerCase())) {
+                        // Exact full number incl. set total, e.g. "121/106"
+                        score += 70;
+                        reasons.push(`num:exact(70)`);
                     } else if (p.number && cardNumber) {
+                        // Collector number only (set total differs/unknown)
                         const pNum = p.number.split('/')[0]?.replace(/^0+/, '');
                         const aiNum = cardNumber.replace(/[^\d/]/g, '').split('/')[0]?.replace(/^0+/, '');
                         if (pNum && aiNum && pNum === aiNum) {
-                            score += 20;
-                            reasons.push(`num:partial(20)`);
+                            score += 28;
+                            reasons.push(`num:partial(28)`);
                         }
                     }
 
@@ -1177,6 +1180,9 @@ export function MarketSpotlight() {
                     // Build number format variations
                     let altFormatsArray: string[] = [];
                     if (cardNumber) {
+                        // Keep the RAW number too (handles letter-prefixed numbers like
+                        // "TG12/TG30", "GG01/GG70", "SVP-001" that stripping would break).
+                        const rawNum = cardNumber.trim();
                         let cleanNumber = cardNumber.replace(/[^\d/]/g, '').trim();
                         if (!cleanNumber.includes('/') && /^\d+$/.test(cleanNumber) && cleanNumber.length >= 4 && cleanNumber.length % 2 === 0) {
                             const midPoint = Math.floor(cleanNumber.length / 2);
@@ -1184,7 +1190,7 @@ export function MarketSpotlight() {
                         }
 
                         const parts = cleanNumber.split('/');
-                        const altFormats = new Set<string>([cleanNumber]);
+                        const altFormats = new Set<string>([cleanNumber, rawNum, rawNum.toUpperCase()]);
 
                         if (parts.length === 2) {
                             const collectorInt = parseInt(parts[0], 10);
