@@ -4,14 +4,7 @@
 import React from "react";
 import type { Card as CardType } from "@/lib/types";
 import Image from "next/image";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -226,62 +219,104 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
   };
 
   if (layout === 'list') {
+    const catStyle = getCategoryStyle(card.category);
     return (
-      <Card className={`overflow-hidden w-full flex flex-col md:flex-row bg-card/80 hover:bg-card transition-colors duration-300 group ${card.status === 'sold' ? 'border-green-500/50 opacity-75' : ''}`}>
-        <div className="relative w-full md:w-1/5 aspect-square md:aspect-[3/4]">
-          <Image
-            src={optimizeCloudinaryUrl(card.imageUrl, 300)}
-            alt={card.name}
-            data-ai-hint={card.imageHint || 'trading card'}
-            fill
-            sizes="(max-width: 768px) 100vw, 20vw"
-            className={`object-cover ${card.status === 'sold' ? 'grayscale' : ''}`}
-          />
-          {/* Sold overlay */}
-          {card.status === 'sold' && (
-            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-              <span className="bg-green-500 text-white font-bold px-3 py-1 rounded-lg text-xs uppercase tracking-wider">
-                Đã bán
-              </span>
+      <Card
+        className={`group relative flex w-full flex-col overflow-hidden rounded-2xl border bg-gradient-to-br from-card via-card to-card/50 transition-all duration-300 md:flex-row
+          ${card.status === 'sold'
+            ? 'border-green-500/40 opacity-80'
+            : 'border-border/60 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[0_10px_40px_-12px_hsl(var(--primary)/0.35)]'}`}
+      >
+        {/* Left accent rail — grows in on hover */}
+        {card.status !== 'sold' && (
+          <span className="pointer-events-none absolute left-0 top-0 z-10 h-full w-[3px] origin-top scale-y-0 bg-gradient-to-b from-primary via-primary/70 to-transparent transition-transform duration-300 group-hover:scale-y-100" />
+        )}
+
+        {/* Image — the "display case" frame */}
+        <div className="relative w-full shrink-0 overflow-hidden md:w-40 lg:w-48">
+          <div className="relative aspect-[3/4] w-full md:h-full">
+            <Image
+              src={optimizeCloudinaryUrl(card.imageUrl, 400)}
+              alt={card.name}
+              data-ai-hint={card.imageHint || 'trading card'}
+              fill
+              sizes="(max-width: 768px) 100vw, 12rem"
+              className={`object-cover transition-transform duration-500 ${card.status === 'sold' ? 'grayscale' : 'group-hover:scale-[1.06]'}`}
+            />
+            {/* depth / blend into card body */}
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent md:bg-gradient-to-r md:from-transparent md:via-transparent md:to-card/40" />
+            {/* category chip */}
+            <div className={`absolute left-2.5 top-2.5 rounded-md border border-white/20 ${catStyle.gradient} px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-lg ${catStyle.shadow}`}>
+              {card.category.slice(0, 3)}
             </div>
-          )}
+            {/* sold overlay */}
+            {card.status === 'sold' && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                <span className="rounded-lg bg-green-500 px-3 py-1 text-xs font-bold uppercase tracking-wider text-white">
+                  Đã bán
+                </span>
+              </div>
+            )}
+          </div>
         </div>
-        <div className="flex-1 flex flex-col md:flex-row p-4">
-          <div className="flex-grow md:w-3/5">
-            <div className="flex items-center gap-2">
-              <CardTitle className="text-xl mb-1">{card.name}</CardTitle>
+
+        {/* Body */}
+        <div className="flex flex-1 flex-col gap-3 p-4 sm:p-5 md:flex-row md:items-stretch md:gap-5">
+          {/* Info column */}
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3
+                className="line-clamp-2 text-lg font-bold leading-tight tracking-tight md:line-clamp-1 md:text-xl"
+                style={{ fontFamily: "'Orbitron', sans-serif" }}
+              >
+                {card.name}
+              </h3>
               {card.status === 'sold' && (
-                <Badge className="bg-green-500 text-white text-xs">Đã bán</Badge>
+                <Badge className="bg-green-500 text-[10px] text-white">Đã bán</Badge>
               )}
               {card.isBundle && (
-                <Badge variant="outline" className="border-violet-500/50 text-violet-500 text-xs">Combo {card.bundleItems?.length || 0} thẻ</Badge>
+                <Badge variant="outline" className="border-violet-500/50 text-[10px] text-violet-400">
+                  Combo {card.bundleItems?.length || 0} thẻ
+                </Badge>
               )}
             </div>
-            <CardDescription className="text-sm">{card.category}</CardDescription>
-            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+            <p className="mt-0.5 text-sm text-muted-foreground">{card.category}</p>
+
+            {/* meta chips */}
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
               {card.condition && (
-                <Badge variant={getBadgeVariant(card.condition)} className="self-start">{card.condition}</Badge>
+                <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                  <Gem className="h-3 w-3" />
+                  {card.condition}
+                </span>
               )}
               {card.publisher && (
-                <Badge variant="outline" className="text-xs">{card.publisher}</Badge>
+                <span className="rounded-full border border-border bg-muted/40 px-2.5 py-0.5 text-xs text-muted-foreground">
+                  {card.publisher}
+                </span>
               )}
               {card.setName && (
-                <Badge variant="outline" className="text-xs text-muted-foreground">{card.setName}</Badge>
+                <span className="rounded-full border border-border bg-muted/40 px-2.5 py-0.5 text-xs text-muted-foreground">
+                  {card.setName}
+                </span>
               )}
             </div>
-            {/* Seller info */}
-            <div className="flex items-center gap-2 mt-3">
+
+            {/* Seller info pinned to bottom */}
+            <div className="mt-auto flex items-center gap-2 pt-4">
               {card.sellerAvatar ? (
-                <Image src={card.sellerAvatar} alt={card.sellerName || ''} width={20} height={20} className="rounded-full object-cover" />
+                <Image src={card.sellerAvatar} alt={card.sellerName || ''} width={22} height={22} className="rounded-full object-cover ring-1 ring-border" />
               ) : (
-                <div className="h-5 w-5 rounded-full bg-muted flex items-center justify-center">
+                <div className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-muted ring-1 ring-border">
                   <User className="h-3 w-3 text-muted-foreground" />
                 </div>
               )}
-              <span className="text-xs text-muted-foreground">{card.sellerName || card.author}</span>
+              <span className="truncate text-xs text-muted-foreground">{card.sellerName || card.author}</span>
             </div>
           </div>
-          <div className="md:w-2/5 flex flex-col justify-center items-end mt-4 md:mt-0">
+
+          {/* Price / action panel — separated like a display-case tag */}
+          <div className="flex shrink-0 flex-col justify-center border-t border-border/50 pt-4 md:w-44 md:border-l md:border-t-0 md:pl-5 md:pt-0">
             {renderPriceInfo()}
           </div>
         </div>

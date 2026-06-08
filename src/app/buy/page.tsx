@@ -14,7 +14,14 @@ import { ListFilter } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSupabase } from '@/lib/supabase';
-import { CheckoutModal } from '@/components/checkout-modal';
+import dynamic from 'next/dynamic';
+
+// Checkout (and its heavy GHN address picker) is only needed after the user
+// clicks "Buy", so keep it out of the initial /buy bundle.
+const CheckoutModal = dynamic(
+  () => import('@/components/checkout-modal').then((m) => m.CheckoutModal),
+  { ssr: false }
+);
 
 export type Filters = {
   search: string;
@@ -245,6 +252,7 @@ export default function BuyPage() {
         </div>
       </main>
       <Footer />
+      {checkoutCard && (
       <CheckoutModal
         open={checkoutOpen}
         onOpenChange={setCheckoutOpen}
@@ -262,6 +270,7 @@ export default function BuyPage() {
           window.location.reload();
         }}
       />
+      )}
     </div>
   );
 }
