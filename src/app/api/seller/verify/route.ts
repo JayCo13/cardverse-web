@@ -1,7 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { sendKYCSubmittedToUser, sendKYCSubmittedToAdmin } from '@/lib/mail';
 import { normalizeVietnameseName } from '@/lib/kyc-verification';
+import { findKycDuplicates } from '@/lib/kyc-duplicate';
+
+// Admins are flagged via profiles.is_tester = true. Uses the service-role client
+// so RLS doesn't hide other users' emails.
+async function getAdminEmails(): Promise<string[]> {
+    try {
+        const service = createServiceSupabaseClient();
+        const { data } = await service
+            .from('profiles')
+            .select('email')
+            .eq('is_tester', true) as { data: { email: string | null }[] | null };
+        return (data ?? []).map(a => a.email).filter((e): e is string => !!e);
+    } catch (err) {
+        console.error('[KYC] Failed to load admin emails:', err);
+        return [];
+    }
+}
 
 // POST: Submit KYC verification request
 export async function POST(request: NextRequest) {
@@ -40,6 +58,7 @@ export async function POST(request: NextRequest) {
                 data: {
                     id: string;
                     cccd_name: string | null;
+                    cccd_id_number: string | null;
                     bank_account_name_ai: string | null;
                     bank_account_number_ai: string | null;
                     confidence: number;
@@ -69,6 +88,22 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Tên người dùng, CCCD và tên chủ tài khoản phải trùng khớp.' }, { status: 400 });
         }
 
+        // Cross-account duplicate check — persisted so admin review can flag
+        // ban-evasion / shared CCCD or bank account. Does not block submission.
+        let isDuplicate = false;
+        let duplicateNotes: string | null = null;
+        try {
+            const dup = await findKycDuplicates(createServiceSupabaseClient(), {
+                userId: user.id,
+                cccdIdNumber: scan.cccd_id_number,
+                bankAccountNumber: bank_account_number,
+            });
+            isDuplicate = dup.cccdDuplicate || dup.bankDuplicate;
+            duplicateNotes = dup.notes;
+        } catch (dupErr) {
+            console.error('[KYC] Duplicate check failed on submit:', dupErr);
+        }
+
         // Check if already has a verification
         const { data: existing } = await supabase
             .from('seller_verifications')
@@ -96,6 +131,9 @@ export async function POST(request: NextRequest) {
                     ai_confidence: scan.confidence,
                     ai_name_match: scan.ai_name_match,
                     ai_scan_id: scan.id,
+                    cccd_id_number: scan.cccd_id_number,
+                    is_duplicate: isDuplicate,
+                    duplicate_notes: duplicateNotes,
                     status: 'pending',
                     rejection_reason: null,
                     reviewed_by: null,
@@ -113,8 +151,9 @@ export async function POST(request: NextRequest) {
 
             // Send email notifications (async, don't block response)
             const userEmail = user.email || '';
+            const adminEmails = await getAdminEmails();
             sendKYCSubmittedToUser(userEmail, full_name);
-            sendKYCSubmittedToAdmin(full_name, userEmail);
+            sendKYCSubmittedToAdmin(full_name, userEmail, adminEmails);
 
             return NextResponse.json({ success: true, message: 'Verification resubmitted' });
         }
@@ -133,6 +172,9 @@ export async function POST(request: NextRequest) {
                 ai_confidence: scan.confidence,
                 ai_name_match: scan.ai_name_match,
                 ai_scan_id: scan.id,
+                cccd_id_number: scan.cccd_id_number,
+                is_duplicate: isDuplicate,
+                duplicate_notes: duplicateNotes,
                 status: 'pending',
             } as never);
 
@@ -145,8 +187,9 @@ export async function POST(request: NextRequest) {
 
         // Send email notifications (async, don't block response)
         const userEmail = user.email || '';
+        const adminEmails = await getAdminEmails();
         sendKYCSubmittedToUser(userEmail, full_name);
-        sendKYCSubmittedToAdmin(full_name, userEmail);
+        sendKYCSubmittedToAdmin(full_name, userEmail, adminEmails);
 
         return NextResponse.json({ success: true, message: 'Verification submitted' });
     } catch (error: any) {

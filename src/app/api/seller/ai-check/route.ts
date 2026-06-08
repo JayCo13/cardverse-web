@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServiceSupabaseClient } from '@/lib/supabase/service';
+import { findKycDuplicates } from '@/lib/kyc-duplicate';
 import { normalizeVietnameseName } from '@/lib/kyc-verification';
 
 // ─── Rate Limiter (in-memory, per IP) ───
@@ -372,11 +374,28 @@ or
             throw new Error(insertError?.message || 'Failed to persist KYC scan');
         }
 
+        // Cross-account duplicate check (ban-evasion / shared CCCD or bank account).
+        // Uses the service client so RLS doesn't hide other users' verifications.
+        let duplicate = { cccdDuplicate: false, bankDuplicate: false, matchedCount: 0, notes: null as string | null };
+        try {
+            duplicate = await findKycDuplicates(createServiceSupabaseClient(), {
+                userId: user.id,
+                cccdIdNumber: payload.cccd_id_number,
+                bankAccountNumber: payload.bank_account_number,
+            });
+            if (duplicate.cccdDuplicate || duplicate.bankDuplicate) {
+                console.warn(`[KYC API][${requestId}] Duplicate detected for user ${user.id}: ${duplicate.notes}`);
+            }
+        } catch (dupErr) {
+            console.error(`[KYC API][${requestId}] Duplicate check failed:`, dupErr);
+        }
+
         console.log(`[KYC API][${requestId}] Total API time ${Date.now() - routeStart}ms`);
 
         return NextResponse.json({
             ...payload,
             scan_id: scan.id,
+            duplicate,
             ...(IS_DEV ? {
                 debug_front_image_url: cccd_front_image_url,
                 debug_back_image_url: cccd_back_image_url,
