@@ -10,13 +10,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckCircle, XCircle, Phone, FileCheck, ChevronRight, ChevronLeft, Sparkles, AlertTriangle } from 'lucide-react';
-import { useAuth } from '@/lib/supabase';
+import { useAuth, useSupabase } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
 import { useLocalization } from '@/context/localization-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getCloudinarySignature, uploadImageDirectToCloudinary, type CloudinarySignaturePayload } from '@/lib/cloudinary-direct';
-import { getCloudinaryKycBackScanUrl, getCloudinaryKycScanUrl, toDisplaySafeUrl } from '@/lib/cloudinary-url';
+import { getCloudinaryKycBackScanUrl, getCloudinaryKycScanUrl, toDisplaySafeUrl, optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
 import { isHeicFile, convertHeicToJpeg } from '@/lib/heic';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -35,6 +35,18 @@ type SellerOrder = {
   platform_fee: number;
   created_at: string;
   card: { name: string; image_url: string } | null;
+};
+
+type MyListing = {
+  id: string;
+  name: string;
+  image_url: string | null;
+  price: number | null;
+  status: string;
+  listing_type: string;
+  category: string | null;
+  condition: string | null;
+  created_at: string;
 };
 
 type AIResult = {
@@ -88,12 +100,15 @@ export default function SellPage() {
   const { user, isLoading: authLoading } = useAuth();
   const { setOpen } = useAuthModal();
   const { toast } = useToast();
+  const supabase = useSupabase();
 
   const [verification, setVerification] = useState<Verification | null>(null);
   const [isLoadingVerification, setIsLoadingVerification] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [sellerOrders, setSellerOrders] = useState<SellerOrder[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+  const [myListings, setMyListings] = useState<MyListing[]>([]);
+  const [isLoadingListings, setIsLoadingListings] = useState(false);
 
   // Wizard step
   const [currentStep, setCurrentStep] = useState(1);
@@ -248,6 +263,7 @@ export default function SellPage() {
 
       if (data.verification?.status === 'approved') {
         fetchSellerOrders();
+        fetchMyListings();
       }
       setIsLoadingVerification(false);
     } catch (err) {
@@ -270,6 +286,25 @@ export default function SellPage() {
       console.error('Failed to fetch seller orders:', err);
     } finally {
       setIsLoadingOrders(false);
+    }
+  };
+
+  const fetchMyListings = async () => {
+    if (!user) return;
+    setIsLoadingListings(true);
+    try {
+      const { data, error } = await supabase
+        .from('cards')
+        .select('id, name, image_url, price, status, listing_type, category, condition, created_at')
+        .eq('seller_id', user.id)
+        .order('created_at', { ascending: false });
+      if (!error && data) {
+        setMyListings(data as MyListing[]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch seller listings:', err);
+    } finally {
+      setIsLoadingListings(false);
     }
   };
 
@@ -683,6 +718,86 @@ export default function SellPage() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* My Listings */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Package className="h-5 w-5 text-orange-400" />
+                    Bài đăng của tôi
+                    {!isLoadingListings && myListings.length > 0 && (
+                      <span className="text-sm font-normal text-muted-foreground">
+                        ({myListings.filter(l => l.status === 'active').length} đang bán)
+                      </span>
+                    )}
+                  </span>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href="/buy">Xem trên chợ</Link>
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {isLoadingListings ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {[1, 2, 3, 4].map(i => <Skeleton key={i} className="aspect-[3/4] w-full rounded-lg" />)}
+                  </div>
+                ) : myListings.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground mb-4">Bạn chưa đăng bán thẻ nào.</p>
+                    <Button asChild className="bg-orange-500 hover:bg-orange-600">
+                      <Link href="/sell/create">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Đăng bán thẻ đầu tiên
+                      </Link>
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {myListings.map((listing) => {
+                      const isSold = listing.status === 'sold';
+                      return (
+                        <Link
+                          key={listing.id}
+                          href={`/cards/${listing.id}`}
+                          className="group relative flex flex-col overflow-hidden rounded-xl border bg-card transition-all hover:border-orange-500/40 hover:shadow-md"
+                        >
+                          <div className="relative aspect-[3/4] w-full overflow-hidden bg-muted">
+                            {listing.image_url ? (
+                              <Image
+                                src={optimizeCloudinaryUrl(listing.image_url, 300)}
+                                alt={listing.name}
+                                fill
+                                sizes="(max-width: 768px) 50vw, 25vw"
+                                className={`object-cover transition-transform duration-300 group-hover:scale-105 ${isSold ? 'grayscale' : ''}`}
+                              />
+                            ) : (
+                              <div className="flex h-full items-center justify-center">
+                                <Package className="h-8 w-8 text-muted-foreground/40" />
+                              </div>
+                            )}
+                            <span
+                              className={`absolute left-2 top-2 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isSold
+                                ? 'bg-muted text-muted-foreground'
+                                : 'bg-green-500/90 text-white'
+                                }`}
+                            >
+                              {isSold ? 'Đã bán' : 'Đang bán'}
+                            </span>
+                          </div>
+                          <div className="flex flex-1 flex-col p-2.5">
+                            <p className="line-clamp-1 text-sm font-medium">{listing.name}</p>
+                            <p className="mt-1 text-sm font-bold text-orange-400">
+                              {listing.price ? formatVND(listing.price) : '—'}
+                            </p>
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
             {/* Recent Orders */}
             <Card>
