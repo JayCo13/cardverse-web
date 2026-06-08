@@ -25,7 +25,10 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-import { uploadImageToCloudinary } from '@/lib/cloudinary';
+import { getCloudinarySignature, uploadImageDirectToCloudinary } from '@/lib/cloudinary-direct';
+import { isHeicFile, convertHeicToJpeg } from '@/lib/heic';
+import { compressImage } from '@/lib/image-compress';
+import dynamic from 'next/dynamic';
 import {
   getCategories,
   getCategoryConfig,
@@ -39,8 +42,34 @@ import {
   type SetConfig,
   type GroupedSets,
 } from '@/lib/card-catalog';
-import { CardPickerDialog, type SelectedCatalogCard } from '@/components/card-picker-dialog';
+import { type SelectedCatalogCard } from '@/components/card-picker-dialog';
 import { SearchableSetPicker } from '@/components/searchable-set-picker';
+
+// Lazy-loaded: the picker dialog (and its catalog deps) only mount when opened,
+// so keep it out of the initial bundle to make the page load lighter.
+const CardPickerDialog = dynamic(
+  () => import('@/components/card-picker-dialog').then((m) => m.CardPickerDialog),
+  { ssr: false }
+);
+
+/** Vietnamese labels for form fields, used to surface validation errors. */
+const FIELD_LABELS: Record<string, string> = {
+  name: 'Tiêu đề',
+  category: 'Danh mục',
+  condition: 'Tình trạng thẻ',
+  publisher: 'Nhà phát hành',
+  setName: 'Set / Bộ sưu tập',
+  season: 'Mùa / Năm',
+  quantity: 'Số lượng',
+  psaGrade: 'PSA Grade',
+  price: 'Giá bán',
+  startingBid: 'Giá khởi điểm',
+  auctionEnds: 'Ngày kết thúc',
+  ticketPrice: 'Giá vé',
+  totalTickets: 'Tổng số vé',
+  description: 'Mô tả',
+  images: 'Hình ảnh',
+};
 
 /** Individual card in a bundle */
 interface BundleItem {
@@ -50,10 +79,10 @@ interface BundleItem {
 }
 
 const getFormSchema = (t: (key: any) => string) => z.object({
-  name: z.string().min(5, { message: "Title must be at least 5 characters." }),
+  name: z.string().min(5, { message: "Tiêu đề cần ít nhất 5 ký tự." }),
   isBundle: z.boolean().default(false),
-  category: z.string({ required_error: "Please select a category." }),
-  publisher: z.string({ required_error: "Please select a publisher." }),
+  category: z.string({ required_error: "Vui lòng chọn danh mục." }),
+  publisher: z.string().optional(),
   setName: z.string().optional(),
   season: z.string().optional(),
   quantity: z.preprocess(
@@ -85,8 +114,8 @@ const getFormSchema = (t: (key: any) => string) => z.object({
     (a) => a ? parseInt(z.string().parse(a), 10) : undefined,
     z.number().positive().optional()
   ),
-  description: z.string().min(10, { message: "Description must be at least 10 characters." }),
-  images: z.array(z.instanceof(File)).min(1, "Please upload at least one image.").max(4, "You can upload a maximum of 4 images."),
+  description: z.string().min(10, { message: "Mô tả cần ít nhất 10 ký tự." }),
+  images: z.array(z.instanceof(File)).min(1, "Vui lòng tải lên ít nhất 1 ảnh.").max(4, "Tối đa 4 ảnh."),
   // Offer settings
   acceptOffers: z.boolean().default(false),
   minOfferPercent: z.preprocess(
@@ -104,15 +133,25 @@ const getFormSchema = (t: (key: any) => string) => z.object({
 }).refine(data => {
   if (data.listingType === 'sale') return data.price !== undefined;
   return true;
-}, { message: "Price is required for 'Buy Now' listings.", path: ['price'] })
+}, { message: "Vui lòng nhập giá bán.", path: ['price'] })
   .refine(data => {
     if (data.listingType === 'auction') return data.startingBid !== undefined && data.auctionEnds !== undefined;
     return true;
-  }, { message: "Starting bid and end date are required for auctions.", path: ['startingBid'] })
+  }, { message: "Vui lòng nhập giá khởi điểm và ngày kết thúc.", path: ['startingBid'] })
   .refine(data => {
     if (data.listingType === 'razz') return data.ticketPrice !== undefined && data.totalTickets !== undefined;
     return true;
-  }, { message: "Ticket price and total tickets are required for razz listings.", path: ['ticketPrice'] })
+  }, { message: "Vui lòng nhập giá vé và tổng số vé.", path: ['ticketPrice'] })
+  // Publisher: bắt buộc theo dropdown ở category thường; ở category "Khác"
+  // (free-text) thì thay bằng ô freePublisher.
+  .refine(data => {
+    if (isFreeText(data.category)) return true;
+    return data.publisher !== undefined && data.publisher !== '';
+  }, { message: "Vui lòng chọn nhà phát hành.", path: ['publisher'] })
+  .refine(data => {
+    if (!isFreeText(data.category)) return true;
+    return !!data.freePublisher && data.freePublisher.trim() !== '';
+  }, { message: "Vui lòng nhập nhà phát hành.", path: ['freePublisher'] })
   .refine(data => {
     if (data.isPsaGraded) return data.psaGrade !== undefined;
     return true;
@@ -120,7 +159,7 @@ const getFormSchema = (t: (key: any) => string) => z.object({
   .refine(data => {
     if (!data.isPsaGraded) return data.condition !== undefined && data.condition !== null && data.condition !== '';
     return true;
-  }, { message: "Condition is required if not PSA Graded.", path: ['condition'] });
+  }, { message: "Vui lòng chọn tình trạng thẻ.", path: ['condition'] });
 
 
 export default function CreateListingPage() {
@@ -315,12 +354,46 @@ export default function CreateListingPage() {
     ? ['Mint', 'Near Mint', 'Excellent', 'Good', 'Played']
     : ['Hoàn hảo', 'Gần như mới', 'Tuyệt vời', 'Tốt', 'Đã qua sử dụng'];
 
-  const handleFiles = (files: FileList | null) => {
-    if (files) {
-      const newFiles = Array.from(files);
-      const currentFiles = form.getValues('images') || [];
-      const combined = [...currentFiles, ...newFiles].slice(0, 4);
+  const [isProcessingImages, setIsProcessingImages] = useState(false);
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const currentFiles = form.getValues('images') || [];
+    const slots = Math.max(0, 4 - currentFiles.length);
+    if (slots === 0) return;
+    const incoming = Array.from(files).slice(0, slots);
+
+    setIsProcessingImages(true);
+    try {
+      // Convert HEIC → JPEG, then downscale/compress so uploads stay small and fast.
+      const processed = await Promise.all(
+        incoming.map(async (file) => {
+          let f = file;
+          if (isHeicFile(f)) {
+            try {
+              f = await convertHeicToJpeg(f);
+            } catch {
+              toast({
+                variant: 'destructive',
+                title: 'Không đọc được ảnh',
+                description: 'Vui lòng thử lại hoặc chọn ảnh JPG/PNG.',
+              });
+              return null;
+            }
+          }
+          try {
+            return await compressImage(f);
+          } catch {
+            return f; // compression is best-effort
+          }
+        })
+      );
+
+      const valid = processed.filter((f): f is File => f !== null);
+      const combined = [...currentFiles, ...valid].slice(0, 4);
       form.setValue('images', combined, { shouldValidate: true });
+    } finally {
+      setIsProcessingImages(false);
     }
   };
 
@@ -377,21 +450,33 @@ export default function CreateListingPage() {
       });
       return;
     }
+
+    // Validate bundle BEFORE uploading images so the user isn't made to wait
+    // for an upload that will be rejected anyway.
+    if (values.isBundle) {
+      const validItems = bundleItems.filter(i => i.title.trim() && i.price && i.price > 0);
+      if (validItems.length < 2) {
+        toast({
+          variant: 'destructive',
+          title: 'Lỗi',
+          description: 'Bán nhiều thẻ cần ít nhất 2 thẻ với đầy đủ tên và giá.',
+        });
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     try {
-      // Upload all images to Cloudinary
-      const uploadedUrls: string[] = [];
-      for (const image of values.images) {
-        const formData = new FormData();
-        formData.append('file', image);
-        const uploadResult = await uploadImageToCloudinary(formData);
-
-        if (!uploadResult.success || !uploadResult.url) {
-          throw new Error(uploadResult.error || 'Failed to upload image');
-        }
-        uploadedUrls.push(uploadResult.url);
-      }
+      // Upload all images directly browser → Cloudinary, in parallel.
+      // (HEIC conversion + compression already happened at selection time.)
+      const signature = await getCloudinarySignature('cardverse/cards');
+      const uploadedUrls = await Promise.all(
+        values.images.map(async (image) => {
+          const { secureUrl } = await uploadImageDirectToCloudinary(image, signature);
+          return secureUrl;
+        })
+      );
 
       const finalCondition = values.isPsaGraded
         ? `PSA ${values.psaGrade}`
@@ -407,20 +492,6 @@ export default function CreateListingPage() {
       const resolvedSeason = freeTextMode
         ? (values.freeSeason || '')
         : (values.season || '');
-
-      // Bundle validation
-      if (values.isBundle) {
-        const validItems = bundleItems.filter(i => i.title.trim() && i.price && i.price > 0);
-        if (validItems.length < 2) {
-          toast({
-            variant: 'destructive',
-            title: 'Lỗi',
-            description: 'Bán nhiều thẻ cần ít nhất 2 thẻ với đầy đủ tên và giá.',
-          });
-          setIsSubmitting(false);
-          return;
-        }
-      }
 
       const cardData: any = {
         seller_id: user.id,
@@ -527,7 +598,20 @@ export default function CreateListingPage() {
     return (
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
-          console.log('Form validation errors:', errors);
+          const missing = Object.keys(errors)
+            .map((key) => FIELD_LABELS[key] || key);
+          toast({
+            variant: 'destructive',
+            title: 'Thiếu thông tin',
+            description: missing.length
+              ? `Vui lòng kiểm tra: ${missing.join(', ')}.`
+              : 'Vui lòng kiểm tra lại các trường còn thiếu.',
+          });
+          // Radix Select không nhận focus nên cuộn thủ công tới ô lỗi đầu tiên.
+          setTimeout(() => {
+            const el = document.querySelector('[aria-invalid="true"]');
+            el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 50);
         })} className="space-y-8">
 
           {/* ─── Quick Fill from Collection ─── */}
@@ -601,7 +685,7 @@ export default function CreateListingPage() {
                     onValueChange={(val) => {
                       field.onChange(val);
                     }}
-                    defaultValue={field.value}
+                    value={field.value ?? ''}
                   >
                     <FormControl>
                       <SelectTrigger>
@@ -622,7 +706,7 @@ export default function CreateListingPage() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className='text-lg font-semibold'>{t('condition_label')}</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isPsaGraded}>
+                  <Select onValueChange={field.onChange} value={field.value ?? ''} disabled={isPsaGraded}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder={t('condition_placeholder')} />
@@ -660,6 +744,7 @@ export default function CreateListingPage() {
                         <FormControl>
                           <Input placeholder="VD: Panini, Topps..." {...field} value={field.value ?? ''} />
                         </FormControl>
+                        <FormMessage />
                       </FormItem>
                     )}
                   />
@@ -905,8 +990,14 @@ export default function CreateListingPage() {
                     }}
                     onClick={() => document.getElementById('image-upload')?.click()}
                   >
-                    <Upload className='mx-auto h-12 w-12 text-muted-foreground' />
-                    <p className='mt-4 text-muted-foreground'>{t('images_description')}</p>
+                    {isProcessingImages ? (
+                      <Loader2 className='mx-auto h-12 w-12 text-muted-foreground animate-spin' />
+                    ) : (
+                      <Upload className='mx-auto h-12 w-12 text-muted-foreground' />
+                    )}
+                    <p className='mt-4 text-muted-foreground'>
+                      {isProcessingImages ? 'Đang xử lý ảnh…' : t('images_description')}
+                    </p>
                     <Input
                       type="file"
                       className='sr-only'
@@ -1247,7 +1338,7 @@ export default function CreateListingPage() {
           />
 
           <div className="flex justify-end pt-4">
-            <Button size="lg" type="submit" disabled={isSubmitting}>
+            <Button size="lg" type="submit" disabled={isSubmitting || isProcessingImages}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {t('create_listing_button')}
             </Button>

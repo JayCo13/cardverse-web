@@ -10,9 +10,11 @@ export type CloudinarySignaturePayload = {
     signature: string;
 };
 
-export async function getCloudinarySignature(): Promise<CloudinarySignaturePayload> {
+export async function getCloudinarySignature(folder?: string): Promise<CloudinarySignaturePayload> {
     const response = await fetch('/api/uploads/cloudinary-signature', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(folder ? { folder } : {}),
     });
 
     const data = await response.json();
