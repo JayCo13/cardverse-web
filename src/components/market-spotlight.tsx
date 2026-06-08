@@ -22,6 +22,7 @@ import { useCurrency } from '@/contexts/currency-context';
 import { useLocalization } from '@/context/localization-context';
 import { useScanLimit } from '@/hooks/useScanLimit';
 import { ScanLimitModal } from '@/components/scan-limit-modal';
+import { CameraScanner } from '@/components/camera-scanner';
 import { useCardCache } from '@/contexts/card-cache-context';
 import { PSAGradedPrices } from '@/components/psa-graded-prices';
 
@@ -186,6 +187,7 @@ export function MarketSpotlight() {
     // Scan limit tracking
     const { canScan, scansUsed, scansLimit, scansRemaining, resetTime, incrementUsage, isLoading: scanLimitLoading, scanType, subscription: scanSub } = useScanLimit();
     const [showLimitModal, setShowLimitModal] = useState(false);
+    const [showCamera, setShowCamera] = useState(false); // live camera scanner
 
     // Top 10 scan results dialog state
     type ScoredResult = { product: TcgcsvProduct; score: number; breakdown: string };
@@ -1681,10 +1683,27 @@ export function MarketSpotlight() {
         warmupPromiseRef.current = warmUpEdgeFunction();
     }, [warmUpEdgeFunction]);
 
-    // Trigger camera input click
+    // Quick scan: open the live camera with an alignment frame. Falls back to
+    // the native camera input if getUserMedia isn't available.
     const handleScanClick = () => {
         triggerEagerWarmup(); // Start warming as soon as user clicks scan
-        fileInputRef.current?.click();
+        const hasCamera = typeof navigator !== 'undefined'
+            && !!navigator.mediaDevices
+            && typeof navigator.mediaDevices.getUserMedia === 'function';
+        if (hasCamera) {
+            setShowCamera(true);
+        } else {
+            fileInputRef.current?.click();
+        }
+    };
+
+    // Frame captured from the live camera → preprocess + scan.
+    const handleCameraCapture = async (base64Jpeg: string) => {
+        setShowCamera(false);
+        if (!canScan) { setShowLimitModal(true); return; }
+        const enhanced = await preprocessImage(base64Jpeg);
+        if (!canScan) { setShowLimitModal(true); return; }
+        processScannedImage(enhanced, true);
     };
 
     // Trigger gallery input click (default = scan directly)
@@ -2642,6 +2661,13 @@ export function MarketSpotlight() {
                     </div>
                 </div>
             </div>
+
+            {/* Live camera scanner with alignment frame */}
+            <CameraScanner
+                open={showCamera}
+                onClose={() => setShowCamera(false)}
+                onCapture={handleCameraCapture}
+            />
 
             {/* Scan Limit Modal */}
             <ScanLimitModal
