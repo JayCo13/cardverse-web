@@ -10,6 +10,7 @@ const MarketSpotlight = dynamic(() => import("@/components/market-spotlight").th
 });
 
 import { SupportSection } from "@/components/support-section";
+import { ShopeeAffiliate } from "@/components/shopee-affiliate";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -84,6 +85,10 @@ export default function Home() {
 
           <div id="onepiece" style={{ animationDelay: '700ms' }} className="animate-fade-in-up relative z-10 scroll-mt-20">
             <OnePieceCards />
+          </div>
+
+          <div style={{ animationDelay: '750ms' }} className="animate-fade-in-up relative z-10">
+            <ShopeeAffiliate />
           </div>
 
           <div style={{ animationDelay: '800ms' }} className="animate-fade-in-up relative z-10 scroll-mt-20">

@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ShopeeAffiliate } from "@/components/shopee-affiliate";
 import {
     ArrowLeft, Plus, Check,
     Package, Tag, Star, Loader2, Trophy, Medal, ExternalLink
@@ -333,6 +334,11 @@ export default function SoccerCardDetailsPage() {
                                 </div>
                             </CardContent>
                         </Card>
+                    </div>
+
+                    {/* Card-care accessories (Shopee affiliate) */}
+                    <div className="max-w-5xl mx-auto px-4 mt-8">
+                        <ShopeeAffiliate variant="compact" heading="Bảo quản thẻ này" />
                     </div>
                 </div>
             </main>

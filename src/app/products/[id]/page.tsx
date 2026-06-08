@@ -24,6 +24,7 @@ import { PSAGradedPrices } from "@/components/psa-graded-prices";
 import { useSubscription } from "@/hooks/useSubscription";
 import { Lock, Crown } from "lucide-react";
 import { AdBanner } from "@/components/ad-banner";
+import { ShopeeAffiliate } from "@/components/shopee-affiliate";
 
 interface ProductCard {
     product_id: number;
@@ -427,6 +428,11 @@ export default function ProductDetailsPage() {
                                 </Card>
                             )
                         )}
+                    </div>
+
+                    {/* Card-care accessories (Shopee affiliate) */}
+                    <div className="mt-8">
+                        <ShopeeAffiliate variant="compact" heading="Bảo quản thẻ này" />
                     </div>
 
                     {/* AdSense Banner — hidden for VIP Pro */}
