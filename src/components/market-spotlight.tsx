@@ -4,9 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { TrendUp, Pulse, CurrencyDollar, SpinnerGap, ArrowsClockwise, MagnifyingGlass, Camera, Plus, Check, SoccerBall, Skull, UploadSimple, Crop as CropIcon, X, Medal, Lightning, Timer, Crown, CreditCard } from '@phosphor-icons/react';
-import ReactCrop, { type Crop, centerCrop, makeAspectCrop } from 'react-image-crop';
-import 'react-image-crop/dist/ReactCrop.css';
+import { TrendUp, Pulse, CurrencyDollar, SpinnerGap, ArrowsClockwise, MagnifyingGlass, Camera, Plus, Check, SoccerBall, Skull, UploadSimple, X, Medal, Lightning, Timer, Crown, CreditCard } from '@phosphor-icons/react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -179,20 +177,15 @@ export function MarketSpotlight() {
     const [searchTerm, setSearchTerm] = useState('');
     const [isScanning, setIsScanning] = useState(false);
     const [searchError, setSearchError] = useState<string | null>(null);
-    const fileInputRef = React.useRef<HTMLInputElement>(null); // Camera capture
-    const galleryInputRef = React.useRef<HTMLInputElement>(null); // Gallery upload
+    const fileInputRef = React.useRef<HTMLInputElement>(null); // Quick scan (camera)
+    const galleryInputRef = React.useRef<HTMLInputElement>(null); // Choose from device
     const scanInProgressRef = React.useRef(false); // Sync flag to prevent concurrent scans
     const warmupPromiseRef = useRef<Promise<boolean> | null>(null); // Track ongoing warmup
     const isWarmRef = useRef(false); // Whether function is known to be warm
 
-    const [showCropModal, setShowCropModal] = useState(false);
-    const [cropImageSrc, setCropImageSrc] = useState<string>('');
-
     // Scan limit tracking
     const { canScan, scansUsed, scansLimit, scansRemaining, resetTime, incrementUsage, isLoading: scanLimitLoading, scanType, subscription: scanSub } = useScanLimit();
     const [showLimitModal, setShowLimitModal] = useState(false);
-    const [crop, setCrop] = useState<Crop>();
-    const cropImgRef = useRef<HTMLImageElement>(null);
 
     // Top 10 scan results dialog state
     type ScoredResult = { product: TcgcsvProduct; score: number; breakdown: string };
@@ -1624,136 +1617,30 @@ export function MarketSpotlight() {
     };
 
     // Handle file selection for CAMERA capture (direct scan, no crop)
-    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
+    // Shared: scan an image File directly (no crop) — used by the picker,
+    // paste (Ctrl+V) and drag-and-drop for a smooth one-step flow.
+    const scanImageFile = async (file: File | null | undefined) => {
+        if (!file || !file.type.startsWith('image/')) return;
+        if (!canScan) { setShowLimitModal(true); return; }
+        triggerEagerWarmup();
         const reader = new FileReader();
         reader.onloadend = async () => {
             const base64 = reader.result as string;
-            // Remove data URL prefix if present
             const base64Data = base64.includes(',') ? base64.split(',')[1] : base64;
-
-            // Preprocess image for better AI recognition
             console.log('Preprocessing image for AI...');
             const enhancedBase64 = await preprocessImage(base64Data);
-
-            // Check scan limit before processing
-            if (!canScan) {
-                setShowLimitModal(true);
-                return;
-            }
-
+            if (!canScan) { setShowLimitModal(true); return; }
             processScannedImage(enhancedBase64, true);
         };
         reader.readAsDataURL(file);
     };
 
-    // Handle file selection for GALLERY upload (opens crop modal)
-    const handleGallerySelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Default picker → scan directly (the smooth path).
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const base64 = reader.result as string;
-            setCropImageSrc(base64);
-            setShowCropModal(true);
-            // Reset crop to undefined so a new one is created on image load
-            setCrop(undefined);
-        };
-        reader.readAsDataURL(file);
-        // Reset input so same file can be selected again
-        e.target.value = '';
+        e.target.value = ''; // allow re-selecting the same file
+        await scanImageFile(file);
     };
-
-    // Initialize crop when image loads in crop modal
-    const onCropImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
-        const { width, height } = e.currentTarget;
-        // Create a centered crop with 3:4 aspect ratio (card portrait)
-        const newCrop = centerCrop(
-            makeAspectCrop({ unit: '%', width: 80 }, 3 / 4, width, height),
-            width,
-            height
-        );
-        setCrop(newCrop);
-    }, []);
-
-    // Complete crop and process the cropped image
-    const handleCropComplete = useCallback(async () => {
-        if (!crop || !cropImgRef.current) return;
-
-        const image = cropImgRef.current;
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
-        // Calculate crop dimensions in pixels
-        const scaleX = image.naturalWidth / image.width;
-        const scaleY = image.naturalHeight / image.height;
-
-        const cropX = (crop.x / 100) * image.width * scaleX;
-        const cropY = (crop.y / 100) * image.height * scaleY;
-        const cropWidth = (crop.width / 100) * image.width * scaleX;
-        const cropHeight = (crop.height / 100) * image.height * scaleY;
-
-        canvas.width = cropWidth;
-        canvas.height = cropHeight;
-
-        ctx.drawImage(
-            image,
-            cropX,
-            cropY,
-            cropWidth,
-            cropHeight,
-            0,
-            0,
-            cropWidth,
-            cropHeight
-        );
-
-        // Convert to base64
-        const croppedBase64 = canvas.toDataURL('image/jpeg', 0.95);
-        const base64Data = croppedBase64.split(',')[1];
-
-        // Close modal
-        setShowCropModal(false);
-        setCropImageSrc('');
-
-        // Preprocess and scan
-        console.log('Cropped image, preprocessing for AI...');
-        const enhancedBase64 = await preprocessImage(base64Data);
-        // Check scan limit before processing
-        if (!canScan) {
-            setShowLimitModal(true);
-            return;
-        }
-
-        processScannedImage(enhancedBase64, true);
-    }, [crop, processScannedImage, canScan]);
-
-    // Use original image without cropping
-    const handleUseOriginal = useCallback(async () => {
-        if (!cropImageSrc) return;
-
-        // Extract base64 data from the data URL
-        const base64Data = cropImageSrc.split(',')[1];
-
-        // Close modal
-        setShowCropModal(false);
-        setCropImageSrc('');
-
-        // Preprocess and scan original image
-        console.log('Using original image, preprocessing for AI...');
-        const enhancedBase64 = await preprocessImage(base64Data);
-        // Check scan limit before processing
-        if (!canScan) {
-            setShowLimitModal(true);
-            return;
-        }
-
-        processScannedImage(enhancedBase64, true);
-    }, [cropImageSrc, processScannedImage, canScan]);
 
     // ─── Edge Function warm-up utility ───
     const warmUpEdgeFunction = useCallback(async (): Promise<boolean> => {
@@ -1794,10 +1681,34 @@ export function MarketSpotlight() {
         fileInputRef.current?.click();
     };
 
-    // Trigger gallery input click
+    // Trigger gallery input click (default = scan directly)
     const handleUploadClick = () => {
         triggerEagerWarmup(); // Start warming as soon as user clicks upload
         galleryInputRef.current?.click();
+    };
+
+
+    // Paste an image (Ctrl/Cmd+V) anywhere on the scan area → scan directly.
+    const handlePaste = (e: React.ClipboardEvent) => {
+        const item = Array.from(e.clipboardData?.items || []).find(i => i.type.startsWith('image/'));
+        if (item) {
+            e.preventDefault();
+            scanImageFile(item.getAsFile());
+        }
+    };
+
+    // Drag & drop an image onto the scan area → scan directly.
+    const handleDrop = (e: React.DragEvent) => {
+        const file = Array.from(e.dataTransfer?.files || []).find(f => f.type.startsWith('image/'));
+        if (file) {
+            e.preventDefault();
+            scanImageFile(file);
+        }
+    };
+    const handleDragOver = (e: React.DragEvent) => {
+        if (Array.from(e.dataTransfer?.items || []).some(i => i.type.startsWith('image/'))) {
+            e.preventDefault();
+        }
     };
 
     useEffect(() => {
@@ -2028,18 +1939,34 @@ export function MarketSpotlight() {
                         <div className="absolute -inset-1 bg-gradient-to-r from-orange-600 to-amber-600 rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
 
                         <div
-                            className="relative flex items-center bg-black/80 rounded-full border border-white/10 p-1.5 shadow-2xl cursor-pointer hover:bg-black/90 transition-colors"
-                            onClick={handleUploadClick}
+                            className="relative flex items-center bg-black/80 rounded-full border border-white/10 p-1.5 shadow-2xl hover:bg-black/90 transition-colors"
+                            onDrop={handleDrop}
+                            onDragOver={handleDragOver}
+                            onPaste={handlePaste}
+                            tabIndex={0}
+                            title="Kéo-thả hoặc dán (Ctrl+V) ảnh để quét"
                         >
-                            <div className="w-full bg-transparent border-none text-gray-400 text-base md:text-lg px-6 py-2 font-medium rounded-l-full flex items-center">
+                            <div
+                                className="w-full bg-transparent border-none text-gray-400 text-base md:text-lg px-6 py-2 font-medium rounded-l-full flex items-center cursor-pointer"
+                                onClick={handleUploadClick}
+                            >
                                 {t('scan_pokemon_card')}
                             </div>
-                            {/* Hidden file input for image selection (camera or gallery) */}
+                            {/* Choose from device → direct scan (old function) */}
                             <input
                                 ref={galleryInputRef}
                                 type="file"
                                 accept="image/*"
-                                onChange={handleGallerySelect}
+                                onChange={handleFileSelect}
+                                className="hidden"
+                            />
+                            {/* Quick scan → open the camera directly */}
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                onChange={handleFileSelect}
                                 className="hidden"
                             />
                             {/* Smart Scan Status Badge — adapts to subscription type */}
@@ -2104,15 +2031,28 @@ export function MarketSpotlight() {
                                     </div>
                                 );
                             })()}
-                            {/* Upload/Camera button - opens image picker with crop */}
+                            {/* Choose image from device → direct scan (old function) */}
                             <Button
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     handleUploadClick();
                                 }}
                                 disabled={isLoading || isScanning}
+                                variant="ghost"
+                                className="relative rounded-full text-white/70 hover:text-white hover:bg-white/10 h-9 w-9 p-0 flex items-center justify-center shrink-0 mr-1 disabled:opacity-50"
+                                title="Chọn ảnh từ thiết bị"
+                            >
+                                <UploadSimple className="h-5 w-5" weight="bold" />
+                            </Button>
+                            {/* Quick scan → open camera directly */}
+                            <Button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleScanClick();
+                                }}
+                                disabled={isLoading || isScanning}
                                 className="relative rounded-full bg-orange-500 hover:bg-orange-600 text-white h-10 w-10 md:h-11 md:w-11 p-0 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(249,115,22,0.5)] transition-transform active:scale-95 disabled:opacity-50"
-                                title="Upload or take photo"
+                                title="Scan nhanh (mở camera)"
                             >
                                 {isScanning ? (
                                     <SpinnerGap className="h-5 w-5 animate-spin" weight="bold" />
@@ -2123,8 +2063,30 @@ export function MarketSpotlight() {
                         </div>
                     </div>
 
-                    {/* Scan progress status */}
-                    {isScanning && scanStatus && (
+                    {/* Full-screen scanning overlay with animated beam */}
+                    {isScanning && scannedImagePreview && (
+                        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/90 backdrop-blur-md animate-in fade-in duration-200">
+                            <div className="relative w-[260px] sm:w-[300px] aspect-[3/4] rounded-2xl overflow-hidden border border-orange-500/30 bg-black shadow-[0_0_50px_rgba(249,115,22,0.3)]">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={scannedImagePreview} alt="Scanning" className="w-full h-full object-contain" />
+                                <div className="scan-sheen pointer-events-none" />
+                                <div className="scan-beam pointer-events-none" />
+                                {/* corner brackets */}
+                                <span className="absolute top-2 left-2 w-7 h-7 border-t-2 border-l-2 border-orange-400 rounded-tl-lg" />
+                                <span className="absolute top-2 right-2 w-7 h-7 border-t-2 border-r-2 border-orange-400 rounded-tr-lg" />
+                                <span className="absolute bottom-2 left-2 w-7 h-7 border-b-2 border-l-2 border-orange-400 rounded-bl-lg" />
+                                <span className="absolute bottom-2 right-2 w-7 h-7 border-b-2 border-r-2 border-orange-400 rounded-br-lg" />
+                            </div>
+                            <div className="mt-6 flex items-center gap-2">
+                                <SpinnerGap className="w-5 h-5 animate-spin text-orange-400" weight="bold" />
+                                <p className="text-base font-semibold text-orange-300">{scanStatus || t('loading_cards') || 'Đang quét...'}</p>
+                            </div>
+                            <p className="mt-1 text-xs text-white/40">AI đang nhận diện thẻ của bạn…</p>
+                        </div>
+                    )}
+
+                    {/* Scan progress status (inline, fallback) */}
+                    {isScanning && !scannedImagePreview && scanStatus && (
                         <div className="flex items-center justify-center gap-2 mb-4 animate-in fade-in duration-300">
                             <SpinnerGap className="w-4 h-4 animate-spin text-orange-400" weight="bold" />
                             <p className="text-sm text-orange-400 font-medium">{scanStatus}</p>
@@ -2674,84 +2636,6 @@ export function MarketSpotlight() {
                     </div>
                 </div>
             </div>
-
-            {/* Image Crop Modal */}
-            {showCropModal && (
-                <div className="fixed inset-0 z-[60] bg-black/95 flex flex-col items-center justify-center p-4 overflow-hidden">
-                    {/* Header */}
-                    <div className="w-full max-w-2xl flex items-center justify-between mb-4">
-                        <h3 className="text-white text-lg font-semibold flex items-center gap-2">
-                            <CropIcon className="w-5 h-5" />
-                            {t('crop_image_title')}
-                        </h3>
-                        <Button
-                            onClick={() => {
-                                setShowCropModal(false);
-                                setCropImageSrc('');
-                            }}
-                            variant="ghost"
-                            className="text-white hover:bg-white/10 rounded-full h-10 w-10 p-0"
-                        >
-                            <X className="w-5 h-5" />
-                        </Button>
-                    </div>
-
-                    {/* Crop area - improved sizing for full image display */}
-                    <div className="relative w-full max-w-2xl flex-1 flex items-center justify-center overflow-hidden rounded-lg">
-                        <ReactCrop
-                            crop={crop}
-                            onChange={(_, percentCrop) => setCrop(percentCrop)}
-                            aspect={3 / 4}
-                            minWidth={50}
-                            className="max-h-full"
-                        >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                                ref={cropImgRef}
-                                src={cropImageSrc}
-                                alt="Crop preview"
-                                onLoad={onCropImageLoad}
-                                style={{ maxHeight: '60vh', maxWidth: '100%', objectFit: 'contain' }}
-                            />
-                        </ReactCrop>
-                    </div>
-
-                    {/* Instructions */}
-                    <p className="text-gray-400 text-sm mt-4 text-center">
-                        {t('crop_image_instructions')}
-                    </p>
-
-                    {/* Actions */}
-                    <div className="flex flex-wrap gap-3 mt-6 justify-center">
-                        <Button
-                            onClick={() => {
-                                setShowCropModal(false);
-                                setCropImageSrc('');
-                            }}
-                            variant="outline"
-                            className="bg-transparent border-white/20 text-white hover:bg-white/10"
-                        >
-                            {t('crop_cancel')}
-                        </Button>
-                        <Button
-                            onClick={handleUseOriginal}
-                            variant="outline"
-                            className="bg-transparent border-blue-500/50 text-blue-400 hover:bg-blue-500/10"
-                        >
-                            <Camera className="w-4 h-4 mr-2" />
-                            {t('crop_use_original')}
-                        </Button>
-                        <Button
-                            onClick={handleCropComplete}
-                            className="bg-orange-500 hover:bg-orange-600 text-white"
-                            disabled={!crop}
-                        >
-                            <CropIcon className="w-4 h-4 mr-2" />
-                            {t('crop_scan_cropped')}
-                        </Button>
-                    </div>
-                </div>
-            )}
 
             {/* Scan Limit Modal */}
             <ScanLimitModal

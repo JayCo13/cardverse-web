@@ -683,3 +683,27 @@ body {
   border-radius: inherit;
   overflow: hidden;
 }
+/* ── Scan overlay effects ─────────────────────────────────── */
+@keyframes scan-beam-move {
+  0%   { top: 4%;  opacity: 0.2; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { top: 96%; opacity: 0.2; }
+}
+.scan-beam {
+  position: absolute;
+  left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #fb923c, #fbbf24, #fb923c, transparent);
+  box-shadow: 0 0 18px 4px rgba(251, 146, 60, 0.7);
+  animation: scan-beam-move 1.8s ease-in-out infinite alternate;
+}
+@keyframes scan-sheen {
+  0%, 100% { opacity: 0.05; }
+  50%      { opacity: 0.18; }
+}
+.scan-sheen {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(251,146,60,0.0), rgba(251,146,60,0.25), rgba(251,146,60,0.0));
+  animation: scan-sheen 1.8s ease-in-out infinite;
+}
