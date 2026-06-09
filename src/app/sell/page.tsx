@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckCircle, XCircle, Phone, FileCheck, ChevronRight, ChevronLeft, Sparkles, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckCircle, XCircle, Phone, FileCheck, ChevronRight, ChevronLeft, Sparkles, AlertTriangle, MapPin } from 'lucide-react';
 import { useAuth, useSupabase } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
@@ -18,6 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { getCloudinarySignature, uploadImageDirectToCloudinary, type CloudinarySignaturePayload } from '@/lib/cloudinary-direct';
 import { getCloudinaryKycBackScanUrl, getCloudinaryKycScanUrl, toDisplaySafeUrl, optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
 import { isHeicFile, convertHeicToJpeg } from '@/lib/heic';
+import { SellerAddressForm } from '@/components/seller-address-form';
 import Link from 'next/link';
 import Image from 'next/image';
 
@@ -109,6 +110,9 @@ export default function SellPage() {
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [myListings, setMyListings] = useState<MyListing[]>([]);
   const [isLoadingListings, setIsLoadingListings] = useState(false);
+  const [pickupAddress, setPickupAddress] = useState<{ line: string } | null>(null);
+  const [isLoadingAddress, setIsLoadingAddress] = useState(false);
+  const [editingAddress, setEditingAddress] = useState(false);
 
   // Wizard step
   const [currentStep, setCurrentStep] = useState(1);
@@ -264,6 +268,7 @@ export default function SellPage() {
       if (data.verification?.status === 'approved') {
         fetchSellerOrders();
         fetchMyListings();
+        fetchPickupAddress();
       }
       setIsLoadingVerification(false);
     } catch (err) {
@@ -305,6 +310,34 @@ export default function SellPage() {
       console.error('Failed to fetch seller listings:', err);
     } finally {
       setIsLoadingListings(false);
+    }
+  };
+
+  const fetchPickupAddress = async () => {
+    if (!user) return;
+    setIsLoadingAddress(true);
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select(
+          'address_province_name, address_district_name, address_ward_name, address_detail, address_district_id, address_ward_code'
+        )
+        .eq('id', user.id)
+        .single();
+      const p = data as Record<string, any> | null;
+      if (p?.address_district_id && p?.address_ward_code) {
+        setPickupAddress({
+          line: [p.address_detail, p.address_ward_name, p.address_district_name, p.address_province_name]
+            .filter(Boolean)
+            .join(', '),
+        });
+      } else {
+        setPickupAddress(null);
+      }
+    } catch (err) {
+      console.error('Failed to fetch pickup address:', err);
+    } finally {
+      setIsLoadingAddress(false);
     }
   };
 
@@ -683,12 +716,25 @@ export default function SellPage() {
                 </h1>
                 <p className="text-muted-foreground mt-1">Quản lý bài đăng và đơn hàng</p>
               </div>
-              <Button asChild className="bg-orange-500 hover:bg-orange-600">
-                <Link href="/sell/create">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Đăng bán thẻ
-                </Link>
-              </Button>
+              {!pickupAddress && !isLoadingAddress ? (
+                <Button
+                  className="bg-orange-500 hover:bg-orange-600"
+                  onClick={() => {
+                    document.getElementById('pickup-address')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    setEditingAddress(true);
+                  }}
+                >
+                  <MapPin className="h-4 w-4 mr-2" />
+                  Thêm địa chỉ để bán
+                </Button>
+              ) : (
+                <Button asChild className="bg-orange-500 hover:bg-orange-600">
+                  <Link href="/sell/create">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Đăng bán thẻ
+                  </Link>
+                </Button>
+              )}
             </div>
 
             {/* Stats */}
@@ -718,6 +764,61 @@ export default function SellPage() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Pickup Address — required so shipping fees can be calculated */}
+            <Card id="pickup-address" className={!pickupAddress && !isLoadingAddress ? 'border-orange-500/40 bg-orange-500/5' : ''}>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <MapPin className="h-5 w-5 text-orange-400" />
+                    Địa chỉ lấy hàng
+                  </span>
+                  {pickupAddress && !editingAddress && (
+                    <Button variant="outline" size="sm" onClick={() => setEditingAddress(true)}>
+                      Cập nhật
+                    </Button>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {isLoadingAddress ? (
+                  <Skeleton className="h-9 w-full rounded-lg" />
+                ) : (
+                  <>
+                    {!pickupAddress && (
+                      <div className="mb-4 flex items-start gap-2 rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-sm text-orange-300">
+                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                        <span>
+                          Bạn cần thiết lập địa chỉ lấy hàng trước khi đăng bán thẻ. Chúng tôi dùng
+                          địa chỉ này để tính cước phí ship cho người mua.
+                        </span>
+                      </div>
+                    )}
+                    {pickupAddress && !editingAddress ? (
+                      <div className="flex items-start gap-2 text-sm">
+                        <MapPin className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" />
+                        <span>{pickupAddress.line}</span>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <SellerAddressForm
+                          submitLabel="Lưu địa chỉ lấy hàng"
+                          onSaved={() => {
+                            setEditingAddress(false);
+                            fetchPickupAddress();
+                          }}
+                        />
+                        {pickupAddress && editingAddress && (
+                          <Button variant="ghost" size="sm" onClick={() => setEditingAddress(false)}>
+                            Hủy
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
 
             {/* My Listings */}
             <Card>
