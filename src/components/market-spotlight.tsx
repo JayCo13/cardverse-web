@@ -1090,10 +1090,15 @@ export function MarketSpotlight() {
                         score += 70;
                         reasons.push(`num:exact(70)`);
                     } else if (p.number && cardNumber) {
-                        // Collector number only (set total differs/unknown)
-                        const pNum = p.number.split('/')[0]?.replace(/^0+/, '');
-                        const aiNum = cardNumber.replace(/[^\d/]/g, '').split('/')[0]?.replace(/^0+/, '');
-                        if (pNum && aiNum && pNum === aiNum) {
+                        // Collector TOKEN match (set total differs/unknown). Works for
+                        // numeric ("123") and letter-prefixed ("TG12","RC10") collectors.
+                        const normCol = (s: string) => {
+                            const tok = (s.split('/')[0] || '').trim().toUpperCase();
+                            return /^\d+$/.test(tok) ? String(parseInt(tok, 10)) : tok; // drop leading zeros if numeric
+                        };
+                        const pCol = normCol(p.number);
+                        const aiCol = normCol(cardNumber);
+                        if (pCol && aiCol && pCol === aiCol) {
                             score += 28;
                             reasons.push(`num:partial(28)`);
                         }
@@ -1197,50 +1202,51 @@ export function MarketSpotlight() {
                         }
                     };
 
-                    // Build number format variations
+                    // Build number format variations — FORMAT-AGNOSTIC.
+                    // Pokémon numbers come in many shapes (TCGplayer EN + JP):
+                    //   123/198, 014/146, TG12/TG30, GG01/GG70, RC10/RC32, 055a/111,
+                    //   SM103, XY44, DP52, HGSS22, BW28 (no slash), 036 (bare),
+                    //   006/SV-P, 067/SM-P (JP promos). We must not assume "000/000".
                     let altFormatsArray: string[] = [];
-                    let collectorPatterns: string[] = []; // ilike patterns by collector number
+                    let collectorPatterns: string[] = []; // ilike patterns (collector token)
                     if (cardNumber) {
-                        // Keep the RAW number too (handles letter-prefixed numbers like
-                        // "TG12/TG30", "GG01/GG70", "SVP-001" that stripping would break).
-                        const rawNum = cardNumber.trim();
-                        let cleanNumber = cardNumber.replace(/[^\d/]/g, '').trim();
-                        if (!cleanNumber.includes('/') && /^\d+$/.test(cleanNumber) && cleanNumber.length >= 4 && cleanNumber.length % 2 === 0) {
-                            const midPoint = Math.floor(cleanNumber.length / 2);
-                            cleanNumber = cleanNumber.substring(0, midPoint) + '/' + cleanNumber.substring(midPoint);
-                        }
+                        const raw = cardNumber.trim();
+                        // Drop a trailing rarity code the AI may have appended, e.g.
+                        // "123/106 SAR", "201/198 SIR" → keep just the number token.
+                        const cleaned = raw.replace(/\s+[A-Z]{1,4}$/i, '').trim();
+                        const altFormats = new Set<string>([raw, raw.toUpperCase(), cleaned, cleaned.toUpperCase()]);
+                        const colPats = new Set<string>();
 
-                        const parts = cleanNumber.split('/');
-                        const altFormats = new Set<string>([cleanNumber, rawNum, rawNum.toUpperCase()]);
-
-                        if (parts.length === 2) {
-                            const collectorInt = parseInt(parts[0], 10);
-                            const setTotalInt = parseInt(parts[1], 10);
-
-                            const collectorVariations = [
-                                collectorInt.toString(),
-                                collectorInt.toString().padStart(2, '0'),
-                                collectorInt.toString().padStart(3, '0'),
-                            ];
-                            const setTotalVariations = [
-                                setTotalInt.toString(),
-                                setTotalInt.toString().padStart(2, '0'),
-                                setTotalInt.toString().padStart(3, '0'),
-                            ];
-
-                            for (const col of collectorVariations) {
-                                for (const total of setTotalVariations) {
-                                    altFormats.add(col + '/' + total);
+                        // Collector ilike patterns must be >=3 chars so the pg_trgm
+                        // index can serve them (shorter → seq scan/timeout on big sets).
+                        const addPat = (p: string) => { if (p.replace(/[^A-Z0-9]/gi, '').length >= 2) colPats.add(p); };
+                        if (cleaned.includes('/')) {
+                            const [colPart, totPart] = cleaned.split('/');
+                            const colU = colPart.trim().toUpperCase();   // "123" | "TG12" | "RC10" | "006" | "055A"
+                            // Collector-token ilike — catches the card even if the AI
+                            // misread the set total or the format differs (incl. JP "/SV-P").
+                            addPat(`${colU}/*`);
+                            if (/^\d+$/.test(colU)) {
+                                const ci = parseInt(colU, 10);
+                                const colVars = [ci.toString(), ci.toString().padStart(2, '0'), ci.toString().padStart(3, '0')];
+                                for (const c of colVars) addPat(`${c}/*`);
+                                if (/^\d+$/.test((totPart || '').trim())) {
+                                    const ti = parseInt(totPart, 10);
+                                    const totVars = [ti.toString(), ti.toString().padStart(2, '0'), ti.toString().padStart(3, '0')];
+                                    for (const c of colVars) for (const t of totVars) altFormats.add(`${c}/${t}`);
                                 }
                             }
-                            // ilike patterns by collector number only — catches the right
-                            // card even when the AI misreads the SET TOTAL (e.g. /011 vs
-                            // /178) or the separator/format differs.
-                            const colPats = new Set<string>();
-                            for (const col of collectorVariations) colPats.add(`${col}/*`);
-                            collectorPatterns = Array.from(colPats);
+                        } else {
+                            // No slash: promo / bare (SM103, XY44, 036…). Match the whole token.
+                            const tokU = cleaned.toUpperCase();
+                            addPat(`${tokU}*`);
+                            if (/^\d+$/.test(tokU)) {
+                                const ci = parseInt(tokU, 10);
+                                for (const c of [ci.toString(), ci.toString().padStart(2, '0'), ci.toString().padStart(3, '0')]) altFormats.add(c);
+                            }
                         }
-                        altFormatsArray = Array.from(altFormats);
+                        altFormatsArray = Array.from(altFormats).filter(Boolean);
+                        collectorPatterns = Array.from(colPats).filter(Boolean);
                     }
 
                     // Helper: fetch both categories in parallel
