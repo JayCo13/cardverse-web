@@ -22,7 +22,13 @@ import { useCurrency } from '@/contexts/currency-context';
 import { useLocalization } from '@/context/localization-context';
 import { useScanLimit } from '@/hooks/useScanLimit';
 import { ScanLimitModal } from '@/components/scan-limit-modal';
-import { CameraScanner } from '@/components/camera-scanner';
+import dynamic from 'next/dynamic';
+// Lazy-load the camera scanner so its code (camera + per-frame analysis) is NOT
+// in the homepage bundle — it's fetched only when the user opens "Scan nhanh".
+const CameraScanner = dynamic(
+    () => import('@/components/camera-scanner').then((m) => ({ default: m.CameraScanner })),
+    { ssr: false },
+);
 import { useCardCache } from '@/contexts/card-cache-context';
 import { PSAGradedPrices } from '@/components/psa-graded-prices';
 
@@ -2662,12 +2668,14 @@ export function MarketSpotlight() {
                 </div>
             </div>
 
-            {/* Live camera scanner with alignment frame */}
-            <CameraScanner
-                open={showCamera}
-                onClose={() => setShowCamera(false)}
-                onCapture={handleCameraCapture}
-            />
+            {/* Live camera scanner — only mounted (and its chunk fetched) on open */}
+            {showCamera && (
+                <CameraScanner
+                    open
+                    onClose={() => setShowCamera(false)}
+                    onCapture={handleCameraCapture}
+                />
+            )}
 
             {/* Scan Limit Modal */}
             <ScanLimitModal
