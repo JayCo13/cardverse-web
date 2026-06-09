@@ -20,6 +20,22 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Seller verification required' }, { status: 403 });
         }
 
+        // A pickup address is required before listing so shipping fees can be
+        // calculated for buyers. Enforced here (not just in the UI) so it can't
+        // be bypassed by calling the API directly.
+        const { data: profile } = await authClient
+            .from('profiles')
+            .select('address_district_id, address_ward_code')
+            .eq('id', user.id)
+            .single();
+        const sellerProfile = profile as { address_district_id: number | null; address_ward_code: string | null } | null;
+        if (!sellerProfile?.address_district_id || !sellerProfile?.address_ward_code) {
+            return NextResponse.json({
+                error: 'Vui lòng thiết lập địa chỉ lấy hàng trước khi đăng bán.',
+                code: 'MISSING_SELLER_ADDRESS',
+            }, { status: 400 });
+        }
+
         const body = await request.json();
         const cardData = {
             ...body,

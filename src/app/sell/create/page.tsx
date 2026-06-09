@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useLocalization } from '@/context/localization-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Upload, ShieldAlert, X, Loader2, Info, HandCoins, Plus, Trash2, Layers } from 'lucide-react';
+import { Upload, ShieldAlert, X, Loader2, Info, HandCoins, Plus, Trash2, Layers, MapPin } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useSupabase, useUser } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
@@ -44,6 +44,7 @@ import {
 } from '@/lib/card-catalog';
 import { type SelectedCatalogCard } from '@/components/card-picker-dialog';
 import { SearchableSetPicker } from '@/components/searchable-set-picker';
+import { SellerAddressForm } from '@/components/seller-address-form';
 
 // Lazy-loaded: the picker dialog (and its catalog deps) only mount when opened,
 // so keep it out of the initial bundle to make the page load lighter.
@@ -171,6 +172,7 @@ export default function CreateListingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingSellerAccess, setIsCheckingSellerAccess] = useState(true);
   const [hasSellerAccess, setHasSellerAccess] = useState(false);
+  const [hasPickupAddress, setHasPickupAddress] = useState(false);
   const supabase = useSupabase();
 
   const formSchema = getFormSchema(t);
@@ -282,7 +284,18 @@ export default function CreateListingPage() {
             description: 'Bạn cần hoàn tất và được duyệt KYC trước khi đăng bán.',
           });
           router.replace('/sell');
+          return;
         }
+
+        // Approved sellers must have a pickup address on file before listing,
+        // otherwise we can't calculate shipping fees for buyers.
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('address_district_id, address_ward_code')
+          .eq('id', user.id)
+          .single();
+        const p = profile as Record<string, any> | null;
+        setHasPickupAddress(!!(p?.address_district_id && p?.address_ward_code));
       } catch {
         setHasSellerAccess(false);
         router.replace('/sell');
@@ -591,6 +604,31 @@ export default function CreateListingPage() {
           <ShieldAlert className="h-16 w-16 text-primary mb-4" />
           <h2 className="text-2xl font-semibold mb-2">Bạn chưa được duyệt KYC</h2>
           <p className="text-muted-foreground">Hoàn tất xác minh ở trang Seller để bắt đầu đăng bán.</p>
+        </div>
+      );
+    }
+
+    // Approved sellers must set a pickup address before they can list anything —
+    // shipping fees are calculated from this address.
+    if (!hasPickupAddress) {
+      return (
+        <div className="space-y-6 py-4">
+          <div className="flex flex-col items-center text-center">
+            <div className="h-14 w-14 rounded-full bg-orange-500/10 flex items-center justify-center mb-3">
+              <MapPin className="h-7 w-7 text-orange-500" />
+            </div>
+            <h2 className="text-2xl font-semibold mb-1">Thêm địa chỉ lấy hàng</h2>
+            <p className="text-muted-foreground max-w-md">
+              Trước khi đăng bán, vui lòng thiết lập địa chỉ lấy hàng của bạn.
+              Chúng tôi cần địa chỉ này để tính cước phí vận chuyển cho người mua.
+            </p>
+          </div>
+          <div className="max-w-xl mx-auto rounded-xl border border-orange-500/20 bg-orange-500/5 p-5">
+            <SellerAddressForm
+              submitLabel="Lưu địa chỉ & tiếp tục"
+              onSaved={() => setHasPickupAddress(true)}
+            />
+          </div>
         </div>
       );
     }
