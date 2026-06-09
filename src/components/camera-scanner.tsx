@@ -28,6 +28,7 @@ export function CameraScanner({
     const prevSampleRef = useRef<Float32Array | null>(null);
     const stableRef = useRef(0);
     const sharpPeakRef = useRef(0); // best sharpness seen this session
+    const contentTicksRef = useRef(0); // consecutive ticks a card has been in view
     const zoomRef = useRef(1);
     const pinchRef = useRef<{ dist: number; zoom: number } | null>(null);
 
@@ -40,7 +41,6 @@ export function CameraScanner({
     const [zoomCaps, setZoomCaps] = useState<{ min: number; max: number; step: number } | null>(null);
 
     const STEADY_NEED = 3; // consecutive steady samples (~0.6s) before auto-fire
-    const FOCUS_FALLBACK = 14; // ~2.8s steady → capture even if focus floor not reached
 
     // Map the on-screen frame box → the video's intrinsic pixels (object-cover).
     const computeCrop = () => {
@@ -102,6 +102,7 @@ export function CameraScanner({
         prevSampleRef.current = null;
         stableRef.current = 0;
         sharpPeakRef.current = 0;
+        contentTicksRef.current = 0;
         zoomRef.current = 1;
         setError(null); setReady(false); setProgress(0); setFocusing(false);
         setZoom(1); setZoomCaps(null);
@@ -163,17 +164,24 @@ export function CameraScanner({
             const focused = sharp > 8 && sharp >= sharpPeakRef.current * 0.7;
 
             const contentOk = variance > 130 && mean > 20 && mean < 245;
-            const steady = prev !== null && diff < 13 && contentOk;
+            // Zoom magnifies hand-shake, so the same physical wobble moves the image
+            // much more when zoomed in. Scale the steadiness tolerance with the zoom
+            // factor, otherwise auto-capture can NEVER reach "steady" while zoomed.
+            const zoomFactor = zoomCaps ? Math.max(1, zoomRef.current / Math.max(0.0001, zoomCaps.min)) : 1;
+            const diffThresh = 13 * Math.min(5, zoomFactor);
+            const steady = prev !== null && diff < diffThresh && contentOk;
             // Soft decay (not hard reset) so a single jittery frame doesn't undo
             // all the steadiness we built up — makes auto-capture far less finicky.
             stableRef.current = steady ? stableRef.current + 1 : Math.max(0, stableRef.current - 2);
+            contentTicksRef.current = contentOk ? contentTicksRef.current + 1 : 0;
             setProgress(Math.min(1, stableRef.current / STEADY_NEED));
 
             const readyToFire = stableRef.current >= STEADY_NEED;
-            // Hold for focus: never capture a blurry frame (the card number is tiny
-            // and decides the match) unless we've waited a long time already.
-            setFocusing(readyToFire && !focused);
-            if (readyToFire && (focused || stableRef.current >= FOCUS_FALLBACK)) {
+            // Time fallbacks so a zoomed/shaky-but-aimed card still captures:
+            const longAimed = contentTicksRef.current >= 18;  // ~3.6s on a card
+            const veryLong = contentTicksRef.current >= 35;   // ~7s — give up waiting for sharp
+            setFocusing((readyToFire || longAimed) && !focused);
+            if ((readyToFire && focused) || (longAimed && focused) || veryLong) {
                 if (timer) { clearInterval(timer); timer = null; }
                 doCapture();
             }
@@ -239,9 +247,10 @@ export function CameraScanner({
         setZoom(nz);
         track.applyConstraints({ advanced: [{ zoom: nz }] } as unknown as MediaTrackConstraints).catch(() => { });
         // Zooming changes the view: don't auto-capture mid-zoom, and re-baseline
-        // the focus peak so the new zoom level can reach "focused".
+        // the focus peak / aim timer so the new zoom level can settle.
         stableRef.current = 0;
         sharpPeakRef.current = 0;
+        contentTicksRef.current = 0;
     };
 
     const dist2 = (t: React.TouchList | TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
