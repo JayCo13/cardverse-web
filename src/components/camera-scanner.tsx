@@ -140,14 +140,18 @@ export function CameraScanner({
             }
             const lapMean = lapSum / cnt;
             const sharp = lapSq / cnt - lapMean * lapMean;
-            if (sharp > sharpPeakRef.current) sharpPeakRef.current = sharp;
-            // Focused = sharp enough in absolute terms AND near the best seen
-            // (focus has converged rather than still ramping up).
-            const focused = sharp > 8 && sharp >= sharpPeakRef.current * 0.72;
+            // Adaptive peak: jump up to new highs but DECAY otherwise, so it
+            // tracks the current scene/zoom level instead of a stale transient max.
+            sharpPeakRef.current = sharp > sharpPeakRef.current
+                ? sharp
+                : Math.max(sharp, sharpPeakRef.current * 0.93);
+            const focused = sharp > 8 && sharp >= sharpPeakRef.current * 0.7;
 
             const contentOk = variance > 130 && mean > 20 && mean < 245;
             const steady = prev !== null && diff < 13 && contentOk;
-            stableRef.current = steady ? stableRef.current + 1 : 0;
+            // Soft decay (not hard reset) so a single jittery frame doesn't undo
+            // all the steadiness we built up — makes auto-capture far less finicky.
+            stableRef.current = steady ? stableRef.current + 1 : Math.max(0, stableRef.current - 2);
             setProgress(Math.min(1, stableRef.current / STEADY_NEED));
 
             const readyToFire = stableRef.current >= STEADY_NEED;
@@ -219,7 +223,10 @@ export function CameraScanner({
         zoomRef.current = nz;
         setZoom(nz);
         track.applyConstraints({ advanced: [{ zoom: nz }] } as unknown as MediaTrackConstraints).catch(() => { });
-        stableRef.current = 0; // zooming changes the view — don't auto-capture mid-zoom
+        // Zooming changes the view: don't auto-capture mid-zoom, and re-baseline
+        // the focus peak so the new zoom level can reach "focused".
+        stableRef.current = 0;
+        sharpPeakRef.current = 0;
     };
 
     const dist2 = (t: React.TouchList | TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
