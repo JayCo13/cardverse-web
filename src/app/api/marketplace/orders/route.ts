@@ -125,7 +125,7 @@ export async function PATCH(request: NextRequest) {
                         from_ward_name: sellerProfile.address_ward_name || '',
                         from_district_id: sellerProfile.address_district_id,
                         client_order_code: order_id.substring(0, 20),
-                        insurance_value: Math.min(order.amount || 0, 5000000),
+                        insurance_value: Math.min(order.amount || 0, 2000000), // cap matches checkout quote
                         note: 'Thẻ bài - Xử lý cẩn thận',
                         required_note: 'CHOTHUHANG',
                     });

@@ -22,7 +22,13 @@ import { useCurrency } from '@/contexts/currency-context';
 import { useLocalization } from '@/context/localization-context';
 import { useScanLimit } from '@/hooks/useScanLimit';
 import { ScanLimitModal } from '@/components/scan-limit-modal';
-import { CameraScanner } from '@/components/camera-scanner';
+import dynamic from 'next/dynamic';
+// Lazy-load the camera scanner so its code (camera + per-frame analysis) is NOT
+// in the homepage bundle — it's fetched only when the user opens "Scan nhanh".
+const CameraScanner = dynamic(
+    () => import('@/components/camera-scanner').then((m) => ({ default: m.CameraScanner })),
+    { ssr: false },
+);
 import { useCardCache } from '@/contexts/card-cache-context';
 import { PSAGradedPrices } from '@/components/psa-graded-prices';
 
@@ -1060,14 +1066,14 @@ export function MarketSpotlight() {
                     }
                 };
 
-                const buildNameUrl = (name: string, catId: number, limit = 10) => {
+                const buildNameUrl = (name: string, catId: number, limit = 15) => {
                     return `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&name=ilike.*${encodeURIComponent(name)}*&market_price=not.is.null&order=market_price.desc&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=${limit}`;
                 };
 
                 // --- REUSABLE SCORING FUNCTION ---
                 type ScoredProduct = { product: TcgcsvProduct; score: number; breakdown: string };
 
-                const scoreProduct = (p: { name: string; number: string | null; set_name: string | null; market_price: number }, numberFormats: string[]): ScoredProduct => {
+                const scoreProduct = (p: { name: string; number: string | null; set_name: string | null; market_price: number; category_id?: number }, numberFormats: string[]): ScoredProduct => {
                     let score = 0;
                     const reasons: string[] = [];
 
@@ -1084,10 +1090,15 @@ export function MarketSpotlight() {
                         score += 70;
                         reasons.push(`num:exact(70)`);
                     } else if (p.number && cardNumber) {
-                        // Collector number only (set total differs/unknown)
-                        const pNum = p.number.split('/')[0]?.replace(/^0+/, '');
-                        const aiNum = cardNumber.replace(/[^\d/]/g, '').split('/')[0]?.replace(/^0+/, '');
-                        if (pNum && aiNum && pNum === aiNum) {
+                        // Collector TOKEN match (set total differs/unknown). Works for
+                        // numeric ("123") and letter-prefixed ("TG12","RC10") collectors.
+                        const normCol = (s: string) => {
+                            const tok = (s.split('/')[0] || '').trim().toUpperCase();
+                            return /^\d+$/.test(tok) ? String(parseInt(tok, 10)) : tok; // drop leading zeros if numeric
+                        };
+                        const pCol = normCol(p.number);
+                        const aiCol = normCol(cardNumber);
+                        if (pCol && aiCol && pCol === aiCol) {
                             score += 28;
                             reasons.push(`num:partial(28)`);
                         }
@@ -1162,6 +1173,18 @@ export function MarketSpotlight() {
                         }
                     }
 
+                    // --- LANGUAGE PREFERENCE (small tie-breaker, Pokémon EN vs JP) ---
+                    // Surface the detected-language version first WITHOUT overriding a
+                    // number/name match in the other language. e.g. scanned EN 012/011:
+                    //   EN 012/011 (num+lang) > JP 012/011 (num) > 121/022 (no num).
+                    if (p.category_id === CATEGORY_POKEMON_ENGLISH || p.category_id === CATEGORY_POKEMON_JAPANESE) {
+                        const candidateIsJp = p.category_id === CATEGORY_POKEMON_JAPANESE;
+                        if (candidateIsJp === isJapanese) {
+                            score += 8;
+                            reasons.push(`lang:match(8)`);
+                        }
+                    }
+
                     return { product: p as TcgcsvProduct, score, breakdown: reasons.join(' ') };
                 };
 
@@ -1179,43 +1202,51 @@ export function MarketSpotlight() {
                         }
                     };
 
-                    // Build number format variations
+                    // Build number format variations — FORMAT-AGNOSTIC.
+                    // Pokémon numbers come in many shapes (TCGplayer EN + JP):
+                    //   123/198, 014/146, TG12/TG30, GG01/GG70, RC10/RC32, 055a/111,
+                    //   SM103, XY44, DP52, HGSS22, BW28 (no slash), 036 (bare),
+                    //   006/SV-P, 067/SM-P (JP promos). We must not assume "000/000".
                     let altFormatsArray: string[] = [];
+                    let collectorPatterns: string[] = []; // ilike patterns (collector token)
                     if (cardNumber) {
-                        // Keep the RAW number too (handles letter-prefixed numbers like
-                        // "TG12/TG30", "GG01/GG70", "SVP-001" that stripping would break).
-                        const rawNum = cardNumber.trim();
-                        let cleanNumber = cardNumber.replace(/[^\d/]/g, '').trim();
-                        if (!cleanNumber.includes('/') && /^\d+$/.test(cleanNumber) && cleanNumber.length >= 4 && cleanNumber.length % 2 === 0) {
-                            const midPoint = Math.floor(cleanNumber.length / 2);
-                            cleanNumber = cleanNumber.substring(0, midPoint) + '/' + cleanNumber.substring(midPoint);
-                        }
+                        const raw = cardNumber.trim();
+                        // Drop a trailing rarity code the AI may have appended, e.g.
+                        // "123/106 SAR", "201/198 SIR" → keep just the number token.
+                        const cleaned = raw.replace(/\s+[A-Z]{1,4}$/i, '').trim();
+                        const altFormats = new Set<string>([raw, raw.toUpperCase(), cleaned, cleaned.toUpperCase()]);
+                        const colPats = new Set<string>();
 
-                        const parts = cleanNumber.split('/');
-                        const altFormats = new Set<string>([cleanNumber, rawNum, rawNum.toUpperCase()]);
-
-                        if (parts.length === 2) {
-                            const collectorInt = parseInt(parts[0], 10);
-                            const setTotalInt = parseInt(parts[1], 10);
-
-                            const collectorVariations = [
-                                collectorInt.toString(),
-                                collectorInt.toString().padStart(2, '0'),
-                                collectorInt.toString().padStart(3, '0'),
-                            ];
-                            const setTotalVariations = [
-                                setTotalInt.toString(),
-                                setTotalInt.toString().padStart(2, '0'),
-                                setTotalInt.toString().padStart(3, '0'),
-                            ];
-
-                            for (const col of collectorVariations) {
-                                for (const total of setTotalVariations) {
-                                    altFormats.add(col + '/' + total);
+                        // Collector ilike patterns must be >=3 chars so the pg_trgm
+                        // index can serve them (shorter → seq scan/timeout on big sets).
+                        const addPat = (p: string) => { if (p.replace(/[^A-Z0-9]/gi, '').length >= 2) colPats.add(p); };
+                        if (cleaned.includes('/')) {
+                            const [colPart, totPart] = cleaned.split('/');
+                            const colU = colPart.trim().toUpperCase();   // "123" | "TG12" | "RC10" | "006" | "055A"
+                            // Collector-token ilike — catches the card even if the AI
+                            // misread the set total or the format differs (incl. JP "/SV-P").
+                            addPat(`${colU}/*`);
+                            if (/^\d+$/.test(colU)) {
+                                const ci = parseInt(colU, 10);
+                                const colVars = [ci.toString(), ci.toString().padStart(2, '0'), ci.toString().padStart(3, '0')];
+                                for (const c of colVars) addPat(`${c}/*`);
+                                if (/^\d+$/.test((totPart || '').trim())) {
+                                    const ti = parseInt(totPart, 10);
+                                    const totVars = [ti.toString(), ti.toString().padStart(2, '0'), ti.toString().padStart(3, '0')];
+                                    for (const c of colVars) for (const t of totVars) altFormats.add(`${c}/${t}`);
                                 }
                             }
+                        } else {
+                            // No slash: promo / bare (SM103, XY44, 036…). Match the whole token.
+                            const tokU = cleaned.toUpperCase();
+                            addPat(`${tokU}*`);
+                            if (/^\d+$/.test(tokU)) {
+                                const ci = parseInt(tokU, 10);
+                                for (const c of [ci.toString(), ci.toString().padStart(2, '0'), ci.toString().padStart(3, '0')]) altFormats.add(c);
+                            }
                         }
-                        altFormatsArray = Array.from(altFormats);
+                        altFormatsArray = Array.from(altFormats).filter(Boolean);
+                        collectorPatterns = Array.from(colPats).filter(Boolean);
                     }
 
                     // Helper: fetch both categories in parallel
@@ -1244,42 +1275,52 @@ export function MarketSpotlight() {
                         }
                     };
 
-                    // --- STRATEGY 0: One Piece exact card id (OP15-077 …) ---
+                    // Number + collector lookups go through the SERVICE-ROLE API route:
+                    // the anon role's statement_timeout kills un-indexed number queries,
+                    // but service_role has no such limit, so they complete there.
+                    const numberViaRoute = async (catIds: number[], numFormats: string[], colPats: string[]) => {
+                        if (catIds.length === 0 || (numFormats.length === 0 && colPats.length === 0)) return;
+                        try {
+                            const res = await fetch('/api/scan/pokemon-match', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ catIds, numberFormats: numFormats, collectorPatterns: colPats }),
+                            });
+                            if (res.ok) {
+                                const json = await res.json();
+                                if (Array.isArray(json.products) && json.products.length > 0) {
+                                    console.log(`  Found ${json.products.length} via number-match route`);
+                                    addCandidates(json.products as TcgcsvProduct[]);
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('number-match route failed:', (e as Error)?.message || e);
+                        }
+                    };
+
+                    const parallelSearches: Promise<void>[] = [];
+
+                    // 0/1/1b: number + collector (OP exact id, or Pokémon formats)
                     if (opId) {
-                        console.log(`TCGCSV: One Piece id search: ${opId}`);
-                        await searchBothCategories(
-                            (catId) => `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&number=eq.${encodeURIComponent(opId)}&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=20`,
-                            'op-id'
-                        );
+                        console.log(`TCGCSV: One Piece id search (route): ${opId}`);
+                        parallelSearches.push(numberViaRoute([CATEGORY_ONEPIECE], [opId, opId.toUpperCase()], []));
+                    } else if (altFormatsArray.length > 0 || collectorPatterns.length > 0) {
+                        console.log(`TCGCSV: Number/collector search (route): ${[...altFormatsArray, ...collectorPatterns].join(', ')}`);
+                        parallelSearches.push(numberViaRoute([categoryId, altCategoryId], altFormatsArray, collectorPatterns));
                     }
 
-                    // --- STRATEGY 1: By card number (Pokemon-style; skip for One Piece) ---
-                    if (!opId && altFormatsArray.length > 0) {
-                        const numberClauses = altFormatsArray.map((n: string) => `number.eq.${encodeURIComponent(n)}`).join(',');
-                        console.log(`TCGCSV: Number search: ${altFormatsArray.join(', ')}`);
-                        await searchBothCategories(
-                            (catId) => {
-                                return `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&or=(${numberClauses})&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=20`;
-                            },
-                            'number'
-                        );
-                    }
-
-                    // --- STRATEGIES 2 & 3: By name + base name ---
+                    // 2 & 3: by name + base name (fast on anon — kept direct)
                     if (cardName) {
                         const baseName = cardName.replace(/\s*(ex|EX|Ex|V|GX|Gx|VMAX|Vmax|VSTAR|Vstar)\s*$/i, '').trim();
-                        const nameSearches: Promise<void>[] = [];
-
                         console.log(`TCGCSV: Name search: "${cardName}"`);
-                        nameSearches.push(searchBothCategories((catId) => buildNameUrl(cardName, catId, 10), 'name'));
-
+                        parallelSearches.push(searchBothCategories((catId) => buildNameUrl(cardName, catId, 20), 'name'));
                         if (baseName && baseName !== cardName) {
                             console.log(`TCGCSV: Base name search: "${baseName}"`);
-                            nameSearches.push(searchBothCategories((catId) => buildNameUrl(baseName, catId, 10), 'base name'));
+                            parallelSearches.push(searchBothCategories((catId) => buildNameUrl(baseName, catId, 20), 'base name'));
                         }
-
-                        await Promise.allSettled(nameSearches);
                     }
+
+                    await Promise.allSettled(parallelSearches);
 
                     // --- STRATEGY 4: Word-split fallback ---
                     if (cardName && allCandidates.length === 0) {
@@ -1364,7 +1405,7 @@ export function MarketSpotlight() {
                         const scored = allCandidates.map(p => scoreProduct(p, scoringFormats));
                         scored.sort((a, b) => b.score - a.score || (b.product.market_price || 0) - (a.product.market_price || 0));
 
-                        scored.slice(0, 10).forEach((s, i) => {
+                        scored.slice(0, 15).forEach((s, i) => {
                             console.log(`  ${i + 1}. [${s.score}pts] ${s.product.name} #${s.product.number} (${s.product.set_name}) — ${s.breakdown}`);
                         });
 
@@ -1372,7 +1413,7 @@ export function MarketSpotlight() {
                         console.log(`\n✅ Best match: ${bestMatch.product.name} #${bestMatch.product.number} (score: ${bestMatch.score}/100)`);
 
                         await displayProductResult(bestMatch.product);
-                        setScanResults(scored.slice(0, 10));
+                        setScanResults(scored.slice(0, 15));
                         setShowScanResultsDialog(true);
 
                         if (shouldIncrementUsage) {
@@ -2132,14 +2173,18 @@ export function MarketSpotlight() {
 
                     {/* Top 10 Scan Results Dialog */}
                     <Dialog open={showScanResultsDialog} onOpenChange={setShowScanResultsDialog}>
-                        <DialogContent className="bg-zinc-950 border-white/10 text-white max-w-md sm:max-w-lg p-0 rounded-2xl overflow-hidden">
-                            <DialogHeader className="px-5 pt-5 pb-3 border-b border-white/10">
+                        <DialogContent className="bg-zinc-950 border-white/10 text-white w-[95vw] max-w-md sm:max-w-lg p-0 rounded-2xl overflow-hidden flex flex-col max-h-[90dvh] [&>button]:w-10 [&>button]:h-10 [&>button]:top-3.5 [&>button]:right-3.5 [&>button]:flex [&>button]:items-center [&>button]:justify-center [&>button]:rounded-full [&>button]:bg-white/10 [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-red-500 [&>button]:z-50 [&>button_svg]:w-6 [&>button_svg]:h-6 [&>button_svg]:stroke-[2.5]">
+                            <DialogHeader className="shrink-0 px-5 pt-5 pb-3 pr-16 border-b border-white/10">
                                 <DialogTitle className="text-lg font-bold flex items-center gap-2">
                                     <MagnifyingGlass className="w-5 h-5 text-yellow-400" weight="bold" />
                                     {t('scan_select_card') || 'Select Your Card'}
                                 </DialogTitle>
                                 <p className="text-xs text-white/50 mt-1">{t('scan_top_matches') || 'Top matches from scan — tap to select'}</p>
                             </DialogHeader>
+
+                            {/* Scrollable body — keeps the modal within the screen height */}
+                            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+
 
                             {/* Scanned Image Preview */}
                             {scannedImagePreview && (
@@ -2202,7 +2247,7 @@ export function MarketSpotlight() {
                                 </div>
                             )}
 
-                            <div className="px-3 py-3 max-h-[60vh] overflow-y-auto space-y-2">
+                            <div className="px-3 py-3 space-y-2">
                                 {scanResults.map((result, index) => (
                                     <button
                                         key={result.product.product_id}
@@ -2292,6 +2337,7 @@ export function MarketSpotlight() {
                                         </div>
                                     </button>
                                 ))}
+                            </div>
                             </div>
                         </DialogContent>
                     </Dialog>
@@ -2662,12 +2708,14 @@ export function MarketSpotlight() {
                 </div>
             </div>
 
-            {/* Live camera scanner with alignment frame */}
-            <CameraScanner
-                open={showCamera}
-                onClose={() => setShowCamera(false)}
-                onCapture={handleCameraCapture}
-            />
+            {/* Live camera scanner — only mounted (and its chunk fetched) on open */}
+            {showCamera && (
+                <CameraScanner
+                    open
+                    onClose={() => setShowCamera(false)}
+                    onCapture={handleCameraCapture}
+                />
+            )}
 
             {/* Scan Limit Modal */}
             <ScanLimitModal

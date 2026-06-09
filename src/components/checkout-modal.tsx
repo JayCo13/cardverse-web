@@ -91,7 +91,9 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
         from_ward_code: sellerAddress.wardCode,
         to_district_id: address.district_id.toString(),
         to_ward_code: address.ward_code,
-        insurance_value: card ? card.price.toString() : '0',
+        // Cap declared insurance so GHN's 0.5% insurance fee doesn't inflate
+        // shipping on high-value cards. Must match orders/route.ts (INSURANCE_CAP).
+        insurance_value: card ? Math.min(card.price, 2000000).toString() : '0',
       });
 
       const res = await fetch(`/api/shipping/fee?${params}`);
