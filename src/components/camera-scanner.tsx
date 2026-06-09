@@ -174,12 +174,18 @@ export function CameraScanner({
             // all the steadiness we built up — makes auto-capture far less finicky.
             stableRef.current = steady ? stableRef.current + 1 : Math.max(0, stableRef.current - 2);
             contentTicksRef.current = contentOk ? contentTicksRef.current + 1 : 0;
-            setProgress(Math.min(1, stableRef.current / STEADY_NEED));
 
-            const readyToFire = stableRef.current >= STEADY_NEED;
-            // Time fallbacks so a zoomed/shaky-but-aimed card still captures:
-            const longAimed = contentTicksRef.current >= 18;  // ~3.6s on a card
-            const veryLong = contentTicksRef.current >= 35;   // ~7s — give up waiting for sharp
+            // Grace window: give the user time to zoom/compose. No auto-capture until
+            // a card has been in view for GRACE ticks since opening / the last touch
+            // or zoom (both reset contentTicksRef), so it can't fire before they aim.
+            const GRACE = 12; // ~2.4s
+            const settled = contentTicksRef.current >= GRACE;
+            setProgress(settled ? Math.min(1, stableRef.current / STEADY_NEED) : 0);
+
+            const readyToFire = settled && stableRef.current >= STEADY_NEED;
+            // Later fallbacks so a zoomed/shaky-but-aimed card still eventually fires:
+            const longAimed = contentTicksRef.current >= 24;  // ~4.8s on a card
+            const veryLong = contentTicksRef.current >= 42;   // ~8.4s — give up waiting for sharp
             setFocusing((readyToFire || longAimed) && !focused);
             if ((readyToFire && focused) || (longAimed && focused) || veryLong) {
                 if (timer) { clearInterval(timer); timer = null; }
@@ -255,6 +261,8 @@ export function CameraScanner({
 
     const dist2 = (t: React.TouchList | TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
     const onTouchStart = (e: React.TouchEvent) => {
+        // Any touch means the user is still composing → push back auto-capture.
+        stableRef.current = 0; contentTicksRef.current = 0;
         if (e.touches.length === 2 && zoomCaps) pinchRef.current = { dist: dist2(e.touches), zoom: zoomRef.current };
     };
     const onTouchMove = (e: React.TouchEvent) => {
