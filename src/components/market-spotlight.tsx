@@ -1284,47 +1284,43 @@ export function MarketSpotlight() {
                         );
                     }
 
-                    // --- STRATEGY 1: By card number (Pokemon-style; skip for One Piece) ---
+                    // --- STRATEGIES 1, 1b, 2, 3 run CONCURRENTLY (independent) so the
+                    // total wait is the slowest single query, not the sum. ---
+                    const SEL = 'product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id';
+                    const parallelSearches: Promise<void>[] = [];
+
+                    // 1: exact number (any of the format variants)
                     if (!opId && altFormatsArray.length > 0) {
                         const numberClauses = altFormatsArray.map((n: string) => `number.eq.${encodeURIComponent(n)}`).join(',');
                         console.log(`TCGCSV: Number search: ${altFormatsArray.join(', ')}`);
-                        await searchBothCategories(
-                            (catId) => {
-                                return `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&or=(${numberClauses})&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=20`;
-                            },
+                        parallelSearches.push(searchBothCategories(
+                            (catId) => `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&or=(${numberClauses})&select=${SEL}&limit=20`,
                             'number'
-                        );
+                        ));
                     }
 
-                    // --- STRATEGY 1b: By COLLECTOR number (ilike) — robust to a misread
-                    // set total / format. Pulls every #N card across sets so scoring
-                    // (name + set + language) can pick the exact one. ---
+                    // 1b: collector number (ilike) — robust to a misread set total / format
                     if (!opId && collectorPatterns.length > 0) {
                         const colClauses = collectorPatterns.map((n: string) => `number.ilike.${encodeURIComponent(n)}`).join(',');
                         console.log(`TCGCSV: Collector-number search: ${collectorPatterns.join(', ')}`);
-                        await searchBothCategories(
-                            (catId) => {
-                                return `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&or=(${colClauses})&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=40`;
-                            },
+                        parallelSearches.push(searchBothCategories(
+                            (catId) => `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&or=(${colClauses})&select=${SEL}&limit=40`,
                             'collector-number'
-                        );
+                        ));
                     }
 
-                    // --- STRATEGIES 2 & 3: By name + base name ---
+                    // 2 & 3: by name + base name
                     if (cardName) {
                         const baseName = cardName.replace(/\s*(ex|EX|Ex|V|GX|Gx|VMAX|Vmax|VSTAR|Vstar)\s*$/i, '').trim();
-                        const nameSearches: Promise<void>[] = [];
-
                         console.log(`TCGCSV: Name search: "${cardName}"`);
-                        nameSearches.push(searchBothCategories((catId) => buildNameUrl(cardName, catId, 20), 'name'));
-
+                        parallelSearches.push(searchBothCategories((catId) => buildNameUrl(cardName, catId, 20), 'name'));
                         if (baseName && baseName !== cardName) {
                             console.log(`TCGCSV: Base name search: "${baseName}"`);
-                            nameSearches.push(searchBothCategories((catId) => buildNameUrl(baseName, catId, 20), 'base name'));
+                            parallelSearches.push(searchBothCategories((catId) => buildNameUrl(baseName, catId, 20), 'base name'));
                         }
-
-                        await Promise.allSettled(nameSearches);
                     }
+
+                    await Promise.allSettled(parallelSearches);
 
                     // --- STRATEGY 4: Word-split fallback ---
                     if (cardName && allCandidates.length === 0) {
