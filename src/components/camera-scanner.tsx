@@ -43,7 +43,7 @@ export function CameraScanner({
     const [zoom, setZoom] = useState(1);
     const [zoomCaps, setZoomCaps] = useState<{ min: number; max: number; step: number } | null>(null);
 
-    const STEADY_NEED = 3; // consecutive steady samples (~0.6s) before auto-fire
+    const STEADY_NEED = 2; // consecutive steady samples (~0.4s) before auto-fire
 
     // Map the on-screen frame box → the video's intrinsic pixels (object-cover).
     const computeCrop = () => {
@@ -186,14 +186,14 @@ export function CameraScanner({
             // Grace window: give the user time to zoom/compose. No auto-capture until
             // a card has been in view for GRACE ticks since opening / the last touch
             // or zoom (both reset contentTicksRef), so it can't fire before they aim.
-            const GRACE = 12; // ~2.4s
+            const GRACE = 6; // ~1.2s (touch/zoom resets this, so it won't fire mid-adjust)
             const settled = contentTicksRef.current >= GRACE;
             setProgress(settled ? Math.min(1, stableRef.current / STEADY_NEED) : 0);
 
             const readyToFire = settled && stableRef.current >= STEADY_NEED;
             // Later fallbacks so a zoomed/shaky-but-aimed card still eventually fires:
-            const longAimed = contentTicksRef.current >= 24;  // ~4.8s on a card
-            const veryLong = contentTicksRef.current >= 42;   // ~8.4s — give up waiting for sharp
+            const longAimed = contentTicksRef.current >= 14;  // ~2.8s on a card
+            const veryLong = contentTicksRef.current >= 26;   // ~5.2s — give up waiting for sharp
             setFocusing((readyToFire || longAimed) && !focused);
             if (!lockingRef.current && ((readyToFire && focused) || (longAimed && focused) || veryLong)) {
                 // Lock: show the green confirm briefly so the user SEES it before the
@@ -206,7 +206,7 @@ export function CameraScanner({
                 setFocusing(false);
                 // Haptic confirm (Android Chrome; no-op on iOS Safari).
                 try { navigator.vibrate?.([35, 25, 60]); } catch { /* ignore */ }
-                lockTimer = setTimeout(() => doCapture(), 650);
+                lockTimer = setTimeout(() => doCapture(), 400);
             }
         };
 
