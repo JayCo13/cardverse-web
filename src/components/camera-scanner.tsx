@@ -34,7 +34,7 @@ export function CameraScanner({
     const [autoOn, setAutoOn] = useState(true);
     const [progress, setProgress] = useState(0); // 0..1 stabilization
 
-    const STEADY_NEED = 4; // consecutive steady samples (~1.2s) before auto-fire
+    const STEADY_NEED = 3; // consecutive steady samples before auto-fire (~0.6s)
 
     // Map the on-screen frame box → the video's intrinsic pixels (object-cover).
     const computeCrop = () => {
@@ -115,9 +115,10 @@ export function CameraScanner({
             }
             prevSampleRef.current = lum;
 
-            // Enough detail (a card, not a blank/dark view) AND holding steady.
-            const contentOk = variance > 180 && mean > 25 && mean < 240;
-            const steady = prev !== null && diff < 7 && contentOk;
+            // Enough detail (a card, not a blank/dark view) AND roughly steady.
+            // diff threshold is generous so normal hand-shake still counts.
+            const contentOk = variance > 130 && mean > 20 && mean < 245;
+            const steady = prev !== null && diff < 13 && contentOk;
             stableRef.current = steady ? stableRef.current + 1 : 0;
             setProgress(Math.min(1, stableRef.current / STEADY_NEED));
 
@@ -139,8 +140,8 @@ export function CameraScanner({
                     videoRef.current.srcObject = stream;
                     await videoRef.current.play().catch(() => { });
                     setReady(true);
-                    // give the user ~0.8s to aim before sampling starts
-                    setTimeout(() => { if (!cancelled) timer = setInterval(tick, 300); }, 800);
+                    // brief aim delay, then sample ~5×/sec for a snappy auto-capture
+                    setTimeout(() => { if (!cancelled) timer = setInterval(tick, 200); }, 400);
                 }
             } catch {
                 setError('Không mở được camera. Hãy cấp quyền camera, hoặc dùng "Chọn ảnh từ thiết bị".');
