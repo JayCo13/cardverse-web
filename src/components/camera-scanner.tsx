@@ -29,6 +29,7 @@ export function CameraScanner({
     const stableRef = useRef(0);
     const sharpPeakRef = useRef(0); // best sharpness seen this session
     const contentTicksRef = useRef(0); // consecutive ticks a card has been in view
+    const lockingRef = useRef(false); // about to capture (short green confirm)
     const zoomRef = useRef(1);
     const pinchRef = useRef<{ dist: number; zoom: number } | null>(null);
 
@@ -37,6 +38,7 @@ export function CameraScanner({
     const [autoOn, setAutoOn] = useState(true);
     const [progress, setProgress] = useState(0); // 0..1 stabilization
     const [focusing, setFocusing] = useState(false); // steady but waiting for sharp focus
+    const [locked, setLocked] = useState(false); // green "locked → capturing" confirm
     const [zoom, setZoom] = useState(1);
     const [zoomCaps, setZoomCaps] = useState<{ min: number; max: number; step: number } | null>(null);
 
@@ -84,6 +86,7 @@ export function CameraScanner({
         if (!open) return;
         let cancelled = false;
         let timer: ReturnType<typeof setInterval> | null = null;
+        let lockTimer: ReturnType<typeof setTimeout> | null = null;
         // Sample at a usable resolution so blur is actually detectable (small text
         // like the card number washes out if we downscale too far).
         const SW = 120, SH = 160;
@@ -99,12 +102,13 @@ export function CameraScanner({
         const stctx = stabCanvas.getContext("2d", { willReadFrequently: true });
 
         capturedRef.current = false;
+        lockingRef.current = false;
         prevSampleRef.current = null;
         stableRef.current = 0;
         sharpPeakRef.current = 0;
         contentTicksRef.current = 0;
         zoomRef.current = 1;
-        setError(null); setReady(false); setProgress(0); setFocusing(false);
+        setError(null); setReady(false); setProgress(0); setFocusing(false); setLocked(false);
         setZoom(1); setZoomCaps(null);
 
         const tick = () => {
@@ -187,9 +191,15 @@ export function CameraScanner({
             const longAimed = contentTicksRef.current >= 24;  // ~4.8s on a card
             const veryLong = contentTicksRef.current >= 42;   // ~8.4s — give up waiting for sharp
             setFocusing((readyToFire || longAimed) && !focused);
-            if ((readyToFire && focused) || (longAimed && focused) || veryLong) {
+            if (!lockingRef.current && ((readyToFire && focused) || (longAimed && focused) || veryLong)) {
+                // Lock: show the green confirm briefly so the user SEES it before the
+                // shot is taken, then capture.
+                lockingRef.current = true;
                 if (timer) { clearInterval(timer); timer = null; }
-                doCapture();
+                setLocked(true);
+                setProgress(1);
+                setFocusing(false);
+                lockTimer = setTimeout(() => doCapture(), 450);
             }
         };
 
@@ -233,6 +243,7 @@ export function CameraScanner({
         return () => {
             cancelled = true;
             if (timer) clearInterval(timer);
+            if (lockTimer) clearTimeout(lockTimer);
             streamRef.current?.getTracks().forEach((t) => t.stop());
             streamRef.current = null;
         };
@@ -309,11 +320,13 @@ export function CameraScanner({
                         className="relative w-[80%] max-w-[340px] aspect-[3/4] rounded-2xl transition-[outline] duration-150"
                         style={{
                             boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)",
-                            outline: focusing
-                                ? "3px solid rgba(250,204,21,0.9)"            // amber: focusing
-                                : progress > 0
-                                    ? `3px solid rgba(34,197,94,${0.4 + progress * 0.6})` // green: locking
-                                    : "none",
+                            outline: locked
+                                ? "5px solid rgba(34,197,94,1)"               // green: locked → capturing
+                                : focusing
+                                    ? "3px solid rgba(250,204,21,0.9)"        // amber: focusing
+                                    : progress > 0
+                                        ? `3px solid rgba(34,197,94,${0.4 + progress * 0.6})` // green: locking
+                                        : "none",
                         }}
                     >
                         <span className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-orange-400 rounded-tl-2xl" />
@@ -364,9 +377,10 @@ export function CameraScanner({
                 </button>
                 <p className="text-xs text-white/45 text-center max-w-[260px]">
                     {autoOn
-                        ? (focusing ? "Đang lấy nét… giữ yên cho rõ số thẻ"
-                            : progress > 0 ? "Giữ yên… đang chụp"
-                                : "Trùm khung lên thẻ (thật hoặc trên màn hình) — máy tự chụp")
+                        ? (locked ? "✓ Đã khóa — đang chụp"
+                            : focusing ? "Đang lấy nét… giữ yên cho rõ số thẻ"
+                                : progress > 0 ? "Ổn định… chuẩn bị chụp"
+                                    : "Trùm khung lên thẻ (thật hoặc trên màn hình) — máy tự chụp")
                         : "Trùm khung lên thẻ rồi bấm để quét"}
                 </p>
             </div>
