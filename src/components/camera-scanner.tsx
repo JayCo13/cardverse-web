@@ -38,6 +38,7 @@ export function CameraScanner({
     const [autoOn, setAutoOn] = useState(true);
     const [progress, setProgress] = useState(0); // 0..1 stabilization
     const [focusing, setFocusing] = useState(false); // steady but waiting for sharp focus
+    const [aiming, setAiming] = useState(false); // a card is framed (show amber outline)
     const [locked, setLocked] = useState(false); // green "locked → capturing" confirm
     const [zoom, setZoom] = useState(1);
     const [zoomCaps, setZoomCaps] = useState<{ min: number; max: number; step: number } | null>(null);
@@ -108,7 +109,7 @@ export function CameraScanner({
         sharpPeakRef.current = 0;
         contentTicksRef.current = 0;
         zoomRef.current = 1;
-        setError(null); setReady(false); setProgress(0); setFocusing(false); setLocked(false);
+        setError(null); setReady(false); setProgress(0); setFocusing(false); setLocked(false); setAiming(false);
         setZoom(1); setZoomCaps(null);
 
         const tick = () => {
@@ -178,6 +179,9 @@ export function CameraScanner({
             // all the steadiness we built up — makes auto-capture far less finicky.
             stableRef.current = steady ? stableRef.current + 1 : Math.max(0, stableRef.current - 2);
             contentTicksRef.current = contentOk ? contentTicksRef.current + 1 : 0;
+            // Always show feedback while a card is framed (amber), even while zooming
+            // or during the grace window, so the status colour is visible.
+            if (!lockingRef.current) setAiming(contentOk);
 
             // Grace window: give the user time to zoom/compose. No auto-capture until
             // a card has been in view for GRACE ticks since opening / the last touch
@@ -197,9 +201,10 @@ export function CameraScanner({
                 lockingRef.current = true;
                 if (timer) { clearInterval(timer); timer = null; }
                 setLocked(true);
+                setAiming(false);
                 setProgress(1);
                 setFocusing(false);
-                lockTimer = setTimeout(() => doCapture(), 450);
+                lockTimer = setTimeout(() => doCapture(), 650);
             }
         };
 
@@ -322,11 +327,9 @@ export function CameraScanner({
                             boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)",
                             outline: locked
                                 ? "5px solid rgba(34,197,94,1)"               // green: locked → capturing
-                                : focusing
-                                    ? "3px solid rgba(250,204,21,0.9)"        // amber: focusing
-                                    : progress > 0
-                                        ? `3px solid rgba(34,197,94,${0.4 + progress * 0.6})` // green: locking
-                                        : "none",
+                                : aiming
+                                    ? "3px solid rgba(250,204,21,0.9)"        // amber: card framed / aiming
+                                    : "none",
                         }}
                     >
                         <span className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-orange-400 rounded-tl-2xl" />
