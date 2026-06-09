@@ -90,6 +90,13 @@ export function CameraScanner({
         const sampleCanvas = document.createElement("canvas");
         sampleCanvas.width = SW; sampleCanvas.height = SH;
         const sctx = sampleCanvas.getContext("2d", { willReadFrequently: true });
+        // Separate COARSE sample for stability: at this resolution small hand-shake
+        // barely changes the pixels (sub-pixel), so steadiness no longer depends on
+        // how detailed/sharp the framed card is.
+        const CW = 16, CH = 22;
+        const stabCanvas = document.createElement("canvas");
+        stabCanvas.width = CW; stabCanvas.height = CH;
+        const stctx = stabCanvas.getContext("2d", { willReadFrequently: true });
 
         capturedRef.current = false;
         prevSampleRef.current = null;
@@ -118,15 +125,23 @@ export function CameraScanner({
             for (let j = 0; j < N; j++) { const d = lum[j] - mean; variance += d * d; }
             variance /= N;
 
-            // Stability vs previous sample (mean abs luminance diff).
+            // Stability from the COARSE sample (robust to fine detail / sharpness):
+            // mean abs luminance diff vs the previous coarse frame.
+            stctx!.drawImage(video, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, CW, CH);
+            const cdata = stctx!.getImageData(0, 0, CW, CH).data;
+            const CN = CW * CH;
+            const clum = new Float32Array(CN);
+            for (let i = 0, j = 0; i < cdata.length; i += 4, j++) {
+                clum[j] = 0.299 * cdata[i] + 0.587 * cdata[i + 1] + 0.114 * cdata[i + 2];
+            }
             const prev = prevSampleRef.current;
             let diff = Infinity;
-            if (prev) {
+            if (prev && prev.length === CN) {
                 let d = 0;
-                for (let j = 0; j < N; j++) d += Math.abs(lum[j] - prev[j]);
-                diff = d / N;
+                for (let j = 0; j < CN; j++) d += Math.abs(clum[j] - prev[j]);
+                diff = d / CN;
             }
-            prevSampleRef.current = lum;
+            prevSampleRef.current = clum;
 
             // Sharpness = variance of the Laplacian (classic focus/blur metric).
             // Low when the image is out of focus or motion-blurred.
