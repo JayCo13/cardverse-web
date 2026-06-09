@@ -204,6 +204,8 @@ export function CameraScanner({
                 setAiming(false);
                 setProgress(1);
                 setFocusing(false);
+                // Haptic confirm (Android Chrome; no-op on iOS Safari).
+                try { navigator.vibrate?.([35, 25, 60]); } catch { /* ignore */ }
                 lockTimer = setTimeout(() => doCapture(), 650);
             }
         };
@@ -284,7 +286,9 @@ export function CameraScanner({
     const onTouchMove = (e: React.TouchEvent) => {
         if (e.touches.length === 2 && pinchRef.current) {
             const ratio = dist2(e.touches) / pinchRef.current.dist;
-            applyZoom(pinchRef.current.zoom * ratio);
+            // Gain > 1 so a small pinch produces a bigger zoom change (more responsive).
+            const PINCH_GAIN = 2.2;
+            applyZoom(pinchRef.current.zoom * (1 + (ratio - 1) * PINCH_GAIN));
         }
     };
     const onTouchEnd = (e: React.TouchEvent) => {
