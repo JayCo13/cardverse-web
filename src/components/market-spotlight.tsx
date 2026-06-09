@@ -1066,14 +1066,14 @@ export function MarketSpotlight() {
                     }
                 };
 
-                const buildNameUrl = (name: string, catId: number, limit = 10) => {
+                const buildNameUrl = (name: string, catId: number, limit = 15) => {
                     return `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&name=ilike.*${encodeURIComponent(name)}*&market_price=not.is.null&order=market_price.desc&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=${limit}`;
                 };
 
                 // --- REUSABLE SCORING FUNCTION ---
                 type ScoredProduct = { product: TcgcsvProduct; score: number; breakdown: string };
 
-                const scoreProduct = (p: { name: string; number: string | null; set_name: string | null; market_price: number }, numberFormats: string[]): ScoredProduct => {
+                const scoreProduct = (p: { name: string; number: string | null; set_name: string | null; market_price: number; category_id?: number }, numberFormats: string[]): ScoredProduct => {
                     let score = 0;
                     const reasons: string[] = [];
 
@@ -1165,6 +1165,18 @@ export function MarketSpotlight() {
                                 score += 20;
                                 reasons.push(`set:fuzzy(20)`);
                             }
+                        }
+                    }
+
+                    // --- LANGUAGE PREFERENCE (small tie-breaker, Pokémon EN vs JP) ---
+                    // Surface the detected-language version first WITHOUT overriding a
+                    // number/name match in the other language. e.g. scanned EN 012/011:
+                    //   EN 012/011 (num+lang) > JP 012/011 (num) > 121/022 (no num).
+                    if (p.category_id === CATEGORY_POKEMON_ENGLISH || p.category_id === CATEGORY_POKEMON_JAPANESE) {
+                        const candidateIsJp = p.category_id === CATEGORY_POKEMON_JAPANESE;
+                        if (candidateIsJp === isJapanese) {
+                            score += 8;
+                            reasons.push(`lang:match(8)`);
                         }
                     }
 
@@ -1370,7 +1382,7 @@ export function MarketSpotlight() {
                         const scored = allCandidates.map(p => scoreProduct(p, scoringFormats));
                         scored.sort((a, b) => b.score - a.score || (b.product.market_price || 0) - (a.product.market_price || 0));
 
-                        scored.slice(0, 10).forEach((s, i) => {
+                        scored.slice(0, 15).forEach((s, i) => {
                             console.log(`  ${i + 1}. [${s.score}pts] ${s.product.name} #${s.product.number} (${s.product.set_name}) — ${s.breakdown}`);
                         });
 
@@ -1378,7 +1390,7 @@ export function MarketSpotlight() {
                         console.log(`\n✅ Best match: ${bestMatch.product.name} #${bestMatch.product.number} (score: ${bestMatch.score}/100)`);
 
                         await displayProductResult(bestMatch.product);
-                        setScanResults(scored.slice(0, 10));
+                        setScanResults(scored.slice(0, 15));
                         setShowScanResultsDialog(true);
 
                         if (shouldIncrementUsage) {
