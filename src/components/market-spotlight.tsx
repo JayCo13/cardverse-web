@@ -2138,14 +2138,18 @@ export function MarketSpotlight() {
 
                     {/* Top 10 Scan Results Dialog */}
                     <Dialog open={showScanResultsDialog} onOpenChange={setShowScanResultsDialog}>
-                        <DialogContent className="bg-zinc-950 border-white/10 text-white max-w-md sm:max-w-lg p-0 rounded-2xl overflow-hidden">
-                            <DialogHeader className="px-5 pt-5 pb-3 border-b border-white/10">
+                        <DialogContent className="bg-zinc-950 border-white/10 text-white w-[95vw] max-w-md sm:max-w-lg p-0 rounded-2xl overflow-hidden flex flex-col max-h-[90dvh] [&>button]:w-10 [&>button]:h-10 [&>button]:top-3.5 [&>button]:right-3.5 [&>button]:flex [&>button]:items-center [&>button]:justify-center [&>button]:rounded-full [&>button]:bg-white/10 [&>button]:text-white [&>button]:opacity-100 [&>button]:hover:bg-red-500 [&>button]:z-50 [&>button_svg]:w-6 [&>button_svg]:h-6 [&>button_svg]:stroke-[2.5]">
+                            <DialogHeader className="shrink-0 px-5 pt-5 pb-3 pr-16 border-b border-white/10">
                                 <DialogTitle className="text-lg font-bold flex items-center gap-2">
                                     <MagnifyingGlass className="w-5 h-5 text-yellow-400" weight="bold" />
                                     {t('scan_select_card') || 'Select Your Card'}
                                 </DialogTitle>
                                 <p className="text-xs text-white/50 mt-1">{t('scan_top_matches') || 'Top matches from scan — tap to select'}</p>
                             </DialogHeader>
+
+                            {/* Scrollable body — keeps the modal within the screen height */}
+                            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+
 
                             {/* Scanned Image Preview */}
                             {scannedImagePreview && (
@@ -2208,7 +2212,7 @@ export function MarketSpotlight() {
                                 </div>
                             )}
 
-                            <div className="px-3 py-3 max-h-[60vh] overflow-y-auto space-y-2">
+                            <div className="px-3 py-3 space-y-2">
                                 {scanResults.map((result, index) => (
                                     <button
                                         key={result.product.product_id}
@@ -2298,6 +2302,7 @@ export function MarketSpotlight() {
                                         </div>
                                     </button>
                                 ))}
+                            </div>
                             </div>
                         </DialogContent>
                     </Dialog>
