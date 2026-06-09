@@ -1199,6 +1199,7 @@ export function MarketSpotlight() {
 
                     // Build number format variations
                     let altFormatsArray: string[] = [];
+                    let collectorPatterns: string[] = []; // ilike patterns by collector number
                     if (cardNumber) {
                         // Keep the RAW number too (handles letter-prefixed numbers like
                         // "TG12/TG30", "GG01/GG70", "SVP-001" that stripping would break).
@@ -1232,6 +1233,12 @@ export function MarketSpotlight() {
                                     altFormats.add(col + '/' + total);
                                 }
                             }
+                            // ilike patterns by collector number only — catches the right
+                            // card even when the AI misreads the SET TOTAL (e.g. /011 vs
+                            // /178) or the separator/format differs.
+                            const colPats = new Set<string>();
+                            for (const col of collectorVariations) colPats.add(`${col}/*`);
+                            collectorPatterns = Array.from(colPats);
                         }
                         altFormatsArray = Array.from(altFormats);
                     }
@@ -1283,17 +1290,31 @@ export function MarketSpotlight() {
                         );
                     }
 
+                    // --- STRATEGY 1b: By COLLECTOR number (ilike) — robust to a misread
+                    // set total / format. Pulls every #N card across sets so scoring
+                    // (name + set + language) can pick the exact one. ---
+                    if (!opId && collectorPatterns.length > 0) {
+                        const colClauses = collectorPatterns.map((n: string) => `number.ilike.${encodeURIComponent(n)}`).join(',');
+                        console.log(`TCGCSV: Collector-number search: ${collectorPatterns.join(', ')}`);
+                        await searchBothCategories(
+                            (catId) => {
+                                return `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&or=(${colClauses})&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=40`;
+                            },
+                            'collector-number'
+                        );
+                    }
+
                     // --- STRATEGIES 2 & 3: By name + base name ---
                     if (cardName) {
                         const baseName = cardName.replace(/\s*(ex|EX|Ex|V|GX|Gx|VMAX|Vmax|VSTAR|Vstar)\s*$/i, '').trim();
                         const nameSearches: Promise<void>[] = [];
 
                         console.log(`TCGCSV: Name search: "${cardName}"`);
-                        nameSearches.push(searchBothCategories((catId) => buildNameUrl(cardName, catId, 10), 'name'));
+                        nameSearches.push(searchBothCategories((catId) => buildNameUrl(cardName, catId, 20), 'name'));
 
                         if (baseName && baseName !== cardName) {
                             console.log(`TCGCSV: Base name search: "${baseName}"`);
-                            nameSearches.push(searchBothCategories((catId) => buildNameUrl(baseName, catId, 10), 'base name'));
+                            nameSearches.push(searchBothCategories((catId) => buildNameUrl(baseName, catId, 20), 'base name'));
                         }
 
                         await Promise.allSettled(nameSearches);
