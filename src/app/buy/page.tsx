@@ -23,6 +23,12 @@ const CheckoutModal = dynamic(
   { ssr: false }
 );
 
+// Make-offer flow is only needed once a buyer taps "Trả giá".
+const OfferModal = dynamic(
+  () => import('@/components/offer-modal').then((m) => m.OfferModal),
+  { ssr: false }
+);
+
 export type Filters = {
   search: string;
   categories: CardCategory[];
@@ -46,9 +52,15 @@ export default function BuyPage() {
   const [checkoutCard, setCheckoutCard] = useState<Card | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [sellerAddress, setSellerAddress] = useState<{ districtId: number; wardCode: string } | null>(null);
+  const [offerCard, setOfferCard] = useState<Card | null>(null);
+  const [offerOpen, setOfferOpen] = useState(false);
 
   useEffect(() => {
     const fetchCards = async () => {
+      // Self-heal: release cards whose QR/PayOS reservation lapsed so abandoned
+      // checkouts don't keep them hidden from the marketplace.
+      await supabase.rpc('release_expired_card_reservations' as never);
+
       const { data, error } = await supabase
         .from('cards')
         .select('*, profiles:seller_id(display_name, profile_image_url)')
@@ -85,6 +97,7 @@ export default function BuyPage() {
           isBundle: c.is_bundle,
           bundleItems: c.bundle_items,
           acceptOffers: c.accept_offers,
+          minOfferPercent: c.min_offer_percent,
           priceIsVnd: true, // Marketplace listings are entered in VND
         }));
         setSaleCards(cards);
@@ -188,6 +201,10 @@ export default function BuyPage() {
               }
 
               setCheckoutOpen(true);
+            }}
+            onOfferClick={(c) => {
+              setOfferCard(c);
+              setOfferOpen(true);
             }} />
           ))}
         </div>
@@ -270,6 +287,20 @@ export default function BuyPage() {
           window.location.reload();
         }}
       />
+      )}
+      {offerCard && (
+        <OfferModal
+          open={offerOpen}
+          onOpenChange={setOfferOpen}
+          card={{
+            id: offerCard.id,
+            name: offerCard.name,
+            imageUrl: offerCard.imageUrl,
+            price: offerCard.price ?? 0,
+            sellerId: offerCard.sellerId,
+            minOfferPercent: offerCard.minOfferPercent ?? 0,
+          }}
+        />
       )}
     </div>
   );

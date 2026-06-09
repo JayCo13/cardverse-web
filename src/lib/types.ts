@@ -39,6 +39,8 @@ export interface Card {
   isBundle?: boolean;
   bundleItems?: { title: string; price: number }[];
   acceptOffers?: boolean;
+  /** Minimum offer as a percent of the listed price (0 = no minimum). */
+  minOfferPercent?: number;
   /** If true, price is already in VND (marketplace listings). If false/undefined, price is in USD. */
   priceIsVnd?: boolean;
 }

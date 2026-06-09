@@ -38,3 +38,13 @@ export const PACKAGES = {
 } as const;
 
 export type PackageType = keyof typeof PACKAGES;
+
+export const DEPOSIT_PAYMENT_TYPE = 'deposit' as const;
+export const MARKETPLACE_ORDER_PAYMENT_TYPE = 'marketplace_order' as const;
+
+export const SUBSCRIPTION_PACKAGE_TYPES = Object.keys(PACKAGES) as PackageType[];
+
+export type PaymentOrderType =
+    | PackageType
+    | typeof DEPOSIT_PAYMENT_TYPE
+    | typeof MARKETPLACE_ORDER_PAYMENT_TYPE;

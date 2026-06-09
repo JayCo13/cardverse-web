@@ -79,6 +79,26 @@ interface BundleItem {
   price: number | undefined;
 }
 
+const MIN_MARKETPLACE_PRICE_VND = 1000;
+
+function parseVndNumberInput(value: unknown): number | undefined {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : undefined;
+  }
+
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const normalized = value.trim().replace(/[^\d]/g, '');
+  if (!normalized) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(normalized, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 const getFormSchema = (t: (key: any) => string) => z.object({
   name: z.string().min(5, { message: "Tiêu đề cần ít nhất 5 ký tự." }),
   isBundle: z.boolean().default(false),
@@ -99,17 +119,17 @@ const getFormSchema = (t: (key: any) => string) => z.object({
   psaGrade: z.number().min(1).max(10).optional(),
   listingType: z.enum(['sale', 'auction', 'razz']),
   price: z.preprocess(
-    (a) => a ? parseFloat(z.string().parse(a)) : undefined,
-    z.number().positive().optional()
+    (a) => parseVndNumberInput(a),
+    z.number().min(MIN_MARKETPLACE_PRICE_VND, { message: `Giá bán tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.` }).optional()
   ),
   startingBid: z.preprocess(
-    (a) => a ? parseFloat(z.string().parse(a)) : undefined,
-    z.number().positive().optional()
+    (a) => parseVndNumberInput(a),
+    z.number().min(MIN_MARKETPLACE_PRICE_VND, { message: `Giá khởi điểm tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.` }).optional()
   ),
   auctionEnds: z.string().optional(),
   ticketPrice: z.preprocess(
-    (a) => a ? parseFloat(z.string().parse(a)) : undefined,
-    z.number().positive().optional()
+    (a) => parseVndNumberInput(a),
+    z.number().min(MIN_MARKETPLACE_PRICE_VND, { message: `Giá vé tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.` }).optional()
   ),
   totalTickets: z.preprocess(
     (a) => a ? parseInt(z.string().parse(a), 10) : undefined,
@@ -232,7 +252,7 @@ export default function CreateListingPage() {
     setBundleItems(prev => prev.map(item => {
       if (item.id !== id) return item;
       if (field === 'price') {
-        return { ...item, price: value ? parseFloat(value) : undefined };
+        return { ...item, price: parseVndNumberInput(value) };
       }
       return { ...item, [field]: value };
     }));
@@ -1211,13 +1231,15 @@ export default function CreateListingPage() {
                   </FormLabel>
                   <FormControl>
                     <Input
-                      type="number"
+                      type="text"
+                      inputMode="numeric"
                       placeholder={isBundle
                         ? 'Nhập giá bán cho cả bộ (có thể khác tổng giá từng thẻ)'
                         : (locale === 'en-US' ? 'Enter your price in USD' : 'Nhập giá của bạn bằng VND')
                       }
                       {...field}
                       value={field.value ?? ''}
+                      onChange={(e) => field.onChange(e.target.value)}
                     />
                   </FormControl>
                   {isBundle && bundlePriceRange && (
@@ -1225,6 +1247,9 @@ export default function CreateListingPage() {
                       💡 Tổng giá từng thẻ: {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(bundlePriceRange.total)} — Bạn có thể đặt giá bán cả bộ thấp hơn hoặc cao hơn
                     </p>
                   )}
+                  <p className="text-xs text-muted-foreground">
+                    Giá đang dùng đơn vị VND. Ví dụ: `10000` = `10.000đ`.
+                  </p>
                   <FormMessage />
                 </FormItem>
               )}
@@ -1240,8 +1265,9 @@ export default function CreateListingPage() {
                   <FormItem>
                     <FormLabel className='text-lg font-semibold'>{t('starting_bid_label')}</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder={locale === 'en-US' ? 'Enter starting bid in USD' : 'Nhập giá khởi điểm bằng VND'} {...field} value={field.value ?? ''} />
+                      <Input type="text" inputMode="numeric" placeholder={locale === 'en-US' ? 'Enter starting bid in USD' : 'Nhập giá khởi điểm bằng VND'} {...field} value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value)} />
                     </FormControl>
+                    <p className="text-xs text-muted-foreground">Nhập theo VND. Ví dụ: `10000` = `10.000đ`.</p>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1271,8 +1297,9 @@ export default function CreateListingPage() {
                   <FormItem>
                     <FormLabel className='text-lg font-semibold'>{t('ticket_price_label')}</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder={locale === 'en-US' ? 'Enter ticket price in USD' : 'Nhập giá vé bằng VND'} {...field} value={field.value ?? ''} />
+                      <Input type="text" inputMode="numeric" placeholder={locale === 'en-US' ? 'Enter ticket price in USD' : 'Nhập giá vé bằng VND'} {...field} value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value)} />
                     </FormControl>
+                    <p className="text-xs text-muted-foreground">Nhập theo VND. Ví dụ: `10000` = `10.000đ`.</p>
                     <FormMessage />
                   </FormItem>
                 )}

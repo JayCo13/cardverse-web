@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 
+const MIN_MARKETPLACE_PRICE_VND = 1000;
+
 export async function POST(request: NextRequest) {
     try {
         const authClient = await createServerSupabaseClient();
@@ -37,6 +39,16 @@ export async function POST(request: NextRequest) {
         }
 
         const body = await request.json();
+        if (body.listing_type === 'sale' && Number(body.price) < MIN_MARKETPLACE_PRICE_VND) {
+            return NextResponse.json({ error: `Giá bán tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.` }, { status: 400 });
+        }
+        if (body.listing_type === 'auction' && Number(body.starting_bid) < MIN_MARKETPLACE_PRICE_VND) {
+            return NextResponse.json({ error: `Giá khởi điểm tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.` }, { status: 400 });
+        }
+        if (body.listing_type === 'razz' && Number(body.ticket_price) < MIN_MARKETPLACE_PRICE_VND) {
+            return NextResponse.json({ error: `Giá vé tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.` }, { status: 400 });
+        }
+
         const cardData = {
             ...body,
             seller_id: user.id,

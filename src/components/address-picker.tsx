@@ -50,6 +50,13 @@ export function AddressPicker({
     const [loadingDistricts, setLoadingDistricts] = useState(false);
     const [loadingWards, setLoadingWards] = useState(false);
 
+    useEffect(() => {
+        setSelectedProvince(value?.provinceId?.toString() || '');
+        setSelectedDistrict(value?.districtId?.toString() || '');
+        setSelectedWard(value?.wardCode || '');
+        setDetail(value?.detail || '');
+    }, [value?.provinceId, value?.districtId, value?.wardCode, value?.detail]);
+
     // Load provinces on mount
     useEffect(() => {
         const fetchProvinces = async () => {

@@ -12,10 +12,10 @@ const GHN_V2_BASE_URL = `${GHN_BASE_URL}/v2`;
 
 // Default dimensions for trading cards (envelope)
 export const CARD_DEFAULTS = {
-    weight: 100,     // grams
-    length: 20,      // cm
+    weight: 30,      // grams (single sleeved/toploaded card in an envelope)
+    length: 16,      // cm
     width: 12,       // cm
-    height: 2,       // cm
+    height: 1,       // cm
     service_type_id: 2, // E-Commerce Delivery
 };
 
@@ -209,12 +209,14 @@ export async function calculateShippingFee(params: {
         height = CARD_DEFAULTS.height,
     } = params;
 
+    const resolvedServiceId = serviceId
+        || (await getAvailableServices(fromDistrictId, toDistrictId).then((services) => services[0]?.service_id).catch(() => undefined));
+
     const body: Record<string, unknown> = {
         from_district_id: fromDistrictId,
         from_ward_code: fromWardCode,
         to_district_id: toDistrictId,
         to_ward_code: toWardCode,
-        service_type_id: CARD_DEFAULTS.service_type_id,
         weight,
         length,
         width,
@@ -222,8 +224,10 @@ export async function calculateShippingFee(params: {
         insurance_value: insuranceValue,
     };
 
-    if (serviceId) {
-        body.service_id = serviceId;
+    if (resolvedServiceId) {
+        body.service_id = resolvedServiceId;
+    } else {
+        body.service_type_id = CARD_DEFAULTS.service_type_id;
     }
 
     return ghnFetch<GHNShippingFee>('/shipping-order/fee', { useV2: true, body });

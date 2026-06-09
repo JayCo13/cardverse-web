@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getPayOS, PACKAGES, type PackageType } from '@/lib/payos';
+import {
+    DEPOSIT_PAYMENT_TYPE,
+    getPayOS,
+    MARKETPLACE_ORDER_PAYMENT_TYPE,
+    PACKAGES,
+    type PackageType,
+    type PaymentOrderType,
+    SUBSCRIPTION_PACKAGE_TYPES,
+} from '@/lib/payos';
 
-// Use service role client for webhook (no user session)
 function getServiceClient() {
     return createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -10,17 +17,177 @@ function getServiceClient() {
     );
 }
 
+function isSubscriptionPackageType(type: PaymentOrderType): type is PackageType {
+    return SUBSCRIPTION_PACKAGE_TYPES.includes(type as PackageType);
+}
+
+async function cancelMarketplaceOrder(
+    supabase: ReturnType<typeof getServiceClient>,
+    paymentOrderId: string
+) {
+    const { data: marketplaceOrder } = await supabase
+        .from('orders')
+        .select('id, card_id, status')
+        .eq('payment_order_id', paymentOrderId)
+        .single();
+
+    if (!marketplaceOrder || marketplaceOrder.status !== 'pending_payment') {
+        return;
+    }
+
+    await supabase
+        .from('orders')
+        .update({
+            status: 'cancelled',
+            updated_at: new Date().toISOString(),
+        } as never)
+        .eq('id', marketplaceOrder.id)
+        .eq('status', 'pending_payment');
+
+    await supabase
+        .from('cards')
+        .update({
+            status: 'active',
+            reserved_until: null,
+            updated_at: new Date().toISOString(),
+        } as never)
+        .eq('id', marketplaceOrder.card_id)
+        .eq('status', 'in_transaction');
+}
+
+async function completeWalletDeposit(
+    supabase: ReturnType<typeof getServiceClient>,
+    userId: string,
+    amount: number,
+    referenceId: string
+) {
+    let { data: wallet } = await supabase
+        .from('wallets')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+    if (!wallet) {
+        const { data: createdWallet } = await supabase
+            .from('wallets')
+            .insert({ user_id: userId } as never)
+            .select()
+            .single();
+        wallet = createdWallet;
+    }
+
+    if (!wallet) {
+        throw new Error('Wallet not found');
+    }
+
+    const nextBalance = (wallet.available_balance || 0) + amount;
+    const nextTotalDeposited = (wallet.total_deposited || 0) + amount;
+
+    await supabase
+        .from('wallets')
+        .update({
+            available_balance: nextBalance,
+            total_deposited: nextTotalDeposited,
+            updated_at: new Date().toISOString(),
+        } as never)
+        .eq('user_id', userId);
+
+    await supabase.from('wallet_transactions').insert({
+        wallet_id: wallet.id,
+        user_id: userId,
+        type: 'deposit',
+        amount,
+        balance_after: nextBalance,
+        description: 'Nạp ví qua PayOS',
+        reference_id: referenceId,
+    } as never);
+}
+
+async function notifySellerOfSale(
+    supabase: ReturnType<typeof getServiceClient>,
+    sellerId: string,
+    cardId: string
+) {
+    await supabase.from('notifications').insert({
+        user_id: sellerId,
+        type: 'order_new',
+        title: 'Đơn hàng mới!',
+        message: 'Người mua đã thanh toán thành công. Vui lòng chuẩn bị giao hàng.',
+        card_id: cardId,
+    } as never);
+}
+
+async function completeMarketplaceOrderPayment(
+    supabase: ReturnType<typeof getServiceClient>,
+    paymentOrderId: string
+) {
+    const { data: marketplaceOrder } = await supabase
+        .from('orders')
+        .select('id, card_id, seller_id, buyer_id, status')
+        .eq('payment_order_id', paymentOrderId)
+        .single();
+
+    if (!marketplaceOrder) {
+        return;
+    }
+    const now = new Date().toISOString();
+
+    // Normal path: the reservation is still alive → finalize the sale.
+    if (marketplaceOrder.status === 'pending_payment') {
+        await supabase
+            .from('orders')
+            .update({ status: 'paid', updated_at: now } as never)
+            .eq('id', marketplaceOrder.id)
+            .eq('status', 'pending_payment');
+
+        // Lock the card as sold and clear the reservation hold.
+        await supabase
+            .from('cards')
+            .update({ status: 'sold', reserved_until: null, updated_at: now } as never)
+            .eq('id', marketplaceOrder.card_id);
+
+        await notifySellerOfSale(supabase, marketplaceOrder.seller_id, marketplaceOrder.card_id);
+        return;
+    }
+
+    // Edge case: the reservation expired and the order was auto-cancelled just
+    // before this payment landed. Re-acquire the card if it's still free;
+    // otherwise it was taken by someone else → flag the buyer for a refund.
+    if (marketplaceOrder.status === 'cancelled') {
+        const { data: reacquired } = await supabase
+            .from('cards')
+            .update({ status: 'sold', reserved_until: null, updated_at: now } as never)
+            .eq('id', marketplaceOrder.card_id)
+            .eq('status', 'active')
+            .select('id')
+            .maybeSingle();
+
+        if (reacquired) {
+            await supabase
+                .from('orders')
+                .update({ status: 'paid', updated_at: now } as never)
+                .eq('id', marketplaceOrder.id);
+            await notifySellerOfSale(supabase, marketplaceOrder.seller_id, marketplaceOrder.card_id);
+        } else {
+            await supabase.from('notifications').insert({
+                user_id: marketplaceOrder.buyer_id,
+                type: 'refund_needed',
+                title: 'Thanh toán cần hoàn tiền',
+                message: 'Thẻ đã không còn khả dụng khi thanh toán hoàn tất. Vui lòng liên hệ hỗ trợ để được hoàn tiền.',
+                card_id: marketplaceOrder.card_id,
+            } as never);
+        }
+    }
+}
+
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
 
-        // ── Test webhook from PayOS dashboard (orderCode === 123) ──
-        // Return 200 immediately — no activation happens.
         if (body?.data?.orderCode === 123) {
             return NextResponse.json({ success: true });
         }
 
-        // ── Signature verification ──
         let webhookData;
         try {
             webhookData = await getPayOS().webhooks.verify(body);
@@ -31,7 +198,6 @@ export async function POST(request: NextRequest) {
 
         const supabase = getServiceClient();
 
-        // ── Find the payment order ──
         const { data: order, error: orderError } = await supabase
             .from('payment_orders')
             .select('*')
@@ -43,55 +209,66 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Order not found' }, { status: 404 });
         }
 
-        // ── Idempotency: already processed ──
+        const orderType = order.package_type as PaymentOrderType;
+
         if (order.status === 'paid') {
             return NextResponse.json({ success: true });
         }
 
-        // ── Payment failed/cancelled ──
         if (webhookData.code !== '00') {
             await supabase
                 .from('payment_orders')
                 .update({ status: 'cancelled' })
                 .eq('order_code', webhookData.orderCode);
+
+            if (orderType === MARKETPLACE_ORDER_PAYMENT_TYPE) {
+                await cancelMarketplaceOrder(supabase, order.id);
+            }
+
             return NextResponse.json({ success: true });
         }
 
-        // ── SECURITY: Amount verification ──
-        // Verify that the amount the user paid matches what we expected.
-        // This prevents an attacker from paying 1 VND for a VIP Pro package.
-        const expectedPkg = PACKAGES[order.package_type as PackageType];
-        if (!expectedPkg || webhookData.amount !== expectedPkg.amount) {
+        const expectedAmount = isSubscriptionPackageType(orderType)
+            ? PACKAGES[orderType].amount
+            : order.amount;
+
+        if (webhookData.amount !== expectedAmount) {
             console.error(
-                `[SECURITY] Amount mismatch! Expected ${expectedPkg?.amount}, got ${webhookData.amount} for order ${webhookData.orderCode}`
+                `[SECURITY] Amount mismatch! Expected ${expectedAmount}, got ${webhookData.amount} for order ${webhookData.orderCode}`
             );
+
             await supabase
                 .from('payment_orders')
                 .update({ status: 'fraud_suspected' })
                 .eq('order_code', webhookData.orderCode);
+
+            if (orderType === MARKETPLACE_ORDER_PAYMENT_TYPE) {
+                await cancelMarketplaceOrder(supabase, order.id);
+            }
+
             return NextResponse.json({ error: 'Amount mismatch' }, { status: 400 });
         }
 
-        // ── Mark order as paid (atomic — only update if still pending) ──
         const { data: updatedOrder, error: updateError } = await supabase
             .from('payment_orders')
             .update({ status: 'paid', paid_at: new Date().toISOString() })
             .eq('order_code', webhookData.orderCode)
-            .eq('status', 'pending') // Ensures no double processing
+            .eq('status', 'pending')
             .select('id')
             .single();
 
         if (updateError || !updatedOrder) {
-            // Another webhook instance already processed this order
             console.log('[INFO] Order already processed (race condition prevented):', webhookData.orderCode);
             return NextResponse.json({ success: true });
         }
 
-        // ── Activate the package ──
-        const packageType = order.package_type as PackageType;
         const userId = order.user_id;
 
-        if (packageType === 'day_pass') {
+        if (orderType === DEPOSIT_PAYMENT_TYPE) {
+            await completeWalletDeposit(supabase, userId, order.amount, String(webhookData.orderCode));
+        } else if (orderType === MARKETPLACE_ORDER_PAYMENT_TYPE) {
+            await completeMarketplaceOrderPayment(supabase, order.id);
+        } else if (orderType === 'day_pass') {
             await supabase.from('user_subscriptions').insert({
                 user_id: userId,
                 package_type: 'day_pass',
@@ -100,11 +277,7 @@ export async function POST(request: NextRequest) {
                 expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
                 payment_reference: String(webhookData.orderCode),
             });
-        } else if (packageType === 'credit_pack') {
-            // Atomic credit stacking:
-            // 1. Find existing active credit pack
-            // 2. If found, increment credits atomically via raw SQL
-            // 3. If not found, insert a new row
+        } else if (orderType === 'credit_pack') {
             const { data: existingPack } = await supabase
                 .from('user_subscriptions')
                 .select('id, scan_credits_remaining')
@@ -117,13 +290,12 @@ export async function POST(request: NextRequest) {
                 .single();
 
             if (existingPack) {
-                // Atomic increment — uses the DB's current value, not a stale JS value
                 const newCredits = (existingPack.scan_credits_remaining || 0) + 100;
                 await supabase
                     .from('user_subscriptions')
                     .update({ scan_credits_remaining: newCredits })
                     .eq('id', existingPack.id)
-                    .eq('scan_credits_remaining', existingPack.scan_credits_remaining); // Optimistic lock
+                    .eq('scan_credits_remaining', existingPack.scan_credits_remaining);
             } else {
                 await supabase.from('user_subscriptions').insert({
                     user_id: userId,
@@ -133,8 +305,7 @@ export async function POST(request: NextRequest) {
                     payment_reference: String(webhookData.orderCode),
                 });
             }
-        } else if (packageType === 'vip_pro') {
-            // Check if user has existing VIP Pro — extend it
+        } else if (orderType === 'vip_pro') {
             const { data: existingVip } = await supabase
                 .from('user_subscriptions')
                 .select('id, expires_at')
@@ -163,23 +334,24 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // ── Wallet ledger entry ──
-        const { data: wallet } = await supabase
-            .from('wallets')
-            .select('id, available_balance')
-            .eq('user_id', userId)
-            .single();
+        if (isSubscriptionPackageType(orderType)) {
+            const { data: wallet } = await supabase
+                .from('wallets')
+                .select('id, available_balance')
+                .eq('user_id', userId)
+                .single();
 
-        if (wallet) {
-            await supabase.from('wallet_transactions').insert({
-                wallet_id: wallet.id,
-                user_id: userId,
-                type: packageType === 'vip_pro' ? 'vip_subscription' : 'scan_purchase',
-                amount: -order.amount,
-                balance_after: wallet.available_balance,
-                description: `Purchased ${packageType.replace('_', ' ')}`,
-                reference_id: String(webhookData.orderCode),
-            });
+            if (wallet) {
+                await supabase.from('wallet_transactions').insert({
+                    wallet_id: wallet.id,
+                    user_id: userId,
+                    type: orderType === 'vip_pro' ? 'vip_subscription' : 'scan_purchase',
+                    amount: -order.amount,
+                    balance_after: wallet.available_balance,
+                    description: `Purchased ${orderType.replace('_', ' ')}`,
+                    reference_id: String(webhookData.orderCode),
+                });
+            }
         }
 
         return NextResponse.json({ success: true });
