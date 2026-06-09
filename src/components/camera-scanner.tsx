@@ -28,12 +28,16 @@ export function CameraScanner({
     const prevSampleRef = useRef<Float32Array | null>(null);
     const stableRef = useRef(0);
     const sharpPeakRef = useRef(0); // best sharpness seen this session
+    const zoomRef = useRef(1);
+    const pinchRef = useRef<{ dist: number; zoom: number } | null>(null);
 
     const [error, setError] = useState<string | null>(null);
     const [ready, setReady] = useState(false);
     const [autoOn, setAutoOn] = useState(true);
     const [progress, setProgress] = useState(0); // 0..1 stabilization
     const [focusing, setFocusing] = useState(false); // steady but waiting for sharp focus
+    const [zoom, setZoom] = useState(1);
+    const [zoomCaps, setZoomCaps] = useState<{ min: number; max: number; step: number } | null>(null);
 
     const STEADY_NEED = 3; // consecutive steady samples (~0.6s) before auto-fire
     const FOCUS_FALLBACK = 14; // ~2.8s steady → capture even if focus floor not reached
@@ -91,7 +95,9 @@ export function CameraScanner({
         prevSampleRef.current = null;
         stableRef.current = 0;
         sharpPeakRef.current = 0;
+        zoomRef.current = 1;
         setError(null); setReady(false); setProgress(0); setFocusing(false);
+        setZoom(1); setZoomCaps(null);
 
         const tick = () => {
             if (!autoRef.current || capturedRef.current || !sctx) return;
@@ -169,6 +175,17 @@ export function CameraScanner({
                     // focusMode isn't in the standard TS types yet
                     await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] } as unknown as MediaTrackConstraints);
                 } catch { /* not supported — rely on the sharpness gate */ }
+                try {
+                    // Hardware zoom (real optical/digital sensor zoom → keeps detail,
+                    // makes the tiny card number readable). Only some cameras expose it.
+                    const track = stream.getVideoTracks()[0];
+                    const caps = (track.getCapabilities?.() || {}) as unknown as { zoom?: { min: number; max: number; step?: number } };
+                    if (caps.zoom && caps.zoom.max > caps.zoom.min) {
+                        zoomRef.current = caps.zoom.min || 1;
+                        setZoom(zoomRef.current);
+                        setZoomCaps({ min: caps.zoom.min, max: caps.zoom.max, step: caps.zoom.step || 0.1 });
+                    }
+                } catch { /* no zoom support */ }
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
                     await videoRef.current.play().catch(() => { });
@@ -194,6 +211,31 @@ export function CameraScanner({
         stableRef.current = 0; setProgress(0); setFocusing(false);
     };
 
+    const applyZoom = (z: number) => {
+        if (!zoomCaps) return;
+        const track = streamRef.current?.getVideoTracks()[0];
+        if (!track) return;
+        const nz = Math.min(zoomCaps.max, Math.max(zoomCaps.min, z));
+        zoomRef.current = nz;
+        setZoom(nz);
+        track.applyConstraints({ advanced: [{ zoom: nz }] } as unknown as MediaTrackConstraints).catch(() => { });
+        stableRef.current = 0; // zooming changes the view — don't auto-capture mid-zoom
+    };
+
+    const dist2 = (t: React.TouchList | TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const onTouchStart = (e: React.TouchEvent) => {
+        if (e.touches.length === 2 && zoomCaps) pinchRef.current = { dist: dist2(e.touches), zoom: zoomRef.current };
+    };
+    const onTouchMove = (e: React.TouchEvent) => {
+        if (e.touches.length === 2 && pinchRef.current) {
+            const ratio = dist2(e.touches) / pinchRef.current.dist;
+            applyZoom(pinchRef.current.zoom * ratio);
+        }
+    };
+    const onTouchEnd = (e: React.TouchEvent) => {
+        if (e.touches.length < 2) pinchRef.current = null;
+    };
+
     if (!open) return null;
 
     return (
@@ -211,7 +253,13 @@ export function CameraScanner({
                 </button>
             </div>
 
-            <div className="relative flex-1 overflow-hidden">
+            <div
+                className="relative flex-1 overflow-hidden"
+                style={{ touchAction: "none" }}
+                onTouchStart={onTouchStart}
+                onTouchMove={onTouchMove}
+                onTouchEnd={onTouchEnd}
+            >
                 {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                 <video ref={videoRef} playsInline muted autoPlay className="absolute inset-0 w-full h-full object-cover" />
 
@@ -245,6 +293,23 @@ export function CameraScanner({
                 {error && (
                     <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-white/80 bg-black/80">
                         {error}
+                    </div>
+                )}
+
+                {/* Zoom slider (camera hardware zoom) — pinch-to-zoom also works */}
+                {ready && zoomCaps && (
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/55 backdrop-blur rounded-full px-4 py-2">
+                        <span className="text-[11px] text-white/70 font-semibold w-9 text-right">{zoom.toFixed(1)}×</span>
+                        <input
+                            type="range"
+                            min={zoomCaps.min}
+                            max={zoomCaps.max}
+                            step={zoomCaps.step}
+                            value={zoom}
+                            onChange={(e) => applyZoom(parseFloat(e.target.value))}
+                            className="w-44 accent-orange-500"
+                            aria-label="Zoom"
+                        />
                     </div>
                 )}
             </div>
