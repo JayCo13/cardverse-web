@@ -15,6 +15,7 @@ import { User, Camera, Save, ArrowLeft, Lock, Crown, MapPin, Activity, Zap, Truc
 import Image from "next/image";
 import Link from "next/link";
 import { useAuthModal } from "@/components/auth-modal";
+import { AddressBook } from "@/components/address-book";
 
 import { useToast } from "@/hooks/use-toast";
 
@@ -272,6 +273,11 @@ export default function EditProfilePage() {
                             <span className="hidden sm:inline">Gói VIP & Dịch vụ</span>
                             <span className="sm:hidden">VIP</span>
                         </TabsTrigger>
+                        <TabsTrigger value="addresses" className="flex justify-start gap-3 w-full data-[state=active]:bg-primary/5 data-[state=active]:text-primary border border-transparent data-[state=active]:border-primary/20 py-2.5 px-4 rounded-lg transition-all">
+                            <MapPin className="h-4 w-4" />
+                            <span className="hidden sm:inline">Sổ địa chỉ</span>
+                            <span className="sm:hidden">Địa chỉ</span>
+                        </TabsTrigger>
                         <TabsTrigger value="security" className="flex justify-start gap-3 w-full data-[state=active]:bg-primary/5 data-[state=active]:text-primary border border-transparent data-[state=active]:border-primary/20 py-2.5 px-4 rounded-lg transition-all">
                             <Lock className="h-4 w-4" />
                             <span className="hidden sm:inline">Bảo mật</span>
@@ -471,6 +477,22 @@ export default function EditProfilePage() {
                                     </Card>
                                 </div>
                             </div>
+                        </TabsContent>
+
+                        {/* ─── ADDRESS BOOK TAB ─── */}
+                        <TabsContent value="addresses" className="mt-0 outline-none">
+                            <Card className="border-border">
+                                <CardHeader>
+                                    <div className="flex items-center gap-2">
+                                        <MapPin className="h-5 w-5 text-orange-500" />
+                                        <CardTitle>Sổ địa chỉ</CardTitle>
+                                    </div>
+                                    <CardDescription>Quản lý các địa chỉ nhận hàng. Địa chỉ mặc định sẽ được chọn sẵn khi thanh toán.</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <AddressBook />
+                                </CardContent>
+                            </Card>
                         </TabsContent>
 
                         {/* ─── 4. SECURITY TAB ─── */}

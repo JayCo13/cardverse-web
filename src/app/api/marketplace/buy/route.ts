@@ -1,9 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { getPayOS } from '@/lib/payos';
+import { getPayOS, MARKETPLACE_ORDER_PAYMENT_TYPE } from '@/lib/payos';
 import { randomInt } from 'crypto';
 
 const PLATFORM_FEE_RATE = 0.05; // 5% platform fee
+const RESERVATION_MINUTES = 15; // How long a QR/PayOS checkout holds the card
+
+type MarketplaceCard = {
+    id: string;
+    seller_id: string;
+    name: string;
+    price: number | null;
+};
+
+type WalletRow = {
+    id: string;
+    available_balance: number;
+};
+
+type PaymentOrderRow = {
+    id: string;
+};
 
 export async function POST(request: NextRequest) {
     try {
@@ -35,6 +52,25 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid payment method' }, { status: 400 });
         }
 
+        if (
+            !to_name ||
+            !to_phone ||
+            !to_district_id ||
+            !to_district_name ||
+            !to_province_id ||
+            !to_province_name ||
+            !to_ward_code ||
+            !to_ward_name ||
+            !to_address_detail
+        ) {
+            return NextResponse.json({ error: 'Shipping address is incomplete' }, { status: 400 });
+        }
+
+        // Free any cards whose PayOS reservation lapsed (buyer abandoned the QR
+        // and PayOS never sent a cancel webhook) before we read this one, so a
+        // previously-stuck card can be bought again.
+        await supabase.rpc('release_expired_card_reservations' as never);
+
         // Get card details
         const { data: card, error: cardError } = await supabase
             .from('cards')
@@ -42,7 +78,7 @@ export async function POST(request: NextRequest) {
             .eq('id', card_id)
             .eq('status', 'active')
             .eq('listing_type', 'sale')
-            .single();
+            .single<MarketplaceCard>();
 
         if (cardError || !card) {
             return NextResponse.json({ error: 'Card not found or not available' }, { status: 404 });
@@ -57,19 +93,23 @@ export async function POST(request: NextRequest) {
         const platformFee = Math.round(amount * PLATFORM_FEE_RATE);
         const totalPaid = amount + shippingFee; // Buyer pays listed price + shipping fee
 
+        // Address persistence now lives in the shipping_addresses book (managed
+        // straight from checkout), so the buy route no longer writes any
+        // profiles.default_shipping_* defaults here.
+
+        // Wallet pre-check (no mutation) — verify funds BEFORE claiming so we
+        // never lock the card for a buyer who can't actually pay.
+        let walletRow: WalletRow | null = null;
         if (payment_method === 'wallet') {
-            // ── WALLET PAYMENT ──
-            // Check wallet balance
             const { data: wallet, error: walletError } = await supabase
                 .from('wallets')
                 .select('*')
                 .eq('user_id', user.id)
-                .single();
+                .single<WalletRow>();
 
             if (walletError || !wallet) {
                 return NextResponse.json({ error: 'Wallet not found. Please deposit first.' }, { status: 400 });
             }
-
             if (wallet.available_balance < totalPaid) {
                 return NextResponse.json({
                     error: 'Insufficient balance',
@@ -77,7 +117,37 @@ export async function POST(request: NextRequest) {
                     required: totalPaid,
                 }, { status: 400 });
             }
+            walletRow = wallet;
+        }
 
+        // Atomic claim — the concurrency gate. Only the first buyer flips the
+        // card active → in_transaction; a simultaneous second buyer matches 0
+        // rows here and is rejected, so one card can never be sold twice.
+        const reservedUntil = new Date(Date.now() + RESERVATION_MINUTES * 60 * 1000);
+        const { data: claimed } = await supabase
+            .from('cards')
+            .update({
+                status: 'in_transaction',
+                reserved_until: reservedUntil.toISOString(),
+                updated_at: new Date().toISOString(),
+            } as never)
+            .eq('id', card_id)
+            .eq('status', 'active')
+            .eq('listing_type', 'sale')
+            .select('id')
+            .maybeSingle();
+
+        if (!claimed) {
+            return NextResponse.json(
+                { error: 'Thẻ này vừa được người khác mua. Vui lòng chọn thẻ khác.', code: 'card_unavailable' },
+                { status: 409 },
+            );
+        }
+
+        try {
+        if (payment_method === 'wallet') {
+            // ── WALLET PAYMENT ──
+            const wallet = walletRow!;
             // Deduct from buyer wallet
             const newBalance = wallet.available_balance - totalPaid;
             const { error: deductError } = await supabase
@@ -130,10 +200,10 @@ export async function POST(request: NextRequest) {
 
             if (orderError) throw orderError;
 
-            // Mark card as sold
+            // Mark card as sold and clear the reservation hold
             await supabase
                 .from('cards')
-                .update({ status: 'sold', updated_at: new Date().toISOString() } as never)
+                .update({ status: 'sold', reserved_until: null, updated_at: new Date().toISOString() } as never)
                 .eq('id', card_id);
 
             // Notify seller
@@ -157,12 +227,12 @@ export async function POST(request: NextRequest) {
                 .insert({
                     user_id: user.id,
                     order_code: orderCode,
-                    package_type: 'deposit', // reuse deposit flow, will be handled by webhook
+                    package_type: MARKETPLACE_ORDER_PAYMENT_TYPE,
                     amount: totalPaid,
                     status: 'pending',
                 } as never)
                 .select()
-                .single();
+                .single<PaymentOrderRow>();
 
             if (poError) throw poError;
 
@@ -196,19 +266,17 @@ export async function POST(request: NextRequest) {
 
             if (orderError) throw orderError;
 
-            // Mark card as in_transaction
-            await supabase
-                .from('cards')
-                .update({ status: 'in_transaction', updated_at: new Date().toISOString() } as never)
-                .eq('id', card_id);
-
-            // Create PayOS link
+            // Card is already reserved by the atomic claim above (for
+            // RESERVATION_MINUTES). Create the PayOS link.
             const origin = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
             const paymentLink = await getPayOS().paymentRequests.create({
                 orderCode,
                 amount: totalPaid,
                 description: `Mua the ${card.name.substring(0, 20)}`,
+                // Expire the link with the reservation so PayOS also fires a
+                // cancel webhook (which releases the card) when time runs out.
+                expiredAt: Math.floor(reservedUntil.getTime() / 1000),
                 cancelUrl: `${origin}/orders?status=cancelled`,
                 returnUrl: `${origin}/orders?status=success`,
                 items: [{
@@ -235,6 +303,15 @@ export async function POST(request: NextRequest) {
                 qrCode: paymentLink.qrCode,
                 orderCode,
             });
+        }
+        } catch (err) {
+            // Roll back the claim so a failed transaction doesn't strand the card.
+            await supabase
+                .from('cards')
+                .update({ status: 'active', reserved_until: null, updated_at: new Date().toISOString() } as never)
+                .eq('id', card_id)
+                .eq('status', 'in_transaction');
+            throw err;
         }
     } catch (error: any) {
         console.error('Marketplace buy error:', error);

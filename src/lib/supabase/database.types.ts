@@ -35,6 +35,16 @@ export interface Database {
                     address_ward_code: string | null
                     address_ward_name: string | null
                     address_detail: string | null
+                    default_shipping_name: string | null
+                    default_shipping_phone: string | null
+                    default_shipping_address: string | null
+                    default_shipping_province_id: number | null
+                    default_shipping_province_name: string | null
+                    default_shipping_district_id: number | null
+                    default_shipping_district_name: string | null
+                    default_shipping_ward_code: string | null
+                    default_shipping_ward_name: string | null
+                    default_shipping_detail: string | null
                     created_at: string
                     updated_at: string
                 }
@@ -63,6 +73,16 @@ export interface Database {
                     address_ward_code?: string | null
                     address_ward_name?: string | null
                     address_detail?: string | null
+                    default_shipping_name?: string | null
+                    default_shipping_phone?: string | null
+                    default_shipping_address?: string | null
+                    default_shipping_province_id?: number | null
+                    default_shipping_province_name?: string | null
+                    default_shipping_district_id?: number | null
+                    default_shipping_district_name?: string | null
+                    default_shipping_ward_code?: string | null
+                    default_shipping_ward_name?: string | null
+                    default_shipping_detail?: string | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -91,6 +111,66 @@ export interface Database {
                     address_ward_code?: string | null
                     address_ward_name?: string | null
                     address_detail?: string | null
+                    default_shipping_name?: string | null
+                    default_shipping_phone?: string | null
+                    default_shipping_address?: string | null
+                    default_shipping_province_id?: number | null
+                    default_shipping_province_name?: string | null
+                    default_shipping_district_id?: number | null
+                    default_shipping_district_name?: string | null
+                    default_shipping_ward_code?: string | null
+                    default_shipping_ward_name?: string | null
+                    default_shipping_detail?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+            }
+            shipping_addresses: {
+                Row: {
+                    id: string
+                    user_id: string
+                    recipient_name: string
+                    phone: string
+                    province_id: number
+                    province_name: string
+                    district_id: number
+                    district_name: string
+                    ward_code: string
+                    ward_name: string
+                    detail: string
+                    is_default: boolean
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    user_id: string
+                    recipient_name: string
+                    phone: string
+                    province_id: number
+                    province_name: string
+                    district_id: number
+                    district_name: string
+                    ward_code: string
+                    ward_name: string
+                    detail: string
+                    is_default?: boolean
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    user_id?: string
+                    recipient_name?: string
+                    phone?: string
+                    province_id?: number
+                    province_name?: string
+                    district_id?: number
+                    district_name?: string
+                    ward_code?: string
+                    ward_name?: string
+                    detail?: string
+                    is_default?: boolean
                     created_at?: string
                     updated_at?: string
                 }
@@ -123,6 +203,7 @@ export interface Database {
                     is_bundle: boolean
                     bundle_items: Json | null
                     quantity: number
+                    reserved_until: string | null
                     created_at: string
                     updated_at: string
                 }
@@ -153,6 +234,7 @@ export interface Database {
                     is_bundle?: boolean
                     bundle_items?: Json | null
                     quantity?: number
+                    reserved_until?: string | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -183,6 +265,7 @@ export interface Database {
                     is_bundle?: boolean
                     bundle_items?: Json | null
                     quantity?: number
+                    reserved_until?: string | null
                     created_at?: string
                     updated_at?: string
                 }

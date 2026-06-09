@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Clock, Tag, Ticket, Hammer, Zap, Sparkles, Target, Trophy, Star, Gem, Crown, Settings, User } from "lucide-react";
+import { Clock, Tag, Ticket, Hammer, Zap, Sparkles, Target, Trophy, Star, Gem, Crown, Settings, User, HandCoins } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useLocalization } from "@/context/localization-context";
 import { useCurrency } from "@/contexts/currency-context";
@@ -87,9 +87,10 @@ interface CardItemProps {
   card: CardType;
   layout?: 'grid' | 'list';
   onBuyClick?: (card: CardType) => void;
+  onOfferClick?: (card: CardType) => void;
 }
 
-export const CardItem = React.memo(function CardItem({ card, layout = 'grid', onBuyClick }: CardItemProps) {
+export const CardItem = React.memo(function CardItem({ card, layout = 'grid', onBuyClick, onOfferClick }: CardItemProps) {
   const { t } = useLocalization();
   const { formatPrice } = useCurrency();
   const { setOpen } = useAuthModal();
@@ -117,6 +118,22 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
     // Navigate to card details/manage page
     router.push(`/cards/${card.id}`);
   };
+
+  const handleOfferClick = () => {
+    if (!user) {
+      setOpen(true);
+      return;
+    }
+    onOfferClick?.(card);
+  };
+
+  // Buyer can negotiate when the seller allows offers (active sale, not owner).
+  const canOffer =
+    !!onOfferClick &&
+    !isOwner &&
+    card.listingType === 'sale' &&
+    card.status !== 'sold' &&
+    !!card.acceptOffers;
 
   const getBadgeVariant = (condition?: string) => {
     if (!condition) return 'outline';
@@ -185,6 +202,18 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
               <span className="text-[10px] text-amber-500 font-medium">Nhận offer</span>
             )}
             <Button size="sm" aria-label={`Buy ${card.name} now`} className="w-full mt-1 sm:mt-2 text-xs sm:text-sm h-7 sm:h-8 md:h-9" onClick={handleActionClick}>{t('card_item_buy_now')}</Button>
+            {canOffer && (
+              <Button
+                size="sm"
+                variant="outline"
+                aria-label={`Make an offer for ${card.name}`}
+                className="w-full text-xs sm:text-sm h-7 sm:h-8 md:h-9 border-amber-500/50 text-amber-600 hover:bg-amber-500/10 hover:text-amber-600"
+                onClick={handleOfferClick}
+              >
+                <HandCoins className="mr-1 h-3 w-3 sm:h-4 sm:w-4" />
+                Trả giá
+              </Button>
+            )}
           </div>
         );
       case 'auction':

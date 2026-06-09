@@ -4,14 +4,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Wallet, CreditCard, Loader2, CheckCircle, ShieldCheck, ExternalLink, Truck } from 'lucide-react';
 import { useAuth } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
-import { AddressPicker, type AddressData } from '@/components/address-picker';
+import { AddressBook, type SavedAddress } from '@/components/address-book';
 import Image from 'next/image';
 
 type Card = {
@@ -44,10 +43,8 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
   const [isLoadingWallet, setIsLoadingWallet] = useState(true);
   const [isPurchasing, setIsPurchasing] = useState(false);
 
-  // Shipping
-  const [buyerAddress, setBuyerAddress] = useState<AddressData | null>(null);
-  const [buyerName, setBuyerName] = useState('');
-  const [buyerPhone, setBuyerPhone] = useState('');
+  // Shipping — address comes from the buyer's TikTok-style address book.
+  const [selectedAddress, setSelectedAddress] = useState<SavedAddress | null>(null);
   const [shippingFee, setShippingFee] = useState<number | null>(null);
   const [loadingFee, setLoadingFee] = useState(false);
   const [feeError, setFeeError] = useState('');
@@ -57,6 +54,13 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
       fetchWalletBalance();
     }
   }, [open, user]);
+
+  useEffect(() => {
+    if (!open) return;
+    setSelectedAddress(null);
+    setShippingFee(null);
+    setFeeError('');
+  }, [open, card?.id]);
 
   const fetchWalletBalance = async () => {
     setIsLoadingWallet(true);
@@ -71,9 +75,8 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
     }
   };
 
-  // Calculate shipping fee when buyer selects address
-  const calculateFee = useCallback(async (address: AddressData | null) => {
-    setBuyerAddress(address);
+  // Calculate the GHN shipping fee for the chosen address.
+  const calculateFee = useCallback(async (address: SavedAddress | null) => {
     setShippingFee(null);
     setFeeError('');
 
@@ -86,8 +89,8 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
       const params = new URLSearchParams({
         from_district_id: sellerAddress.districtId.toString(),
         from_ward_code: sellerAddress.wardCode,
-        to_district_id: address.districtId.toString(),
-        to_ward_code: address.wardCode,
+        to_district_id: address.district_id.toString(),
+        to_ward_code: address.ward_code,
         // Cap declared insurance so GHN's 0.5% insurance fee doesn't inflate
         // shipping on high-value cards. Must match orders/route.ts (INSURANCE_CAP).
         insurance_value: card ? Math.min(card.price, 2000000).toString() : '0',
@@ -107,19 +110,30 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
     }
   }, [sellerAddress, card]);
 
+  const handleSelectAddress = useCallback((address: SavedAddress | null) => {
+    setSelectedAddress(address);
+    void calculateFee(address);
+  }, [calculateFee]);
+
+  // Recalculate once the seller address loads in (it may arrive after selection).
+  useEffect(() => {
+    if (!open || !sellerAddress || !selectedAddress) return;
+    void calculateFee(selectedAddress);
+  }, [open, sellerAddress, selectedAddress, card?.id, calculateFee]);
+
   const formatVND = (amount: number) => new Intl.NumberFormat('vi-VN').format(amount) + 'đ';
 
   const totalAmount = (card?.price || 0) + (shippingFee || 0);
   const insufficientBalance = walletBalance < totalAmount;
 
-  const canPurchase = buyerAddress && buyerName.trim() && buyerPhone.trim() && shippingFee !== null && !loadingFee;
+  const canPurchase = !!selectedAddress && shippingFee !== null && !loadingFee;
 
   const handlePurchase = async () => {
     if (!user) {
       setAuthOpen(true);
       return;
     }
-    if (!card || !buyerAddress || !canPurchase) return;
+    if (!card || !selectedAddress || !canPurchase) return;
 
     setIsPurchasing(true);
     try {
@@ -130,20 +144,32 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
           card_id: card.id,
           payment_method: paymentMethod,
           shipping_fee: shippingFee,
-          to_name: buyerName,
-          to_phone: buyerPhone,
-          to_district_id: buyerAddress.districtId,
-          to_district_name: buyerAddress.districtName,
-          to_province_id: buyerAddress.provinceId,
-          to_province_name: buyerAddress.provinceName,
-          to_ward_code: buyerAddress.wardCode,
-          to_ward_name: buyerAddress.wardName,
-          to_address_detail: buyerAddress.detail,
-          shipping_address: `${buyerAddress.detail}, ${buyerAddress.wardName}, ${buyerAddress.districtName}, ${buyerAddress.provinceName}`,
+          to_name: selectedAddress.recipient_name,
+          to_phone: selectedAddress.phone,
+          to_district_id: selectedAddress.district_id,
+          to_district_name: selectedAddress.district_name,
+          to_province_id: selectedAddress.province_id,
+          to_province_name: selectedAddress.province_name,
+          to_ward_code: selectedAddress.ward_code,
+          to_ward_name: selectedAddress.ward_name,
+          to_address_detail: selectedAddress.detail,
+          shipping_address: `${selectedAddress.detail}, ${selectedAddress.ward_name}, ${selectedAddress.district_name}, ${selectedAddress.province_name}`,
         }),
       });
 
       const data = await res.json();
+
+      // Lost the race: another buyer claimed this card first.
+      if (res.status === 409 || data.code === 'card_unavailable') {
+        toast({
+          variant: 'destructive',
+          title: 'Thẻ không còn khả dụng',
+          description: data.error || 'Thẻ này vừa được người khác mua.',
+        });
+        onOpenChange(false);
+        onSuccess?.();
+        return;
+      }
 
       if (!res.ok) throw new Error(data.error);
 
@@ -197,62 +223,67 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
             </div>
           </div>
 
-          {/* Buyer Info */}
+          {/* Shipping Address — pick/add/manage straight from checkout */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Thông tin nhận hàng</Label>
-            <div className="grid grid-cols-2 gap-2">
-              <Input
-                value={buyerName}
-                onChange={e => setBuyerName(e.target.value)}
-                placeholder="Tên người nhận"
-                className="h-9 text-sm"
-              />
-              <Input
-                value={buyerPhone}
-                onChange={e => setBuyerPhone(e.target.value)}
-                placeholder="Số điện thoại"
-                className="h-9 text-sm"
-              />
-            </div>
+            <Label className="text-sm font-medium flex items-center gap-1.5">
+              <Truck className="h-4 w-4" />
+              Địa chỉ nhận hàng
+            </Label>
+            <AddressBook
+              selectable
+              selectedId={selectedAddress?.id ?? null}
+              onSelect={handleSelectAddress}
+            />
           </div>
 
-          {/* Shipping Address */}
-          <AddressPicker
-            label="Địa chỉ nhận hàng"
-            onChange={calculateFee}
-            detailPlaceholder="Số nhà, tên đường..."
-          />
-
-          {/* Shipping Fee */}
-          <div className="flex items-center justify-between p-3 rounded-lg bg-accent/30 border border-border/50">
-            <div className="flex items-center gap-2 text-sm">
-              <Truck className="h-4 w-4 text-blue-400" />
-              <span className="text-muted-foreground">Phí vận chuyển (GHN):</span>
+          <div className="rounded-xl border border-orange-500/20 bg-gradient-to-b from-accent/40 to-orange-500/5 p-4 space-y-3">
+            <p className="text-sm font-semibold">Chi tiết thanh toán</p>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Tiền thẻ</span>
+              <span className="font-semibold">{formatVND(card.price)}</span>
             </div>
-            <div>
-              {loadingFee ? (
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              ) : shippingFee !== null ? (
-                <span className="font-semibold text-sm">{formatVND(shippingFee)}</span>
-              ) : feeError ? (
-                <span className="text-xs text-red-400">{feeError}</span>
-              ) : (
-                <span className="text-xs text-muted-foreground">Chọn địa chỉ để tính</span>
-              )}
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Truck className="h-4 w-4 text-blue-400" />
+                <span>Tiền ship (GHN)</span>
+              </div>
+              <div>
+                {loadingFee ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                ) : shippingFee !== null ? (
+                  <span className="font-semibold">{formatVND(shippingFee)}</span>
+                ) : feeError ? (
+                  <span className="text-xs text-red-400">{feeError}</span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Chọn địa chỉ để tính</span>
+                )}
+              </div>
+            </div>
+            <div className="border-t border-border/50 pt-3 flex items-center justify-between">
+              <span className="font-semibold">Tổng thanh toán</span>
+              <span className="text-2xl font-bold text-orange-400">
+                {shippingFee !== null ? formatVND(totalAmount) : '--'}
+              </span>
             </div>
           </div>
-
-          {/* Total */}
-          {shippingFee !== null && (
-            <div className="flex items-center justify-between p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
-              <span className="font-semibold text-sm">Tổng thanh toán:</span>
-              <span className="text-lg font-bold text-orange-400">{formatVND(totalAmount)}</span>
-            </div>
-          )}
 
           {/* Payment Method */}
-          <div>
+          <div className="space-y-3">
             <Label className="text-sm font-medium">Phương thức thanh toán</Label>
+            <div className="rounded-lg border border-border/50 bg-accent/20 p-3 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Tiền thẻ</span>
+                <span>{formatVND(card.price)}</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-muted-foreground">Tiền ship</span>
+                <span>{shippingFee !== null ? formatVND(shippingFee) : '--'}</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between border-t border-border/50 pt-2 font-semibold">
+                <span>Tổng cần thanh toán</span>
+                <span className="text-orange-400">{shippingFee !== null ? formatVND(totalAmount) : '--'}</span>
+              </div>
+            </div>
             <RadioGroup value={paymentMethod} onValueChange={v => setPaymentMethod(v as 'wallet' | 'direct_payos')} className="mt-2 space-y-2">
               <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${paymentMethod === 'wallet' ? 'border-orange-500 bg-orange-500/5' : 'hover:bg-accent/50'}`}>
                 <RadioGroupItem value="wallet" id="wallet" />
@@ -270,7 +301,9 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
                 <CreditCard className="h-5 w-5 text-blue-500" />
                 <div className="flex-1">
                   <p className="font-medium text-sm">Chuyển khoản / QR (PayOS)</p>
-                  <p className="text-xs text-muted-foreground">Thanh toán trực tiếp qua ngân hàng</p>
+                  <p className="text-xs text-muted-foreground">
+                    Thanh toán trực tiếp qua ngân hàng • Tổng: {shippingFee !== null ? formatVND(totalAmount) : '--'}
+                  </p>
                 </div>
               </label>
             </RadioGroup>
