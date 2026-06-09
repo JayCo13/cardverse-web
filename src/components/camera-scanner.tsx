@@ -27,13 +27,16 @@ export function CameraScanner({
     const autoRef = useRef(true);
     const prevSampleRef = useRef<Float32Array | null>(null);
     const stableRef = useRef(0);
+    const sharpPeakRef = useRef(0); // best sharpness seen this session
 
     const [error, setError] = useState<string | null>(null);
     const [ready, setReady] = useState(false);
     const [autoOn, setAutoOn] = useState(true);
     const [progress, setProgress] = useState(0); // 0..1 stabilization
+    const [focusing, setFocusing] = useState(false); // steady but waiting for sharp focus
 
     const STEADY_NEED = 3; // consecutive steady samples (~0.6s) before auto-fire
+    const FOCUS_FALLBACK = 14; // ~2.8s steady → capture even if focus floor not reached
 
     // Map the on-screen frame box → the video's intrinsic pixels (object-cover).
     const computeCrop = () => {
@@ -77,50 +80,75 @@ export function CameraScanner({
         if (!open) return;
         let cancelled = false;
         let timer: ReturnType<typeof setInterval> | null = null;
+        // Sample at a usable resolution so blur is actually detectable (small text
+        // like the card number washes out if we downscale too far).
+        const SW = 120, SH = 160;
         const sampleCanvas = document.createElement("canvas");
-        sampleCanvas.width = 32; sampleCanvas.height = 42;
+        sampleCanvas.width = SW; sampleCanvas.height = SH;
         const sctx = sampleCanvas.getContext("2d", { willReadFrequently: true });
 
         capturedRef.current = false;
         prevSampleRef.current = null;
         stableRef.current = 0;
-        setError(null); setReady(false); setProgress(0);
+        sharpPeakRef.current = 0;
+        setError(null); setReady(false); setProgress(0); setFocusing(false);
 
         const tick = () => {
             if (!autoRef.current || capturedRef.current || !sctx) return;
             const crop = computeCrop();
             const video = videoRef.current;
             if (!crop || !video) return;
-            sctx.drawImage(video, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, 32, 42);
-            const data = sctx.getImageData(0, 0, 32, 42).data;
-            const lum = new Float32Array(32 * 42);
+            sctx.drawImage(video, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, SW, SH);
+            const data = sctx.getImageData(0, 0, SW, SH).data;
+            const N = SW * SH;
+            const lum = new Float32Array(N);
             let sum = 0;
             for (let i = 0, j = 0; i < data.length; i += 4, j++) {
                 const l = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
                 lum[j] = l; sum += l;
             }
-            const mean = sum / lum.length;
+            const mean = sum / N;
             let variance = 0;
-            for (let j = 0; j < lum.length; j++) variance += (lum[j] - mean) * (lum[j] - mean);
-            variance /= lum.length;
+            for (let j = 0; j < N; j++) { const d = lum[j] - mean; variance += d * d; }
+            variance /= N;
 
+            // Stability vs previous sample (mean abs luminance diff).
             const prev = prevSampleRef.current;
             let diff = Infinity;
             if (prev) {
                 let d = 0;
-                for (let j = 0; j < lum.length; j++) d += Math.abs(lum[j] - prev[j]);
-                diff = d / lum.length;
+                for (let j = 0; j < N; j++) d += Math.abs(lum[j] - prev[j]);
+                diff = d / N;
             }
             prevSampleRef.current = lum;
 
-            // Enough detail (a card, not blank/dark) AND roughly steady. The diff
-            // threshold is generous so normal hand-shake still counts as steady.
+            // Sharpness = variance of the Laplacian (classic focus/blur metric).
+            // Low when the image is out of focus or motion-blurred.
+            let lapSum = 0, lapSq = 0, cnt = 0;
+            for (let y = 1; y < SH - 1; y++) {
+                for (let x = 1; x < SW - 1; x++) {
+                    const idx = y * SW + x;
+                    const lap = 4 * lum[idx] - lum[idx - 1] - lum[idx + 1] - lum[idx - SW] - lum[idx + SW];
+                    lapSum += lap; lapSq += lap * lap; cnt++;
+                }
+            }
+            const lapMean = lapSum / cnt;
+            const sharp = lapSq / cnt - lapMean * lapMean;
+            if (sharp > sharpPeakRef.current) sharpPeakRef.current = sharp;
+            // Focused = sharp enough in absolute terms AND near the best seen
+            // (focus has converged rather than still ramping up).
+            const focused = sharp > 8 && sharp >= sharpPeakRef.current * 0.72;
+
             const contentOk = variance > 130 && mean > 20 && mean < 245;
             const steady = prev !== null && diff < 13 && contentOk;
             stableRef.current = steady ? stableRef.current + 1 : 0;
             setProgress(Math.min(1, stableRef.current / STEADY_NEED));
 
-            if (stableRef.current >= STEADY_NEED) {
+            const readyToFire = stableRef.current >= STEADY_NEED;
+            // Hold for focus: never capture a blurry frame (the card number is tiny
+            // and decides the match) unless we've waited a long time already.
+            setFocusing(readyToFire && !focused);
+            if (readyToFire && (focused || stableRef.current >= FOCUS_FALLBACK)) {
                 if (timer) { clearInterval(timer); timer = null; }
                 doCapture();
             }
@@ -134,6 +162,13 @@ export function CameraScanner({
                 });
                 if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
                 streamRef.current = stream;
+                // Best-effort: ask the camera for continuous autofocus so the card
+                // (and its tiny number) lands in focus before we capture.
+                try {
+                    const track = stream.getVideoTracks()[0];
+                    // focusMode isn't in the standard TS types yet
+                    await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] } as unknown as MediaTrackConstraints);
+                } catch { /* not supported — rely on the sharpness gate */ }
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
                     await videoRef.current.play().catch(() => { });
@@ -156,7 +191,7 @@ export function CameraScanner({
     const toggleAuto = () => {
         const v = !autoOn;
         setAutoOn(v); autoRef.current = v;
-        stableRef.current = 0; setProgress(0);
+        stableRef.current = 0; setProgress(0); setFocusing(false);
     };
 
     if (!open) return null;
@@ -187,7 +222,11 @@ export function CameraScanner({
                         className="relative w-[80%] max-w-[340px] aspect-[3/4] rounded-2xl transition-[outline] duration-150"
                         style={{
                             boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)",
-                            outline: progress > 0 ? `3px solid rgba(34,197,94,${0.35 + progress * 0.65})` : "none",
+                            outline: focusing
+                                ? "3px solid rgba(250,204,21,0.9)"            // amber: focusing
+                                : progress > 0
+                                    ? `3px solid rgba(34,197,94,${0.4 + progress * 0.6})` // green: locking
+                                    : "none",
                         }}
                     >
                         <span className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-orange-400 rounded-tl-2xl" />
@@ -221,7 +260,9 @@ export function CameraScanner({
                 </button>
                 <p className="text-xs text-white/45 text-center max-w-[260px]">
                     {autoOn
-                        ? (progress > 0 ? "Giữ yên… đang chụp" : "Trùm khung lên thẻ (thật hoặc trên màn hình) — máy tự chụp")
+                        ? (focusing ? "Đang lấy nét… giữ yên cho rõ số thẻ"
+                            : progress > 0 ? "Giữ yên… đang chụp"
+                                : "Trùm khung lên thẻ (thật hoặc trên màn hình) — máy tự chụp")
                         : "Trùm khung lên thẻ rồi bấm để quét"}
                 </p>
             </div>
