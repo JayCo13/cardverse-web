@@ -1275,41 +1275,41 @@ export function MarketSpotlight() {
                         }
                     };
 
-                    // --- STRATEGY 0: One Piece exact card id (OP15-077 …) ---
-                    if (opId) {
-                        console.log(`TCGCSV: One Piece id search: ${opId}`);
-                        await searchBothCategories(
-                            (catId) => `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&number=eq.${encodeURIComponent(opId)}&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id&limit=20`,
-                            'op-id'
-                        );
-                    }
+                    // Number + collector lookups go through the SERVICE-ROLE API route:
+                    // the anon role's statement_timeout kills un-indexed number queries,
+                    // but service_role has no such limit, so they complete there.
+                    const numberViaRoute = async (catIds: number[], numFormats: string[], colPats: string[]) => {
+                        if (catIds.length === 0 || (numFormats.length === 0 && colPats.length === 0)) return;
+                        try {
+                            const res = await fetch('/api/scan/pokemon-match', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ catIds, numberFormats: numFormats, collectorPatterns: colPats }),
+                            });
+                            if (res.ok) {
+                                const json = await res.json();
+                                if (Array.isArray(json.products) && json.products.length > 0) {
+                                    console.log(`  Found ${json.products.length} via number-match route`);
+                                    addCandidates(json.products as TcgcsvProduct[]);
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('number-match route failed:', (e as Error)?.message || e);
+                        }
+                    };
 
-                    // --- STRATEGIES 1, 1b, 2, 3 run CONCURRENTLY (independent) so the
-                    // total wait is the slowest single query, not the sum. ---
-                    const SEL = 'product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id';
                     const parallelSearches: Promise<void>[] = [];
 
-                    // 1: exact number (any of the format variants)
-                    if (!opId && altFormatsArray.length > 0) {
-                        const numberClauses = altFormatsArray.map((n: string) => `number.eq.${encodeURIComponent(n)}`).join(',');
-                        console.log(`TCGCSV: Number search: ${altFormatsArray.join(', ')}`);
-                        parallelSearches.push(searchBothCategories(
-                            (catId) => `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&or=(${numberClauses})&select=${SEL}&limit=20`,
-                            'number'
-                        ));
+                    // 0/1/1b: number + collector (OP exact id, or Pokémon formats)
+                    if (opId) {
+                        console.log(`TCGCSV: One Piece id search (route): ${opId}`);
+                        parallelSearches.push(numberViaRoute([CATEGORY_ONEPIECE], [opId, opId.toUpperCase()], []));
+                    } else if (altFormatsArray.length > 0 || collectorPatterns.length > 0) {
+                        console.log(`TCGCSV: Number/collector search (route): ${[...altFormatsArray, ...collectorPatterns].join(', ')}`);
+                        parallelSearches.push(numberViaRoute([categoryId, altCategoryId], altFormatsArray, collectorPatterns));
                     }
 
-                    // 1b: collector number (ilike) — robust to a misread set total / format
-                    if (!opId && collectorPatterns.length > 0) {
-                        const colClauses = collectorPatterns.map((n: string) => `number.ilike.${encodeURIComponent(n)}`).join(',');
-                        console.log(`TCGCSV: Collector-number search: ${collectorPatterns.join(', ')}`);
-                        parallelSearches.push(searchBothCategories(
-                            (catId) => `${SUPABASE_URL}/rest/v1/tcgcsv_products?category_id=eq.${catId}&or=(${colClauses})&select=${SEL}&limit=40`,
-                            'collector-number'
-                        ));
-                    }
-
-                    // 2 & 3: by name + base name
+                    // 2 & 3: by name + base name (fast on anon — kept direct)
                     if (cardName) {
                         const baseName = cardName.replace(/\s*(ex|EX|Ex|V|GX|Gx|VMAX|Vmax|VSTAR|Vstar)\s*$/i, '').trim();
                         console.log(`TCGCSV: Name search: "${cardName}"`);
