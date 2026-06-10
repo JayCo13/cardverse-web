@@ -48,12 +48,13 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
   const [shippingFee, setShippingFee] = useState<number | null>(null);
   const [loadingFee, setLoadingFee] = useState(false);
   const [feeError, setFeeError] = useState('');
+  const userId = user?.id ?? null;
 
   useEffect(() => {
-    if (open && user) {
+    if (open && userId) {
       fetchWalletBalance();
     }
-  }, [open, user]);
+  }, [open, userId]);
 
   useEffect(() => {
     if (!open) return;
@@ -159,12 +160,12 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
 
       const data = await res.json();
 
-      // Lost the race: another buyer claimed this card first.
+      // Lost the race: another buyer bought or reserved this card first.
       if (res.status === 409 || data.code === 'card_unavailable') {
         toast({
           variant: 'destructive',
-          title: 'Thẻ không còn khả dụng',
-          description: data.error || 'Thẻ này vừa được người khác mua.',
+          title: 'Thẻ đã có người mua trước',
+          description: data.error || 'Thẻ này không còn khả dụng. Vui lòng chọn thẻ khác.',
         });
         onOpenChange(false);
         onSuccess?.();

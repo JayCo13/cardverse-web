@@ -22,6 +22,17 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { USD_TO_VND_RATE } from '@/contexts/currency-context';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
@@ -389,6 +400,28 @@ export default function CreateListingPage() {
 
   const [isProcessingImages, setIsProcessingImages] = useState(false);
 
+  // Sell-price currency. Listings are always STORED in VND (the whole
+  // marketplace/escrow/GHN/PayOS runs in VND). If the seller prices in USD we
+  // convert to VND on input and ask them to confirm the VND amount before posting.
+  const [priceCurrency, setPriceCurrency] = useState<'VND' | 'USD'>('VND');
+  const [priceInput, setPriceInput] = useState(''); // raw text the seller typed, in priceCurrency
+  const [showUsdConfirm, setShowUsdConfirm] = useState(false);
+  const [pendingValues, setPendingValues] = useState<z.infer<typeof formSchema> | null>(null);
+
+  // Convert the typed amount into the VND value we actually store.
+  const priceInputNumber = parseVndNumberInput(priceInput) ?? 0;
+  const convertedVnd = priceCurrency === 'USD'
+    ? Math.round(priceInputNumber * USD_TO_VND_RATE)
+    : priceInputNumber;
+
+  // Keep the form's `price` (always VND) in sync with the typed value + unit.
+  const applyPrice = (raw: string, currency: 'VND' | 'USD') => {
+    setPriceInput(raw);
+    const num = parseVndNumberInput(raw) ?? 0;
+    const vnd = currency === 'USD' ? Math.round(num * USD_TO_VND_RATE) : num;
+    form.setValue('price', vnd > 0 ? vnd : undefined, { shouldValidate: true });
+  };
+
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const currentFiles = form.getValues('images') || [];
@@ -470,7 +503,18 @@ export default function CreateListingPage() {
     form.setValue('images', newFiles, { shouldValidate: true });
   };
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
+  // Gate the real submit: if the seller priced in USD, confirm the converted
+  // VND amount first (handleSubmit has already validated by this point).
+  function onSubmit(values: z.infer<typeof formSchema>) {
+    if (values.listingType === 'sale' && priceCurrency === 'USD' && (values.price ?? 0) > 0) {
+      setPendingValues(values);
+      setShowUsdConfirm(true);
+      return;
+    }
+    void submitListing(values);
+  }
+
+  async function submitListing(values: z.infer<typeof formSchema>) {
     if (!user) {
       setOpen(true);
       return;
@@ -1224,31 +1268,56 @@ export default function CreateListingPage() {
             <FormField
               control={form.control}
               name="price"
-              render={({ field }) => (
+              render={() => (
                 <FormItem>
                   <FormLabel className='text-lg font-semibold'>
                     {isBundle ? 'Giá bán cả bộ' : t('price_label')}
                   </FormLabel>
+
+                  {/* Currency toggle — VND is stored either way, USD just gets converted. */}
+                  <div className="flex items-center gap-1 rounded-lg border border-border/60 bg-accent/30 p-1 w-fit">
+                    {(['VND', 'USD'] as const).map((cur) => (
+                      <button
+                        key={cur}
+                        type="button"
+                        onClick={() => { setPriceCurrency(cur); applyPrice(priceInput, cur); }}
+                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${priceCurrency === cur ? 'bg-orange-500 text-white' : 'text-muted-foreground hover:text-foreground'}`}
+                      >
+                        {cur === 'VND' ? '🇻🇳 VND' : '🇺🇸 USD'}
+                      </button>
+                    ))}
+                  </div>
+
                   <FormControl>
                     <Input
                       type="text"
                       inputMode="numeric"
-                      placeholder={isBundle
-                        ? 'Nhập giá bán cho cả bộ (có thể khác tổng giá từng thẻ)'
-                        : (locale === 'en-US' ? 'Enter your price in USD' : 'Nhập giá của bạn bằng VND')
+                      placeholder={priceCurrency === 'USD'
+                        ? 'Nhập giá bằng USD, ví dụ 30'
+                        : (isBundle ? 'Nhập giá bán cho cả bộ (VND)' : 'Nhập giá bằng VND, ví dụ 700000')
                       }
-                      {...field}
-                      value={field.value ?? ''}
-                      onChange={(e) => field.onChange(e.target.value)}
+                      value={priceInput}
+                      onChange={(e) => applyPrice(e.target.value, priceCurrency)}
                     />
                   </FormControl>
+
+                  {/* Live conversion preview when pricing in USD. */}
+                  {priceCurrency === 'USD' && priceInputNumber > 0 && (
+                    <p className="text-sm font-medium text-orange-400">
+                      ≈ {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(convertedVnd)}
+                      <span className="ml-1 text-xs font-normal text-muted-foreground">(tỷ giá 1 USD = {new Intl.NumberFormat('vi-VN').format(USD_TO_VND_RATE)}đ)</span>
+                    </p>
+                  )}
+
                   {isBundle && bundlePriceRange && (
                     <p className="text-xs text-muted-foreground">
                       💡 Tổng giá từng thẻ: {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(bundlePriceRange.total)} — Bạn có thể đặt giá bán cả bộ thấp hơn hoặc cao hơn
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Giá đang dùng đơn vị VND. Ví dụ: `10000` = `10.000đ`.
+                    {priceCurrency === 'USD'
+                      ? 'Bài đăng sẽ được lưu và hiển thị bằng VND sau khi quy đổi.'
+                      : 'Giá đang dùng đơn vị VND. Ví dụ: `700000` = `700.000đ`.'}
                   </p>
                   <FormMessage />
                 </FormItem>
@@ -1402,6 +1471,21 @@ export default function CreateListingPage() {
             )}
           />
 
+          {/* Seller payout fee notice — shown right before posting so the seller
+              factors the 5% withdrawal fee into their price. */}
+          <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+            <div className="flex items-start gap-3">
+              <HandCoins className="h-5 w-5 text-amber-400 mt-0.5 shrink-0" />
+              <div className="text-sm">
+                <p className="font-semibold text-amber-300">Lưu ý về tiền bán</p>
+                <p className="text-muted-foreground">
+                  Khi bán được thẻ, tiền sẽ vào ví CardVerse của bạn. Mỗi lần <span className="font-semibold text-amber-300">rút tiền</span> về
+                  tài khoản ngân hàng sẽ bị trừ <span className="font-semibold text-amber-300">5% phí nền tảng</span>. Bạn có thể cân nhắc mức giá để bù phần phí này.
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="flex justify-end pt-4">
             <Button size="lg" type="submit" disabled={isSubmitting || isProcessingImages}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -1409,6 +1493,33 @@ export default function CreateListingPage() {
             </Button>
           </div>
         </form>
+
+        {/* Confirm the USD → VND conversion before actually posting. */}
+        <AlertDialog open={showUsdConfirm} onOpenChange={setShowUsdConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Xác nhận giá bán (quy đổi sang VND)</AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="space-y-2">
+                  <p>Bạn nhập giá bằng USD. Thẻ sẽ được đăng bán với giá VND sau quy đổi:</p>
+                  <div className="rounded-lg border bg-accent/40 p-3 text-foreground">
+                    <p className="text-sm text-muted-foreground">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(priceInputNumber)} ×&nbsp;{new Intl.NumberFormat('vi-VN').format(USD_TO_VND_RATE)}</p>
+                    <p className="text-2xl font-bold text-orange-400">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(convertedVnd)}</p>
+                  </div>
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isSubmitting}>Sửa lại giá</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => { setShowUsdConfirm(false); if (pendingValues) void submitListing(pendingValues); }}
+                disabled={isSubmitting}
+              >
+                Đăng bán với giá này
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </Form>
     );
   }

@@ -6,6 +6,7 @@ import Image from "next/image"
 import { CircleUser, Menu, Search, Headphones, Camera, Crown, Zap, Diamond, Wallet, Package, Settings } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { NotificationBell } from "@/components/notification-bell"
+import { ChatInboxButton } from "@/components/chat-drawer"
 import { LanguageSelector } from "@/components/language-selector"
 import { CurrencySelector } from "@/components/currency-selector"
 import { Button } from "@/components/ui/button"
@@ -226,6 +227,7 @@ export function Header() {
               <div className="mx-2 h-6 w-px bg-white/50" />
             </div>
             <NotificationBell />
+            <ChatInboxButton />
             {renderUserAuth()}
           </div>
         </div>

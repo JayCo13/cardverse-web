@@ -81,7 +81,26 @@ export async function POST(request: NextRequest) {
             .single<MarketplaceCard>();
 
         if (cardError || !card) {
-            return NextResponse.json({ error: 'Card not found or not available' }, { status: 404 });
+            const { data: existingCard } = await supabase
+                .from('cards')
+                .select('status, listing_type')
+                .eq('id', card_id)
+                .maybeSingle<{ status: string; listing_type: string | null }>();
+
+            if (existingCard) {
+                return NextResponse.json(
+                    {
+                        error: existingCard.status === 'in_transaction'
+                            ? 'Thẻ này đang được người khác giữ để thanh toán. Vui lòng chọn thẻ khác hoặc quay lại sau vài phút.'
+                            : 'Thẻ này đã được người khác mua hoặc không còn bán nữa. Vui lòng chọn thẻ khác.',
+                        code: 'card_unavailable',
+                        card_status: existingCard.status,
+                    },
+                    { status: 409 },
+                );
+            }
+
+            return NextResponse.json({ error: 'Không tìm thấy thẻ này. Vui lòng tải lại trang và thử lại.', code: 'card_not_found' }, { status: 404 });
         }
 
         // Cannot buy your own card

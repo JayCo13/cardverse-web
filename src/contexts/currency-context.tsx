@@ -8,11 +8,15 @@ export type AppCurrency = 'USD' | 'JPY' | 'VND';
 // Supported Languages
 export type AppLanguage = 'en-US' | 'vi-VN' | 'ja-JP';
 
+// How many VND in 1 USD. Single source of truth for any USD→VND conversion
+// (e.g. the sell form lets a seller price in USD and stores VND).
+export const USD_TO_VND_RATE = 25450;
+
 // Exchange rates (base: USD)
 const EXCHANGE_RATES: Record<AppCurrency, number> = {
     USD: 1,
     JPY: 155,
-    VND: 25450,
+    VND: USD_TO_VND_RATE,
 };
 
 // Currency symbols and formatting

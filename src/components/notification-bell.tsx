@@ -12,7 +12,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Bell, CheckCircle, Tag, Package } from "lucide-react";
+import { Bell, CheckCircle, MessageCircle, Tag, Package } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
 import { useRouter } from "next/navigation";
@@ -52,7 +52,7 @@ export function NotificationBell() {
                 return;
             }
 
-            const notificationsData = data.map(n => ({
+            const notificationsData = ((data || []) as any[]).map(n => ({
                 id: n.id,
                 userId: n.user_id,
                 type: n.type as Notification['type'],
@@ -60,6 +60,8 @@ export function NotificationBell() {
                 message: n.message,
                 cardId: n.card_id,
                 offerId: n.offer_id,
+                conversationId: n.conversation_id,
+                transactionId: n.transaction_id,
                 read: n.read,
                 createdAt: n.created_at,
             }));
@@ -90,6 +92,8 @@ export function NotificationBell() {
                         message: payload.new.message,
                         cardId: payload.new.card_id,
                         offerId: payload.new.offer_id,
+                        conversationId: payload.new.conversation_id,
+                        transactionId: payload.new.transaction_id,
                         read: payload.new.read,
                         createdAt: payload.new.created_at,
                     };
@@ -124,7 +128,7 @@ export function NotificationBell() {
         try {
             await supabase
                 .from('notifications')
-                .update({ read: true })
+                .update({ read: true } as never)
                 .eq('id', notificationId);
 
             setNotifications(prev =>
@@ -135,13 +139,34 @@ export function NotificationBell() {
         }
     };
 
-    // Handle notification click
+    // Handle notification click — route into the most specific context we have.
     const handleNotificationClick = async (notification: Notification) => {
         await markAsRead(notification.id);
+        setIsOpen(false);
+
+        // Accepted offer → go straight to the transaction room.
+        if (notification.type === 'offer_accepted' && notification.transactionId) {
+            router.push(`/transaction/${notification.transactionId}`);
+            return;
+        }
+
+        // New message or received offer with a conversation → open the chat drawer.
+        if (
+            (notification.type === 'message_received' || notification.type === 'offer_received') &&
+            notification.conversationId
+        ) {
+            window.dispatchEvent(
+                new CustomEvent('cardverse:open-chat', {
+                    detail: { conversationId: notification.conversationId },
+                }),
+            );
+            return;
+        }
+
+        // Fallback: the card detail page.
         if (notification.cardId) {
             router.push(`/cards/${notification.cardId}`);
         }
-        setIsOpen(false);
     };
 
     // Mark all as read
@@ -151,7 +176,7 @@ export function NotificationBell() {
 
         await supabase
             .from('notifications')
-            .update({ read: true })
+            .update({ read: true } as never)
             .in('id', unreadIds);
 
         setNotifications(prev => prev.map(n => ({ ...n, read: true })));
@@ -167,6 +192,8 @@ export function NotificationBell() {
                 return <CheckCircle className="h-4 w-4 text-green-500" />;
             case "card_sold":
                 return <Package className="h-4 w-4 text-green-500" />;
+            case "message_received":
+                return <MessageCircle className="h-4 w-4 text-orange-500" />;
             default:
                 return <Bell className="h-4 w-4" />;
         }
