@@ -9,6 +9,7 @@ import { Tag, HandCoins, Loader2, CheckCircle } from 'lucide-react';
 import { useAuth, useSupabase } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
+import { useLocalization } from '@/context/localization-context';
 import Image from 'next/image';
 
 export type OfferCard = {
@@ -36,6 +37,75 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
   const supabase = useSupabase();
   const { setOpen: setAuthOpen } = useAuthModal();
   const { toast } = useToast();
+  const { locale } = useLocalization();
+  const copy = locale === 'ja-JP'
+    ? {
+        updateOfferBody: '提案を更新',
+        sendOfferBody: '提案を送信',
+        sellerOfferTitle: '新しい価格提案',
+        sellerOfferMessage: 'このカードに{price}の提案が届きました: "{name}"',
+        updatedTitle: '提案を更新しました',
+        sentTitle: '提案を送信しました',
+        reviewWithChat: '販売者が{price}を確認します。会話が作成されました。',
+        reviewNoChat: '販売者があなたの{price}を確認します。',
+        sendError: '提案を送信できませんでした。もう一度お試しください。',
+        title: '価格交渉',
+        desc: 'あなたの希望価格を送ってください。販売者が承認または拒否できます。',
+        listedPrice: '出品価格',
+        offerPrice: '提案価格 (VND)',
+        offerPlaceholder: '支払いたい金額を入力',
+        minOfferHint: '販売者の最低提案額は {price}',
+        optionalMessage: 'メッセージ (任意)',
+        messagePlaceholder: '例: この価格ならすぐ購入します',
+        cancel: 'キャンセル',
+        update: '提案を更新',
+        send: '提案を送信',
+      }
+    : locale === 'vi-VN'
+      ? {
+          updateOfferBody: 'Cập nhật đề nghị',
+          sendOfferBody: 'Gửi đề nghị',
+          sellerOfferTitle: 'Đề xuất giá mới',
+          sellerOfferMessage: 'Có người đề xuất {price} cho thẻ "{name}"',
+          updatedTitle: 'Đã cập nhật đề nghị',
+          sentTitle: 'Đã gửi đề nghị',
+          reviewWithChat: 'Người bán sẽ xem xét mức giá {price}. Hội thoại đã được tạo.',
+          reviewNoChat: 'Người bán sẽ xem xét mức giá {price} của bạn.',
+          sendError: 'Không thể gửi đề nghị. Vui lòng thử lại.',
+          title: 'Trả giá',
+          desc: 'Đề xuất mức giá của bạn. Người bán có thể chấp nhận hoặc từ chối.',
+          listedPrice: 'Giá niêm yết',
+          offerPrice: 'Mức giá đề nghị (VND)',
+          offerPlaceholder: 'Nhập số tiền bạn muốn trả',
+          minOfferHint: 'Người bán chấp nhận đề nghị tối thiểu {price}',
+          optionalMessage: 'Lời nhắn (tùy chọn)',
+          messagePlaceholder: 'Ví dụ: Mình lấy ngay nếu được giá này',
+          cancel: 'Hủy',
+          update: 'Cập nhật đề nghị',
+          send: 'Gửi đề nghị',
+        }
+      : {
+          updateOfferBody: 'Update offer',
+          sendOfferBody: 'Send offer',
+          sellerOfferTitle: 'New offer received',
+          sellerOfferMessage: 'Someone offered {price} for "{name}"',
+          updatedTitle: 'Offer updated',
+          sentTitle: 'Offer sent',
+          reviewWithChat: 'The seller will review {price}. A conversation has been created.',
+          reviewNoChat: 'The seller will review your {price} offer.',
+          sendError: 'Could not send the offer. Please try again.',
+          title: 'Make an offer',
+          desc: 'Suggest your price. The seller can accept or decline it.',
+          listedPrice: 'Listed price',
+          offerPrice: 'Offer price (VND)',
+          offerPlaceholder: 'Enter the amount you want to pay',
+          minOfferHint: 'Seller minimum accepted offer is {price}',
+          optionalMessage: 'Message (optional)',
+          messagePlaceholder: 'Example: I will buy immediately at this price',
+          cancel: 'Cancel',
+          update: 'Update offer',
+          send: 'Send offer',
+        };
 
   const [offerPrice, setOfferPrice] = useState('');
   const [message, setMessage] = useState('');
@@ -123,7 +193,7 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
               body: JSON.stringify({
                 conversationId,
                 messageType: 'offer_auto',
-                body: `${existingOffer ? 'Cập nhật đề nghị' : 'Gửi đề nghị'} ${formatVND(parsedPrice)} cho "${card.name}"${message.trim() ? `: ${message.trim()}` : '.'}`,
+                body: `${existingOffer ? copy.updateOfferBody : copy.sendOfferBody} ${formatVND(parsedPrice)} ${card.name}${message.trim() ? `: ${message.trim()}` : '.'}`,
                 metadata: {
                   offerId,
                   cardId: card.id,
@@ -143,8 +213,8 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
         await supabase.from('notifications').insert({
           user_id: card.sellerId,
           type: 'offer_received',
-          title: 'Đề xuất giá mới',
-          message: `Có người đề xuất ${formatVND(parsedPrice)} cho thẻ "${card.name}"`,
+          title: copy.sellerOfferTitle,
+          message: copy.sellerOfferMessage.replace('{price}', formatVND(parsedPrice)).replace('{name}', card.name),
           card_id: card.id,
           offer_id: offerId,
           conversation_id: conversationId || null,
@@ -153,16 +223,16 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
       }
 
       toast({
-        title: existingOffer ? '✅ Đã cập nhật đề nghị' : '🤝 Đã gửi đề nghị',
+        title: existingOffer ? copy.updatedTitle : copy.sentTitle,
         description: conversationId
-          ? `Người bán sẽ xem xét mức giá ${formatVND(parsedPrice)}. Hội thoại đã được tạo.`
-          : `Người bán sẽ xem xét mức giá ${formatVND(parsedPrice)} của bạn.`,
+          ? copy.reviewWithChat.replace('{price}', formatVND(parsedPrice))
+          : copy.reviewNoChat.replace('{price}', formatVND(parsedPrice)),
       });
       onOpenChange(false);
       onSuccess?.(conversationId);
     } catch (err: unknown) {
-      const description = err instanceof Error ? err.message : 'Không thể gửi đề nghị. Vui lòng thử lại.';
-      toast({ variant: 'destructive', title: 'Lỗi', description });
+      const description = err instanceof Error ? err.message : copy.sendError;
+      toast({ variant: 'destructive', title: 'Error', description });
     } finally {
       setIsSubmitting(false);
     }
@@ -176,9 +246,9 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <HandCoins className="h-5 w-5 text-amber-500" />
-            Trả giá
+            {copy.title}
           </DialogTitle>
-          <DialogDescription>Đề xuất mức giá của bạn. Người bán có thể chấp nhận hoặc từ chối.</DialogDescription>
+          <DialogDescription>{copy.desc}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -193,7 +263,7 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
               <p className="font-semibold line-clamp-2 text-sm">{card.name}</p>
               <div className="mt-1 flex items-center gap-1.5 text-muted-foreground text-xs">
                 <Tag className="h-3.5 w-3.5" />
-                Giá niêm yết
+                {copy.listedPrice}
               </div>
               <p className="text-lg font-bold text-primary">{formatVND(card.price)}</p>
             </div>
@@ -201,17 +271,17 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
 
           {/* Offer input */}
           <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Mức giá đề nghị (VND)</Label>
+            <Label className="text-sm font-medium">{copy.offerPrice}</Label>
             <Input
               inputMode="numeric"
               value={offerPrice ? new Intl.NumberFormat('vi-VN').format(parsedPrice) : ''}
               onChange={e => setOfferPrice(e.target.value)}
-              placeholder="Nhập số tiền bạn muốn trả"
+              placeholder={copy.offerPlaceholder}
               className="h-10"
             />
             {minOffer > 0 && (
               <p className={`text-xs ${belowMin ? 'text-red-400' : 'text-muted-foreground'}`}>
-                Người bán chấp nhận đề nghị tối thiểu {formatVND(minOffer)}
+                {copy.minOfferHint.replace('{price}', formatVND(minOffer))}
                 {card.minOfferPercent ? ` (${card.minOfferPercent}% giá niêm yết)` : ''}.
               </p>
             )}
@@ -219,18 +289,18 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
 
           {/* Optional message */}
           <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Lời nhắn (tùy chọn)</Label>
+            <Label className="text-sm font-medium">{copy.optionalMessage}</Label>
             <Input
               value={message}
               onChange={e => setMessage(e.target.value)}
-              placeholder="Ví dụ: Mình lấy ngay nếu được giá này"
+              placeholder={copy.messagePlaceholder}
               className="h-10"
             />
           </div>
         </div>
 
         <DialogFooter className="flex-col sm:flex-row gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Hủy</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{copy.cancel}</Button>
           <Button
             onClick={handleSubmit}
             disabled={!canSubmit}
@@ -241,7 +311,7 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
             ) : (
               <CheckCircle className="h-4 w-4 mr-2" />
             )}
-            {existingOffer ? 'Cập nhật đề nghị' : 'Gửi đề nghị'}
+            {existingOffer ? copy.update : copy.send}
           </Button>
         </DialogFooter>
       </DialogContent>

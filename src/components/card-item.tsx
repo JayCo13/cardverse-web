@@ -91,7 +91,7 @@ interface CardItemProps {
 }
 
 export const CardItem = React.memo(function CardItem({ card, layout = 'grid', onBuyClick, onOfferClick }: CardItemProps) {
-  const { t } = useLocalization();
+  const { t, locale } = useLocalization();
   const { formatPrice } = useCurrency();
   const { setOpen } = useAuthModal();
   const { user } = useUser();
@@ -118,6 +118,39 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
     // Navigate to card details/manage page
     router.push(`/cards/${card.id}`);
   };
+
+  const copy = locale === 'ja-JP'
+    ? {
+        yourListing: 'あなたの出品',
+        manage: '管理',
+        soldPrice: '販売価格',
+        viewDetails: '詳細を見る',
+        acceptsOffers: 'オファー受付中',
+        makeOffer: '価格交渉',
+        sold: '販売済み',
+        bundle: 'セット {count}枚',
+      }
+    : locale === 'vi-VN'
+      ? {
+          yourListing: 'Bài đăng của bạn',
+          manage: 'Quản lý',
+          soldPrice: 'Giá đã bán',
+          viewDetails: 'Xem chi tiết',
+          acceptsOffers: 'Nhận offer',
+          makeOffer: 'Trả giá',
+          sold: 'Đã bán',
+          bundle: 'Combo {count} thẻ',
+        }
+      : {
+          yourListing: 'Your listing',
+          manage: 'Manage',
+          soldPrice: 'Sold price',
+          viewDetails: 'View details',
+          acceptsOffers: 'Accepts offers',
+          makeOffer: 'Make offer',
+          sold: 'Sold',
+          bundle: 'Bundle {count} cards',
+        };
 
   const handleDetailClick = () => {
     router.push(`/cards/${card.id}`);
@@ -161,7 +194,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
               card.listingType === 'auction' && card.currentBid ? displayPrice(card.currentBid) :
                 card.listingType === 'razz' && card.ticketPrice ? displayPrice(card.ticketPrice) : 'N/A'}
           </div>
-          <span className="text-xs text-muted-foreground mb-1">Bài đăng của bạn</span>
+          <span className="text-xs text-muted-foreground mb-1">{copy.yourListing}</span>
           <Button
             size="sm"
             variant="secondary"
@@ -169,7 +202,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
             onClick={handleManageClick}
           >
             <Settings className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-            Quản lý
+            {copy.manage}
           </Button>
         </div>
       );
@@ -181,7 +214,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
         if (card.status === 'sold') {
           return (
             <div className="flex flex-col items-end gap-0.5 sm:gap-1 w-full">
-              <div className="text-xs text-muted-foreground">Giá đã bán</div>
+              <div className="text-xs text-muted-foreground">{copy.soldPrice}</div>
               <div className="text-base sm:text-lg md:text-xl font-bold text-green-500 flex items-center gap-1 sm:gap-2">
                 {card.lastSoldPrice ? displayPrice(card.lastSoldPrice) : displayPrice(card.price || 0)}
               </div>
@@ -191,7 +224,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                 className="w-full mt-1 sm:mt-2 text-xs sm:text-sm h-7 sm:h-8 md:h-9"
                 onClick={handleActionClick}
               >
-                Xem chi tiết
+                {copy.viewDetails}
               </Button>
             </div>
           );
@@ -203,7 +236,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
               {card.price ? displayPrice(card.price) : 'N/A'}
             </div>
             {card.acceptOffers && (
-              <span className="text-[10px] text-amber-500 font-medium">Nhận offer</span>
+              <span className="text-[10px] text-amber-500 font-medium">{copy.acceptsOffers}</span>
             )}
             <Button size="sm" aria-label={`Buy ${card.name} now`} className="w-full mt-1 sm:mt-2 text-xs sm:text-sm h-7 sm:h-8 md:h-9" onClick={handleActionClick}>{t('card_item_buy_now')}</Button>
             {canOffer && (
@@ -215,7 +248,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                 onClick={handleOfferClick}
               >
                 <HandCoins className="mr-1 h-3 w-3 sm:h-4 sm:w-4" />
-                Trả giá
+                {copy.makeOffer}
               </Button>
             )}
           </div>
@@ -297,7 +330,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
             {card.status === 'sold' && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/50">
                 <span className="rounded-lg bg-green-500 px-3 py-1 text-xs font-bold uppercase tracking-wider text-white">
-                  Đã bán
+                  {copy.sold}
                 </span>
               </div>
             )}
@@ -321,7 +354,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
               )}
               {card.isBundle && (
                 <Badge variant="outline" className="border-violet-500/50 text-[10px] text-violet-400">
-                  Combo {card.bundleItems?.length || 0} thẻ
+                  {copy.bundle.replace('{count}', String(card.bundleItems?.length || 0))}
                 </Badge>
               )}
             </div>
@@ -398,7 +431,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
         {card.status === 'sold' && (
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
             <span className="bg-green-500 text-white font-bold px-4 py-2 rounded-lg text-sm uppercase tracking-wider">
-              Đã bán
+              {copy.sold}
             </span>
           </div>
         )}

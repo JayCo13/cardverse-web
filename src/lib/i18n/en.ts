@@ -1,6 +1,7 @@
 export const en = {
   language_en: 'English',
   language_vi: 'Vietnamese',
+  language_ja: 'Japanese',
   log_in: 'Log In',
   sign_up: 'Sign Up',
   my_account: 'My Account',

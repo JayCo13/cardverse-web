@@ -11,6 +11,7 @@ import { MagnifyingGlass, SpinnerGap } from '@phosphor-icons/react';
 import { Package, Library } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useLocalization } from '@/context/localization-context';
 
 /** Card data from user_collections */
 interface CollectionCard {
@@ -53,6 +54,59 @@ interface CardPickerDialogProps {
 }
 
 export function CardPickerDialog({ onSelect }: CardPickerDialogProps) {
+  const { locale } = useLocalization();
+  const tabs = locale === 'vi-VN'
+    ? [
+      { id: 'all', label: 'Tất cả', categoryFilter: null },
+      { id: 'pokemon', label: 'Pokémon', categoryFilter: 'Pokemon' },
+      { id: 'onepiece', label: 'One Piece', categoryFilter: 'One Piece' },
+      { id: 'soccer', label: 'Soccer', categoryFilter: 'Soccer' },
+    ]
+    : locale === 'ja-JP'
+      ? [
+        { id: 'all', label: 'すべて', categoryFilter: null },
+        { id: 'pokemon', label: 'ポケモン', categoryFilter: 'Pokemon' },
+        { id: 'onepiece', label: 'ワンピース', categoryFilter: 'One Piece' },
+        { id: 'soccer', label: 'サッカー', categoryFilter: 'Soccer' },
+      ]
+      : [
+        { id: 'all', label: 'All', categoryFilter: null },
+        { id: 'pokemon', label: 'Pokemon', categoryFilter: 'Pokemon' },
+        { id: 'onepiece', label: 'One Piece', categoryFilter: 'One Piece' },
+        { id: 'soccer', label: 'Soccer', categoryFilter: 'Soccer' },
+      ];
+  const copy = locale === 'vi-VN'
+    ? {
+      trigger: 'Chọn thẻ từ bộ sưu tập',
+      title: 'Chọn thẻ từ bộ sưu tập của bạn',
+      loginRequired: 'Vui lòng đăng nhập để xem bộ sưu tập',
+      searchPlaceholder: 'Tìm kiếm trong bộ sưu tập...',
+      loading: 'Đang tải...',
+      empty: 'Không tìm thấy thẻ nào trong bộ sưu tập',
+      emptyHint: 'Hãy thêm thẻ vào bộ sưu tập trước khi đăng bán',
+      goToCollection: 'Đi tới bộ sưu tập',
+    }
+    : locale === 'ja-JP'
+      ? {
+        trigger: 'コレクションからカードを選択',
+        title: 'あなたのコレクションからカードを選択',
+        loginRequired: 'コレクションを見るにはログインしてください',
+        searchPlaceholder: 'コレクション内を検索...',
+        loading: '読み込み中...',
+        empty: 'コレクションにカードが見つかりません',
+        emptyHint: '出品する前にコレクションへカードを追加してください',
+        goToCollection: 'コレクションへ移動',
+      }
+      : {
+        trigger: 'Choose from collection',
+        title: 'Choose a card from your collection',
+        loginRequired: 'Please log in to view your collection',
+        searchPlaceholder: 'Search your collection...',
+        loading: 'Loading...',
+        empty: 'No cards found in your collection',
+        emptyHint: 'Add cards to your collection before listing them for sale',
+        goToCollection: 'Go to collection',
+      };
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
   const [search, setSearch] = useState('');
@@ -72,7 +126,7 @@ export function CardPickerDialog({ onSelect }: CardPickerDialogProps) {
         .eq('user_id', user.id);
 
       // Filter by category tab
-      const tabConfig = TABS.find(t => t.id === tab);
+      const tabConfig = tabs.find(t => t.id === tab);
       if (tabConfig?.categoryFilter) {
         dbQuery = dbQuery.eq('category', tabConfig.categoryFilter);
       }
@@ -123,23 +177,23 @@ export function CardPickerDialog({ onSelect }: CardPickerDialogProps) {
       <DialogTrigger asChild>
         <Button type="button" variant="outline" className="gap-2 border-dashed border-primary/40 hover:border-primary text-primary">
           <Package className="h-4 w-4" />
-          Chọn thẻ từ bộ sưu tập
+          {copy.trigger}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle className="text-xl">Chọn thẻ từ bộ sưu tập của bạn</DialogTitle>
+          <DialogTitle className="text-xl">{copy.title}</DialogTitle>
         </DialogHeader>
 
         {!user ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Library className="h-12 w-12 text-muted-foreground/30 mb-3" />
-            <p className="text-muted-foreground">Vui lòng đăng nhập để xem bộ sưu tập</p>
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Library className="h-12 w-12 text-muted-foreground/30 mb-3" />
+            <p className="text-muted-foreground">{copy.loginRequired}</p>
           </div>
         ) : (
           <Tabs value={activeTab} onValueChange={(val) => { setActiveTab(val); setSearch(''); }}>
             <TabsList className="grid grid-cols-4 w-full max-w-[400px]">
-              {TABS.map(tab => (
+              {tabs.map(tab => (
                 <TabsTrigger key={tab.id} value={tab.id}>{tab.label}</TabsTrigger>
               ))}
             </TabsList>
@@ -149,7 +203,7 @@ export function CardPickerDialog({ onSelect }: CardPickerDialogProps) {
               <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 type="search"
-                placeholder="Tìm kiếm trong bộ sưu tập..."
+                placeholder={copy.searchPlaceholder}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9"
@@ -162,7 +216,7 @@ export function CardPickerDialog({ onSelect }: CardPickerDialogProps) {
               {loading ? (
                 <div className="flex items-center justify-center py-12">
                   <SpinnerGap className="w-6 h-6 animate-spin text-primary" weight="bold" />
-                  <span className="ml-2 text-muted-foreground">Đang tải...</span>
+                  <span className="ml-2 text-muted-foreground">{copy.loading}</span>
                 </div>
               ) : cards.length > 0 ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
@@ -217,14 +271,14 @@ export function CardPickerDialog({ onSelect }: CardPickerDialogProps) {
               ) : (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <Library className="h-12 w-12 text-muted-foreground/30 mb-3" />
-                  <p className="text-muted-foreground">Không tìm thấy thẻ nào trong bộ sưu tập</p>
+                  <p className="text-muted-foreground">{copy.empty}</p>
                   <p className="text-xs text-muted-foreground/60 mt-1">
-                    Hãy thêm thẻ vào bộ sưu tập trước khi đăng bán
+                    {copy.emptyHint}
                   </p>
                   <Link href="/collection" className="mt-3">
                     <Button variant="outline" size="sm" className="gap-2">
                       <Library className="h-4 w-4" />
-                      Đi tới bộ sưu tập
+                      {copy.goToCollection}
                     </Button>
                   </Link>
                 </div>

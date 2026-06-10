@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { vi } from 'date-fns/locale';
+import { enUS, ja, vi } from 'date-fns/locale';
 import { getSupabaseClient } from '@/lib/supabase/client';
+import { useLocalization } from '@/context/localization-context';
 
 // "Giá thị trường VN" — aggregated from real completed CardVerse sales
 // (vn_market_price view: 90-day median per catalog card). Renders nothing
@@ -21,6 +22,25 @@ type VnPriceRow = {
 const formatVND = (amount: number) => new Intl.NumberFormat('vi-VN').format(Math.round(amount)) + 'đ';
 
 export function VnMarketPrice({ productId, soccerId }: { productId?: number | null; soccerId?: number | null }) {
+    const { locale } = useLocalization();
+    const dateLocale = locale === 'vi-VN' ? vi : locale === 'ja-JP' ? ja : enUS;
+    const copy = locale === 'vi-VN'
+        ? {
+            label: 'Gia thi truong VN',
+            trades: 'giao dịch',
+            updated: 'cập nhật',
+        }
+        : locale === 'ja-JP'
+            ? {
+                label: 'ベトナム市場価格',
+                trades: '件の取引',
+                updated: '更新',
+            }
+            : {
+                label: 'VN market price',
+                trades: 'trades',
+                updated: 'updated',
+            };
     const [row, setRow] = useState<VnPriceRow | null>(null);
 
     useEffect(() => {
@@ -63,10 +83,10 @@ export function VnMarketPrice({ productId, soccerId }: { productId?: number | nu
 
     return (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm">
-            <span className="font-semibold text-emerald-400">🇻🇳 Giá thị trường VN: {formatVND(row.median_price)}</span>
+            <span className="font-semibold text-emerald-400">🇻🇳 {copy.label}: {formatVND(row.median_price)}</span>
             <span className="text-xs text-muted-foreground">
-                {row.sale_count} giao dịch · {formatVND(row.min_price)}–{formatVND(row.max_price)} · cập nhật{' '}
-                {formatDistanceToNow(new Date(row.last_sold_at), { addSuffix: true, locale: vi })}
+                {row.sale_count} {copy.trades} · {formatVND(row.min_price)}–{formatVND(row.max_price)} · {copy.updated}{' '}
+                {formatDistanceToNow(new Date(row.last_sold_at), { addSuffix: true, locale: dateLocale })}
             </span>
         </div>
     );

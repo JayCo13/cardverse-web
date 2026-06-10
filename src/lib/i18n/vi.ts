@@ -1,6 +1,7 @@
 export const vi = {
   language_en: 'Tiếng Anh',
   language_vi: 'Tiếng Việt',
+  language_ja: 'Tiếng Nhật',
   log_in: 'Đăng nhập',
   sign_up: 'Đăng ký',
   my_account: 'Tài khoản của tôi',
@@ -504,6 +505,7 @@ export const vi = {
   help_faq_8_a: 'Người bán có thể liên kết tài khoản ngân hàng. Sau khi giao dịch hoàn tất và người mua xác nhận đã nhận hàng, tiền sẽ được chuyển vào số dư khả dụng và có thể rút trực tiếp về ngân hàng của bạn.',
   help_faq_9_q: 'Điều gì xảy ra nếu người mua không thanh toán?',
   help_faq_9_a: 'Nếu người mua không thanh toán cho giao dịch mua hoặc đấu giá trong vòng 48 giờ, giao dịch sẽ bị hủy. Người mua sẽ bị tính một lần vi phạm trên tài khoản và người bán có thể đăng lại mặt hàng miễn phí.',
+  help_faq_10_q: 'Tôi có thể đổi gói đăng ký sau này không?',
   help_faq_10_a: 'Có, bạn có thể nâng cấp, hạ cấp hoặc hủy đăng ký bất cứ lúc nào trong trang Cài đặt Tài khoản.',
   help_faq_11_q: 'Tôi có thể trao đổi thẻ trực tiếp với người dùng khác không?',
   help_faq_11_a: 'Hiện tại, chúng tôi chỉ hỗ trợ mua và bán. Tính năng trao đổi trực tiếp có thể được xem xét trong các bản cập nhật tương lai.',

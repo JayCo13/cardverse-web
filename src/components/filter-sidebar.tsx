@@ -55,9 +55,11 @@ export function FilterSidebar({ filters, onFiltersChange, showListingTypeFilter 
     onFiltersChange(baseFilters);
   };
 
-  const categories: CardCategory[] = locale === 'en-US' 
-    ? ['Pokémon', 'Soccer', 'Magic', 'Other'] 
-    : ['Pokémon', 'Bóng đá', 'Ma thuật', 'Khác'];
+  const categories: CardCategory[] = locale === 'vi-VN'
+    ? ['Pokémon', 'Bóng đá', 'Ma thuật', 'Khác']
+    : locale === 'ja-JP'
+      ? ['Pokémon', 'Soccer', 'Magic', 'Other']
+      : ['Pokémon', 'Soccer', 'Magic', 'Other'];
 
   const listingTypes: { value: ListingType, label: string }[] = [
     { value: 'sale', label: t('buy_now_label') },
@@ -65,9 +67,9 @@ export function FilterSidebar({ filters, onFiltersChange, showListingTypeFilter 
     { value: 'razz', label: t('razz_label') },
   ];
 
-  const conditions: CardCondition[] = locale === 'en-US'
-    ? ['Mint', 'Near Mint', 'Excellent', 'Good', 'Played']
-    : ['Hoàn hảo', 'Gần như mới', 'Tuyệt vời', 'Tốt', 'Đã qua sử dụng'];
+  const conditions: CardCondition[] = locale === 'vi-VN'
+    ? ['Hoàn hảo', 'Gần như mới', 'Tuyệt vời', 'Tốt', 'Đã qua sử dụng']
+    : ['Mint', 'Near Mint', 'Excellent', 'Good', 'Played'];
 
 
   return (

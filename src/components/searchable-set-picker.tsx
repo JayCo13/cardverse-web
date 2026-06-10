@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { MagnifyingGlass, X } from '@phosphor-icons/react';
 import { Loader2 } from 'lucide-react';
 import type { GroupedSets } from '@/lib/card-catalog';
+import { useLocalization } from '@/context/localization-context';
 
 interface SearchableSetPickerProps {
   /** Current selected value */
@@ -32,10 +33,41 @@ export function SearchableSetPicker({
   placeholder = 'Tìm và chọn set...',
   disabled = false,
 }: SearchableSetPickerProps) {
+  const { locale } = useLocalization();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const copy = locale === 'ja-JP'
+    ? {
+        placeholder: 'セットを検索して選択...',
+        loading: 'セットを読み込み中...',
+        enSets: 'English Sets',
+        jpSets: 'Japanese Sets',
+        sets: 'Sets',
+        notFound: `セット "${search}" が見つかりません`,
+        empty: 'セットがありません',
+      }
+    : locale === 'vi-VN'
+      ? {
+          placeholder: 'Tìm và chọn set...',
+          loading: 'Đang tải sets...',
+          enSets: 'English Sets',
+          jpSets: 'Japanese Sets',
+          sets: 'Sets',
+          notFound: `Không tìm thấy set "${search}"`,
+          empty: 'Không có set nào',
+        }
+      : {
+          placeholder: 'Search and select a set...',
+          loading: 'Loading sets...',
+          enSets: 'English Sets',
+          jpSets: 'Japanese Sets',
+          sets: 'Sets',
+          notFound: `No set found for "${search}"`,
+          empty: 'No sets available',
+        };
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -62,12 +94,12 @@ export function SearchableSetPicker({
     const hasJp = groupedSets.jp.length > 0;
     const hasOther = groupedSets.other.length > 0;
 
-    if (hasEn) sections.push({ label: '🇺🇸 English Sets', items: filterBySearch(groupedSets.en) });
-    if (hasJp) sections.push({ label: '🇯🇵 Japanese Sets', items: filterBySearch(groupedSets.jp) });
-    if (hasOther) sections.push({ label: 'Sets', items: filterBySearch(groupedSets.other) });
+    if (hasEn) sections.push({ label: `🇺🇸 ${copy.enSets}`, items: filterBySearch(groupedSets.en) });
+    if (hasJp) sections.push({ label: `🇯🇵 ${copy.jpSets}`, items: filterBySearch(groupedSets.jp) });
+    if (hasOther) sections.push({ label: copy.sets, items: filterBySearch(groupedSets.other) });
   } else if (flatSets) {
     sections.push({
-      label: 'Sets',
+      label: copy.sets,
       items: filterBySearch(flatSets.map(s => s.name).filter(Boolean)),
     });
   }
@@ -94,7 +126,7 @@ export function SearchableSetPicker({
         <Input
           ref={inputRef}
           type="text"
-          placeholder={loading ? 'Đang tải sets...' : (value || placeholder)}
+          placeholder={loading ? copy.loading : (value || (placeholder === 'Tìm và chọn set...' ? copy.placeholder : placeholder))}
           value={open ? search : (value || '')}
           onChange={(e) => {
             setSearch(e.target.value);
@@ -128,9 +160,9 @@ export function SearchableSetPicker({
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
 
           <div className="absolute z-50 w-full mt-1 max-h-[320px] overflow-y-auto rounded-lg border border-border bg-popover shadow-xl">
-            {totalResults === 0 ? (
+                {totalResults === 0 ? (
               <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-                {search ? `Không tìm thấy set "${search}"` : 'Không có set nào'}
+                {search ? copy.notFound : copy.empty}
               </div>
             ) : (
               sections.map((section, sIdx) => (

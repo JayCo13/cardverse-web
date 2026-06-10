@@ -8,10 +8,33 @@ import { PaperPlaneRight } from "@phosphor-icons/react";
 import { useToast } from "@/hooks/use-toast";
 
 export function SupportSection() {
-    const { t } = useLocalization();
+    const { t, locale } = useLocalization();
     const { toast } = useToast();
     const [email, setEmail] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const copy = locale === "vi-VN"
+        ? {
+            subscribeFailed: "Đăng ký thất bại",
+            successTitle: "Thành công!",
+            errorTitle: "Lỗi",
+            errorDesc: "Vui lòng thử lại sau.",
+            footer: "Không spam • Bảo mật • Cập nhật hàng tuần",
+        }
+        : locale === "ja-JP"
+            ? {
+                subscribeFailed: "登録に失敗しました",
+                successTitle: "登録完了！",
+                errorTitle: "エラー",
+                errorDesc: "しばらくしてからもう一度お試しください。",
+                footer: "スパムなし • 安全 • 毎週更新",
+            }
+            : {
+                subscribeFailed: "Failed to subscribe",
+                successTitle: "Success!",
+                errorTitle: "Error",
+                errorDesc: "Please try again later.",
+                footer: "No Spam • Secure • Weekly Updates",
+            };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -32,11 +55,11 @@ export function SupportSection() {
             const data = await response.json();
 
             if (!response.ok) {
-                throw new Error(data.error || 'Failed to subscribe');
+                throw new Error(data.error || copy.subscribeFailed);
             }
 
             toast({
-                title: "Success! / Thành công!",
+                title: copy.successTitle,
                 description: t('support_success_message'),
                 className: "bg-orange-950 border-orange-800 text-white",
             });
@@ -46,8 +69,8 @@ export function SupportSection() {
             console.error('Subscribe error:', error);
             toast({
                 variant: "destructive",
-                title: "Error / Lỗi",
-                description: "Vui lòng thử lại sau. / Please try again later.",
+                title: copy.errorTitle,
+                description: copy.errorDesc,
             });
         } finally {
             setIsLoading(false);
@@ -98,7 +121,7 @@ export function SupportSection() {
                 </form>
 
                 <p className="text-xs text-white-900/60 mt-6 font-mono uppercase tracking-widest">
-                    No Spam • Secure • Weekly Updates
+                    {copy.footer}
                 </p>
             </div>
         </section>

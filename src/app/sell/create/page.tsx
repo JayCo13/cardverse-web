@@ -64,26 +64,385 @@ const CardPickerDialog = dynamic(
   { ssr: false }
 );
 
-/** Vietnamese labels for form fields, used to surface validation errors. */
-const FIELD_LABELS: Record<string, string> = {
-  name: 'Tiêu đề',
-  category: 'Danh mục',
-  condition: 'Tình trạng thẻ',
-  publisher: 'Nhà phát hành',
-  setName: 'Set / Bộ sưu tập',
-  season: 'Mùa / Năm',
-  quantity: 'Số lượng',
-  grade: 'Điểm grade',
-  gradingCompany: 'Hãng grade',
-  cardNumber: 'Số thẻ',
-  language: 'Ngôn ngữ thẻ',
-  price: 'Giá bán',
-  startingBid: 'Giá khởi điểm',
-  auctionEnds: 'Ngày kết thúc',
-  ticketPrice: 'Giá vé',
-  totalTickets: 'Tổng số vé',
-  description: 'Mô tả',
-  images: 'Hình ảnh',
+type LocaleCopy = {
+  fieldLabels: Record<string, string>;
+  titleMin: string;
+  chooseCategory: string;
+  minSalePrice: string;
+  minStartingBid: string;
+  minTicketPrice: string;
+  descriptionMin: string;
+  minImages: string;
+  maxImages: string;
+  enterPrice: string;
+  enterAuction: string;
+  enterRazz: string;
+  choosePublisher: string;
+  enterPublisher: string;
+  chooseGrade: string;
+  chooseCondition: string;
+  enterCardNumber: string;
+  chooseLanguage: string;
+  created: string;
+  createdDesc: string;
+  createErrorTitle: string;
+  createErrorDesc: string;
+  checkingSeller: string;
+  checkingSellerDesc: string;
+  kycNeeded: string;
+  kycNeededDesc: string;
+  addPickup: string;
+  addPickupDesc: string;
+  saveAndContinue: string;
+  missingTitle: string;
+  missingDesc: string;
+  missingFallback: string;
+  cardIdentityTitle: string;
+  cardIdentityDesc: string;
+  clearSelection: string;
+  marketPrice: string;
+  useThisPrice: string;
+  suggestedApplied: string;
+  cardNumber: string;
+  cardNumberPlaceholder: string;
+  cardLanguage: string;
+  cardLanguagePlaceholder: string;
+  cardLanguageEn: string;
+  cardLanguageJp: string;
+  bundleTitle: string;
+  bundleDesc: string;
+  listingTitle: string;
+  listingTitlePlaceholder: string;
+  listingTitleHint: string;
+  detailsTitle: string;
+  publisher: string;
+  publisherPlaceholder: string;
+  publisherInputPlaceholder: string;
+  setLabel: string;
+  setPlaceholder: string;
+  season: string;
+  seasonPlaceholder: string;
+  seasonSelectPlaceholder: string;
+  quantity: string;
+  gradingTitle: string;
+  gradingCompany: string;
+  raw: string;
+  finish: string;
+  bundleList: string;
+  cardsCount: string;
+  addCard: string;
+  cardItemPlaceholder: string;
+  bundleDisplayPrice: string;
+  bundleTotalValue: string;
+  processingImages: string;
+  priceUsdPlaceholder: string;
+  priceBundlePlaceholder: string;
+  priceVndPlaceholder: string;
+  vndNote: string;
+  usdNote: string;
+  inputVndNote: string;
+  acceptOffers: string;
+  acceptOffersDesc: string;
+  minOffer: string;
+  acceptAllOffers: string;
+  nearOriginalPrice: string;
+  payoutNote: string;
+  payoutNoteDesc: string;
+  usdConfirmTitle: string;
+  usdConfirmDesc: string;
+  editPrice: string;
+  confirmPrice: string;
+};
+
+const getLocaleCopy = (locale: string): LocaleCopy => {
+  if (locale === 'ja-JP') {
+    return {
+      fieldLabels: {
+        name: 'タイトル', category: 'カテゴリ', condition: 'カード状態', publisher: '出版社', setName: 'セット',
+        season: 'シーズン / 年', quantity: '数量', grade: 'グレード', gradingCompany: '鑑定会社',
+        cardNumber: 'カード番号', language: 'カード言語', price: '販売価格', startingBid: '開始価格',
+        auctionEnds: '終了日時', ticketPrice: 'チケット価格', totalTickets: 'チケット総数', description: '説明', images: '画像',
+      },
+      titleMin: 'タイトルは5文字以上必要です。',
+      chooseCategory: 'カテゴリを選択してください。',
+      minSalePrice: `最低販売価格は${MIN_MARKETPLACE_PRICE_VND.toLocaleString('ja-JP')} VNDです。`,
+      minStartingBid: `最低開始価格は${MIN_MARKETPLACE_PRICE_VND.toLocaleString('ja-JP')} VNDです。`,
+      minTicketPrice: `最低チケット価格は${MIN_MARKETPLACE_PRICE_VND.toLocaleString('ja-JP')} VNDです。`,
+      descriptionMin: '説明は10文字以上必要です。',
+      minImages: '画像を1枚以上アップロードしてください。',
+      maxImages: '画像は最大4枚までです。',
+      enterPrice: '販売価格を入力してください。',
+      enterAuction: '開始価格と終了日時を入力してください。',
+      enterRazz: 'チケット価格と総数を入力してください。',
+      choosePublisher: '出版社を選択してください。',
+      enterPublisher: '出版社を入力してください。',
+      chooseGrade: 'グレードを選択してください。',
+      chooseCondition: 'カード状態を選択してください。',
+      enterCardNumber: 'カード番号を入力してください（例: 199/197, OP15-118）。',
+      chooseLanguage: 'カード言語を選択してください（EN/JP）。',
+      created: '出品が完了しました',
+      createdDesc: 'カードがマーケットに掲載されました。',
+      createErrorTitle: 'エラー',
+      createErrorDesc: '出品の作成中に問題が発生しました。',
+      checkingSeller: '販売者権限を確認中',
+      checkingSellerDesc: 'しばらくお待ちください。',
+      kycNeeded: 'KYCが未承認です',
+      kycNeededDesc: '出品する前にSellerページで本人確認を完了してください。',
+      addPickup: '集荷住所を追加',
+      addPickupDesc: '出品前に集荷住所を設定してください。購入者向けの送料計算に必要です。',
+      saveAndContinue: '住所を保存して続行',
+      missingTitle: '入力不足があります',
+      missingDesc: '確認してください: {fields}.',
+      missingFallback: '未入力の項目を確認してください。',
+      cardIdentityTitle: '正しいカードを特定',
+      cardIdentityDesc: 'カタログからカードを選ぶと、VN市場価格との紐付けが正確になります。',
+      clearSelection: '解除',
+      marketPrice: '市場価格 (TCGplayer):',
+      useThisPrice: 'この価格を使う',
+      suggestedApplied: '参考価格を適用しました',
+      cardNumber: 'カード番号',
+      cardNumberPlaceholder: '例: 199/197, OP15-118, TG12/TG30',
+      cardLanguage: 'カード言語',
+      cardLanguagePlaceholder: 'EN / JP を選択',
+      cardLanguageEn: 'EN - 英語',
+      cardLanguageJp: 'JP - 日本語',
+      bundleTitle: '複数カードをまとめて販売',
+      bundleDesc: '1つの出品で複数カードを掲載',
+      listingTitle: '出品タイトル',
+      listingTitlePlaceholder: '例: Rare Pokemon Base Set collection',
+      listingTitleHint: 'マーケットに表示されるメインタイトルです',
+      detailsTitle: '詳細情報',
+      publisher: '出版社',
+      publisherPlaceholder: '出版社を選択',
+      publisherInputPlaceholder: '例: Panini, Topps...',
+      setLabel: 'セット / コレクション',
+      setPlaceholder: '例: Chrome, Prizm...',
+      season: 'シーズン / 年',
+      seasonPlaceholder: '例: 2024-25, Season 1...',
+      seasonSelectPlaceholder: 'シーズン/年を選択',
+      quantity: '数量',
+      gradingTitle: '鑑定状態とバリエーション',
+      gradingCompany: '鑑定会社',
+      raw: 'Raw (未鑑定)',
+      finish: 'バリエーション / Finish',
+      bundleList: 'カード一覧',
+      cardsCount: '{count}枚',
+      addCard: 'カード追加',
+      cardItemPlaceholder: 'カード名 #{number}, 例: Holo Charizard',
+      bundleDisplayPrice: 'マーケット表示価格:',
+      bundleTotalValue: '合計価値:',
+      processingImages: '画像を処理中...',
+      priceUsdPlaceholder: 'USD価格を入力 例: 30',
+      priceBundlePlaceholder: 'セット販売価格をVNDで入力',
+      priceVndPlaceholder: 'VND価格を入力 例: 700000',
+      vndNote: '価格はVNDです。例: 700000 = 700,000đ。',
+      usdNote: '出品価格は換算後にVNDで保存・表示されます。',
+      inputVndNote: 'VNDで入力してください。例: 10000 = 10,000đ。',
+      acceptOffers: 'オファーを受け付ける',
+      acceptOffersDesc: '購入者が価格提案を送れるようにします',
+      minOffer: 'この割合未満のオファーは受けない',
+      acceptAllOffers: 'すべてのオファーを受ける',
+      nearOriginalPrice: '元値に近いオファーのみ',
+      payoutNote: '売上に関する注意',
+      payoutNoteDesc: 'カードが売れると、売上はCardVerseウォレットに入ります。銀行口座への出金ごとに5%のプラットフォーム手数料が差し引かれます。',
+      usdConfirmTitle: '販売価格を確認 (VND換算)',
+      usdConfirmDesc: 'USDで入力した価格は、換算後にVNDで出品されます:',
+      editPrice: '価格を修正',
+      confirmPrice: 'この価格で出品',
+    };
+  }
+
+  if (locale === 'vi-VN') {
+    return {
+      fieldLabels: {
+        name: 'Tiêu đề', category: 'Danh mục', condition: 'Tình trạng thẻ', publisher: 'Nhà phát hành', setName: 'Set / Bộ sưu tập',
+        season: 'Mùa / Năm', quantity: 'Số lượng', grade: 'Điểm grade', gradingCompany: 'Hãng grade',
+        cardNumber: 'Số thẻ', language: 'Ngôn ngữ thẻ', price: 'Giá bán', startingBid: 'Giá khởi điểm',
+        auctionEnds: 'Ngày kết thúc', ticketPrice: 'Giá vé', totalTickets: 'Tổng số vé', description: 'Mô tả', images: 'Hình ảnh',
+      },
+      titleMin: 'Tiêu đề cần ít nhất 5 ký tự.',
+      chooseCategory: 'Vui lòng chọn danh mục.',
+      minSalePrice: `Giá bán tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.`,
+      minStartingBid: `Giá khởi điểm tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.`,
+      minTicketPrice: `Giá vé tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.`,
+      descriptionMin: 'Mô tả cần ít nhất 10 ký tự.',
+      minImages: 'Vui lòng tải lên ít nhất 1 ảnh.',
+      maxImages: 'Tối đa 4 ảnh.',
+      enterPrice: 'Vui lòng nhập giá bán.',
+      enterAuction: 'Vui lòng nhập giá khởi điểm và ngày kết thúc.',
+      enterRazz: 'Vui lòng nhập giá vé và tổng số vé.',
+      choosePublisher: 'Vui lòng chọn nhà phát hành.',
+      enterPublisher: 'Vui lòng nhập nhà phát hành.',
+      chooseGrade: 'Vui lòng chọn điểm grade.',
+      chooseCondition: 'Vui lòng chọn tình trạng thẻ.',
+      enterCardNumber: 'Vui lòng nhập số thẻ (vd: 199/197, OP15-118).',
+      chooseLanguage: 'Vui lòng chọn ngôn ngữ thẻ (EN/JP).',
+      created: 'Đăng bán thành công!',
+      createdDesc: 'Thẻ của bạn đã được đăng trên chợ.',
+      createErrorTitle: 'Lỗi',
+      createErrorDesc: 'Có lỗi khi tạo bài đăng.',
+      checkingSeller: 'Đang kiểm tra quyền người bán',
+      checkingSellerDesc: 'Vui lòng đợi trong giây lát.',
+      kycNeeded: 'Bạn chưa được duyệt KYC',
+      kycNeededDesc: 'Hoàn tất xác minh ở trang Seller để bắt đầu đăng bán.',
+      addPickup: 'Thêm địa chỉ lấy hàng',
+      addPickupDesc: 'Trước khi đăng bán, vui lòng thiết lập địa chỉ lấy hàng của bạn. Chúng tôi cần địa chỉ này để tính cước phí vận chuyển cho người mua.',
+      saveAndContinue: 'Lưu địa chỉ & tiếp tục',
+      missingTitle: 'Thiếu thông tin',
+      missingDesc: 'Vui lòng kiểm tra: {fields}.',
+      missingFallback: 'Vui lòng kiểm tra lại các trường còn thiếu.',
+      cardIdentityTitle: 'Xác định đúng lá thẻ',
+      cardIdentityDesc: 'Chọn thẻ từ catalog để bài đăng gắn đúng lá thẻ và tính giá thị trường VN chính xác hơn.',
+      clearSelection: 'Bỏ chọn',
+      marketPrice: 'Giá thị trường (TCGplayer):',
+      useThisPrice: 'Dùng giá này',
+      suggestedApplied: 'Đã áp dụng giá gợi ý',
+      cardNumber: 'Số thẻ',
+      cardNumberPlaceholder: 'VD: 199/197, OP15-118, TG12/TG30',
+      cardLanguage: 'Ngôn ngữ thẻ',
+      cardLanguagePlaceholder: 'Chọn EN / JP',
+      cardLanguageEn: 'EN - Tiếng Anh',
+      cardLanguageJp: 'JP - Tiếng Nhật',
+      bundleTitle: 'Bán nhiều thẻ',
+      bundleDesc: 'Đăng bán nhiều thẻ trong cùng một bài viết',
+      listingTitle: 'Tiêu đề bài bán',
+      listingTitlePlaceholder: 'VD: Bộ sưu tập Pokemon Base Set hàng hiếm',
+      listingTitleHint: 'Đây là tiêu đề chính hiển thị trên chợ',
+      detailsTitle: 'Thông tin chi tiết',
+      publisher: 'Nhà phát hành',
+      publisherPlaceholder: 'Chọn nhà phát hành',
+      publisherInputPlaceholder: 'VD: Panini, Topps...',
+      setLabel: 'Set / Bộ sưu tập',
+      setPlaceholder: 'VD: Chrome, Prizm...',
+      season: 'Mùa / Năm',
+      seasonPlaceholder: 'VD: 2024-25, Season 1...',
+      seasonSelectPlaceholder: 'Chọn mùa/năm',
+      quantity: 'Số lượng',
+      gradingTitle: 'Tình trạng grade & biến thể',
+      gradingCompany: 'Hãng grade',
+      raw: 'Raw (chưa grade)',
+      finish: 'Biến thể / Finish',
+      bundleList: 'Danh sách thẻ',
+      cardsCount: '{count} thẻ',
+      addCard: 'Thêm thẻ',
+      cardItemPlaceholder: 'Tên thẻ #{number}, VD: Holo Charizard',
+      bundleDisplayPrice: 'Giá hiển thị trên chợ:',
+      bundleTotalValue: 'Tổng giá trị:',
+      processingImages: 'Đang xử lý ảnh...',
+      priceUsdPlaceholder: 'Nhập giá bằng USD, ví dụ 30',
+      priceBundlePlaceholder: 'Nhập giá bán cho cả bộ (VND)',
+      priceVndPlaceholder: 'Nhập giá bằng VND, ví dụ 700000',
+      vndNote: 'Giá đang dùng đơn vị VND. Ví dụ: 700000 = 700.000đ.',
+      usdNote: 'Bài đăng sẽ được lưu và hiển thị bằng VND sau khi quy đổi.',
+      inputVndNote: 'Nhập theo VND. Ví dụ: 10000 = 10.000đ.',
+      acceptOffers: 'Nhận offer',
+      acceptOffersDesc: 'Cho phép người mua gửi đề nghị giá cho thẻ này',
+      minOffer: 'Không nhận offer dưới',
+      acceptAllOffers: 'Nhận mọi offer',
+      nearOriginalPrice: 'Chỉ nhận gần giá gốc',
+      payoutNote: 'Lưu ý về tiền bán',
+      payoutNoteDesc: 'Khi bán được thẻ, tiền sẽ vào ví CardVerse của bạn. Mỗi lần rút tiền về tài khoản ngân hàng sẽ bị trừ 5% phí nền tảng. Bạn có thể cân nhắc mức giá để bù phần phí này.',
+      usdConfirmTitle: 'Xác nhận giá bán (quy đổi sang VND)',
+      usdConfirmDesc: 'Bạn nhập giá bằng USD. Thẻ sẽ được đăng bán với giá VND sau quy đổi:',
+      editPrice: 'Sửa lại giá',
+      confirmPrice: 'Đăng bán với giá này',
+    };
+  }
+
+  return {
+    fieldLabels: {
+      name: 'Title', category: 'Category', condition: 'Card condition', publisher: 'Publisher', setName: 'Set / Collection',
+      season: 'Season / Year', quantity: 'Quantity', grade: 'Grade', gradingCompany: 'Grading company',
+      cardNumber: 'Card number', language: 'Card language', price: 'Sale price', startingBid: 'Starting bid',
+      auctionEnds: 'End date', ticketPrice: 'Ticket price', totalTickets: 'Total tickets', description: 'Description', images: 'Images',
+    },
+    titleMin: 'Title must be at least 5 characters.',
+    chooseCategory: 'Please choose a category.',
+    minSalePrice: `Minimum sale price is ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('en-US')} VND.`,
+    minStartingBid: `Minimum starting bid is ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('en-US')} VND.`,
+    minTicketPrice: `Minimum ticket price is ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('en-US')} VND.`,
+    descriptionMin: 'Description must be at least 10 characters.',
+    minImages: 'Please upload at least 1 image.',
+    maxImages: 'Maximum 4 images.',
+    enterPrice: 'Please enter a sale price.',
+    enterAuction: 'Please enter a starting bid and end date.',
+    enterRazz: 'Please enter ticket price and total tickets.',
+    choosePublisher: 'Please choose a publisher.',
+    enterPublisher: 'Please enter a publisher.',
+    chooseGrade: 'Please choose a grade.',
+    chooseCondition: 'Please choose the card condition.',
+    enterCardNumber: 'Please enter a card number (e.g. 199/197, OP15-118).',
+    chooseLanguage: 'Please choose the card language (EN/JP).',
+    created: 'Listing created',
+    createdDesc: 'Your card has been listed on the marketplace.',
+    createErrorTitle: 'Error',
+    createErrorDesc: 'There was a problem creating your listing.',
+    checkingSeller: 'Checking seller access',
+    checkingSellerDesc: 'Please wait a moment.',
+    kycNeeded: 'KYC has not been approved',
+    kycNeededDesc: 'Complete verification on the Seller page before listing cards.',
+    addPickup: 'Add pickup address',
+    addPickupDesc: 'Before listing, set your pickup address. We need it to calculate shipping fees for buyers.',
+    saveAndContinue: 'Save address & continue',
+    missingTitle: 'Missing information',
+    missingDesc: 'Please check: {fields}.',
+    missingFallback: 'Please review the missing fields.',
+    cardIdentityTitle: 'Identify the exact card',
+    cardIdentityDesc: 'Choose a card from the catalog so the listing is linked correctly and VN market pricing is more accurate.',
+    clearSelection: 'Clear',
+    marketPrice: 'Market price (TCGplayer):',
+    useThisPrice: 'Use this price',
+    suggestedApplied: 'Suggested price applied',
+    cardNumber: 'Card number',
+    cardNumberPlaceholder: 'E.g. 199/197, OP15-118, TG12/TG30',
+    cardLanguage: 'Card language',
+    cardLanguagePlaceholder: 'Choose EN / JP',
+    cardLanguageEn: 'EN - English',
+    cardLanguageJp: 'JP - Japanese',
+    bundleTitle: 'Sell multiple cards',
+    bundleDesc: 'List multiple cards in one listing',
+    listingTitle: 'Listing title',
+    listingTitlePlaceholder: 'E.g. Rare Pokemon Base Set collection',
+    listingTitleHint: 'This is the main title shown in the marketplace',
+    detailsTitle: 'Details',
+    publisher: 'Publisher',
+    publisherPlaceholder: 'Choose publisher',
+    publisherInputPlaceholder: 'E.g. Panini, Topps...',
+    setLabel: 'Set / Collection',
+    setPlaceholder: 'E.g. Chrome, Prizm...',
+    season: 'Season / Year',
+    seasonPlaceholder: 'E.g. 2024-25, Season 1...',
+    seasonSelectPlaceholder: 'Choose season/year',
+    quantity: 'Quantity',
+    gradingTitle: 'Grading condition & variant',
+    gradingCompany: 'Grading company',
+    raw: 'Raw (ungraded)',
+    finish: 'Variant / Finish',
+    bundleList: 'Card list',
+    cardsCount: '{count} cards',
+    addCard: 'Add card',
+    cardItemPlaceholder: 'Card #{number} name, e.g. Holo Charizard',
+    bundleDisplayPrice: 'Marketplace display price:',
+    bundleTotalValue: 'Total value:',
+    processingImages: 'Processing images...',
+    priceUsdPlaceholder: 'Enter USD price, e.g. 30',
+    priceBundlePlaceholder: 'Enter bundle price in VND',
+    priceVndPlaceholder: 'Enter VND price, e.g. 700000',
+    vndNote: 'Price is in VND. Example: 700000 = 700,000đ.',
+    usdNote: 'The listing will be saved and displayed in VND after conversion.',
+    inputVndNote: 'Enter VND. Example: 10000 = 10,000đ.',
+    acceptOffers: 'Accept offers',
+    acceptOffersDesc: 'Allow buyers to send price offers for this card',
+    minOffer: 'Do not accept offers below',
+    acceptAllOffers: 'Accept all offers',
+    nearOriginalPrice: 'Only near original price',
+    payoutNote: 'Seller payout note',
+    payoutNoteDesc: 'When a card sells, the money goes to your CardVerse wallet. Each withdrawal to a bank account has a 5% platform fee.',
+    usdConfirmTitle: 'Confirm sale price (converted to VND)',
+    usdConfirmDesc: 'You entered a USD price. The card will be listed in VND after conversion:',
+    editPrice: 'Edit price',
+    confirmPrice: 'List with this price',
+  };
 };
 
 /** Individual card in a bundle */
@@ -113,10 +472,10 @@ function parseVndNumberInput(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-const getFormSchema = (t: (key: any) => string) => z.object({
-  name: z.string().min(5, { message: "Tiêu đề cần ít nhất 5 ký tự." }),
+const getFormSchema = (copy: LocaleCopy) => z.object({
+  name: z.string().min(5, { message: copy.titleMin }),
   isBundle: z.boolean().default(false),
-  category: z.string({ required_error: "Vui lòng chọn danh mục." }),
+  category: z.string({ required_error: copy.chooseCategory }),
   publisher: z.string().optional(),
   setName: z.string().optional(),
   season: z.string().optional(),
@@ -142,23 +501,23 @@ const getFormSchema = (t: (key: any) => string) => z.object({
   listingType: z.enum(['sale', 'auction', 'razz']),
   price: z.preprocess(
     (a) => parseVndNumberInput(a),
-    z.number().min(MIN_MARKETPLACE_PRICE_VND, { message: `Giá bán tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.` }).optional()
+    z.number().min(MIN_MARKETPLACE_PRICE_VND, { message: copy.minSalePrice }).optional()
   ),
   startingBid: z.preprocess(
     (a) => parseVndNumberInput(a),
-    z.number().min(MIN_MARKETPLACE_PRICE_VND, { message: `Giá khởi điểm tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.` }).optional()
+    z.number().min(MIN_MARKETPLACE_PRICE_VND, { message: copy.minStartingBid }).optional()
   ),
   auctionEnds: z.string().optional(),
   ticketPrice: z.preprocess(
     (a) => parseVndNumberInput(a),
-    z.number().min(MIN_MARKETPLACE_PRICE_VND, { message: `Giá vé tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.` }).optional()
+    z.number().min(MIN_MARKETPLACE_PRICE_VND, { message: copy.minTicketPrice }).optional()
   ),
   totalTickets: z.preprocess(
     (a) => a ? parseInt(z.string().parse(a), 10) : undefined,
     z.number().positive().optional()
   ),
-  description: z.string().min(10, { message: "Mô tả cần ít nhất 10 ký tự." }),
-  images: z.array(z.instanceof(File)).min(1, "Vui lòng tải lên ít nhất 1 ảnh.").max(4, "Tối đa 4 ảnh."),
+  description: z.string().min(10, { message: copy.descriptionMin }),
+  images: z.array(z.instanceof(File)).min(1, copy.minImages).max(4, copy.maxImages),
   // Offer settings
   acceptOffers: z.boolean().default(false),
   minOfferPercent: z.preprocess(
@@ -176,33 +535,33 @@ const getFormSchema = (t: (key: any) => string) => z.object({
 }).refine(data => {
   if (data.listingType === 'sale') return data.price !== undefined;
   return true;
-}, { message: "Vui lòng nhập giá bán.", path: ['price'] })
+}, { message: copy.enterPrice, path: ['price'] })
   .refine(data => {
     if (data.listingType === 'auction') return data.startingBid !== undefined && data.auctionEnds !== undefined;
     return true;
-  }, { message: "Vui lòng nhập giá khởi điểm và ngày kết thúc.", path: ['startingBid'] })
+  }, { message: copy.enterAuction, path: ['startingBid'] })
   .refine(data => {
     if (data.listingType === 'razz') return data.ticketPrice !== undefined && data.totalTickets !== undefined;
     return true;
-  }, { message: "Vui lòng nhập giá vé và tổng số vé.", path: ['ticketPrice'] })
+  }, { message: copy.enterRazz, path: ['ticketPrice'] })
   // Publisher: bắt buộc theo dropdown ở category thường; ở category "Khác"
   // (free-text) thì thay bằng ô freePublisher.
   .refine(data => {
     if (isFreeText(data.category)) return true;
     return data.publisher !== undefined && data.publisher !== '';
-  }, { message: "Vui lòng chọn nhà phát hành.", path: ['publisher'] })
+  }, { message: copy.choosePublisher, path: ['publisher'] })
   .refine(data => {
     if (!isFreeText(data.category)) return true;
     return !!data.freePublisher && data.freePublisher.trim() !== '';
-  }, { message: "Vui lòng nhập nhà phát hành.", path: ['freePublisher'] })
+  }, { message: copy.enterPublisher, path: ['freePublisher'] })
   .refine(data => {
     if (data.gradingCompany !== 'raw') return data.grade !== undefined;
     return true;
-  }, { message: "Vui lòng chọn điểm grade.", path: ['grade'] })
+  }, { message: copy.chooseGrade, path: ['grade'] })
   .refine(data => {
     if (data.gradingCompany === 'raw') return data.condition !== undefined && data.condition !== null && data.condition !== '';
     return true;
-  }, { message: "Vui lòng chọn tình trạng thẻ.", path: ['condition'] })
+  }, { message: copy.chooseCondition, path: ['condition'] })
   // Single-card listings in catalog-backed categories must carry a collector
   // number (the identity key for VN market pricing). Bundles are exempt.
   .refine(data => {
@@ -211,14 +570,14 @@ const getFormSchema = (t: (key: any) => string) => z.object({
       return !!data.cardNumber && data.cardNumber.trim() !== '';
     }
     return true;
-  }, { message: "Vui lòng nhập số thẻ (vd: 199/197, OP15-118).", path: ['cardNumber'] })
+  }, { message: copy.enterCardNumber, path: ['cardNumber'] })
   .refine(data => {
     if (data.isBundle) return true;
     if (data.category === 'Pokémon' || data.category === 'One Piece') {
       return data.language !== undefined;
     }
     return true;
-  }, { message: "Vui lòng chọn ngôn ngữ thẻ (EN/JP).", path: ['language'] });
+  }, { message: copy.chooseLanguage, path: ['language'] });
 
 
 export default function CreateListingPage() {
@@ -233,7 +592,8 @@ export default function CreateListingPage() {
   const [hasPickupAddress, setHasPickupAddress] = useState(false);
   const supabase = useSupabase();
 
-  const formSchema = getFormSchema(t);
+  const copy = getLocaleCopy(locale);
+  const formSchema = getFormSchema(copy);
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -720,8 +1080,8 @@ export default function CreateListingPage() {
       }
 
       toast({
-        title: "Đăng bán thành công!",
-        description: "Thẻ của bạn đã được đăng trên chợ.",
+        title: copy.created,
+        description: copy.createdDesc,
       });
 
       router.push('/buy');
@@ -730,8 +1090,8 @@ export default function CreateListingPage() {
       console.error("Error creating listing: ", error);
       toast({
         variant: "destructive",
-        title: "Uh oh! Something went wrong.",
-        description: error.message || "There was a problem creating your listing.",
+        title: copy.createErrorTitle,
+        description: error.message || copy.createErrorDesc,
       });
     } finally {
       setIsSubmitting(false);
@@ -753,8 +1113,8 @@ export default function CreateListingPage() {
       return (
         <div className="flex flex-col items-center justify-center text-center py-16">
           <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
-          <h2 className="text-xl font-semibold mb-2">Đang kiểm tra quyền người bán</h2>
-          <p className="text-muted-foreground">Vui lòng đợi trong giây lát.</p>
+          <h2 className="text-xl font-semibold mb-2">{copy.checkingSeller}</h2>
+          <p className="text-muted-foreground">{copy.checkingSellerDesc}</p>
         </div>
       );
     }
@@ -763,8 +1123,8 @@ export default function CreateListingPage() {
       return (
         <div className="flex flex-col items-center justify-center text-center py-16">
           <ShieldAlert className="h-16 w-16 text-primary mb-4" />
-          <h2 className="text-2xl font-semibold mb-2">Bạn chưa được duyệt KYC</h2>
-          <p className="text-muted-foreground">Hoàn tất xác minh ở trang Seller để bắt đầu đăng bán.</p>
+          <h2 className="text-2xl font-semibold mb-2">{copy.kycNeeded}</h2>
+          <p className="text-muted-foreground">{copy.kycNeededDesc}</p>
         </div>
       );
     }
@@ -778,15 +1138,14 @@ export default function CreateListingPage() {
             <div className="h-14 w-14 rounded-full bg-orange-500/10 flex items-center justify-center mb-3">
               <MapPin className="h-7 w-7 text-orange-500" />
             </div>
-            <h2 className="text-2xl font-semibold mb-1">Thêm địa chỉ lấy hàng</h2>
+            <h2 className="text-2xl font-semibold mb-1">{copy.addPickup}</h2>
             <p className="text-muted-foreground max-w-md">
-              Trước khi đăng bán, vui lòng thiết lập địa chỉ lấy hàng của bạn.
-              Chúng tôi cần địa chỉ này để tính cước phí vận chuyển cho người mua.
+              {copy.addPickupDesc}
             </p>
           </div>
           <div className="max-w-xl mx-auto rounded-xl border border-orange-500/20 bg-orange-500/5 p-5">
             <SellerAddressForm
-              submitLabel="Lưu địa chỉ & tiếp tục"
+              submitLabel={copy.saveAndContinue}
               onSaved={() => setHasPickupAddress(true)}
             />
           </div>
@@ -798,13 +1157,13 @@ export default function CreateListingPage() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
           const missing = Object.keys(errors)
-            .map((key) => FIELD_LABELS[key] || key);
+            .map((key) => copy.fieldLabels[key] || key);
           toast({
             variant: 'destructive',
-            title: 'Thiếu thông tin',
+            title: copy.missingTitle,
             description: missing.length
-              ? `Vui lòng kiểm tra: ${missing.join(', ')}.`
-              : 'Vui lòng kiểm tra lại các trường còn thiếu.',
+              ? copy.missingDesc.replace('{fields}', missing.join(', '))
+              : copy.missingFallback,
           });
           // Radix Select không nhận focus nên cuộn thủ công tới ô lỗi đầu tiên.
           setTimeout(() => {
@@ -817,9 +1176,9 @@ export default function CreateListingPage() {
           <div className="space-y-3 p-4 rounded-xl border border-dashed border-orange-500/30 bg-orange-500/5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="flex-1">
-                <h3 className="text-sm font-semibold text-orange-500">Xác định đúng lá thẻ</h3>
+                <h3 className="text-sm font-semibold text-orange-500">{copy.cardIdentityTitle}</h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Chọn thẻ từ catalog để bài đăng gắn đúng lá thẻ — giúp tính giá thị trường VN chính xác.
+                  {copy.cardIdentityDesc}
                 </p>
               </div>
               <div className="flex gap-2">
@@ -845,7 +1204,7 @@ export default function CreateListingPage() {
                     </p>
                   </div>
                   <Button type="button" variant="ghost" size="sm" onClick={clearCatalogPick} className="shrink-0 text-muted-foreground">
-                    <X className="mr-1 h-3.5 w-3.5" /> Bỏ chọn
+                    <X className="mr-1 h-3.5 w-3.5" /> {copy.clearSelection}
                   </Button>
                 </div>
 
@@ -854,7 +1213,7 @@ export default function CreateListingPage() {
                   const suggestedVnd = Math.round((catalogPick.marketPrice * USD_TO_VND_RATE) / 1000) * 1000;
                   return (
                     <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-accent/30 px-3 py-2 text-sm">
-                      <span className="text-muted-foreground">Giá thị trường (TCGplayer):</span>
+                      <span className="text-muted-foreground">{copy.marketPrice}</span>
                       <span className="font-semibold">${catalogPick.marketPrice}</span>
                       <span className="font-semibold text-orange-400">
                         ≈ {new Intl.NumberFormat('vi-VN').format(suggestedVnd)}đ
@@ -868,10 +1227,10 @@ export default function CreateListingPage() {
                           onClick={() => {
                             setPriceCurrency('VND');
                             applyPrice(String(suggestedVnd), 'VND');
-                            toast({ title: '💰 Đã áp dụng giá gợi ý', description: `${new Intl.NumberFormat('vi-VN').format(suggestedVnd)}đ — bạn có thể chỉnh lại.` });
+                            toast({ title: copy.suggestedApplied, description: `${new Intl.NumberFormat('vi-VN').format(suggestedVnd)}đ` });
                           }}
                         >
-                          Dùng giá này
+                          {copy.useThisPrice}
                         </Button>
                       )}
                     </div>
@@ -891,9 +1250,9 @@ export default function CreateListingPage() {
                   name="cardNumber"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-medium">Số thẻ</FormLabel>
+                      <FormLabel className="text-sm font-medium">{copy.cardNumber}</FormLabel>
                       <FormControl>
-                        <Input placeholder="VD: 199/197, OP15-118, TG12/TG30" {...field} value={field.value ?? ''} />
+                        <Input placeholder={copy.cardNumberPlaceholder} {...field} value={field.value ?? ''} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -904,16 +1263,16 @@ export default function CreateListingPage() {
                   name="language"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-medium">Ngôn ngữ thẻ</FormLabel>
+                      <FormLabel className="text-sm font-medium">{copy.cardLanguage}</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value ?? ''}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Chọn EN / JP" />
+                            <SelectValue placeholder={copy.cardLanguagePlaceholder} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="en">EN — Tiếng Anh</SelectItem>
-                          <SelectItem value="jp">JP — Tiếng Nhật</SelectItem>
+                          <SelectItem value="en">{copy.cardLanguageEn}</SelectItem>
+                          <SelectItem value="jp">{copy.cardLanguageJp}</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -936,8 +1295,8 @@ export default function CreateListingPage() {
                       <Layers className="h-5 w-5 text-violet-500" />
                     </div>
                     <div>
-                      <FormLabel className="text-base font-semibold cursor-pointer">Bán nhiều thẻ</FormLabel>
-                      <p className="text-xs text-muted-foreground mt-0.5">Đăng bán nhiều thẻ trong cùng một bài viết</p>
+                      <FormLabel className="text-base font-semibold cursor-pointer">{copy.bundleTitle}</FormLabel>
+                      <p className="text-xs text-muted-foreground mt-0.5">{copy.bundleDesc}</p>
                     </div>
                   </div>
                   <FormControl>
@@ -958,16 +1317,16 @@ export default function CreateListingPage() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel className='text-lg font-semibold'>
-                  {isBundle ? 'Tiêu đề bài bán' : t('card_title_label')}
+                  {isBundle ? copy.listingTitle : t('card_title_label')}
                 </FormLabel>
                 <FormControl>
                   <Input
-                    placeholder={isBundle ? 'VD: Bộ sưu tập Pokémon Base Set hàng hiếm' : t('card_title_placeholder')}
+                    placeholder={isBundle ? copy.listingTitlePlaceholder : t('card_title_placeholder')}
                     {...field}
                   />
                 </FormControl>
                 {isBundle && (
-                  <p className="text-xs text-muted-foreground">Đây là tiêu đề chính hiển thị trên chợ</p>
+                  <p className="text-xs text-muted-foreground">{copy.listingTitleHint}</p>
                 )}
                 <FormMessage />
               </FormItem>
@@ -1029,7 +1388,7 @@ export default function CreateListingPage() {
               <div className="flex items-center gap-2">
                 <Info className="h-4 w-4 text-primary" />
                 <h3 className="text-base font-semibold text-primary">
-                  Thông tin chi tiết — {categoryConfig?.label || selectedCategory}
+                  {copy.detailsTitle} - {categoryConfig?.label || selectedCategory}
                 </h3>
               </div>
 
@@ -1041,9 +1400,9 @@ export default function CreateListingPage() {
                     name="freePublisher"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Nhà phát hành</FormLabel>
+                        <FormLabel>{copy.publisher}</FormLabel>
                         <FormControl>
-                          <Input placeholder="VD: Panini, Topps..." {...field} value={field.value ?? ''} />
+                          <Input placeholder={copy.publisherInputPlaceholder} {...field} value={field.value ?? ''} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1054,9 +1413,9 @@ export default function CreateListingPage() {
                     name="freeSetName"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Tên Set / Bộ sưu tập</FormLabel>
+                        <FormLabel>{copy.setLabel}</FormLabel>
                         <FormControl>
-                          <Input placeholder="VD: Chrome, Prizm..." {...field} value={field.value ?? ''} />
+                          <Input placeholder={copy.setPlaceholder} {...field} value={field.value ?? ''} />
                         </FormControl>
                       </FormItem>
                     )}
@@ -1066,9 +1425,9 @@ export default function CreateListingPage() {
                     name="freeSeason"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Mùa / Năm</FormLabel>
+                        <FormLabel>{copy.season}</FormLabel>
                         <FormControl>
-                          <Input placeholder="VD: 2024-25, Season 1..." {...field} value={field.value ?? ''} />
+                          <Input placeholder={copy.seasonPlaceholder} {...field} value={field.value ?? ''} />
                         </FormControl>
                       </FormItem>
                     )}
@@ -1083,7 +1442,7 @@ export default function CreateListingPage() {
                     name="publisher"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Nhà phát hành</FormLabel>
+                        <FormLabel>{copy.publisher}</FormLabel>
                         {singlePublisher ? (
                           <div className="h-10 px-3 py-2 rounded-md border bg-muted text-sm flex items-center">
                             {availablePublishers[0]}
@@ -1092,7 +1451,7 @@ export default function CreateListingPage() {
                           <Select onValueChange={field.onChange} value={field.value || undefined}>
                             <FormControl>
                               <SelectTrigger>
-                                <SelectValue placeholder="Chọn nhà phát hành" />
+                                <SelectValue placeholder={copy.publisherPlaceholder} />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
@@ -1113,7 +1472,7 @@ export default function CreateListingPage() {
                     name="setName"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Set / Bộ sưu tập</FormLabel>
+                        <FormLabel>{copy.setLabel}</FormLabel>
                         <FormControl>
                           <SearchableSetPicker
                             value={field.value || undefined}
@@ -1136,11 +1495,11 @@ export default function CreateListingPage() {
                       name="season"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Mùa / Năm</FormLabel>
+                          <FormLabel>{copy.season}</FormLabel>
                           <Select onValueChange={field.onChange} value={field.value || undefined}>
                             <FormControl>
                               <SelectTrigger>
-                                <SelectValue placeholder="Chọn mùa/năm" />
+                                <SelectValue placeholder={copy.seasonSelectPlaceholder} />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
@@ -1160,7 +1519,7 @@ export default function CreateListingPage() {
                       name="quantity"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Số lượng</FormLabel>
+                          <FormLabel>{copy.quantity}</FormLabel>
                           <FormControl>
                             <Input
                               type="number"
@@ -1185,7 +1544,7 @@ export default function CreateListingPage() {
                   name="quantity"
                   render={({ field }) => (
                     <FormItem className="max-w-[200px]">
-                      <FormLabel>Số lượng</FormLabel>
+                      <FormLabel>{copy.quantity}</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -1210,7 +1569,7 @@ export default function CreateListingPage() {
               name="quantity"
               render={({ field }) => (
                 <FormItem className="max-w-[200px]">
-                  <FormLabel className='text-lg font-semibold'>Số lượng</FormLabel>
+                  <FormLabel className='text-lg font-semibold'>{copy.quantity}</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
@@ -1228,14 +1587,14 @@ export default function CreateListingPage() {
 
           {/* ─── Phần 2: Grading & biến thể (tách khỏi condition) ─── */}
           <div className="space-y-4 rounded-xl border p-4">
-            <h3 className="text-lg font-semibold">Tình trạng grade & biến thể</h3>
+            <h3 className="text-lg font-semibold">{copy.gradingTitle}</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField
                 control={form.control}
                 name="gradingCompany"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm font-medium">Hãng grade</FormLabel>
+                    <FormLabel className="text-sm font-medium">{copy.gradingCompany}</FormLabel>
                     <Select
                       onValueChange={(value) => {
                         field.onChange(value);
@@ -1247,11 +1606,11 @@ export default function CreateListingPage() {
                     >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Raw (chưa grade)" />
+                          <SelectValue placeholder={copy.raw} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="raw">Raw (chưa grade)</SelectItem>
+                        <SelectItem value="raw">{copy.raw}</SelectItem>
                         <SelectItem value="psa">PSA</SelectItem>
                         <SelectItem value="bgs">BGS</SelectItem>
                         <SelectItem value="cgc">CGC</SelectItem>
@@ -1267,7 +1626,7 @@ export default function CreateListingPage() {
                 name="finish"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm font-medium">Biến thể / Finish</FormLabel>
+                    <FormLabel className="text-sm font-medium">{copy.finish}</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
@@ -1337,7 +1696,7 @@ export default function CreateListingPage() {
                       <Upload className='mx-auto h-12 w-12 text-muted-foreground' />
                     )}
                     <p className='mt-4 text-muted-foreground'>
-                      {isProcessingImages ? 'Đang xử lý ảnh…' : t('images_description')}
+                      {isProcessingImages ? copy.processingImages : t('images_description')}
                     </p>
                     <Input
                       type="file"
@@ -1426,8 +1785,8 @@ export default function CreateListingPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Layers className="h-4 w-4 text-violet-500" />
-                  <h3 className="text-base font-semibold text-violet-500">Danh sách thẻ</h3>
-                  <span className="text-xs text-muted-foreground">({bundleItems.length} thẻ)</span>
+                  <h3 className="text-base font-semibold text-violet-500">{copy.bundleList}</h3>
+                  <span className="text-xs text-muted-foreground">({copy.cardsCount.replace('{count}', String(bundleItems.length))})</span>
                 </div>
                 <Button
                   type="button"
@@ -1437,7 +1796,7 @@ export default function CreateListingPage() {
                   className="gap-1.5 border-violet-500/30 text-violet-500 hover:bg-violet-500/10"
                 >
                   <Plus className="h-3.5 w-3.5" />
-                  Thêm thẻ
+                  {copy.addCard}
                 </Button>
               </div>
 
@@ -1452,7 +1811,7 @@ export default function CreateListingPage() {
                     </span>
                     <div className="flex-1 grid grid-cols-1 sm:grid-cols-[1fr_140px] gap-2">
                       <Input
-                        placeholder={`Tên thẻ #${index + 1}, VD: Holo Charizard`}
+                        placeholder={copy.cardItemPlaceholder.replace('{number}', String(index + 1))}
                         value={item.title}
                         onChange={(e) => updateBundleItem(item.id, 'title', e.target.value)}
                         className="text-sm"
@@ -1482,7 +1841,7 @@ export default function CreateListingPage() {
               {/* Bundle summary */}
               {bundlePriceRange && (
                 <div className="flex items-center justify-between pt-3 border-t border-violet-500/10 text-sm">
-                  <span className="text-muted-foreground">Giá hiển thị trên chợ:</span>
+                  <span className="text-muted-foreground">{copy.bundleDisplayPrice}</span>
                   <span className="font-semibold text-violet-500">
                     {bundlePriceRange.min === bundlePriceRange.max
                       ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(bundlePriceRange.min)
@@ -1493,7 +1852,7 @@ export default function CreateListingPage() {
               )}
               {bundlePriceRange && (
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Tổng giá trị:</span>
+                  <span className="text-muted-foreground">{copy.bundleTotalValue}</span>
                   <span className="font-bold text-green-500">
                     {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(bundlePriceRange.total)}
                   </span>
@@ -1510,7 +1869,7 @@ export default function CreateListingPage() {
               render={() => (
                 <FormItem>
                   <FormLabel className='text-lg font-semibold'>
-                    {isBundle ? 'Giá bán cả bộ' : t('price_label')}
+                    {isBundle ? copy.priceBundlePlaceholder.replace('Nhập ', '').replace(' (VND)', '') : t('price_label')}
                   </FormLabel>
 
                   {/* Currency toggle — VND is stored either way, USD just gets converted. */}
@@ -1532,8 +1891,8 @@ export default function CreateListingPage() {
                       type="text"
                       inputMode="numeric"
                       placeholder={priceCurrency === 'USD'
-                        ? 'Nhập giá bằng USD, ví dụ 30'
-                        : (isBundle ? 'Nhập giá bán cho cả bộ (VND)' : 'Nhập giá bằng VND, ví dụ 700000')
+                        ? copy.priceUsdPlaceholder
+                        : (isBundle ? copy.priceBundlePlaceholder : copy.priceVndPlaceholder)
                       }
                       value={priceInput}
                       onChange={(e) => applyPrice(e.target.value, priceCurrency)}
@@ -1544,7 +1903,7 @@ export default function CreateListingPage() {
                   {priceCurrency === 'USD' && priceInputNumber > 0 && (
                     <p className="text-sm font-medium text-orange-400">
                       ≈ {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(convertedVnd)}
-                      <span className="ml-1 text-xs font-normal text-muted-foreground">(tỷ giá 1 USD = {new Intl.NumberFormat('vi-VN').format(USD_TO_VND_RATE)}đ)</span>
+                      <span className="ml-1 text-xs font-normal text-muted-foreground">(1 USD = {new Intl.NumberFormat('vi-VN').format(USD_TO_VND_RATE)}đ)</span>
                     </p>
                   )}
 
@@ -1555,8 +1914,8 @@ export default function CreateListingPage() {
                   )}
                   <p className="text-xs text-muted-foreground">
                     {priceCurrency === 'USD'
-                      ? 'Bài đăng sẽ được lưu và hiển thị bằng VND sau khi quy đổi.'
-                      : 'Giá đang dùng đơn vị VND. Ví dụ: `700000` = `700.000đ`.'}
+                      ? copy.usdNote
+                      : copy.vndNote}
                   </p>
                   <FormMessage />
                 </FormItem>
@@ -1573,9 +1932,9 @@ export default function CreateListingPage() {
                   <FormItem>
                     <FormLabel className='text-lg font-semibold'>{t('starting_bid_label')}</FormLabel>
                     <FormControl>
-                      <Input type="text" inputMode="numeric" placeholder={locale === 'en-US' ? 'Enter starting bid in USD' : 'Nhập giá khởi điểm bằng VND'} {...field} value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value)} />
+                      <Input type="text" inputMode="numeric" placeholder={copy.priceVndPlaceholder} {...field} value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value)} />
                     </FormControl>
-                    <p className="text-xs text-muted-foreground">Nhập theo VND. Ví dụ: `10000` = `10.000đ`.</p>
+                    <p className="text-xs text-muted-foreground">{copy.inputVndNote}</p>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1605,9 +1964,9 @@ export default function CreateListingPage() {
                   <FormItem>
                     <FormLabel className='text-lg font-semibold'>{t('ticket_price_label')}</FormLabel>
                     <FormControl>
-                      <Input type="text" inputMode="numeric" placeholder={locale === 'en-US' ? 'Enter ticket price in USD' : 'Nhập giá vé bằng VND'} {...field} value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value)} />
+                      <Input type="text" inputMode="numeric" placeholder={copy.priceVndPlaceholder} {...field} value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value)} />
                     </FormControl>
-                    <p className="text-xs text-muted-foreground">Nhập theo VND. Ví dụ: `10000` = `10.000đ`.</p>
+                    <p className="text-xs text-muted-foreground">{copy.inputVndNote}</p>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1618,7 +1977,7 @@ export default function CreateListingPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className='text-lg font-semibold'>{t('total_tickets_label')}</FormLabel>                  <FormControl>
-                      <Input type="number" placeholder={locale === 'en-US' ? 'Enter total number of tickets' : 'Nhập tổng số vé'} {...field} value={field.value ?? ''} />
+                      <Input type="number" placeholder={copy.quantity} {...field} value={field.value ?? ''} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1640,8 +1999,8 @@ export default function CreateListingPage() {
                         <HandCoins className="h-5 w-5 text-amber-500" />
                       </div>
                       <div>
-                        <FormLabel className="text-base font-semibold cursor-pointer">Nhận offer</FormLabel>
-                        <p className="text-xs text-muted-foreground mt-0.5">Cho phép người mua gửi đề nghị giá cho thẻ này</p>
+                        <FormLabel className="text-base font-semibold cursor-pointer">{copy.acceptOffers}</FormLabel>
+                        <p className="text-xs text-muted-foreground mt-0.5">{copy.acceptOffersDesc}</p>
                       </div>
                     </div>
                     <FormControl>
@@ -1661,7 +2020,7 @@ export default function CreateListingPage() {
                   render={({ field }) => (
                     <FormItem className="rounded-lg border border-amber-500/10 bg-background/50 p-4 space-y-3 animate-in slide-in-from-top-2 duration-200">
                       <div className="flex items-center justify-between">
-                        <FormLabel className="text-sm font-medium">Không nhận offer dưới</FormLabel>
+                        <FormLabel className="text-sm font-medium">{copy.minOffer}</FormLabel>
                         <div className="flex items-center gap-1.5">
                           <span className="text-2xl font-bold text-amber-500 tabular-nums">{field.value || 0}</span>
                           <span className="text-sm font-semibold text-muted-foreground">%</span>
@@ -1678,8 +2037,8 @@ export default function CreateListingPage() {
                         />
                       </FormControl>
                       <div className="flex justify-between text-[11px] text-muted-foreground">
-                        <span>Nhận mọi offer</span>
-                        <span>Chỉ nhận gần giá gốc</span>
+                        <span>{copy.acceptAllOffers}</span>
+                        <span>{copy.nearOriginalPrice}</span>
                       </div>
                       {watchedPrice && Number(watchedPrice) > 0 && field.value > 0 && (
                         <p className="text-xs text-amber-500/80 border-t border-amber-500/10 pt-3 mt-1">
@@ -1716,11 +2075,8 @@ export default function CreateListingPage() {
             <div className="flex items-start gap-3">
               <HandCoins className="h-5 w-5 text-amber-400 mt-0.5 shrink-0" />
               <div className="text-sm">
-                <p className="font-semibold text-amber-300">Lưu ý về tiền bán</p>
-                <p className="text-muted-foreground">
-                  Khi bán được thẻ, tiền sẽ vào ví CardVerse của bạn. Mỗi lần <span className="font-semibold text-amber-300">rút tiền</span> về
-                  tài khoản ngân hàng sẽ bị trừ <span className="font-semibold text-amber-300">5% phí nền tảng</span>. Bạn có thể cân nhắc mức giá để bù phần phí này.
-                </p>
+                <p className="font-semibold text-amber-300">{copy.payoutNote}</p>
+                <p className="text-muted-foreground">{copy.payoutNoteDesc}</p>
               </div>
             </div>
           </div>
@@ -1737,10 +2093,10 @@ export default function CreateListingPage() {
         <AlertDialog open={showUsdConfirm} onOpenChange={setShowUsdConfirm}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Xác nhận giá bán (quy đổi sang VND)</AlertDialogTitle>
+              <AlertDialogTitle>{copy.usdConfirmTitle}</AlertDialogTitle>
               <AlertDialogDescription asChild>
                 <div className="space-y-2">
-                  <p>Bạn nhập giá bằng USD. Thẻ sẽ được đăng bán với giá VND sau quy đổi:</p>
+                  <p>{copy.usdConfirmDesc}</p>
                   <div className="rounded-lg border bg-accent/40 p-3 text-foreground">
                     <p className="text-sm text-muted-foreground">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(priceInputNumber)} ×&nbsp;{new Intl.NumberFormat('vi-VN').format(USD_TO_VND_RATE)}</p>
                     <p className="text-2xl font-bold text-orange-400">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(convertedVnd)}</p>
@@ -1749,12 +2105,12 @@ export default function CreateListingPage() {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={isSubmitting}>Sửa lại giá</AlertDialogCancel>
+              <AlertDialogCancel disabled={isSubmitting}>{copy.editPrice}</AlertDialogCancel>
               <AlertDialogAction
                 onClick={() => { setShowUsdConfirm(false); if (pendingValues) void submitListing(pendingValues); }}
                 disabled={isSubmitting}
               >
-                Đăng bán với giá này
+                {copy.confirmPrice}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

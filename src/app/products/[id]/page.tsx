@@ -53,7 +53,7 @@ export default function ProductDetailsPage() {
     const supabase = useSupabase();
     const { user } = useUser();
     const { setOpen: setAuthModalOpen } = useAuthModal();
-    const { t } = useLocalization();
+    const { t, locale } = useLocalization();
 
     const [card, setCard] = useState<ProductCard | null>(null);
     const [priceHistory, setPriceHistory] = useState<PriceHistory[]>([]);
@@ -87,7 +87,7 @@ export default function ProductDetailsPage() {
                     mid_price: card.mid_price,
                     category: card.category_id === 68 ? 'One Piece' : 'Pokemon',
                     rarity: card.rarity,
-                });
+                } as never);
 
             if (error) {
                 if (error.code === '23505') {
@@ -279,7 +279,7 @@ export default function ProductDetailsPage() {
                                     className="mt-4 w-full gap-2 bg-white/5 border border-white/10 text-white/40 cursor-not-allowed"
                                 >
                                     <Lock className="h-4 w-4" />
-                                    VIP Only — Save to Collection
+                                    {locale === 'vi-VN' ? 'Chỉ dành cho VIP — Lưu vào bộ sưu tập' : locale === 'ja-JP' ? 'VIP限定 — コレクションに保存' : 'VIP Only — Save to Collection'}
                                 </Button>
                             )}
                         </div>

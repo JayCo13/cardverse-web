@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSupabase, useUser } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
+import { useLocalization } from '@/context/localization-context';
 import { Loader2, Save } from 'lucide-react';
 
 type SellerAddressFormProps = {
@@ -23,6 +24,40 @@ export function SellerAddressForm({ onSaved, submitLabel = 'Lưu địa chỉ l�
   const supabase = useSupabase();
   const { user } = useUser();
   const { toast } = useToast();
+  const { locale } = useLocalization();
+
+  const copy = locale === 'ja-JP'
+    ? {
+        submit: '集荷住所を保存',
+        incompleteTitle: '住所が未入力です',
+        incompleteDesc: '都道府県、市区町村、町名をすべて選択してください。',
+        savedTitle: '集荷住所を保存しました',
+        savedDesc: 'これでカードを出品できます。',
+        errorTitle: 'エラー',
+        errorDesc: '住所を保存できませんでした。',
+        detailPlaceholder: '番地、通り名...',
+      }
+    : locale === 'vi-VN'
+      ? {
+          submit: 'Lưu địa chỉ lấy hàng',
+          incompleteTitle: 'Địa chỉ chưa đầy đủ',
+          incompleteDesc: 'Vui lòng chọn đầy đủ Tỉnh/Thành, Quận/Huyện và Phường/Xã.',
+          savedTitle: 'Da luu dia chi lay hang',
+          savedDesc: 'Bay gio ban co the dang ban the.',
+          errorTitle: 'Lỗi',
+          errorDesc: 'Không thể lưu địa chỉ.',
+          detailPlaceholder: 'Số nhà, tên đường...',
+        }
+      : {
+          submit: 'Save pickup address',
+          incompleteTitle: 'Address is incomplete',
+          incompleteDesc: 'Please select province/city, district, and ward.',
+          savedTitle: 'Pickup address saved',
+          savedDesc: 'You can list cards now.',
+          errorTitle: 'Error',
+          errorDesc: 'Could not save address.',
+          detailPlaceholder: 'Street number, street name...',
+        };
 
   const [initial, setInitial] = useState<Partial<AddressData> | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
@@ -67,8 +102,8 @@ export function SellerAddressForm({ onSaved, submitLabel = 'Lưu địa chỉ l�
     if (!user || !address) {
       toast({
         variant: 'destructive',
-        title: 'Địa chỉ chưa đầy đủ',
-        description: 'Vui lòng chọn đầy đủ Tỉnh/Thành, Quận/Huyện và Phường/Xã.',
+        title: copy.incompleteTitle,
+        description: copy.incompleteDesc,
       });
       return;
     }
@@ -85,13 +120,13 @@ export function SellerAddressForm({ onSaved, submitLabel = 'Lưu địa chỉ l�
           address_ward_name: address.wardName,
           address_detail: address.detail,
           updated_at: new Date().toISOString(),
-        } as Record<string, unknown>)
+        } as never)
         .eq('id', user.id);
       if (error) throw error;
-      toast({ title: '✅ Đã lưu địa chỉ lấy hàng', description: 'Bây giờ bạn có thể đăng bán thẻ.' });
+      toast({ title: copy.savedTitle, description: copy.savedDesc });
       onSaved?.(address);
     } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Lỗi', description: err.message || 'Không thể lưu địa chỉ.' });
+      toast({ variant: 'destructive', title: copy.errorTitle, description: err.message || copy.errorDesc });
     } finally {
       setIsSaving(false);
     }
@@ -108,7 +143,7 @@ export function SellerAddressForm({ onSaved, submitLabel = 'Lưu địa chỉ l�
 
   return (
     <div className="space-y-4">
-      <AddressPicker value={initial} onChange={setAddress} detailPlaceholder="Số nhà, tên đường..." />
+      <AddressPicker value={initial} onChange={setAddress} detailPlaceholder={copy.detailPlaceholder} />
       <Button
         type="button"
         onClick={handleSave}
@@ -116,7 +151,7 @@ export function SellerAddressForm({ onSaved, submitLabel = 'Lưu địa chỉ l�
         className="bg-orange-500 hover:bg-orange-600 text-white"
       >
         {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-        {submitLabel}
+        {submitLabel === 'Lưu địa chỉ lấy hàng' ? copy.submit : submitLabel}
       </Button>
     </div>
   );

@@ -18,10 +18,63 @@ import { format } from "date-fns";
 import Image from "next/image";
 
 export default function ForumProfilePage() {
-    const { t } = useLocalization();
+    const { t, locale } = useLocalization();
     const { user, profile } = useUser();
     const [userPosts, setUserPosts] = useState<ForumPost[]>([]);
     const supabase = useSupabase();
+    const copy = locale === "vi-VN"
+        ? {
+            verifiedTrader: "Người bán đã xác minh",
+            editProfile: "Chỉnh sửa hồ sơ",
+            posts: "Bài viết",
+            followers: "Người theo dõi",
+            following: "Đang theo dõi",
+            legit: "Uy tín",
+            bio: "Nhà sưu tập Pokémon & One Piece TCG. Luôn tìm kiếm Charizard hiếm và Nami Alt Art. Sống tại TP.HCM.",
+            city: "Thành phố Hồ Chí Minh",
+            joined: "Tham gia",
+            postsTab: "Bài viết",
+            repliesTab: "Phản hồi",
+            mediaTab: "Media",
+            likesTab: "Lượt thích",
+            noPosts: "Chưa có bài viết nào.",
+            noReplies: "Chưa có phản hồi nào.",
+        }
+        : locale === "ja-JP"
+            ? {
+                verifiedTrader: "認証済みトレーダー",
+                editProfile: "プロフィールを編集",
+                posts: "投稿",
+                followers: "フォロワー",
+                following: "フォロー中",
+                legit: "信頼度",
+                bio: "Pokemon と One Piece TCG のコレクター。レアなCharizardとNami Alt Artを探しています。ホーチミン市在住。",
+                city: "ホーチミン市",
+                joined: "参加日",
+                postsTab: "投稿",
+                repliesTab: "返信",
+                mediaTab: "メディア",
+                likesTab: "いいね",
+                noPosts: "まだ投稿がありません。",
+                noReplies: "まだ返信がありません。",
+            }
+            : {
+                verifiedTrader: "Verified Trader",
+                editProfile: "Edit Profile",
+                posts: "Posts",
+                followers: "Followers",
+                following: "Following",
+                legit: "Legit",
+                bio: "Pokemon & One Piece TCG collector. Always looking for rare Charizards and Nami Alt Arts. Based in Ho Chi Minh City.",
+                city: "Ho Chi Minh City",
+                joined: "Joined",
+                postsTab: "Posts",
+                repliesTab: "Replies",
+                mediaTab: "Media",
+                likesTab: "Likes",
+                noPosts: "No posts yet.",
+                noReplies: "No replies yet.",
+            };
 
     useEffect(() => {
         const fetchUserPosts = async () => {
@@ -106,7 +159,7 @@ export default function ForumProfilePage() {
                                                 {profile?.legit_rate && profile.legit_rate >= 90 && (
                                                     <Badge variant="secondary" className="bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border-blue-500/20 gap-1">
                                                         <Crown className="h-3 w-3" />
-                                                        Verified Trader
+                                                        {copy.verifiedTrader}
                                                     </Badge>
                                                 )}
                                             </div>
@@ -114,7 +167,7 @@ export default function ForumProfilePage() {
                                         </div>
                                         <Button variant="outline" className="gap-2">
                                             <Edit className="h-4 w-4" />
-                                            Edit Profile
+                                            {copy.editProfile}
                                         </Button>
                                     </div>
 
@@ -122,32 +175,32 @@ export default function ForumProfilePage() {
                                     <div className="flex gap-6 mt-4 text-sm">
                                         <div className="flex gap-1">
                                             <span className="font-bold text-white">{userPosts.length}</span>
-                                            <span className="text-muted-foreground">Posts</span>
+                                            <span className="text-muted-foreground">{copy.posts}</span>
                                         </div>
                                         <div className="flex gap-1">
                                             <span className="font-bold text-white">1.2k</span>
-                                            <span className="text-muted-foreground">Followers</span>
+                                            <span className="text-muted-foreground">{copy.followers}</span>
                                         </div>
                                         <div className="flex gap-1">
                                             <span className="font-bold text-white">450</span>
-                                            <span className="text-muted-foreground">Following</span>
+                                            <span className="text-muted-foreground">{copy.following}</span>
                                         </div>
                                         <div className="flex gap-1 items-center text-green-400">
                                             <Shield className="h-3.5 w-3.5 mr-1" />
                                             <span className="font-bold">{profile?.legit_rate ?? 100}%</span>
-                                            <span className="text-muted-foreground ml-1">Legit</span>
+                                            <span className="text-muted-foreground ml-1">{copy.legit}</span>
                                         </div>
                                     </div>
 
                                     {/* Bio / Details */}
                                     <div className="mt-4 text-sm text-gray-300 max-w-2xl">
-                                        Pokemon & One Piece TCG Collector. Always looking for rare Charizards and Nami Alt Arts. Based in HCMC.
+                                        {copy.bio}
                                     </div>
 
                                     <div className="flex flex-wrap gap-4 mt-3 text-xs text-muted-foreground">
                                         <div className="flex items-center gap-1">
                                             <MapPin className="h-3.5 w-3.5" />
-                                            Ho Chi Minh City
+                                            {copy.city}
                                         </div>
                                         <div className="flex items-center gap-1">
                                             <LinkIcon className="h-3.5 w-3.5" />
@@ -155,7 +208,7 @@ export default function ForumProfilePage() {
                                         </div>
                                         <div className="flex items-center gap-1">
                                             <Calendar className="h-3.5 w-3.5" />
-                                            Joined {joinDate}
+                                            {copy.joined} {joinDate}
                                         </div>
                                     </div>
                                 </div>
@@ -170,25 +223,25 @@ export default function ForumProfilePage() {
                                         value="posts"
                                         className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 pb-3 pt-2 font-medium"
                                     >
-                                        Posts
+                                        {copy.postsTab}
                                     </TabsTrigger>
                                     <TabsTrigger
                                         value="replies"
                                         className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 pb-3 pt-2 font-medium"
                                     >
-                                        Replies
+                                        {copy.repliesTab}
                                     </TabsTrigger>
                                     <TabsTrigger
                                         value="media"
                                         className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 pb-3 pt-2 font-medium"
                                     >
-                                        Media
+                                        {copy.mediaTab}
                                     </TabsTrigger>
                                     <TabsTrigger
                                         value="likes"
                                         className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 pb-3 pt-2 font-medium"
                                     >
-                                        Likes
+                                        {copy.likesTab}
                                     </TabsTrigger>
                                 </TabsList>
 
@@ -198,14 +251,14 @@ export default function ForumProfilePage() {
                                     ))}
                                     {userPosts.length === 0 && (
                                         <div className="text-center py-12 text-muted-foreground">
-                                            No posts yet.
+                                            {copy.noPosts}
                                         </div>
                                     )}
                                 </TabsContent>
 
                                 {/* Other tabs can be empty placeholders for now */}
                                 <TabsContent value="replies">
-                                    <div className="text-center py-12 text-muted-foreground">No replies yet.</div>
+                                    <div className="text-center py-12 text-muted-foreground">{copy.noReplies}</div>
                                 </TabsContent>
                             </Tabs>
                         </div>

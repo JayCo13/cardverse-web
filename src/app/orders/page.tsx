@@ -13,6 +13,7 @@ import { Package, Truck, CheckCircle, XCircle, AlertTriangle, Clock, Loader2, Sh
 import { useAuth } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
+import { useLocalization } from '@/context/localization-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import Image from 'next/image';
@@ -99,6 +100,87 @@ export default function OrdersPage() {
   const { user, isLoading: authLoading } = useAuth();
   const { setOpen } = useAuthModal();
   const { toast } = useToast();
+  const { locale } = useLocalization();
+  const copy = locale === 'ja-JP'
+    ? {
+        title: '注文管理',
+        buyerOrders: '購入注文',
+        sellerOrders: '販売注文',
+        emptyTitle: '注文はまだありません',
+        emptyBuyer: '欲しいカードを探しに購入ページへ進んでください。',
+        emptySeller: '誰かがあなたのカードを購入すると、ここに表示されます。',
+        missingSellerTitle: '発送元住所がありません',
+        missingSellerDesc: '発送前にプロフィールで住所を更新してください。',
+        success: '成功',
+        updated: '注文が更新されました。',
+        tracking: 'GHN tracking',
+        openDispute: 'Open dispute',
+        openDisputeDesc: 'Describe the reason. Admin will review and decide.',
+        disputePlaceholder: 'Example: Fake card, not as described, damaged...',
+        cancel: 'Cancel',
+        submitDispute: 'Submit dispute',
+        cancelOrder: 'Cancel order',
+        shipOrder: 'Create GHN order & ship',
+        trackGHN: 'Track GHN',
+        received: 'Received item',
+        dispute: 'Dispute',
+        seller: 'Seller',
+        buyer: 'Buyer',
+        noCard: 'Unknown card',
+      }
+    : locale === 'vi-VN'
+      ? {
+          title: 'Quản lý đơn hàng',
+          buyerOrders: 'Đơn mua',
+          sellerOrders: 'Đơn bán',
+          emptyTitle: 'Chưa có đơn hàng nào',
+          emptyBuyer: 'Hãy đến trang Mua để tìm thẻ ưng ý!',
+          emptySeller: 'Khi có người mua thẻ của bạn, đơn hàng sẽ hiện ở đây.',
+          missingSellerTitle: 'Chưa có địa chỉ gửi hàng',
+          missingSellerDesc: 'Vui lòng cập nhật địa chỉ trong Hồ sơ trước khi giao hàng.',
+          success: 'Thành công',
+          updated: 'Đơn hàng đã được cập nhật.',
+          tracking: 'Theo dõi GHN',
+          openDispute: 'Mở khiếu nại',
+          openDisputeDesc: 'Mô tả lý do khiếu nại. Admin sẽ xem xét và phân xử.',
+          disputePlaceholder: 'VD: Thẻ bị giả, không đúng mô tả, hư hỏng...',
+          cancel: 'Hủy',
+          submitDispute: 'Gửi khiếu nại',
+          cancelOrder: 'Hủy đơn',
+          shipOrder: 'Tạo đơn GHN & Gửi hàng',
+          trackGHN: 'Theo dõi GHN',
+          received: 'Đã nhận hàng',
+          dispute: 'Khiếu nại',
+          seller: 'Người bán',
+          buyer: 'Người mua',
+          noCard: 'Thẻ không xác định',
+        }
+      : {
+          title: 'Order management',
+          buyerOrders: 'Buying orders',
+          sellerOrders: 'Selling orders',
+          emptyTitle: 'No orders yet',
+          emptyBuyer: 'Go to the Buy page to find a card you like.',
+          emptySeller: 'When someone buys your card, the order will appear here.',
+          missingSellerTitle: 'Missing shipping origin address',
+          missingSellerDesc: 'Please update your address in Profile before shipping.',
+          success: 'Success',
+          updated: 'The order has been updated.',
+          tracking: 'GHN tracking',
+          openDispute: 'Open dispute',
+          openDisputeDesc: 'Describe the dispute reason. Admin will review and decide.',
+          disputePlaceholder: 'Example: Fake card, not as described, damaged...',
+          cancel: 'Cancel',
+          submitDispute: 'Submit dispute',
+          cancelOrder: 'Cancel order',
+          shipOrder: 'Create GHN order & ship',
+          trackGHN: 'Track GHN',
+          received: 'Item received',
+          dispute: 'Dispute',
+          seller: 'Seller',
+          buyer: 'Buyer',
+          noCard: 'Unknown card',
+        };
   const [activeTab, setActiveTab] = useState('buyer');
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -149,15 +231,15 @@ export default function OrdersPage() {
         if (data.code === 'MISSING_SELLER_ADDRESS') {
           toast({
             variant: 'destructive',
-            title: 'Chưa có địa chỉ gửi hàng',
-            description: 'Vui lòng cập nhật địa chỉ trong Hồ sơ trước khi giao hàng.',
+            title: copy.missingSellerTitle,
+            description: copy.missingSellerDesc,
           });
           return;
         }
         throw new Error(data.error);
       }
 
-      toast({ title: '✅ Thành công', description: 'Đơn hàng đã được cập nhật.' });
+      toast({ title: copy.success, description: copy.updated });
       fetchOrders(activeTab);
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Lỗi', description: err.message });
@@ -175,7 +257,7 @@ export default function OrdersPage() {
     return (
       <div className="mt-3 p-3 rounded-lg bg-accent/30 border border-border/30">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium text-muted-foreground">Theo dõi GHN</span>
+          <span className="text-xs font-medium text-muted-foreground">{copy.tracking}</span>
           <span className="text-[10px] text-muted-foreground font-mono">
             {GHN_STATUS_LABELS[order.ghn_status || ''] || order.ghn_status}
           </span>
@@ -223,7 +305,7 @@ export default function OrdersPage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <h3 className="font-semibold line-clamp-1">{order.card?.name || 'Thẻ không xác định'}</h3>
+                  <h3 className="font-semibold line-clamp-1">{order.card?.name || copy.noCard}</h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     Đơn #{order.id.substring(0, 8)} • {new Date(order.created_at).toLocaleDateString('vi-VN')}
                   </p>
@@ -264,7 +346,7 @@ export default function OrdersPage() {
 
               {/* Counterparty info */}
               <p className="text-xs text-muted-foreground mt-1">
-                {isBuyer ? `Người bán: ${order.seller?.display_name || order.seller?.email || '—'}` : `Người mua: ${order.buyer?.display_name || order.buyer?.email || '—'}`}
+                {isBuyer ? `${copy.seller}: ${order.seller?.display_name || order.seller?.email || '—'}` : `${copy.buyer}: ${order.buyer?.display_name || order.buyer?.email || '—'}`}
               </p>
 
               {/* GHN Tracking Stepper */}
@@ -281,7 +363,7 @@ export default function OrdersPage() {
                     className="bg-blue-600 hover:bg-blue-700"
                   >
                     {actionLoading === order.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Truck className="h-3 w-3 mr-1" />}
-                    Tạo đơn GHN & Gửi hàng
+                    {copy.shipOrder}
                   </Button>
                 )}
 
@@ -293,7 +375,7 @@ export default function OrdersPage() {
                     onClick={() => window.open(`https://tracking.ghn.dev/?order_code=${order.ghn_order_code}`, '_blank')}
                   >
                     <ExternalLink className="h-3 w-3 mr-1" />
-                    Theo dõi GHN
+                    {copy.trackGHN}
                   </Button>
                 )}
 
@@ -307,7 +389,7 @@ export default function OrdersPage() {
                       className="bg-green-600 hover:bg-green-700"
                     >
                       {actionLoading === order.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3 mr-1" />}
-                      Đã nhận hàng
+                      {copy.received}
                     </Button>
                     <Button
                       size="sm"
@@ -316,7 +398,7 @@ export default function OrdersPage() {
                       disabled={actionLoading === order.id}
                     >
                       <AlertTriangle className="h-3 w-3 mr-1" />
-                      Khiếu nại
+                      {copy.dispute}
                     </Button>
                   </>
                 )}
@@ -329,7 +411,7 @@ export default function OrdersPage() {
                     onClick={() => handleAction(order.id, 'cancel')}
                     disabled={actionLoading === order.id}
                   >
-                    Hủy đơn
+                    {copy.cancelOrder}
                   </Button>
                 )}
               </div>
@@ -358,18 +440,18 @@ export default function OrdersPage() {
       <main className="flex-1 container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto space-y-6">
           <h1 className="text-3xl font-bold" style={{ fontFamily: "'Orbitron', sans-serif" }}>
-            Quản lý đơn hàng
+            {copy.title}
           </h1>
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="grid w-full grid-cols-2 max-w-sm">
               <TabsTrigger value="buyer" className="flex items-center gap-2">
                 <ShoppingBag className="h-4 w-4" />
-                Đơn mua
+                {copy.buyerOrders}
               </TabsTrigger>
               <TabsTrigger value="seller" className="flex items-center gap-2">
                 <Store className="h-4 w-4" />
-                Đơn bán
+                {copy.sellerOrders}
               </TabsTrigger>
             </TabsList>
 
@@ -381,9 +463,9 @@ export default function OrdersPage() {
               ) : orders.length === 0 ? (
                 <div className="text-center py-16">
                   <Package className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-xl font-semibold">Chưa có đơn hàng nào</p>
+                  <p className="text-xl font-semibold">{copy.emptyTitle}</p>
                   <p className="text-muted-foreground mt-1">
-                    {activeTab === 'buyer' ? 'Hãy đến trang Mua để tìm thẻ ưng ý!' : 'Khi có người mua thẻ của bạn, đơn hàng sẽ hiện ở đây.'}
+                    {activeTab === 'buyer' ? copy.emptyBuyer : copy.emptySeller}
                   </p>
                 </div>
               ) : (
@@ -401,23 +483,23 @@ export default function OrdersPage() {
       <Dialog open={disputeDialog.open} onOpenChange={open => setDisputeDialog({ ...disputeDialog, open })}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Mở khiếu nại</DialogTitle>
-            <DialogDescription>Mô tả lý do khiếu nại. Admin sẽ xem xét và phân xử.</DialogDescription>
+            <DialogTitle>{copy.openDispute}</DialogTitle>
+            <DialogDescription>{copy.openDisputeDesc}</DialogDescription>
           </DialogHeader>
           <Textarea
-            placeholder="VD: Thẻ bị giả, không đúng mô tả, hư hỏng..."
+            placeholder={copy.disputePlaceholder}
             value={disputeReason}
             onChange={e => setDisputeReason(e.target.value)}
             rows={4}
           />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDisputeDialog({ open: false, orderId: '' })}>Hủy</Button>
+            <Button variant="outline" onClick={() => setDisputeDialog({ open: false, orderId: '' })}>{copy.cancel}</Button>
             <Button
               variant="destructive"
               onClick={() => handleAction(disputeDialog.orderId, 'dispute', { dispute_reason: disputeReason })}
               disabled={!disputeReason || actionLoading === disputeDialog.orderId}
             >
-              {actionLoading === disputeDialog.orderId ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Gửi khiếu nại'}
+              {actionLoading === disputeDialog.orderId ? <Loader2 className="h-4 w-4 animate-spin" /> : copy.submitDispute}
             </Button>
           </DialogFooter>
         </DialogContent>

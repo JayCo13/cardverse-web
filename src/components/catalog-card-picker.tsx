@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Search, SearchCheck } from 'lucide-react';
 import Image from 'next/image';
+import { useLocalization } from '@/context/localization-context';
 
 // Picker over the REAL catalogs (tcgcsv_products + soccer_cards) so a listing
 // carries a canonical card identity (product_id / soccer_id + number +
@@ -45,11 +46,41 @@ type CatalogCardPickerProps = {
 };
 
 export function CatalogCardPicker({ onSelect }: CatalogCardPickerProps) {
+    const { locale } = useLocalization();
     const [open, setOpen] = useState(false);
     const [tab, setTab] = useState<CatalogTabId>('pokemon-en');
     const [search, setSearch] = useState('');
     const [results, setResults] = useState<CatalogPick[]>([]);
     const [loading, setLoading] = useState(false);
+    const copy = locale === 'ja-JP'
+        ? {
+            button: 'カタログからカードを選ぶ',
+            title: 'カタログで正しいカードを探す',
+            soccerPlaceholder: '選手名またはカード番号で検索...',
+            cardPlaceholder: 'カード名または番号で検索 (例: 199/197)...',
+            searching: '検索中...',
+            minChars: '検索するには2文字以上入力してください。',
+            notFound: '見つかりませんでした。フォームで手動入力することもできます。',
+        }
+        : locale === 'vi-VN'
+            ? {
+                button: 'Chọn thẻ từ catalog',
+                title: 'Tìm đúng lá thẻ trong catalog',
+                soccerPlaceholder: 'Tìm theo tên cầu thủ hoặc số thẻ...',
+                cardPlaceholder: 'Tìm theo tên thẻ hoặc số thẻ (vd: 199/197)...',
+                searching: 'Đang tìm...',
+                minChars: 'Nhập ít nhất 2 ký tự để tìm.',
+                notFound: 'Không tìm thấy. Bạn vẫn có thể nhập số thẻ thủ công trong form.',
+            }
+            : {
+                button: 'Choose card from catalog',
+                title: 'Find the exact card in the catalog',
+                soccerPlaceholder: 'Search by player name or card number...',
+                cardPlaceholder: 'Search by card name or number (e.g. 199/197)...',
+                searching: 'Searching...',
+                minChars: 'Enter at least 2 characters to search.',
+                notFound: 'No result found. You can still enter the card number manually in the form.',
+            };
 
     useEffect(() => {
         if (!open || search.trim().length < 2) {
@@ -83,12 +114,12 @@ export function CatalogCardPicker({ onSelect }: CatalogCardPickerProps) {
             <DialogTrigger asChild>
                 <Button type="button" variant="outline" className="gap-2 border-dashed border-orange-500/40 hover:border-orange-500 text-orange-500">
                     <SearchCheck className="h-4 w-4" />
-                    Chọn thẻ từ catalog
+                    {copy.button}
                 </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
                 <DialogHeader>
-                    <DialogTitle>Tìm đúng lá thẻ trong catalog</DialogTitle>
+                    <DialogTitle>{copy.title}</DialogTitle>
                 </DialogHeader>
 
                 <Tabs value={tab} onValueChange={(v) => { setTab(v as CatalogTabId); setResults([]); }}>
@@ -104,7 +135,7 @@ export function CatalogCardPicker({ onSelect }: CatalogCardPickerProps) {
                     <Input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        placeholder={tab === 'soccer' ? 'Tìm theo tên cầu thủ hoặc số thẻ...' : 'Tìm theo tên thẻ hoặc số thẻ (vd: 199/197)...'}
+                        placeholder={tab === 'soccer' ? copy.soccerPlaceholder : copy.cardPlaceholder}
                         className="pl-9"
                         autoFocus
                     />
@@ -113,13 +144,13 @@ export function CatalogCardPicker({ onSelect }: CatalogCardPickerProps) {
                 <div className="min-h-0 flex-1 overflow-y-auto space-y-2 pr-1">
                     {loading ? (
                         <div className="flex items-center justify-center p-8 text-muted-foreground">
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang tìm...
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {copy.searching}
                         </div>
                     ) : results.length === 0 ? (
                         <p className="p-8 text-center text-sm text-muted-foreground">
                             {search.trim().length < 2
-                                ? 'Nhập ít nhất 2 ký tự để tìm.'
-                                : 'Không tìm thấy. Bạn vẫn có thể nhập số thẻ thủ công trong form.'}
+                                ? copy.minChars
+                                : copy.notFound}
                         </p>
                     ) : (
                         results.map(result => (

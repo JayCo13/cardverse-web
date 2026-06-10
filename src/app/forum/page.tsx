@@ -17,7 +17,7 @@ import { useSupabase, useUser } from '@/lib/supabase';
 import { ForumHeader } from './components/forum-header';
 
 export default function ForumPage() {
-  const { t } = useLocalization();
+  const { t, locale } = useLocalization();
   const [posts, setPosts] = useState<ForumPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +25,35 @@ export default function ForumPage() {
   const { user } = useUser();
   const fetchAttemptRef = useRef(0);
   const maxRetries = 3;
+  const copy = locale === 'vi-VN'
+    ? {
+      failedToLoad: 'Không thể tải bài viết',
+      loadingFeed: 'Đang tải bảng tin...',
+      retry: 'Thử lại',
+      noPosts: 'Chưa có bài viết nào. Hãy là người đầu tiên chia sẻ!',
+      endOfFeed: 'Bạn đã xem hết',
+      anonymous: 'Người dùng ẩn danh',
+      loadFailedFallback: 'Không thể tải bài viết',
+    }
+    : locale === 'ja-JP'
+      ? {
+        failedToLoad: '投稿を読み込めません',
+        loadingFeed: 'フィードを読み込み中...',
+        retry: '再試行',
+        noPosts: 'まだ投稿がありません。最初に投稿してみましょう！',
+        endOfFeed: 'ここまでです',
+        anonymous: '匿名ユーザー',
+        loadFailedFallback: '投稿を読み込めません',
+      }
+      : {
+        failedToLoad: 'Failed to load posts',
+        loadingFeed: 'Loading feed...',
+        retry: 'Retry',
+        noPosts: 'No posts yet. Be the first to share something!',
+        endOfFeed: "You've reached the end",
+        anonymous: 'Anonymous user',
+        loadFailedFallback: 'Failed to load posts',
+      };
 
   const fetchPosts = useCallback(async (isRetry = false) => {
     if (!isRetry) {
@@ -67,10 +96,11 @@ export default function ForumPage() {
 
       console.log('[ForumPage] Data fetched:', data?.length || 0, 'posts');
       if (data && data.length > 0) {
+        const firstPost = data[0] as any;
         console.log('[ForumPage] Sample post:', {
-          id: data[0].id,
-          likes: data[0].forum_likes,
-          comments: data[0].forum_comments
+          id: firstPost.id,
+          likes: firstPost.forum_likes,
+          comments: firstPost.forum_comments
         });
       }
 
@@ -82,7 +112,7 @@ export default function ForumPage() {
           imageUrl: post.image_url,
           category: post.category || 'General',
           author: {
-            name: post.author?.display_name || 'Anonymous User',
+            name: post.author?.display_name || copy.anonymous,
             avatar: post.author?.profile_image_url || '',
             imageHint: 'user',
             rank: 'Member',
@@ -98,11 +128,11 @@ export default function ForumPage() {
       }
     } catch (err: any) {
       console.error('[ForumPage] Unexpected error:', err);
-      setError(err.message || 'Failed to load posts');
+      setError(err.message || copy.loadFailedFallback);
     } finally {
       setIsLoading(false);
     }
-  }, [supabase, posts.length]);
+  }, [supabase, posts.length, user, copy.anonymous, copy.loadFailedFallback]);
 
   // Fetch immediately on mount - no dependency on user since posts are public
   useEffect(() => {
@@ -128,16 +158,16 @@ export default function ForumPage() {
             {/* Posts Feed */}
             <div className="space-y-4">
               {isLoading ? (
-                <div className="text-center py-8 text-muted-foreground">Loading feed...</div>
+                <div className="text-center py-8 text-muted-foreground">{copy.loadingFeed}</div>
               ) : error ? (
                 <div className="text-center py-8">
-                  <p className="text-red-400 mb-4">Failed to load posts: {error}</p>
+                  <p className="text-red-400 mb-4">{copy.failedToLoad}: {error}</p>
                   <Button variant="outline" onClick={() => fetchPosts()}>
-                    Retry
+                    {copy.retry}
                   </Button>
                 </div>
               ) : posts.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">No posts yet. Be the first to share something!</div>
+                <div className="text-center py-8 text-muted-foreground">{copy.noPosts}</div>
               ) : (
                 posts.map((post) => (
                   <PostCard key={post.id} post={post} />
@@ -148,7 +178,7 @@ export default function ForumPage() {
             {/* End of Feed */}
             {!isLoading && !error && posts.length > 0 && (
               <div className="flex justify-center py-8">
-                <span className="text-muted-foreground text-sm">You've reached the end</span>
+                <span className="text-muted-foreground text-sm">{copy.endOfFeed}</span>
               </div>
             )}
           </main>
