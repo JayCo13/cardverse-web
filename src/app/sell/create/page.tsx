@@ -543,12 +543,20 @@ export default function CreateListingPage() {
     form.setValue('category', category);
     prevCategoryRef.current = category;
 
+    // We set prevCategoryRef above, which suppresses the category effect — so
+    // auto-set the publisher here (single-publisher categories like Pokémon /
+    // One Piece) exactly as that effect would, otherwise validation fails.
+    const pubs = getPublishers(category);
+    if (pubs.length === 1) {
+      form.setValue('publisher', pubs[0]);
+    }
+
     form.setValue('name', pick.name);
     form.setValue('catalogProductId', pick.productId);
     form.setValue('catalogSoccerId', pick.soccerId);
     form.setValue('cardNumber', pick.number || '');
     form.setValue('language', pick.language || undefined);
-    form.clearErrors(['cardNumber', 'language', 'name', 'category']);
+    form.clearErrors(['cardNumber', 'language', 'name', 'category', 'publisher']);
 
     // Mirror handleCardPicked's set-name handling: let the category effect
     // settle, then apply the catalog set name.
