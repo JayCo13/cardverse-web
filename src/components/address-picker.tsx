@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -49,6 +49,12 @@ export function AddressPicker({
     const [loadingProvinces, setLoadingProvinces] = useState(false);
     const [loadingDistricts, setLoadingDistricts] = useState(false);
     const [loadingWards, setLoadingWards] = useState(false);
+    const onChangeRef = useRef(onChange);
+    const lastEmittedRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        onChangeRef.current = onChange;
+    }, [onChange]);
 
     useEffect(() => {
         setSelectedProvince(value?.provinceId?.toString() || '');
@@ -123,9 +129,17 @@ export function AddressPicker({
         const province = provinces.find(p => p.ProvinceID.toString() === pId);
         const district = districts.find(d => d.DistrictID.toString() === dId);
         const ward = wards.find(w => w.WardCode === wCode);
+        const nextKey = province && district && ward
+            ? `${province.ProvinceID}|${district.DistrictID}|${ward.WardCode}|${det}`
+            : 'null';
+
+        if (lastEmittedRef.current === nextKey) {
+            return;
+        }
+        lastEmittedRef.current = nextKey;
 
         if (province && district && ward) {
-            onChange({
+            onChangeRef.current({
                 provinceId: province.ProvinceID,
                 provinceName: province.ProvinceName,
                 districtId: district.DistrictID,
@@ -135,9 +149,9 @@ export function AddressPicker({
                 detail: det,
             });
         } else {
-            onChange(null);
+            onChangeRef.current(null);
         }
-    }, [provinces, districts, wards, onChange]);
+    }, [provinces, districts, wards]);
 
     // Trigger emitChange when ward or detail changes
     useEffect(() => {
@@ -152,14 +166,16 @@ export function AddressPicker({
         setSelectedWard('');
         setDistricts([]);
         setWards([]);
-        onChange(null);
+        lastEmittedRef.current = null;
+        onChangeRef.current(null);
     };
 
     const handleDistrictChange = (val: string) => {
         setSelectedDistrict(val);
         setSelectedWard('');
         setWards([]);
-        onChange(null);
+        lastEmittedRef.current = null;
+        onChangeRef.current(null);
     };
 
     const handleWardChange = (val: string) => {

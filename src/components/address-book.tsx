@@ -107,6 +107,10 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
         setMode('form');
     };
 
+    const handleAddressChange = useCallback((addr: AddressData | null) => {
+        setForm(f => ({ ...f, address: addr }));
+    }, []);
+
     const handleSave = async () => {
         if (!form.name.trim() || !form.phone.trim() || !form.address) {
             toast({ variant: 'destructive', title: 'Thiếu thông tin', description: 'Nhập tên, SĐT và chọn đầy đủ địa chỉ.' });
@@ -220,7 +224,7 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
 
                 <AddressPicker
                     value={form.address ?? undefined}
-                    onChange={addr => setForm(f => ({ ...f, address: addr }))}
+                    onChange={handleAddressChange}
                     detailPlaceholder="Số nhà, tên đường..."
                 />
 
