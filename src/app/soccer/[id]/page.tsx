@@ -48,7 +48,7 @@ export default function SoccerCardDetailsPage() {
     const [addedToCollection, setAddedToCollection] = useState(false);
 
     const { formatPrice, currency } = useCurrency();
-    const { t } = useLocalization();
+    const { t, locale } = useLocalization();
     const { scanType } = useSubscription();
     const isVip = scanType !== 'free';
 
@@ -93,7 +93,7 @@ export default function SoccerCardDetailsPage() {
                     market_price: priceInUSD,
                     category: 'Soccer',
                     rarity: card.grader && card.grade ? `${card.grader} ${card.grade}` : null,
-                });
+                } as never);
 
             if (error) {
                 if (error.code === '23505') {
@@ -283,7 +283,7 @@ export default function SoccerCardDetailsPage() {
                                         className="w-full gap-2 h-14 text-lg bg-white/5 border border-white/10 text-white/40 cursor-not-allowed"
                                     >
                                         <Lock className="h-5 w-5" />
-                                        VIP Only — Save to Collection
+                                        {locale === 'vi-VN' ? 'Chỉ dành cho VIP — Lưu vào bộ sưu tập' : locale === 'ja-JP' ? 'VIP限定 — コレクションに保存' : 'VIP Only — Save to Collection'}
                                     </Button>
                                 )}
                                 
@@ -346,4 +346,3 @@ export default function SoccerCardDetailsPage() {
         </>
     );
 }
-

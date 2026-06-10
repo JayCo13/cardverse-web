@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AddressPicker, type AddressData } from '@/components/address-picker';
 import { useToast } from '@/hooks/use-toast';
+import { useLocalization } from '@/context/localization-context';
 import {
     MapPin, Plus, Pencil, Trash2, Loader2, Check, Star, ArrowLeft,
 } from 'lucide-react';
@@ -43,6 +44,81 @@ const emptyForm: FormState = { name: '', phone: '', address: null, isDefault: fa
 
 export function AddressBook({ selectable = false, selectedId, onSelect, onAddressesChange }: AddressBookProps) {
     const { toast } = useToast();
+    const { locale } = useLocalization();
+    const copy = locale === 'ja-JP'
+        ? {
+            missingTitle: '情報が不足しています',
+            missingDesc: '名前、電話番号、住所を入力してください。',
+            updated: '住所を更新しました',
+            added: '住所を追加しました',
+            saveError: '住所を保存できません',
+            deleted: '住所を削除しました',
+            deleteError: '住所を削除できません',
+            defaulted: '既定の住所に設定しました',
+            defaultError: '既定の設定に失敗しました',
+            editAddress: '住所を編集',
+            addAddress: '新しい住所を追加',
+            recipient: '受取人名',
+            phone: '電話番号',
+            defaultCheckbox: '既定の住所にする',
+            cancel: 'キャンセル',
+            save: '住所を保存',
+            empty: 'まだ住所がありません。追加すると支払いが速くなります。',
+            default: '既定',
+            edit: '編集',
+            setDefault: '既定にする',
+            delete: '削除',
+            addNew: '新しい住所を追加',
+          }
+        : locale === 'vi-VN'
+            ? {
+                missingTitle: 'Thiếu thông tin',
+                missingDesc: 'Nhập tên, SĐT và chọn đầy đủ địa chỉ.',
+                updated: 'Đã cập nhật địa chỉ',
+                added: 'Đã thêm địa chỉ',
+                saveError: 'Không thể lưu địa chỉ',
+                deleted: 'Đã xóa địa chỉ',
+                deleteError: 'Không thể xóa địa chỉ',
+                defaulted: 'Đã đặt làm mặc định',
+                defaultError: 'Không thể đặt mặc định',
+                editAddress: 'Sửa địa chỉ',
+                addAddress: 'Thêm địa chỉ mới',
+                recipient: 'Tên người nhận',
+                phone: 'Số điện thoại',
+                defaultCheckbox: 'Đặt làm địa chỉ mặc định',
+                cancel: 'Hủy',
+                save: 'Lưu địa chỉ',
+                empty: 'Chưa có địa chỉ nào. Thêm địa chỉ nhận hàng để thanh toán nhanh hơn.',
+                default: 'Mặc định',
+                edit: 'Sửa',
+                setDefault: 'Đặt mặc định',
+                delete: 'Xóa',
+                addNew: 'Thêm địa chỉ mới',
+              }
+            : {
+                missingTitle: 'Missing information',
+                missingDesc: 'Enter name, phone number, and full address.',
+                updated: 'Address updated',
+                added: 'Address added',
+                saveError: 'Could not save address',
+                deleted: 'Address deleted',
+                deleteError: 'Could not delete address',
+                defaulted: 'Set as default address',
+                defaultError: 'Could not set default',
+                editAddress: 'Edit address',
+                addAddress: 'Add new address',
+                recipient: 'Recipient name',
+                phone: 'Phone number',
+                defaultCheckbox: 'Set as default address',
+                cancel: 'Cancel',
+                save: 'Save address',
+                empty: 'No addresses yet. Add one for faster checkout.',
+                default: 'Default',
+                edit: 'Edit',
+                setDefault: 'Set default',
+                delete: 'Delete',
+                addNew: 'Add new address',
+              };
     const [addresses, setAddresses] = useState<SavedAddress[]>([]);
     const [loading, setLoading] = useState(true);
     const [mode, setMode] = useState<'list' | 'form'>('list');
@@ -113,7 +189,7 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
 
     const handleSave = async () => {
         if (!form.name.trim() || !form.phone.trim() || !form.address) {
-            toast({ variant: 'destructive', title: 'Thiếu thông tin', description: 'Nhập tên, SĐT và chọn đầy đủ địa chỉ.' });
+            toast({ variant: 'destructive', title: copy.missingTitle, description: copy.missingDesc });
             return;
         }
         setSaving(true);
@@ -147,10 +223,10 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
             await load(false);
             // After save, select it in checkout mode so the user can pay right away.
             if (selectable) onSelect?.(saved);
-            toast({ title: editing ? 'Đã cập nhật địa chỉ' : 'Đã thêm địa chỉ' });
+            toast({ title: editing ? copy.updated : copy.added });
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Không thể lưu địa chỉ';
-            toast({ variant: 'destructive', title: 'Lỗi', description: message });
+            const message = err instanceof Error ? err.message : copy.saveError;
+            toast({ variant: 'destructive', title: 'Error', description: message });
         } finally {
             setSaving(false);
         }
@@ -168,10 +244,10 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                 onSelect?.(remaining.find(a => a.is_default) ?? remaining[0] ?? null);
             }
             await load(false);
-            toast({ title: 'Đã xóa địa chỉ' });
+            toast({ title: copy.deleted });
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Không thể xóa địa chỉ';
-            toast({ variant: 'destructive', title: 'Lỗi', description: message });
+            const message = err instanceof Error ? err.message : copy.deleteError;
+            toast({ variant: 'destructive', title: 'Error', description: message });
         } finally {
             setDeletingId(null);
         }
@@ -187,10 +263,10 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
             const data = await res.json();
             if (!res.ok) throw new Error(data.error);
             await load(false);
-            toast({ title: 'Đã đặt làm mặc định' });
+            toast({ title: copy.defaulted });
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Không thể đặt mặc định';
-            toast({ variant: 'destructive', title: 'Lỗi', description: message });
+            const message = err instanceof Error ? err.message : copy.defaultError;
+            toast({ variant: 'destructive', title: 'Error', description: message });
         }
     };
 
@@ -204,20 +280,20 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                     className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
                 >
                     <ArrowLeft className="h-4 w-4" />
-                    {editing ? 'Sửa địa chỉ' : 'Thêm địa chỉ mới'}
+                    {editing ? copy.editAddress : copy.addAddress}
                 </button>
 
                 <div className="grid grid-cols-2 gap-2">
                     <Input
                         value={form.name}
                         onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                        placeholder="Tên người nhận"
+                        placeholder={copy.recipient}
                         className="h-9 text-sm"
                     />
                     <Input
                         value={form.phone}
                         onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                        placeholder="Số điện thoại"
+                        placeholder={copy.phone}
                         className="h-9 text-sm"
                     />
                 </div>
@@ -236,19 +312,19 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                         onChange={e => setForm(f => ({ ...f, isDefault: e.target.checked }))}
                         className="h-4 w-4 accent-orange-500"
                     />
-                    Đặt làm địa chỉ mặc định
+                    {copy.defaultCheckbox}
                 </label>
 
                 <div className="flex gap-2 pt-1">
                     <Button variant="outline" className="flex-1" onClick={() => { setMode('list'); setEditing(null); }}>
-                        Hủy
+                        {copy.cancel}
                     </Button>
                     <Button
                         className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
                         onClick={handleSave}
                         disabled={saving}
                     >
-                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Lưu địa chỉ'}
+                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : copy.save}
                     </Button>
                 </div>
             </div>
@@ -264,7 +340,7 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                 </div>
             ) : addresses.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-border/60 p-4 text-center text-sm text-muted-foreground">
-                    Chưa có địa chỉ nào. Thêm địa chỉ nhận hàng để thanh toán nhanh hơn.
+                    {copy.empty}
                 </div>
             ) : (
                 addresses.map(addr => {
@@ -292,7 +368,7 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                                         <span className="text-xs text-muted-foreground">{addr.phone}</span>
                                         {addr.is_default && (
                                             <span className="inline-flex items-center gap-1 rounded bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-medium text-orange-500">
-                                                <Star className="h-2.5 w-2.5 fill-orange-500" /> Mặc định
+                                                <Star className="h-2.5 w-2.5 fill-orange-500" /> {copy.default}
                                             </span>
                                         )}
                                     </div>
@@ -305,7 +381,7 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                                             onClick={(e) => { e.stopPropagation(); openEdit(addr); }}
                                             className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
                                         >
-                                            <Pencil className="h-3 w-3" /> Sửa
+                                            <Pencil className="h-3 w-3" /> {copy.edit}
                                         </button>
                                         {!addr.is_default && (
                                             <button
@@ -313,7 +389,7 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                                                 onClick={(e) => { e.stopPropagation(); handleSetDefault(addr); }}
                                                 className="inline-flex items-center gap-1 text-muted-foreground hover:text-orange-500"
                                             >
-                                                <Star className="h-3 w-3" /> Đặt mặc định
+                                                <Star className="h-3 w-3" /> {copy.setDefault}
                                             </button>
                                         )}
                                         <button
@@ -324,7 +400,7 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                                         >
                                             {deletingId === addr.id
                                                 ? <Loader2 className="h-3 w-3 animate-spin" />
-                                                : <Trash2 className="h-3 w-3" />} Xóa
+                                                : <Trash2 className="h-3 w-3" />} {copy.delete}
                                         </button>
                                     </div>
                                 </div>
@@ -336,7 +412,7 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
 
             {!loading && (
                 <Button variant="outline" className="w-full border-dashed" onClick={openCreate}>
-                    <Plus className="h-4 w-4 mr-1.5" /> Thêm địa chỉ mới
+                    <Plus className="h-4 w-4 mr-1.5" /> {copy.addNew}
                 </Button>
             )}
         </div>

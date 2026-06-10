@@ -97,7 +97,7 @@ const BANKS = [
 ];
 
 export default function SellPage() {
-  const { t } = useLocalization();
+  const { t, locale } = useLocalization();
   const { user, isLoading: authLoading } = useAuth();
   const { setOpen } = useAuthModal();
   const { toast } = useToast();
@@ -145,6 +145,126 @@ export default function SellPage() {
   });
   const [kycUploadSignature, setKycUploadSignature] = useState<CloudinarySignaturePayload | null>(null);
   const AI_MAX_ATTEMPTS = 5;
+  const copy = locale === 'ja-JP'
+    ? {
+        signInToSell: 'カードを売るにはログインしてください',
+        signIn: 'ログイン',
+        pendingTitle: '最終管理者確認を待っています',
+        pendingDesc: 'プロフィールは自動事前審査を通過しました。管理者ができるだけ早く最終確認します。',
+        submittedAt: '送信日時',
+        rejectedTitle: '申請が却下されました',
+        reason: '理由',
+        rejectedFallback: '不明です。サポートに連絡してください。',
+        resubmit: '再申請する',
+        dashboardTitle: 'Seller Dashboard',
+        dashboardDesc: '出品と注文を管理',
+        addPickupAddress: '集荷先住所を追加',
+        listCard: 'カードを出品',
+        waitingShip: '発送待ち',
+        shipping: '配送中',
+        completed: '完了',
+        totalEarnings: '総収益',
+        pickupAddress: '集荷先住所',
+        update: '更新',
+        pickupNotice: 'カードを出品する前に集荷先住所を設定してください。この住所を使って購入者向けの送料を計算します。',
+        savePickup: '集荷先住所を保存',
+        cancel: 'キャンセル',
+        myListings: '自分の出品',
+        activeListings: '{count}件を販売中',
+        viewMarketplace: 'マーケットを見る',
+        noListings: 'まだカードを出品していません。',
+        firstListing: '最初のカードを出品',
+        sold: '販売済み',
+        active: '販売中',
+        recentOrders: '最近の注文',
+        viewAll: 'すべて見る',
+        noOrders: '注文はまだありません',
+        unknownCard: '不明なカード',
+        verifyDesc: 'CardVerseでカードを出品するには、3つの確認ステップを完了してください。',
+        step1: '本人確認',
+        step2: '電話番号確認',
+        step3: '確認して送信',
+      }
+    : locale === 'vi-VN'
+      ? {
+          signInToSell: 'Đăng nhập để bán thẻ',
+          signIn: 'Đăng nhập',
+          pendingTitle: 'Đang chờ Admin duyệt lần cuối',
+          pendingDesc: 'Hồ sơ của bạn đã được hệ thống tiền duyệt thành công. Admin sẽ xác nhận lần cuối trong thời gian sớm nhất.',
+          submittedAt: 'Gửi lúc',
+          rejectedTitle: 'Yêu cầu bị từ chối',
+          reason: 'Lý do',
+          rejectedFallback: 'Không rõ. Vui lòng liên hệ hỗ trợ.',
+          resubmit: 'Gửi lại yêu cầu xác minh',
+          dashboardTitle: 'Seller Dashboard',
+          dashboardDesc: 'Quản lý bài đăng và đơn hàng',
+          addPickupAddress: 'Thêm địa chỉ để bán',
+          listCard: 'Đăng bán thẻ',
+          waitingShip: 'Chờ giao hàng',
+          shipping: 'Đang giao',
+          completed: 'Hoàn tất',
+          totalEarnings: 'Tổng thu nhập',
+          pickupAddress: 'Địa chỉ lấy hàng',
+          update: 'Cập nhật',
+          pickupNotice: 'Bạn cần thiết lập địa chỉ lấy hàng trước khi đăng bán thẻ. Chúng tôi dùng địa chỉ này để tính cước phí ship cho người mua.',
+          savePickup: 'Lưu địa chỉ lấy hàng',
+          cancel: 'Hủy',
+          myListings: 'Bài đăng của tôi',
+          activeListings: '{count} đang bán',
+          viewMarketplace: 'Xem trên chợ',
+          noListings: 'Bạn chưa đăng bán thẻ nào.',
+          firstListing: 'Đăng bán thẻ đầu tiên',
+          sold: 'Đã bán',
+          active: 'Đang bán',
+          recentOrders: 'Đơn hàng gần đây',
+          viewAll: 'Xem tất cả',
+          noOrders: 'Chưa có đơn hàng nào',
+          unknownCard: 'Thẻ không xác định',
+          verifyDesc: 'Hoàn thành 3 bước xác minh để bắt đầu đăng bán thẻ trên CardVerse.',
+          step1: 'Xác minh danh tính',
+          step2: 'Xác minh số điện thoại',
+          step3: 'Xác nhận và gửi',
+        }
+      : {
+          signInToSell: 'Sign in to sell cards',
+          signIn: 'Sign in',
+          pendingTitle: 'Waiting for final admin review',
+          pendingDesc: 'Your profile passed the automated pre-check. Admin will confirm it as soon as possible.',
+          submittedAt: 'Submitted at',
+          rejectedTitle: 'Request rejected',
+          reason: 'Reason',
+          rejectedFallback: 'Unknown. Please contact support.',
+          resubmit: 'Submit verification again',
+          dashboardTitle: 'Seller Dashboard',
+          dashboardDesc: 'Manage listings and orders',
+          addPickupAddress: 'Add pickup address',
+          listCard: 'List a card',
+          waitingShip: 'Waiting to ship',
+          shipping: 'Shipping',
+          completed: 'Completed',
+          totalEarnings: 'Total earnings',
+          pickupAddress: 'Pickup address',
+          update: 'Update',
+          pickupNotice: 'Set a pickup address before listing cards. We use this address to calculate shipping fees for buyers.',
+          savePickup: 'Save pickup address',
+          cancel: 'Cancel',
+          myListings: 'My listings',
+          activeListings: '{count} active',
+          viewMarketplace: 'View marketplace',
+          noListings: 'You have not listed any cards yet.',
+          firstListing: 'List your first card',
+          sold: 'Sold',
+          active: 'Active',
+          recentOrders: 'Recent orders',
+          viewAll: 'View all',
+          noOrders: 'No orders yet',
+          unknownCard: 'Unknown card',
+          verifyDesc: 'Complete 3 verification steps to start listing cards on CardVerse.',
+          step1: 'Identity verification',
+          step2: 'Phone verification',
+          step3: 'Review and submit',
+        };
+  const tx = (vi: string, en: string, ja: string) => (locale === 'ja-JP' ? ja : locale === 'vi-VN' ? vi : en);
 
   const handleFileChange = async (type: 'front' | 'back' | 'bank', file: File | null) => {
     let processed = file;
@@ -204,18 +324,18 @@ export default function SellPage() {
 
   const buildKycFriendlyError = (data: Partial<AIResult> & { error?: string; failure_type?: string; step?: string }) => {
     if (data.failure_type === 'wrong_side') {
-      return data.error || 'Hệ thống nhận diện sai mặt giấy tờ. Vui lòng thử lại với ảnh rõ hơn hoặc đổi góc chụp.';
+      return data.error || tx('Hệ thống nhận diện sai mặt giấy tờ. Vui lòng thử lại với ảnh rõ hơn hoặc đổi góc chụp.', 'The system detected the wrong document side. Please try again with a clearer image or angle.', '書類の面が正しく認識されませんでした。より鮮明な画像または角度で再試行してください。');
     }
     if (data.failure_type === 'low_confidence') {
-      return data.error || 'Hệ thống đọc được ảnh nhưng độ chắc chắn còn thấp. Vui lòng thử lại với ảnh rõ hơn.';
+      return data.error || tx('Hệ thống đọc được ảnh nhưng độ chắc chắn còn thấp. Vui lòng thử lại với ảnh rõ hơn.', 'The image was read but confidence is low. Please try again with a clearer image.', '画像は読み取れましたが信頼度が低いです。より鮮明な画像で再試行してください。');
     }
     if (data.failure_type === 'network') {
-      return data.error || 'Kết nối đến dịch vụ kiểm tra đang chậm. Vui lòng thử lại sau.';
+      return data.error || tx('Kết nối đến dịch vụ kiểm tra đang chậm. Vui lòng thử lại sau.', 'The verification service is slow right now. Please try again later.', '認証サービスへの接続が遅れています。後でもう一度お試しください。');
     }
     if (data.failure_type === 'unreadable') {
-      return data.error || 'Không thể đọc được ảnh. Vui lòng chụp lại rõ hơn.';
+      return data.error || tx('Không thể đọc được ảnh. Vui lòng chụp lại rõ hơn.', 'The image could not be read. Please retake it more clearly.', '画像を読み取れませんでした。より鮮明に撮り直してください。');
     }
-    return data.error || 'Hệ thống kiểm tra thất bại. Vui lòng thử lại.';
+    return data.error || tx('Hệ thống kiểm tra thất bại. Vui lòng thử lại.', 'Verification failed. Please try again.', '確認に失敗しました。もう一度お試しください。');
   };
 
   // Step 2: Phone + OTP
@@ -354,7 +474,7 @@ export default function SellPage() {
     }
 
     const uploadStart = performance.now();
-    setAiCheckStage('Đang tải ảnh lên Cloudinary...');
+      setAiCheckStage(tx('Đang tải ảnh lên Cloudinary...', 'Uploading images to Cloudinary...', '画像をCloudinaryにアップロード中...'));
     console.log('[KYC Flow] Starting Cloudinary upload batch');
 
     const signature = await getOrCreateKycSignature();
@@ -402,7 +522,7 @@ export default function SellPage() {
   // Step 1: Run system verification (all 3 images + user name)
   const handleAICheck = async (frontFile: File, backFile: File, bankFile: File, userName: string) => {
     if (aiScanAttempts >= AI_MAX_ATTEMPTS) {
-      setAIError('Bạn đã sử dụng hết số lần kiểm tra. Vui lòng tải lại trang và thử lại sau.');
+      setAIError(tx('Bạn đã sử dụng hết số lần kiểm tra. Vui lòng tải lại trang và thử lại sau.', 'You have used all scan attempts. Reload the page and try again later.', '確認回数の上限に達しました。ページを再読み込みして後でもう一度お試しください。'));
       return;
     }
     setIsAIChecking(true);
@@ -417,7 +537,7 @@ export default function SellPage() {
 
     try {
       const uploadedAssets = await uploadKycFiles(frontFile, backFile, bankFile);
-      setAiCheckStage('Đang đối chiếu CCCD và tài khoản...');
+      setAiCheckStage(tx('Đang đối chiếu CCCD và tài khoản...', 'Matching ID and bank account...', '身分証と銀行口座を照合中...'));
       console.log(
         `[KYC Flow][${requestId}] Upload phase done in ${(performance.now() - scanStart).toFixed(0)}ms`
       );
@@ -497,8 +617,8 @@ export default function SellPage() {
       if (result.duplicate && (result.duplicate.cccdDuplicate || result.duplicate.bankDuplicate)) {
         toast({
           variant: 'destructive',
-          title: '⚠️ Thông tin đã được sử dụng',
-          description: result.duplicate.notes || 'CCCD hoặc số tài khoản này đã đăng ký ở tài khoản khác.',
+          title: tx('Thong tin da duoc su dung', 'Information already used', 'この情報は既に使用されています'),
+          description: result.duplicate.notes || tx('CCCD hoặc số tài khoản này đã đăng ký ở tài khoản khác.', 'This ID or bank account number is already registered on another account.', 'この身分証または口座番号は別のアカウントに登録されています。'),
         });
       }
       console.log(
@@ -529,13 +649,13 @@ export default function SellPage() {
 
     if (aiCheckStage.includes('Cloudinary')) {
       const timer = setTimeout(() => {
-        setSlowStageHint('Ảnh đang được tải lên. Với HEIC lớn, bước này có thể mất thêm vài giây.');
+        setSlowStageHint(tx('Ảnh đang được tải lên. Với HEIC lớn, bước này có thể mất thêm vài giây.', 'Images are uploading. Large HEIC files may take a few extra seconds.', '画像をアップロード中です。大きなHEICファイルでは数秒余分にかかることがあります。'));
       }, 8000);
       return () => clearTimeout(timer);
     }
 
     const timer = setTimeout(() => {
-      setSlowStageHint('Hệ thống đang đọc chi tiết CCCD. Vui lòng đợi thêm một chút.');
+      setSlowStageHint(tx('Hệ thống đang đọc chi tiết CCCD. Vui lòng đợi thêm một chút.', 'The system is reading ID details. Please wait a bit longer.', '本人確認書類の詳細を読み取り中です。もう少しお待ちください。'));
     }, 20000);
     return () => clearTimeout(timer);
   }, [isAIChecking, aiCheckStage]);
@@ -558,17 +678,17 @@ export default function SellPage() {
     }
 
     if (!aiResult.scan_id || aiResult.confidence < 0.7 || !aiResult.is_valid_cccd || !aiResult.is_valid_cccd_back || !aiResult.is_valid_bank) {
-      toast({ variant: 'destructive', title: 'Kết quả xác minh chưa đạt', description: 'Vui lòng quay lại Bước 1 và kiểm tra lại ảnh tải lên.' });
+      toast({ variant: 'destructive', title: tx('Kết quả xác minh chưa đạt', 'Verification did not pass', '確認結果が基準に達していません'), description: tx('Vui lòng quay lại Bước 1 và kiểm tra lại ảnh tải lên.', 'Please return to Step 1 and review the uploaded images.', 'ステップ1に戻ってアップロード画像を確認してください。') });
       return;
     }
 
     if (!editableBankAccountName || !editableBankAccountNumber || !isSubmittedNameMatch) {
-      toast({ variant: 'destructive', title: 'Thông tin ngân hàng chưa khớp', description: 'Tên chủ tài khoản phải trùng với CCCD và họ tên đăng ký.' });
+      toast({ variant: 'destructive', title: tx('Thông tin ngân hàng chưa khớp', 'Bank information does not match', '銀行情報が一致しません'), description: tx('Tên chủ tài khoản phải trùng với CCCD và họ tên đăng ký.', 'Account holder name must match the ID and registered full name.', '口座名義は身分証と登録氏名に一致する必要があります。') });
       return;
     }
 
     if (!isPhoneValid) {
-      toast({ variant: 'destructive', title: 'Số điện thoại không hợp lệ', description: 'Vui lòng nhập số điện thoại Việt Nam hợp lệ.' });
+      toast({ variant: 'destructive', title: tx('Số điện thoại không hợp lệ', 'Invalid phone number', '無効な電話番号です'), description: tx('Vui lòng nhập số điện thoại Việt Nam hợp lệ.', 'Please enter a valid Vietnamese phone number.', '有効なベトナムの電話番号を入力してください。') });
       return;
     }
 
@@ -595,7 +715,7 @@ export default function SellPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      toast({ title: '✅ Đã gửi yêu cầu xác minh!', description: 'Hệ thống đã tiền duyệt hồ sơ. Admin sẽ xác nhận lần cuối trong vài giờ.' });
+      toast({ title: tx('Da gui yeu cau xac minh', 'Verification request submitted', '確認申請を送信しました'), description: tx('Hệ thống đã tiền duyệt hồ sơ. Admin sẽ xác nhận lần cuối trong vài giờ.', 'The system pre-approved your profile. Admin will do the final check within a few hours.', 'システムがプロフィールを事前承認しました。管理者が数時間以内に最終確認します。') });
       fetchVerification();
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Lỗi', description: err.message });
@@ -607,9 +727,9 @@ export default function SellPage() {
   const formatVND = (amount: number) => new Intl.NumberFormat('vi-VN').format(amount) + 'đ';
 
   const STATUS_MAP: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-    paid: { label: 'Chờ giao hàng', icon: <Package className="h-4 w-4" />, color: 'text-blue-400' },
-    shipping: { label: 'Đang giao', icon: <Package className="h-4 w-4" />, color: 'text-yellow-400' },
-    completed: { label: 'Hoàn tất', icon: <CheckCircle className="h-4 w-4" />, color: 'text-green-400' },
+    paid: { label: copy.waitingShip, icon: <Package className="h-4 w-4" />, color: 'text-blue-400' },
+    shipping: { label: copy.shipping, icon: <Package className="h-4 w-4" />, color: 'text-yellow-400' },
+    completed: { label: copy.completed, icon: <CheckCircle className="h-4 w-4" />, color: 'text-green-400' },
     disputed: { label: 'Khiếu nại', icon: <XCircle className="h-4 w-4" />, color: 'text-red-400' },
     cancelled: { label: 'Đã hủy', icon: <XCircle className="h-4 w-4" />, color: 'text-muted-foreground' },
   };
@@ -639,8 +759,8 @@ export default function SellPage() {
         <Header />
         <main className="flex-1 container mx-auto px-4 py-8 flex flex-col items-center justify-center">
           <ShieldAlert className="h-16 w-16 text-muted-foreground mb-4" />
-          <h2 className="text-2xl font-semibold mb-2">Đăng nhập để bán thẻ</h2>
-          <Button onClick={() => setOpen(true)}>Đăng nhập</Button>
+          <h2 className="text-2xl font-semibold mb-2">{copy.signInToSell}</h2>
+          <Button onClick={() => setOpen(true)}>{copy.signIn}</Button>
         </main>
         <Footer />
       </div>
@@ -656,13 +776,10 @@ export default function SellPage() {
           <div className="max-w-2xl mx-auto text-center">
             <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-8 space-y-4">
               <Clock className="h-16 w-16 text-yellow-500 mx-auto" />
-              <h2 className="text-2xl font-bold text-yellow-400">Đang chờ Admin duyệt lần cuối</h2>
-              <p className="text-muted-foreground">
-                Hồ sơ của bạn đã được hệ thống tiền duyệt thành công.
-                Admin sẽ xác nhận lần cuối trong thời gian sớm nhất.
-              </p>
+              <h2 className="text-2xl font-bold text-yellow-400">{copy.pendingTitle}</h2>
+              <p className="text-muted-foreground">{copy.pendingDesc}</p>
               <p className="text-xs text-muted-foreground">
-                Gửi lúc: {new Date(verification.created_at).toLocaleString('vi-VN')}
+                {copy.submittedAt}: {new Date(verification.created_at).toLocaleString(locale)}
               </p>
             </div>
           </div>
@@ -681,12 +798,12 @@ export default function SellPage() {
           <div className="max-w-2xl mx-auto text-center space-y-6">
             <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-8 space-y-4">
               <XCircle className="h-16 w-16 text-red-500 mx-auto" />
-              <h2 className="text-2xl font-bold text-red-400">Yêu cầu bị từ chối</h2>
+              <h2 className="text-2xl font-bold text-red-400">{copy.rejectedTitle}</h2>
               <p className="text-muted-foreground">
-                Lý do: {verification.rejection_reason || 'Không rõ. Vui lòng liên hệ hỗ trợ.'}
+                {copy.reason}: {verification.rejection_reason || copy.rejectedFallback}
               </p>
               <Button onClick={() => setVerification(null)} variant="outline">
-                Gửi lại yêu cầu xác minh
+                {copy.resubmit}
               </Button>
             </div>
           </div>
@@ -712,9 +829,9 @@ export default function SellPage() {
               <div>
                 <h1 className="text-3xl font-bold flex items-center gap-2" style={{ fontFamily: "'Orbitron', sans-serif" }}>
                   <ShieldCheck className="h-8 w-8 text-green-500" />
-                  Seller Dashboard
+                  {copy.dashboardTitle}
                 </h1>
-                <p className="text-muted-foreground mt-1">Quản lý bài đăng và đơn hàng</p>
+                <p className="text-muted-foreground mt-1">{copy.dashboardDesc}</p>
               </div>
               {!pickupAddress && !isLoadingAddress ? (
                 <Button
@@ -725,13 +842,13 @@ export default function SellPage() {
                   }}
                 >
                   <MapPin className="h-4 w-4 mr-2" />
-                  Thêm địa chỉ để bán
+                  {copy.addPickupAddress}
                 </Button>
               ) : (
                 <Button asChild className="bg-orange-500 hover:bg-orange-600">
                   <Link href="/sell/create">
                     <Plus className="h-4 w-4 mr-2" />
-                    Đăng bán thẻ
+                    {copy.listCard}
                   </Link>
                 </Button>
               )}
@@ -742,25 +859,25 @@ export default function SellPage() {
               <Card className="bg-blue-500/5 border-blue-500/20">
                 <CardContent className="pt-6 text-center">
                   <p className="text-2xl font-bold text-blue-400">{pendingOrders.length}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Chờ giao hàng</p>
+                  <p className="text-xs text-muted-foreground mt-1">{copy.waitingShip}</p>
                 </CardContent>
               </Card>
               <Card className="bg-yellow-500/5 border-yellow-500/20">
                 <CardContent className="pt-6 text-center">
                   <p className="text-2xl font-bold text-yellow-400">{shippingOrders.length}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Đang giao</p>
+                  <p className="text-xs text-muted-foreground mt-1">{copy.shipping}</p>
                 </CardContent>
               </Card>
               <Card className="bg-green-500/5 border-green-500/20">
                 <CardContent className="pt-6 text-center">
                   <p className="text-2xl font-bold text-green-400">{completedOrders.length}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Hoàn tất</p>
+                  <p className="text-xs text-muted-foreground mt-1">{copy.completed}</p>
                 </CardContent>
               </Card>
               <Card className="bg-orange-500/5 border-orange-500/20">
                 <CardContent className="pt-6 text-center">
                   <p className="text-2xl font-bold text-orange-400">{formatVND(totalEarnings)}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Tổng thu nhập</p>
+                  <p className="text-xs text-muted-foreground mt-1">{copy.totalEarnings}</p>
                 </CardContent>
               </Card>
             </div>
@@ -771,11 +888,11 @@ export default function SellPage() {
                 <CardTitle className="flex items-center justify-between">
                   <span className="flex items-center gap-2">
                     <MapPin className="h-5 w-5 text-orange-400" />
-                    Địa chỉ lấy hàng
+                    {copy.pickupAddress}
                   </span>
                   {pickupAddress && !editingAddress && (
                     <Button variant="outline" size="sm" onClick={() => setEditingAddress(true)}>
-                      Cập nhật
+                      {copy.update}
                     </Button>
                   )}
                 </CardTitle>
@@ -789,8 +906,7 @@ export default function SellPage() {
                       <div className="mb-4 flex items-start gap-2 rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-sm text-orange-300">
                         <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                         <span>
-                          Bạn cần thiết lập địa chỉ lấy hàng trước khi đăng bán thẻ. Chúng tôi dùng
-                          địa chỉ này để tính cước phí ship cho người mua.
+                          {copy.pickupNotice}
                         </span>
                       </div>
                     )}
@@ -802,7 +918,7 @@ export default function SellPage() {
                     ) : (
                       <div className="space-y-2">
                         <SellerAddressForm
-                          submitLabel="Lưu địa chỉ lấy hàng"
+                          submitLabel={copy.savePickup}
                           onSaved={() => {
                             setEditingAddress(false);
                             fetchPickupAddress();
@@ -810,7 +926,7 @@ export default function SellPage() {
                         />
                         {pickupAddress && editingAddress && (
                           <Button variant="ghost" size="sm" onClick={() => setEditingAddress(false)}>
-                            Hủy
+                            {copy.cancel}
                           </Button>
                         )}
                       </div>
@@ -826,15 +942,15 @@ export default function SellPage() {
                 <CardTitle className="flex items-center justify-between">
                   <span className="flex items-center gap-2">
                     <Package className="h-5 w-5 text-orange-400" />
-                    Bài đăng của tôi
+                    {copy.myListings}
                     {!isLoadingListings && myListings.length > 0 && (
                       <span className="text-sm font-normal text-muted-foreground">
-                        ({myListings.filter(l => l.status === 'active').length} đang bán)
+                        ({copy.activeListings.replace('{count}', String(myListings.filter(l => l.status === 'active').length))})
                       </span>
                     )}
                   </span>
                   <Button variant="outline" size="sm" asChild>
-                    <Link href="/buy">Xem trên chợ</Link>
+                    <Link href="/buy">{copy.viewMarketplace}</Link>
                   </Button>
                 </CardTitle>
               </CardHeader>
@@ -845,11 +961,11 @@ export default function SellPage() {
                   </div>
                 ) : myListings.length === 0 ? (
                   <div className="text-center py-8">
-                    <p className="text-muted-foreground mb-4">Bạn chưa đăng bán thẻ nào.</p>
+                    <p className="text-muted-foreground mb-4">{copy.noListings}</p>
                     <Button asChild className="bg-orange-500 hover:bg-orange-600">
                       <Link href="/sell/create">
                         <Plus className="h-4 w-4 mr-2" />
-                        Đăng bán thẻ đầu tiên
+                        {copy.firstListing}
                       </Link>
                     </Button>
                   </div>
@@ -883,7 +999,7 @@ export default function SellPage() {
                                 : 'bg-green-500/90 text-white'
                                 }`}
                             >
-                              {isSold ? 'Đã bán' : 'Đang bán'}
+                              {isSold ? copy.sold : copy.active}
                             </span>
                           </div>
                           <div className="flex flex-1 flex-col p-2.5">
@@ -904,9 +1020,9 @@ export default function SellPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                  <span>Đơn hàng gần đây</span>
+                  <span>{copy.recentOrders}</span>
                   <Button variant="outline" size="sm" asChild>
-                    <Link href="/orders">Xem tất cả</Link>
+                    <Link href="/orders">{copy.viewAll}</Link>
                   </Button>
                 </CardTitle>
               </CardHeader>
@@ -916,7 +1032,7 @@ export default function SellPage() {
                     {[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full rounded-lg" />)}
                   </div>
                 ) : sellerOrders.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">Chưa có đơn hàng nào</p>
+                  <p className="text-center text-muted-foreground py-8">{copy.noOrders}</p>
                 ) : (
                   <div className="space-y-3">
                     {sellerOrders.slice(0, 5).map((order) => {
@@ -930,7 +1046,7 @@ export default function SellPage() {
                               </div>
                             )}
                             <div>
-                              <p className="font-medium text-sm line-clamp-1">{order.card?.name || 'Thẻ không xác định'}</p>
+                              <p className="font-medium text-sm line-clamp-1">{order.card?.name || copy.unknownCard}</p>
                               <p className={`text-xs flex items-center gap-1 ${statusInfo.color}`}>
                                 {statusInfo.icon} {statusInfo.label}
                               </p>
@@ -939,7 +1055,7 @@ export default function SellPage() {
                           <div className="text-right">
                             <p className="font-semibold text-sm">{formatVND(order.amount - order.platform_fee)}</p>
                             <p className="text-xs text-muted-foreground">
-                              {new Date(order.created_at).toLocaleDateString('vi-VN')}
+                              {new Date(order.created_at).toLocaleDateString(locale)}
                             </p>
                           </div>
                         </div>
@@ -958,9 +1074,9 @@ export default function SellPage() {
 
   // ── KYC FORM — 3-STEP WIZARD ──
   const steps = [
-    { number: 1, title: 'Xác minh danh tính', icon: <Sparkles className="h-4 w-4" /> },
-    { number: 2, title: 'Xác minh số điện thoại', icon: <Phone className="h-4 w-4" /> },
-    { number: 3, title: 'Xác nhận & Gửi', icon: <FileCheck className="h-4 w-4" /> },
+    { number: 1, title: copy.step1, icon: <Sparkles className="h-4 w-4" /> },
+    { number: 2, title: copy.step2, icon: <Phone className="h-4 w-4" /> },
+    { number: 3, title: copy.step3, icon: <FileCheck className="h-4 w-4" /> },
   ];
 
   return (
@@ -973,7 +1089,7 @@ export default function SellPage() {
               {t('sell_title')}
             </h1>
             <p className="text-muted-foreground mt-2">
-              Hoàn thành 3 bước xác minh để bắt đầu đăng bán thẻ trên CardVerse.
+              {copy.verifyDesc}
             </p>
           </div>
 
@@ -1043,10 +1159,10 @@ export default function SellPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Sparkles className="h-5 w-5 text-orange-500" />
-                  Bước 1: Xác minh danh tính tự động
+                  {tx('Bước 1: Xác minh danh tính tự động', 'Step 1: Automatic identity verification', 'ステップ1: 本人確認の自動検証')}
                 </CardTitle>
                 <CardDescription>
-                  Tải lên ảnh CCCD và ảnh App Ngân hàng. Hệ thống sẽ tự động so sánh tên và trích xuất số tài khoản.
+                  {tx('Tải lên ảnh CCCD và ảnh App Ngân hàng. Hệ thống sẽ tự động so sánh tên và trích xuất số tài khoản.', 'Upload your ID card and banking app screenshot. The system will compare names and extract the account number automatically.', '本人確認書類と銀行アプリの画像をアップロードしてください。システムが氏名照合と口座番号抽出を自動で行います。')}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -1062,10 +1178,10 @@ export default function SellPage() {
                 {/* Scan status */}
                 {aiScanAttempts > 0 && (
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Số lần quét: {aiScanAttempts}/{AI_MAX_ATTEMPTS}</span>
+                    <span>{tx('Số lần quét', 'Scan attempts', 'スキャン回数')}: {aiScanAttempts}/{AI_MAX_ATTEMPTS}</span>
                     {aiScanCooldown > 0 && (
                       <span className="text-orange-400 flex items-center gap-1">
-                        <Clock className="h-3 w-3" /> Quét lại sau {aiScanCooldown}s
+                        <Clock className="h-3 w-3" /> {tx('Quét lại sau', 'Scan again in', '再スキャンまで')} {aiScanCooldown}s
                       </span>
                     )}
                   </div>
@@ -1083,7 +1199,7 @@ export default function SellPage() {
                     <div className="flex items-center justify-between">
                       <h4 className="font-semibold flex items-center gap-2">
                         <Sparkles className="h-4 w-4 text-orange-500" />
-                        Kết quả xác minh
+                        {tx('Kết quả xác minh', 'Verification results', '確認結果')}
                       </h4>
                       <span className={`text-xs font-bold px-3 py-1 rounded-full ${
                         aiResult.confidence >= 0.7
@@ -1092,7 +1208,7 @@ export default function SellPage() {
                           ? 'bg-yellow-500/20 text-yellow-500'
                           : 'bg-red-500/20 text-red-500'
                       }`}>
-                        Độ tin cậy: {Math.round(aiResult.confidence * 100)}%
+                        {tx('Độ tin cậy', 'Confidence', '信頼度')}: {Math.round(aiResult.confidence * 100)}%
                       </span>
                     </div>
 
@@ -1101,8 +1217,8 @@ export default function SellPage() {
                       <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm text-red-400 flex items-start gap-2">
                         <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                         <div>
-                          <strong>Cảnh báo trùng thông tin.</strong> {aiResult.duplicate.notes || 'CCCD hoặc số tài khoản này đã được đăng ký ở một tài khoản khác.'}
-                          <div className="text-xs text-red-400/80 mt-1">Bạn vẫn có thể gửi hồ sơ, nhưng quản trị viên sẽ xem xét kỹ và có thể từ chối nếu phát hiện dùng chung giấy tờ.</div>
+                          <strong>{tx('Cảnh báo trùng thông tin.', 'Duplicate information warning.', '情報重複の警告。')}</strong> {aiResult.duplicate.notes || tx('CCCD hoặc số tài khoản này đã được đăng ký ở một tài khoản khác.', 'This ID or bank account has already been registered to another account.', 'この身分証または口座番号は別のアカウントに登録されています。')}
+                          <div className="text-xs text-red-400/80 mt-1">{tx('Bạn vẫn có thể gửi hồ sơ, nhưng quản trị viên sẽ xem xét kỹ và có thể từ chối nếu phát hiện dùng chung giấy tờ.', 'You can still submit, but admins will review carefully and may reject shared documents.', '送信は可能ですが、管理者が慎重に確認し、共有書類と判断した場合は拒否されることがあります。')}</div>
                         </div>
                       </div>
                     )}
@@ -1111,7 +1227,7 @@ export default function SellPage() {
                     {Object.values(pendingReplacements).some(Boolean) && (
                       <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3 text-sm text-orange-400 flex items-start gap-2">
                         <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                        <div>Vui lòng tải lên lại <strong>tất cả</strong> các ảnh không hợp lệ để hệ thống tự động quét lại.</div>
+                        <div>{tx('Vui lòng tải lên lại', 'Please re-upload', '再アップロードしてください')} <strong>{tx('tất cả', 'all', 'すべての')}</strong> {tx('các ảnh không hợp lệ để hệ thống tự động quét lại.', 'invalid images so the system can scan again automatically.', '無効な画像を再アップロードしてください。システムが自動で再スキャンします。')}</div>
                       </div>
                     )}
 
@@ -1129,33 +1245,33 @@ export default function SellPage() {
 
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
-                        <p className="text-muted-foreground text-xs mb-1">CCCD mặt trước</p>
+                        <p className="text-muted-foreground text-xs mb-1">{tx('CCCD mặt trước', 'ID front', '身分証の表面')}</p>
                         <p className={`font-medium ${aiResult.is_valid_cccd ? 'text-green-500' : 'text-red-500'}`}>
-                          {aiResult.is_valid_cccd ? '✅ Hợp lệ' : '❌ Cần tải lại'}
+                          {aiResult.is_valid_cccd ? tx('✅ Hợp lệ', '✅ Valid', '✅ 有効') : tx('❌ Cần tải lại', '❌ Re-upload required', '❌ 再アップロードが必要')}
                         </p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground text-xs mb-1">CCCD mặt sau</p>
+                        <p className="text-muted-foreground text-xs mb-1">{tx('CCCD mặt sau', 'ID back', '身分証の裏面')}</p>
                         <p className={`font-medium ${aiResult.is_valid_cccd_back ? 'text-green-500' : 'text-red-500'}`}>
-                          {aiResult.is_valid_cccd_back ? '✅ Hợp lệ' : '❌ Cần tải lại'}
+                          {aiResult.is_valid_cccd_back ? tx('✅ Hợp lệ', '✅ Valid', '✅ 有効') : tx('❌ Cần tải lại', '❌ Re-upload required', '❌ 再アップロードが必要')}
                         </p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground text-xs mb-1">Tên trên CCCD</p>
+                        <p className="text-muted-foreground text-xs mb-1">{tx('Tên trên CCCD', 'Name on ID', '身分証の氏名')}</p>
                         <p className="font-medium">{aiResult.cccd_name || '—'}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground text-xs mb-1">Tên ngân hàng</p>
+                        <p className="text-muted-foreground text-xs mb-1">{tx('Tên ngân hàng', 'Bank account name', '銀行口座名義')}</p>
                         <p className="font-medium">{aiResult.bank_account_name || '—'}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground text-xs mb-1">Số TK</p>
+                        <p className="text-muted-foreground text-xs mb-1">{tx('Số TK', 'Account number', '口座番号')}</p>
                         <p className="font-mono font-medium">{aiResult.bank_account_number || '—'}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground text-xs mb-1">Khớp tên đăng ký</p>
+                        <p className="text-muted-foreground text-xs mb-1">{tx('Khớp tên đăng ký', 'Registered name match', '登録名一致')}</p>
                         <p className={`font-semibold ${isSubmittedNameMatch ? 'text-green-500' : 'text-red-500'}`}>
-                          {isSubmittedNameMatch ? '✅ Khớp sau chỉnh sửa' : '❌ Chưa khớp'}
+                          {isSubmittedNameMatch ? tx('✅ Khớp sau chỉnh sửa', '✅ Match after edit', '✅ 編集後に一致') : tx('❌ Chưa khớp', '❌ Not matched yet', '❌ まだ一致していません')}
                         </p>
                       </div>
                     </div>
@@ -1164,27 +1280,27 @@ export default function SellPage() {
 
                 {/* Full Name */}
                 <div>
-                  <Label htmlFor="fullName">Họ và tên (đúng với CCCD) *</Label>
-                  <Input id="fullName" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Nguyễn Văn A" required />
+                  <Label htmlFor="fullName">{tx('Họ và tên (đúng với CCCD) *', 'Full name (must match ID) *', '氏名（身分証と一致）*')}</Label>
+                  <Input id="fullName" value={fullName} onChange={e => setFullName(e.target.value)} placeholder={tx('Nguyễn Văn A', 'John Doe', '山田 太郎')} required />
                 </div>
 
                 {/* CCCD Front + Bank Screenshot (side by side - AI reads these two) */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label>Ảnh CCCD mặt trước *</Label>
+                    <Label>{tx('Ảnh CCCD mặt trước *', 'Front ID photo *', '身分証表面の写真 *')}</Label>
                     <div className={`mt-1 border-2 rounded-lg p-4 text-center transition-colors ${processingType === 'front' ? 'cursor-wait border-orange-500/50 bg-orange-500/5' : 'cursor-pointer'} ${aiResult ? (aiResult.is_valid_cccd ? 'border-green-500/50' : 'border-red-500/50 bg-red-500/5') : 'border-dashed hover:border-orange-500/50'}`}
                       onClick={() => { if (processingType !== 'front') document.getElementById('id-front')?.click(); }}>
                       {processingType === 'front' ? (
                         <div className="flex items-center justify-center gap-2 py-1">
                           <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
-                          <p className="text-sm text-orange-400">Đang xử lý ảnh...</p>
+                          <p className="text-sm text-orange-400">{tx('Đang xử lý ảnh...', 'Processing image...', '画像を処理中...')}</p>
                         </div>
                       ) : idFrontFile ? (
                         <p className={`text-sm truncate ${aiResult && !aiResult.is_valid_cccd ? 'text-red-500' : 'text-green-400'}`}>{idFrontFile.name}</p>
                       ) : (
                         <>
                           <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
-                          <p className="text-xs text-muted-foreground mt-1">Nhấn để tải ảnh</p>
+                          <p className="text-xs text-muted-foreground mt-1">{tx('Nhấn để tải ảnh', 'Tap to upload image', 'タップして画像をアップロード')}</p>
                         </>
                       )}
                       <input type="file" id="id-front" className="hidden" accept="image/*"
@@ -1192,20 +1308,20 @@ export default function SellPage() {
                     </div>
                   </div>
                   <div>
-                    <Label>Ảnh CCCD mặt sau *</Label>
+                    <Label>{tx('Ảnh CCCD mặt sau *', 'Back ID photo *', '身分証裏面の写真 *')}</Label>
                     <div className={`mt-1 border-2 rounded-lg p-4 text-center transition-colors ${processingType === 'back' ? 'cursor-wait border-orange-500/50 bg-orange-500/5' : 'cursor-pointer'} ${aiResult ? (aiResult.is_valid_cccd_back ? 'border-green-500/50' : 'border-red-500/50 bg-red-500/5') : 'border-dashed hover:border-orange-500/50'}`}
                       onClick={() => { if (processingType !== 'back') document.getElementById('id-back')?.click(); }}>
                       {processingType === 'back' ? (
                         <div className="flex items-center justify-center gap-2 py-1">
                           <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
-                          <p className="text-sm text-orange-400">Đang xử lý ảnh...</p>
+                          <p className="text-sm text-orange-400">{tx('Đang xử lý ảnh...', 'Processing image...', '画像を処理中...')}</p>
                         </div>
                       ) : idBackFile ? (
                         <p className={`text-sm truncate ${aiResult && !aiResult.is_valid_cccd_back ? 'text-red-500' : 'text-green-400'}`}>{idBackFile.name}</p>
                       ) : (
                         <>
                           <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
-                          <p className="text-xs text-muted-foreground mt-1">Nhấn để tải ảnh</p>
+                          <p className="text-xs text-muted-foreground mt-1">{tx('Nhấn để tải ảnh', 'Tap to upload image', 'タップして画像をアップロード')}</p>
                         </>
                       )}
                       <input type="file" id="id-back" className="hidden" accept="image/*"
@@ -1216,20 +1332,20 @@ export default function SellPage() {
 
                 {/* Bank Screenshot */}
                 <div>
-                  <Label>Ảnh chụp mục "QR của tôi" trên App Ngân hàng *</Label>
+                  <Label>{tx('Ảnh chụp mục "QR của tôi" trên App Ngân hàng *', 'Screenshot of "My QR" in banking app *', '銀行アプリの「My QR」画面のスクリーンショット *')}</Label>
                   <div className={`mt-1 border-2 rounded-lg p-4 text-center transition-colors ${processingType === 'bank' ? 'cursor-wait border-orange-500/50 bg-orange-500/5' : 'cursor-pointer'} ${aiResult ? (aiResult.is_valid_bank ? 'border-green-500/50' : 'border-red-500/50 bg-red-500/5') : 'border-dashed hover:border-orange-500/50'}`}
                     onClick={() => { if (processingType !== 'bank') document.getElementById('bank-screenshot')?.click(); }}>
                     {processingType === 'bank' ? (
                       <div className="flex items-center justify-center gap-2 py-1">
                         <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
-                        <p className="text-sm text-orange-400">Đang xử lý ảnh...</p>
+                        <p className="text-sm text-orange-400">{tx('Đang xử lý ảnh...', 'Processing image...', '画像を処理中...')}</p>
                       </div>
                     ) : bankScreenshotFile ? (
                       <p className={`text-sm truncate ${aiResult && !aiResult.is_valid_bank ? 'text-red-500' : 'text-green-400'}`}>{bankScreenshotFile.name}</p>
                     ) : (
                       <>
                         <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
-                        <p className="text-xs text-muted-foreground mt-1">Screenshot phần Tên & Số TK</p>
+                        <p className="text-xs text-muted-foreground mt-1">{tx('Screenshot phần Tên & Số TK', 'Screenshot showing name and account number', '氏名と口座番号が見えるスクリーンショット')}</p>
                       </>
                     )}
                     <input type="file" id="bank-screenshot" className="hidden" accept="image/*"
@@ -1239,9 +1355,9 @@ export default function SellPage() {
 
                 {/* Bank Name */}
                 <div>
-                  <Label>Ngân hàng *</Label>
+                  <Label>{tx('Ngân hàng *', 'Bank *', '銀行 *')}</Label>
                   <Select value={bankName} onValueChange={setBankName}>
-                    <SelectTrigger><SelectValue placeholder="Chọn ngân hàng..." /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder={tx('Chọn ngân hàng...', 'Select bank...', '銀行を選択...')} /></SelectTrigger>
                     <SelectContent>
                       {BANKS.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
                     </SelectContent>
@@ -1262,39 +1378,39 @@ export default function SellPage() {
                   {isAIChecking ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      Hệ thống đang quét
+                      {tx('Hệ thống đang quét', 'System is scanning', 'システムがスキャン中')}
                     </>
                   ) : (
                     <>
                       <Sparkles className="h-4 w-4 mr-2" />
-                      Bắt đầu quét bằng hệ thống
+                      {tx('Bắt đầu quét bằng hệ thống', 'Start system scan', 'システムスキャンを開始')}
                     </>
                   )}
                 </Button>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="editableBankAccountName">Tên chủ tài khoản *</Label>
+                    <Label htmlFor="editableBankAccountName">{tx('Tên chủ tài khoản *', 'Account holder name *', '口座名義 *')}</Label>
                     <Input
                       id="editableBankAccountName"
                       value={editableBankAccountName}
                       onChange={e => setEditableBankAccountName(e.target.value)}
-                      placeholder="Tên chủ tài khoản sau khi kiểm tra"
+                      placeholder={tx('Tên chủ tài khoản sau khi kiểm tra', 'Account holder after verification', '確認後の口座名義')}
                     />
                     <p className="text-xs text-muted-foreground mt-1">
-                      Hệ thống của chúng tôi  gợi ý: {aiResult?.bank_account_name || 'Chưa có'}
+                      {tx('Hệ thống của chúng tôi gợi ý', 'System suggestion', 'システムの提案')}: {aiResult?.bank_account_name || tx('Chưa có', 'Not available', '未取得')}
                     </p>
                   </div>
                   <div>
-                    <Label htmlFor="editableBankAccountNumber">Số tài khoản *</Label>
+                    <Label htmlFor="editableBankAccountNumber">{tx('Số tài khoản *', 'Account number *', '口座番号 *')}</Label>
                     <Input
                       id="editableBankAccountNumber"
                       value={editableBankAccountNumber}
                       onChange={e => setEditableBankAccountNumber(e.target.value.replace(/[^\d]/g, ''))}
-                      placeholder="Số tài khoản sau khi kiểm tra"
+                      placeholder={tx('Số tài khoản sau khi kiểm tra', 'Account number after verification', '確認後の口座番号')}
                     />
                     <p className="text-xs text-muted-foreground mt-1">
-                   Hệ thống gợi ý: {aiResult?.bank_account_number || 'Chưa có'}
+                   {tx('Hệ thống gợi ý', 'System suggestion', 'システムの提案')}: {aiResult?.bank_account_number || tx('Chưa có', 'Not available', '未取得')}
                     </p>
                   </div>
                 </div>
@@ -1312,7 +1428,7 @@ export default function SellPage() {
                   className="w-full"
                   size="lg"
                 >
-                  Tiếp tục <ChevronRight className="h-4 w-4 ml-2" />
+                  {tx('Tiếp tục', 'Continue', '続ける')} <ChevronRight className="h-4 w-4 ml-2" />
                 </Button>
               </CardContent>
             </Card>
@@ -1324,32 +1440,32 @@ export default function SellPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Phone className="h-5 w-5 text-orange-500" />
-                  Bước 2: Số điện thoại liên hệ
+                  {tx('Bước 2: Số điện thoại liên hệ', 'Step 2: Contact phone number', 'ステップ2: 連絡先電話番号')}
                 </CardTitle>
                 <CardDescription>
-                  Nhập số điện thoại Việt Nam để bưu tá liên hệ lấy thẻ khi có đơn hàng. Admin sẽ kiểm tra lại khi duyệt seller.
+                  {tx('Nhập số điện thoại Việt Nam để bưu tá liên hệ lấy thẻ khi có đơn hàng. Admin sẽ kiểm tra lại khi duyệt seller.', 'Enter a Vietnamese phone number so carriers can contact you for pickup. Admin will verify it during seller approval.', '注文時に集荷担当が連絡できるベトナムの電話番号を入力してください。販売者承認時に管理者が確認します。')}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div>
-                  <Label htmlFor="phone">Số điện thoại *</Label>
+                  <Label htmlFor="phone">{tx('Số điện thoại *', 'Phone number *', '電話番号 *')}</Label>
                   <div className="mt-1">
                     <Input
                       id="phone"
                       type="tel"
                       value={phoneNumber}
                       onChange={e => handlePhoneChange(e.target.value)}
-                      placeholder="0912 345 678"
+                      placeholder={tx('0912 345 678', '0912 345 678', '0912 345 678')}
                       maxLength={10}
                       required
                     />
                   </div>
                   {phoneNumber && !isPhoneValid && (
-                    <p className="text-xs text-red-400 mt-1">Số điện thoại phải bắt đầu bằng 03, 05, 07, 08, 09 và gồm 10 chữ số</p>
+                    <p className="text-xs text-red-400 mt-1">{tx('Số điện thoại phải bắt đầu bằng 03, 05, 07, 08, 09 và gồm 10 chữ số', 'Phone number must start with 03, 05, 07, 08, 09 and contain 10 digits', '電話番号は03・05・07・08・09で始まり、10桁である必要があります')}</p>
                   )}
                   {phoneNumber && isPhoneValid && (
                     <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
-                      <CheckCircle className="h-3 w-3" /> Số điện thoại hợp lệ để liên hệ
+                      <CheckCircle className="h-3 w-3" /> {tx('Số điện thoại hợp lệ để liên hệ', 'Valid phone number for contact', '連絡用の有効な電話番号です')}
                     </p>
                   )}
                 </div>
@@ -1357,7 +1473,7 @@ export default function SellPage() {
                 {/* Navigation */}
                 <div className="flex gap-3">
                   <Button type="button" variant="outline" onClick={() => setCurrentStep(1)} className="flex-1">
-                    <ChevronLeft className="h-4 w-4 mr-2" /> Quay lại
+                    <ChevronLeft className="h-4 w-4 mr-2" /> {tx('Quay lại', 'Back', '戻る')}
                   </Button>
                   <Button
                     type="button"
@@ -1366,7 +1482,7 @@ export default function SellPage() {
                     className="flex-1"
                     size="lg"
                   >
-                    Tiếp tục <ChevronRight className="h-4 w-4 ml-2" />
+                    {tx('Tiếp tục', 'Continue', '続ける')} <ChevronRight className="h-4 w-4 ml-2" />
                   </Button>
                 </div>
               </CardContent>
@@ -1379,10 +1495,10 @@ export default function SellPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileCheck className="h-5 w-5 text-orange-500" />
-                  Bước 3: Xác nhận thông tin
+                  {tx('Bước 3: Xác nhận thông tin', 'Step 3: Confirm information', 'ステップ3: 情報確認')}
                 </CardTitle>
                 <CardDescription>
-                  Kiểm tra lại toàn bộ thông tin trước khi gửi yêu cầu xác minh.
+                  {tx('Kiểm tra lại toàn bộ thông tin trước khi gửi yêu cầu xác minh.', 'Review all information before submitting the verification request.', '確認申請を送信する前に全情報を見直してください。')}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -1390,35 +1506,35 @@ export default function SellPage() {
                 <div className="space-y-4">
                   <div className="bg-zinc-50 dark:bg-zinc-900 rounded-lg p-4 space-y-3">
                     <h4 className="font-semibold text-sm flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-orange-500" /> Thông tin danh tính
+                      <Sparkles className="h-4 w-4 text-orange-500" /> {tx('Thông tin danh tính', 'Identity information', '本人情報')}
                     </h4>
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       <div>
-                        <p className="text-muted-foreground text-xs">Họ tên</p>
+                        <p className="text-muted-foreground text-xs">{tx('Họ tên', 'Full name', '氏名')}</p>
                         <p className="font-medium">{fullName}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground text-xs">Độ tin cậy</p>
+                        <p className="text-muted-foreground text-xs">{tx('Độ tin cậy', 'Confidence', '信頼度')}</p>
                         <p className={`font-semibold ${(aiResult?.confidence || 0) >= 0.7 ? 'text-green-500' : 'text-yellow-500'}`}>
                           {Math.round((aiResult?.confidence || 0) * 100)}%
                         </p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground text-xs">Ngân hàng</p>
+                        <p className="text-muted-foreground text-xs">{tx('Ngân hàng', 'Bank', '銀行')}</p>
                         <p className="font-medium">{bankName}</p>
                       </div>
                       <div>
-                      <p className="text-muted-foreground text-xs">Số tài khoản</p>
+                      <p className="text-muted-foreground text-xs">{tx('Số tài khoản', 'Account number', '口座番号')}</p>
                       <p className="font-mono font-medium">{editableBankAccountNumber || '—'}</p>
                     </div>
                       <div>
-                        <p className="text-muted-foreground text-xs">Tên chủ tài khoản</p>
+                        <p className="text-muted-foreground text-xs">{tx('Tên chủ tài khoản', 'Account holder name', '口座名義')}</p>
                         <p className="font-medium">{editableBankAccountName || '—'}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground text-xs">Tên trùng khớp</p>
+                        <p className="text-muted-foreground text-xs">{tx('Tên trùng khớp', 'Name match', '氏名一致')}</p>
                         <p className={`font-semibold ${isSubmittedNameMatch ? 'text-green-500' : 'text-red-500'}`}>
-                          {isSubmittedNameMatch ? '✅ Khớp' : '❌ Không khớp'}
+                          {isSubmittedNameMatch ? tx('✅ Khớp', '✅ Match', '✅ 一致') : tx('❌ Không khớp', '❌ Not matched', '❌ 不一致')}
                         </p>
                       </div>
                     </div>
@@ -1426,31 +1542,31 @@ export default function SellPage() {
 
                   <div className="bg-zinc-50 dark:bg-zinc-900 rounded-lg p-4 space-y-3">
                     <h4 className="font-semibold text-sm flex items-center gap-2">
-                      <Phone className="h-4 w-4 text-orange-500" /> Liên hệ
+                      <Phone className="h-4 w-4 text-orange-500" /> {tx('Liên hệ', 'Contact', '連絡先')}
                     </h4>
                     <div className="text-sm">
-                      <p className="text-muted-foreground text-xs">Số điện thoại</p>
+                      <p className="text-muted-foreground text-xs">{tx('Số điện thoại', 'Phone number', '電話番号')}</p>
                       <p className="font-mono font-medium">{phoneNumber}</p>
                     </div>
                   </div>
 
                   <div className="bg-zinc-50 dark:bg-zinc-900 rounded-lg p-4 space-y-3">
-                    <h4 className="font-semibold text-sm">Ảnh đã tải lên</h4>
+                    <h4 className="font-semibold text-sm">{tx('Ảnh đã tải lên', 'Uploaded images', 'アップロード済み画像')}</h4>
                     <div className="flex flex-wrap gap-2 text-xs text-green-400">
-                      <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3" /> CCCD trước</span>
-                      <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3" /> CCCD sau</span>
-                      <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3" /> App Ngân hàng</span>
+                      <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3" /> {tx('CCCD trước', 'ID front', '身分証表面')}</span>
+                      <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3" /> {tx('CCCD sau', 'ID back', '身分証裏面')}</span>
+                      <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3" /> {tx('App Ngân hàng', 'Bank app', '銀行アプリ')}</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 text-xs text-yellow-400">
-                  ⚠️ Sau khi gửi, hệ thống sẽ tiền duyệt hồ sơ ngay lập tức. Admin sẽ xác nhận lần cuối trong thời gian sớm nhất để bạn bắt đầu bán hàng.
+                  ⚠️ {tx('Sau khi gửi, hệ thống sẽ tiền duyệt hồ sơ ngay lập tức. Admin sẽ xác nhận lần cuối trong thời gian sớm nhất để bạn bắt đầu bán hàng.', 'After submission, the system will pre-review your profile immediately. An admin will do the final approval as soon as possible so you can start selling.', '送信後、システムが即時に事前審査を行います。販売開始できるよう、管理者ができるだけ早く最終承認を行います。')}
                 </div>
 
                 <div className="flex gap-3">
                   <Button type="button" variant="outline" onClick={() => setCurrentStep(2)} className="flex-1">
-                    <ChevronLeft className="h-4 w-4 mr-2" /> Quay lại
+                    <ChevronLeft className="h-4 w-4 mr-2" /> {tx('Quay lại', 'Back', '戻る')}
                   </Button>
                   <Button
                     type="button"
@@ -1460,7 +1576,7 @@ export default function SellPage() {
                     size="lg"
                   >
                     {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ShieldCheck className="h-4 w-4 mr-2" />}
-                    {isSubmitting ? 'Đang gửi...' : 'Gửi yêu cầu xác minh'}
+                    {isSubmitting ? tx('Đang gửi...', 'Submitting...', '送信中...') : tx('Gửi yêu cầu xác minh', 'Submit verification request', '確認申請を送信')}
                   </Button>
                 </div>
               </CardContent>

@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, MapPin } from 'lucide-react';
+import { useLocalization } from '@/context/localization-context';
 
 type Province = { ProvinceID: number; ProvinceName: string };
 type District = { DistrictID: number; DistrictName: string; ProvinceID: number };
@@ -33,10 +34,43 @@ export function AddressPicker({
     value,
     onChange,
     showDetail = true,
-    detailPlaceholder = 'Số nhà, đường...',
+    detailPlaceholder,
     compact = false,
     label,
 }: AddressPickerProps) {
+    const { locale } = useLocalization();
+    const copy = locale === 'vi-VN'
+        ? {
+            detailPlaceholder: 'Số nhà, đường...',
+            province: 'Tỉnh/Thành',
+            district: 'Quận/Huyện',
+            ward: 'Phường/Xã',
+            loading: 'Đang tải...',
+            selectProvince: 'Chọn Tỉnh/Thành',
+            selectDistrict: 'Chọn Quận/Huyện',
+            selectWard: 'Chọn Phường/Xã',
+        }
+        : locale === 'ja-JP'
+            ? {
+                detailPlaceholder: '番地・通り名...',
+                province: '都道府県',
+                district: '区・郡',
+                ward: '区・町・村',
+                loading: '読み込み中...',
+                selectProvince: '都道府県を選択',
+                selectDistrict: '区・郡を選択',
+                selectWard: '区・町・村を選択',
+            }
+            : {
+                detailPlaceholder: 'House number, street...',
+                province: 'Province/City',
+                district: 'District',
+                ward: 'Ward',
+                loading: 'Loading...',
+                selectProvince: 'Select province/city',
+                selectDistrict: 'Select district',
+                selectWard: 'Select ward',
+            };
     const [provinces, setProvinces] = useState<Province[]>([]);
     const [districts, setDistricts] = useState<District[]>([]);
     const [wards, setWards] = useState<Ward[]>([]);
@@ -196,10 +230,10 @@ export function AddressPicker({
             <div className={`grid ${gridCols} gap-2`}>
                 {/* Province */}
                 <div>
-                    {!compact && <Label className="text-xs text-muted-foreground mb-1 block">Tỉnh/Thành</Label>}
+                    {!compact && <Label className="text-xs text-muted-foreground mb-1 block">{copy.province}</Label>}
                     <Select value={selectedProvince} onValueChange={handleProvinceChange}>
                         <SelectTrigger className="w-full h-9 text-sm">
-                            <SelectValue placeholder={loadingProvinces ? 'Đang tải...' : 'Chọn Tỉnh/Thành'} />
+                            <SelectValue placeholder={loadingProvinces ? copy.loading : copy.selectProvince} />
                         </SelectTrigger>
                         <SelectContent className="max-h-[300px]">
                             {loadingProvinces ? (
@@ -221,14 +255,14 @@ export function AddressPicker({
 
                 {/* District */}
                 <div>
-                    {!compact && <Label className="text-xs text-muted-foreground mb-1 block">Quận/Huyện</Label>}
+                    {!compact && <Label className="text-xs text-muted-foreground mb-1 block">{copy.district}</Label>}
                     <Select
                         value={selectedDistrict}
                         onValueChange={handleDistrictChange}
                         disabled={!selectedProvince}
                     >
                         <SelectTrigger className="w-full h-9 text-sm">
-                            <SelectValue placeholder={loadingDistricts ? 'Đang tải...' : 'Chọn Quận/Huyện'} />
+                            <SelectValue placeholder={loadingDistricts ? copy.loading : copy.selectDistrict} />
                         </SelectTrigger>
                         <SelectContent className="max-h-[300px]">
                             {loadingDistricts ? (
@@ -250,14 +284,14 @@ export function AddressPicker({
 
                 {/* Ward */}
                 <div>
-                    {!compact && <Label className="text-xs text-muted-foreground mb-1 block">Phường/Xã</Label>}
+                    {!compact && <Label className="text-xs text-muted-foreground mb-1 block">{copy.ward}</Label>}
                     <Select
                         value={selectedWard}
                         onValueChange={handleWardChange}
                         disabled={!selectedDistrict}
                     >
                         <SelectTrigger className="w-full h-9 text-sm">
-                            <SelectValue placeholder={loadingWards ? 'Đang tải...' : 'Chọn Phường/Xã'} />
+                            <SelectValue placeholder={loadingWards ? copy.loading : copy.selectWard} />
                         </SelectTrigger>
                         <SelectContent className="max-h-[300px]">
                             {loadingWards ? (
@@ -283,7 +317,7 @@ export function AddressPicker({
                 <Input
                     value={detail}
                     onChange={e => setDetail(e.target.value)}
-                    placeholder={detailPlaceholder}
+                    placeholder={detailPlaceholder || copy.detailPlaceholder}
                     className="h-9 text-sm"
                 />
             )}

@@ -21,6 +21,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
+import { useLocalization } from "@/context/localization-context";
 
 // Rank definitions
 const RANKS = [
@@ -36,6 +37,7 @@ export default function ProfilePage() {
     const supabase = useSupabase();
     const { user, profile: userProfile, isLoading: isUserLoading } = useUser();
     const { setOpen } = useAuthModal();
+    const { locale } = useLocalization();
 
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [legitRate, setLegitRate] = useState<UserLegitRate | null>(null);
@@ -48,6 +50,122 @@ export default function ProfilePage() {
 
     // Use centralized currency formatting
     const { formatPrice } = useCurrency();
+    const copy = locale === "vi-VN"
+        ? {
+            loginTitle: "Đăng nhập để xem hồ sơ",
+            loginDescription: "Bạn cần đăng nhập để xem thông tin cá nhân và lịch sử giao dịch.",
+            loginButton: "Đăng nhập",
+            sold: "đã bán",
+            bought: "đã mua",
+            trusted: "uy tín",
+            editProfile: "Chỉnh sửa hồ sơ",
+            legitScore: "Điểm uy tín",
+            totalRevenue: "Tổng thu nhập",
+            fromSoldCards: "Từ {count} thẻ đã bán",
+            totalSales: "Tổng bán",
+            sellingNow: "Đang bán: {count} thẻ",
+            accountRank: "Hạng tài khoản",
+            toRankUp: "Còn {count} bán để lên hạng",
+            highestRank: "Hạng cao nhất!",
+            sellingTab: "Đang bán",
+            soldTab: "Đã bán",
+            boughtTab: "Đã mua",
+            transactionsTab: "Giao dịch",
+            inTransaction: "Đang giao dịch",
+            auction: "Đấu giá",
+            buyNow: "Mua ngay",
+            noSelling: "Bạn chưa đăng bán thẻ nào",
+            listNow: "Đăng bán ngay",
+            boughtBadge: "Đã mua",
+            noBought: "Bạn chưa mua thẻ nào",
+            exploreNow: "Khám phá ngay",
+            noSold: "Bạn chưa bán thẻ nào",
+            sellType: "Bán",
+            buyType: "Mua",
+            completed: "Hoàn tất",
+            cancelled: "Đã hủy",
+            expired: "Hết hạn",
+            processing: "Đang xử lý",
+            details: "Chi tiết",
+            noTransactions: "Chưa có giao dịch nào",
+        }
+        : locale === "ja-JP"
+            ? {
+                loginTitle: "プロフィールを見るにはログインしてください",
+                loginDescription: "個人情報と取引履歴を見るにはログインが必要です。",
+                loginButton: "ログイン",
+                sold: "販売済み",
+                bought: "購入済み",
+                trusted: "信頼度",
+                editProfile: "プロフィールを編集",
+                legitScore: "信頼スコア",
+                totalRevenue: "総収益",
+                fromSoldCards: "{count}枚の販売カードから",
+                totalSales: "総販売数",
+                sellingNow: "出品中: {count}枚",
+                accountRank: "アカウントランク",
+                toRankUp: "次のランクまであと{count}件",
+                highestRank: "最高ランクです！",
+                sellingTab: "出品中",
+                soldTab: "販売済み",
+                boughtTab: "購入済み",
+                transactionsTab: "取引",
+                inTransaction: "取引中",
+                auction: "オークション",
+                buyNow: "今すぐ購入",
+                noSelling: "まだカードを出品していません",
+                listNow: "今すぐ出品",
+                boughtBadge: "購入済み",
+                noBought: "まだカードを購入していません",
+                exploreNow: "探す",
+                noSold: "まだカードを販売していません",
+                sellType: "販売",
+                buyType: "購入",
+                completed: "完了",
+                cancelled: "キャンセル済み",
+                expired: "期限切れ",
+                processing: "処理中",
+                details: "詳細",
+                noTransactions: "まだ取引はありません",
+            }
+            : {
+                loginTitle: "Log in to view your profile",
+                loginDescription: "You need to log in to view your personal information and transaction history.",
+                loginButton: "Log in",
+                sold: "sold",
+                bought: "bought",
+                trusted: "trusted",
+                editProfile: "Edit profile",
+                legitScore: "Trust score",
+                totalRevenue: "Total revenue",
+                fromSoldCards: "From {count} sold cards",
+                totalSales: "Total sales",
+                sellingNow: "Selling now: {count} cards",
+                accountRank: "Account rank",
+                toRankUp: "{count} more sales to rank up",
+                highestRank: "Highest rank!",
+                sellingTab: "Selling",
+                soldTab: "Sold",
+                boughtTab: "Bought",
+                transactionsTab: "Transactions",
+                inTransaction: "In transaction",
+                auction: "Auction",
+                buyNow: "Buy now",
+                noSelling: "You have not listed any cards yet",
+                listNow: "List now",
+                boughtBadge: "Bought",
+                noBought: "You have not bought any cards yet",
+                exploreNow: "Explore now",
+                noSold: "You have not sold any cards yet",
+                sellType: "Sell",
+                buyType: "Buy",
+                completed: "Completed",
+                cancelled: "Cancelled",
+                expired: "Expired",
+                processing: "Processing",
+                details: "Details",
+                noTransactions: "No transactions yet",
+            };
 
     // Get user rank based on sales
     const getUserRank = (totalSales: number) => {
@@ -113,7 +231,7 @@ export default function ProfilePage() {
                         .limit(20);
 
                     if (cardsData && !error) {
-                        const allCards: Card[] = cardsData.map(c => ({
+                        const allCards: Card[] = (cardsData as any[]).map(c => ({
                             id: c.id,
                             name: c.name,
                             imageUrl: c.image_url || '',
@@ -153,7 +271,7 @@ export default function ProfilePage() {
                         .limit(10);
 
                     if (buyTxData) {
-                        setBuyTransactions(buyTxData.map(tx => ({
+                        setBuyTransactions((buyTxData as any[]).map(tx => ({
                             id: tx.id,
                             cardId: tx.card_id,
                             sellerId: tx.seller_id,
@@ -182,7 +300,7 @@ export default function ProfilePage() {
                         .limit(10);
 
                     if (sellTxData) {
-                        setSellTransactions(sellTxData.map(tx => ({
+                        setSellTransactions((sellTxData as any[]).map(tx => ({
                             id: tx.id,
                             cardId: tx.card_id,
                             sellerId: tx.seller_id,
@@ -219,11 +337,11 @@ export default function ProfilePage() {
                 <Header />
                 <div className="container mx-auto px-4 py-16 text-center">
                     <User className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-                    <h1 className="text-2xl font-bold mb-2">Đăng nhập để xem hồ sơ</h1>
+                    <h1 className="text-2xl font-bold mb-2">{copy.loginTitle}</h1>
                     <p className="text-muted-foreground mb-6">
-                        Bạn cần đăng nhập để xem thông tin cá nhân và lịch sử giao dịch.
+                        {copy.loginDescription}
                     </p>
-                    <Button onClick={() => setOpen(true)}>Đăng nhập</Button>
+                    <Button onClick={() => setOpen(true)}>{copy.loginButton}</Button>
                 </div>
                 <Footer />
             </>
@@ -250,6 +368,10 @@ export default function ProfilePage() {
 
     const rank = getUserRank(sellerStats?.totalSales || 0);
     const RankIcon = rank.icon;
+    const currentRankIndex = RANKS.findIndex(r => r.name === rank.name);
+    const nextRank = currentRankIndex >= 0 && currentRankIndex < RANKS.length - 1
+        ? RANKS[currentRankIndex + 1]
+        : null;
 
     return (
         <>
@@ -295,19 +417,19 @@ export default function ProfilePage() {
                                 <div className="flex items-center gap-1">
                                     <Package className="h-4 w-4 text-primary" />
                                     <span className="font-medium">{soldCards.length}</span>
-                                    <span className="text-muted-foreground">đã bán</span>
+                                    <span className="text-muted-foreground">{copy.sold}</span>
                                 </div>
                                 <div className="flex items-center gap-1">
                                     <ShoppingBag className="h-4 w-4 text-green-500" />
                                     <span className="font-medium">{buyTransactions.filter(t => t.status === 'completed').length}</span>
-                                    <span className="text-muted-foreground">đã mua</span>
+                                    <span className="text-muted-foreground">{copy.bought}</span>
                                 </div>
                                 <div className="flex items-center gap-1">
                                     <Shield className={`h-4 w-4 ${getLegitRateColor(legitRate?.rate || 100)}`} />
                                     <span className={`font-medium ${getLegitRateColor(legitRate?.rate || 100)}`}>
                                         {legitRate?.rate || 100}%
                                     </span>
-                                    <span className="text-muted-foreground">uy tín</span>
+                                    <span className="text-muted-foreground">{copy.trusted}</span>
                                 </div>
                             </div>
                         </div>
@@ -315,7 +437,7 @@ export default function ProfilePage() {
                         {/* Edit Profile Button */}
                         <Link href="/profile/edit">
                             <Button variant="outline" className="shrink-0">
-                                Chỉnh sửa hồ sơ
+                                {copy.editProfile}
                             </Button>
                         </Link>
                     </div>
@@ -329,7 +451,7 @@ export default function ProfilePage() {
                         <CardContent className="pt-6">
                             <div className="flex items-center gap-2 text-muted-foreground mb-2">
                                 <Shield className="h-4 w-4" />
-                                <span className="text-sm">Điểm uy tín</span>
+                                <span className="text-sm">{copy.legitScore}</span>
                             </div>
                             <div className="flex items-end gap-2">
                                 <span className={`text-3xl font-bold ${getLegitRateColor(legitRate?.rate || 100)}`}>
@@ -350,13 +472,13 @@ export default function ProfilePage() {
                         <CardContent className="pt-6">
                             <div className="flex items-center gap-2 text-muted-foreground mb-2">
                                 <TrendingUp className="h-4 w-4" />
-                                <span className="text-sm">Tổng thu nhập</span>
+                                <span className="text-sm">{copy.totalRevenue}</span>
                             </div>
                             <p className="text-2xl md:text-3xl font-bold text-primary truncate">
-                                {formatPrice(soldCards.reduce((sum, card) => sum + (card.lastSoldPrice || card.price), 0))}
+                                {formatPrice(soldCards.reduce((sum, card) => sum + (card.lastSoldPrice ?? card.price ?? 0), 0))}
                             </p>
                             <p className="text-xs text-muted-foreground mt-1">
-                                Từ {soldCards.length} thẻ đã bán
+                                {copy.fromSoldCards.replace('{count}', String(soldCards.length))}
                             </p>
                         </CardContent>
                     </CardUI>
@@ -367,13 +489,13 @@ export default function ProfilePage() {
                         <CardContent className="pt-6">
                             <div className="flex items-center gap-2 text-muted-foreground mb-2">
                                 <Package className="h-4 w-4" />
-                                <span className="text-sm">Tổng bán</span>
+                                <span className="text-sm">{copy.totalSales}</span>
                             </div>
                             <p className="text-3xl font-bold">
                                 {soldCards.length}
                             </p>
                             <p className="text-xs text-muted-foreground mt-1">
-                                Đang bán: {myCards.length} thẻ
+                                {copy.sellingNow.replace('{count}', String(myCards.length))}
                             </p>
                         </CardContent>
                     </CardUI>
@@ -384,16 +506,16 @@ export default function ProfilePage() {
                         <CardContent className="pt-6">
                             <div className="flex items-center gap-2 text-muted-foreground mb-2">
                                 <Crown className="h-4 w-4" />
-                                <span className="text-sm">Hạng tài khoản</span>
+                                <span className="text-sm">{copy.accountRank}</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 <RankIcon className={`h-8 w-8 ${rank.color}`} />
                                 <span className={`text-2xl font-bold ${rank.color}`}>{rank.name}</span>
                             </div>
                             <p className="text-xs text-muted-foreground mt-1">
-                                {RANKS.findIndex(r => r.name === rank.name) < RANKS.length - 1
-                                    ? `Còn ${RANKS[RANKS.findIndex(r => r.name === rank.name) + 1].minSales - (sellerStats?.totalSales || 0)} bán để lên hạng`
-                                    : "Hạng cao nhất!"}
+                                {nextRank
+                                    ? copy.toRankUp.replace('{count}', String(nextRank.minSales - (sellerStats?.totalSales || 0)))
+                                    : copy.highestRank}
                             </p>
                         </CardContent>
                     </CardUI>
@@ -404,19 +526,19 @@ export default function ProfilePage() {
                     <TabsList className="grid w-full grid-cols-4 mb-6">
                         <TabsTrigger value="selling" className="gap-2">
                             <Tag className="h-4 w-4" />
-                            <span className="hidden sm:inline">Đang bán</span>
+                            <span className="hidden sm:inline">{copy.sellingTab}</span>
                         </TabsTrigger>
                         <TabsTrigger value="sold" className="gap-2">
                             <CheckCircle className="h-4 w-4" />
-                            <span className="hidden sm:inline">Đã bán</span>
+                            <span className="hidden sm:inline">{copy.soldTab}</span>
                         </TabsTrigger>
                         <TabsTrigger value="bought" className="gap-2">
                             <ShoppingBag className="h-4 w-4" />
-                            <span className="hidden sm:inline">Đã mua</span>
+                            <span className="hidden sm:inline">{copy.boughtTab}</span>
                         </TabsTrigger>
                         <TabsTrigger value="transactions" className="gap-2">
                             <Clock className="h-4 w-4" />
-                            <span className="hidden sm:inline">Giao dịch</span>
+                            <span className="hidden sm:inline">{copy.transactionsTab}</span>
                         </TabsTrigger>
                     </TabsList>
 
@@ -436,24 +558,24 @@ export default function ProfilePage() {
                                                 />
                                                 {card.status === 'sold' && (
                                                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                                                        <Badge className="bg-green-500">Đã bán</Badge>
+                                                        <Badge className="bg-green-500">{copy.soldTab}</Badge>
                                                     </div>
                                                 )}
                                                 {card.status === 'in_transaction' && (
                                                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                                                        <Badge className="bg-yellow-500">Đang giao dịch</Badge>
+                                                        <Badge className="bg-yellow-500">{copy.inTransaction}</Badge>
                                                     </div>
                                                 )}
                                             </div>
                                             <CardContent className="p-3">
                                                 <div className="flex items-center gap-1 mb-1">
                                                     <Badge variant="outline" className="text-xs px-1 py-0">
-                                                        {card.listingType === 'auction' ? 'Đấu giá' :
-                                                            card.listingType === 'razz' ? 'Razz' : 'Mua ngay'}
+                                                        {card.listingType === 'auction' ? copy.auction :
+                                                            card.listingType === 'razz' ? 'Razz' : copy.buyNow}
                                                     </Badge>
                                                 </div>
                                                 <p className="font-medium truncate text-sm">{card.name}</p>
-                                                <p className="text-primary font-bold">{formatPrice(card.price)}</p>
+                                                <p className="text-primary font-bold">{formatPrice(card.price ?? 0)}</p>
                                             </CardContent>
                                         </CardUI>
                                     </Link>
@@ -461,9 +583,9 @@ export default function ProfilePage() {
                             ) : (
                                 <div className="col-span-full text-center py-12">
                                     <Tag className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                                    <p className="text-muted-foreground">Bạn chưa đăng bán thẻ nào</p>
+                                    <p className="text-muted-foreground">{copy.noSelling}</p>
                                     <Button className="mt-4" asChild>
-                                        <Link href="/sell/create">Đăng bán ngay</Link>
+                                        <Link href="/sell/create">{copy.listNow}</Link>
                                     </Button>
                                 </div>
                             )}
@@ -479,12 +601,12 @@ export default function ProfilePage() {
                                         <CardUI className="group hover:border-primary transition-colors">
                                             <CardContent className="p-4">
                                                 <div className="flex items-center justify-between mb-2">
-                                                    <Badge className="bg-green-500/10 text-green-500">Đã mua</Badge>
+                                                    <Badge className="bg-green-500/10 text-green-500">{copy.boughtBadge}</Badge>
                                                     <CheckCircle className="h-4 w-4 text-green-500" />
                                                 </div>
                                                 <p className="text-lg font-bold text-primary">{formatPrice(tx.price)}</p>
                                                 <p className="text-xs text-muted-foreground">
-                                                    {tx.completedAt && new Date(tx.completedAt).toLocaleDateString('vi-VN')}
+                                                    {tx.completedAt && new Date(tx.completedAt).toLocaleDateString(locale)}
                                                 </p>
                                             </CardContent>
                                         </CardUI>
@@ -493,9 +615,9 @@ export default function ProfilePage() {
                             ) : (
                                 <div className="col-span-full text-center py-12">
                                     <ShoppingBag className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                                    <p className="text-muted-foreground">Bạn chưa mua thẻ nào</p>
+                                    <p className="text-muted-foreground">{copy.noBought}</p>
                                     <Button className="mt-4" asChild>
-                                        <Link href="/buy">Khám phá ngay</Link>
+                                        <Link href="/buy">{copy.exploreNow}</Link>
                                     </Button>
                                 </div>
                             )}
@@ -517,18 +639,18 @@ export default function ProfilePage() {
                                                     className="object-cover opacity-75"
                                                 />
                                                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                                                    <Badge className="bg-green-500">Đã bán</Badge>
+                                                    <Badge className="bg-green-500">{copy.soldTab}</Badge>
                                                 </div>
                                             </div>
                                             <CardContent className="p-3">
                                                 <div className="flex items-center gap-1 mb-1">
                                                     <Badge variant="outline" className="text-xs px-1 py-0">
-                                                        {card.listingType === 'auction' ? 'Đấu giá' :
-                                                            card.listingType === 'razz' ? 'Razz' : 'Mua ngay'}
+                                                        {card.listingType === 'auction' ? copy.auction :
+                                                            card.listingType === 'razz' ? 'Razz' : copy.buyNow}
                                                     </Badge>
                                                 </div>
                                                 <p className="font-medium truncate text-sm">{card.name}</p>
-                                                <p className="text-green-500 font-bold">{formatPrice(card.lastSoldPrice || card.price)}</p>
+                                                <p className="text-green-500 font-bold">{formatPrice(card.lastSoldPrice ?? card.price ?? 0)}</p>
                                             </CardContent>
                                         </CardUI>
                                     </Link>
@@ -536,7 +658,7 @@ export default function ProfilePage() {
                             ) : (
                                 <div className="col-span-full text-center py-12">
                                     <CheckCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                                    <p className="text-muted-foreground">Bạn chưa bán thẻ nào</p>
+                                    <p className="text-muted-foreground">{copy.noSold}</p>
                                 </div>
                             )}
                         </div>
@@ -569,12 +691,12 @@ export default function ProfilePage() {
                                                         <div>
                                                             <div className="flex items-center gap-2">
                                                                 <Badge variant={tx.type === 'sell' ? 'default' : 'secondary'} className="text-xs">
-                                                                    {tx.type === 'sell' ? 'Bán' : 'Mua'}
+                                                                    {tx.type === 'sell' ? copy.sellType : copy.buyType}
                                                                 </Badge>
                                                                 <p className="font-medium">
-                                                                    {tx.status === 'completed' ? 'Hoàn tất' :
-                                                                        tx.status === 'cancelled' ? 'Đã hủy' :
-                                                                            tx.status === 'auto_cancelled' ? 'Hết hạn' : 'Đang xử lý'}
+                                                                    {tx.status === 'completed' ? copy.completed :
+                                                                        tx.status === 'cancelled' ? copy.cancelled :
+                                                                            tx.status === 'auto_cancelled' ? copy.expired : copy.processing}
                                                                 </p>
                                                             </div>
                                                             <p className="text-sm text-muted-foreground">
@@ -590,7 +712,7 @@ export default function ProfilePage() {
                                                             href={`/transaction/${tx.id}`}
                                                             className="text-sm text-primary hover:underline flex items-center justify-end gap-1"
                                                         >
-                                                            Chi tiết <ChevronRight className="h-3 w-3" />
+                                                            {copy.details} <ChevronRight className="h-3 w-3" />
                                                         </Link>
                                                     </div>
                                                 </div>
@@ -600,7 +722,7 @@ export default function ProfilePage() {
                             ) : (
                                 <div className="text-center py-12">
                                     <Clock className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                                    <p className="text-muted-foreground">Chưa có giao dịch nào</p>
+                                    <p className="text-muted-foreground">{copy.noTransactions}</p>
                                 </div>
                             )}
                         </div>

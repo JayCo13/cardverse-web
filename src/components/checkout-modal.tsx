@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
 import { AddressBook, type SavedAddress } from '@/components/address-book';
+import { useLocalization } from '@/context/localization-context';
 import Image from 'next/image';
 
 type Card = {
@@ -38,6 +39,96 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
   const { user } = useAuth();
   const { setOpen: setAuthOpen } = useAuthModal();
   const { toast } = useToast();
+  const { locale } = useLocalization();
+  const copy = locale === 'ja-JP'
+    ? {
+        feeError: '送料を計算できませんでした。もう一度お試しください。',
+        unavailableTitle: 'カードは先に購入されました',
+        unavailableDesc: 'このカードは現在利用できません。別のカードを選んでください。',
+        redirecting: 'リダイレクト中...',
+        redirectingDesc: 'PayOSページで支払いを完了してください。',
+        purchaseSuccess: '購入完了',
+        purchaseSuccessDesc: '「{name}」を購入しました。注文ページで確認できます。',
+        title: '安全な支払い',
+        desc: 'カード購入を確認し、支払い方法を選択してください',
+        shippingAddress: '配送先住所',
+        paymentDetails: '支払い詳細',
+        cardAmount: 'カード代金',
+        shippingFee: '送料 (GHN)',
+        chooseAddressFee: '住所を選択して計算',
+        total: '合計支払い',
+        paymentMethod: '支払い方法',
+        wallet: 'CardVerseウォレット',
+        balance: '残高',
+        insufficient: '不足',
+        payos: '銀行振込 / QR (PayOS)',
+        payosDesc: '銀行から直接支払い',
+        walletShortage: 'ウォレット残高が不足しています。あと {amount} 必要です。',
+        topUpNow: '今すぐ入金',
+        sellerAddressMissing: '販売者が発送元住所をまだ設定していません。送料は注文後に確定されます。',
+        cancel: 'キャンセル',
+        chooseAddressFirst: '先に住所を選択',
+        payViaPayos: 'PayOSで支払う',
+      }
+    : locale === 'vi-VN'
+      ? {
+          feeError: 'Không thể tính phí ship. Vui lòng thử lại.',
+          unavailableTitle: 'Thẻ đã có người mua trước',
+          unavailableDesc: 'Thẻ này không còn khả dụng. Vui lòng chọn thẻ khác.',
+          redirecting: 'Đang chuyển hướng...',
+          redirectingDesc: 'Vui lòng hoàn tất thanh toán trên trang PayOS.',
+          purchaseSuccess: 'Mua thành công',
+          purchaseSuccessDesc: 'Bạn đã mua "{name}". Xem đơn hàng tại trang Quản lý đơn hàng.',
+          title: 'Thanh toán an toàn',
+          desc: 'Xác nhận mua thẻ và chọn phương thức thanh toán',
+          shippingAddress: 'Địa chỉ nhận hàng',
+          paymentDetails: 'Chi tiết thanh toán',
+          cardAmount: 'Tiền thẻ',
+          shippingFee: 'Tiền ship (GHN)',
+          chooseAddressFee: 'Chọn địa chỉ để tính',
+          total: 'Tổng thanh toán',
+          paymentMethod: 'Phương thức thanh toán',
+          wallet: 'Ví Cardverse',
+          balance: 'Số dư',
+          insufficient: 'Không đủ',
+          payos: 'Chuyển khoản / QR (PayOS)',
+          payosDesc: 'Thanh toán trực tiếp qua ngân hàng',
+          walletShortage: 'Số dư ví không đủ. Bạn cần thêm {amount}.',
+          topUpNow: 'Nạp tiền ngay',
+          sellerAddressMissing: 'Người bán chưa cập nhật địa chỉ gửi hàng. Phí ship sẽ được tính sau khi đặt hàng.',
+          cancel: 'Hủy',
+          chooseAddressFirst: 'Chọn địa chỉ trước',
+          payViaPayos: 'Thanh toán qua PayOS',
+        }
+      : {
+          feeError: 'Could not calculate shipping fee. Please try again.',
+          unavailableTitle: 'Card already taken',
+          unavailableDesc: 'This card is no longer available. Please choose another card.',
+          redirecting: 'Redirecting...',
+          redirectingDesc: 'Please complete payment on the PayOS page.',
+          purchaseSuccess: 'Purchase successful',
+          purchaseSuccessDesc: 'You bought "{name}". View the order on the Orders page.',
+          title: 'Secure checkout',
+          desc: 'Confirm the card purchase and choose a payment method',
+          shippingAddress: 'Shipping address',
+          paymentDetails: 'Payment details',
+          cardAmount: 'Card price',
+          shippingFee: 'Shipping fee (GHN)',
+          chooseAddressFee: 'Choose an address to calculate',
+          total: 'Total payment',
+          paymentMethod: 'Payment method',
+          wallet: 'CardVerse wallet',
+          balance: 'Balance',
+          insufficient: 'Insufficient',
+          payos: 'Bank transfer / QR (PayOS)',
+          payosDesc: 'Direct bank payment',
+          walletShortage: 'Wallet balance is insufficient. You need {amount} more.',
+          topUpNow: 'Top up now',
+          sellerAddressMissing: 'The seller has not set a shipping origin address yet. Shipping will be finalized after ordering.',
+          cancel: 'Cancel',
+          chooseAddressFirst: 'Choose address first',
+          payViaPayos: 'Pay via PayOS',
+        };
   const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'direct_payos'>('wallet');
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [isLoadingWallet, setIsLoadingWallet] = useState(true);
@@ -105,7 +196,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
       setShippingFee(data.shipping_fee);
     } catch (err: any) {
       console.error('Fee calculation error:', err);
-      setFeeError('Không thể tính phí ship. Vui lòng thử lại.');
+      setFeeError(copy.feeError);
     } finally {
       setLoadingFee(false);
     }
@@ -164,8 +255,8 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
       if (res.status === 409 || data.code === 'card_unavailable') {
         toast({
           variant: 'destructive',
-          title: 'Thẻ đã có người mua trước',
-          description: data.error || 'Thẻ này không còn khả dụng. Vui lòng chọn thẻ khác.',
+          title: copy.unavailableTitle,
+          description: data.error || copy.unavailableDesc,
         });
         onOpenChange(false);
         onSuccess?.();
@@ -177,13 +268,13 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
       if (data.payment_method === 'direct_payos' && data.checkoutUrl) {
         window.open(data.checkoutUrl, '_blank');
         toast({
-          title: 'Đang chuyển hướng...',
-          description: 'Vui lòng hoàn tất thanh toán trên trang PayOS.',
+          title: copy.redirecting,
+          description: copy.redirectingDesc,
         });
       } else {
         toast({
-          title: '🎉 Mua thành công!',
-          description: `Bạn đã mua "${card.name}". Xem đơn hàng tại trang Quản lý đơn hàng.`,
+          title: copy.purchaseSuccess,
+          description: copy.purchaseSuccessDesc.replace('{name}', card.name),
         });
       }
 
@@ -204,9 +295,9 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-orange-500" />
-            Thanh toán an toàn
+            {copy.title}
           </DialogTitle>
-          <DialogDescription>Xác nhận mua thẻ và chọn phương thức thanh toán</DialogDescription>
+          <DialogDescription>{copy.desc}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -228,7 +319,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
           <div className="space-y-2">
             <Label className="text-sm font-medium flex items-center gap-1.5">
               <Truck className="h-4 w-4" />
-              Địa chỉ nhận hàng
+              {copy.shippingAddress}
             </Label>
             <AddressBook
               selectable
@@ -238,15 +329,15 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
           </div>
 
           <div className="rounded-xl border border-orange-500/20 bg-gradient-to-b from-accent/40 to-orange-500/5 p-4 space-y-3">
-            <p className="text-sm font-semibold">Chi tiết thanh toán</p>
+            <p className="text-sm font-semibold">{copy.paymentDetails}</p>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Tiền thẻ</span>
+              <span className="text-muted-foreground">{copy.cardAmount}</span>
               <span className="font-semibold">{formatVND(card.price)}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Truck className="h-4 w-4 text-blue-400" />
-                <span>Tiền ship (GHN)</span>
+                <span>{copy.shippingFee}</span>
               </div>
               <div>
                 {loadingFee ? (
@@ -256,12 +347,12 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
                 ) : feeError ? (
                   <span className="text-xs text-red-400">{feeError}</span>
                 ) : (
-                  <span className="text-xs text-muted-foreground">Chọn địa chỉ để tính</span>
+                  <span className="text-xs text-muted-foreground">{copy.chooseAddressFee}</span>
                 )}
               </div>
             </div>
             <div className="border-t border-border/50 pt-3 flex items-center justify-between">
-              <span className="font-semibold">Tổng thanh toán</span>
+              <span className="font-semibold">{copy.total}</span>
               <span className="text-2xl font-bold text-orange-400">
                 {shippingFee !== null ? formatVND(totalAmount) : '--'}
               </span>
@@ -270,7 +361,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
 
           {/* Payment Method */}
           <div className="space-y-3">
-            <Label className="text-sm font-medium">Phương thức thanh toán</Label>
+            <Label className="text-sm font-medium">{copy.paymentMethod}</Label>
             <div className="rounded-lg border border-border/50 bg-accent/20 p-3 text-sm">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Tiền thẻ</span>
@@ -290,10 +381,10 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
                 <RadioGroupItem value="wallet" id="wallet" />
                 <Wallet className="h-5 w-5 text-orange-500" />
                 <div className="flex-1">
-                  <p className="font-medium text-sm">Ví Cardverse</p>
+                  <p className="font-medium text-sm">{copy.wallet}</p>
                   <p className={`text-xs ${insufficientBalance ? 'text-red-400' : 'text-green-400'}`}>
-                    Số dư: {isLoadingWallet ? '...' : formatVND(walletBalance)}
-                    {insufficientBalance && !isLoadingWallet && ' (Không đủ)'}
+                    {copy.balance}: {isLoadingWallet ? '...' : formatVND(walletBalance)}
+                    {insufficientBalance && !isLoadingWallet && ` (${copy.insufficient})`}
                   </p>
                 </div>
               </label>
@@ -301,9 +392,9 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
                 <RadioGroupItem value="direct_payos" id="direct" />
                 <CreditCard className="h-5 w-5 text-blue-500" />
                 <div className="flex-1">
-                  <p className="font-medium text-sm">Chuyển khoản / QR (PayOS)</p>
+                  <p className="font-medium text-sm">{copy.payos}</p>
                   <p className="text-xs text-muted-foreground">
-                    Thanh toán trực tiếp qua ngân hàng • Tổng: {shippingFee !== null ? formatVND(totalAmount) : '--'}
+                    {copy.payosDesc} • {copy.total}: {shippingFee !== null ? formatVND(totalAmount) : '--'}
                   </p>
                 </div>
               </label>
@@ -313,9 +404,9 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
           {/* Insufficient balance warning */}
           {paymentMethod === 'wallet' && insufficientBalance && !isLoadingWallet && (
             <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-xs text-red-400">
-              Số dư ví không đủ. Bạn cần thêm {formatVND(totalAmount - walletBalance)}.
+              {copy.walletShortage.replace('{amount}', formatVND(totalAmount - walletBalance))}
               <Button variant="link" size="sm" className="text-orange-400 p-0 h-auto ml-1" asChild>
-                <a href="/wallet" target="_blank">Nạp tiền ngay <ExternalLink className="h-3 w-3 ml-1" /></a>
+                <a href="/wallet" target="_blank">{copy.topUpNow} <ExternalLink className="h-3 w-3 ml-1" /></a>
               </Button>
             </div>
           )}
@@ -323,13 +414,13 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
           {/* Missing seller address warning */}
           {!sellerAddress && (
             <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 text-xs text-yellow-400">
-              ⚠️ Người bán chưa cập nhật địa chỉ gửi hàng. Phí ship sẽ được tính sau khi đặt hàng.
+              {copy.sellerAddressMissing}
             </div>
           )}
         </div>
 
         <DialogFooter className="flex-col sm:flex-row gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Hủy</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{copy.cancel}</Button>
           <Button
             onClick={handlePurchase}
             disabled={isPurchasing || !canPurchase || (paymentMethod === 'wallet' && insufficientBalance)}
@@ -343,8 +434,8 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
             {shippingFee !== null
               ? `Thanh toán ${formatVND(totalAmount)}`
               : paymentMethod === 'wallet'
-                ? 'Chọn địa chỉ trước'
-                : 'Thanh toán qua PayOS'
+                ? copy.chooseAddressFirst
+                : copy.payViaPayos
             }
           </Button>
         </DialogFooter>

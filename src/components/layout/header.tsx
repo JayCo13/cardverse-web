@@ -29,12 +29,38 @@ import { useRouter } from "next/navigation"
 import { useSubscription } from "@/hooks/useSubscription"
 
 export function Header() {
-  const { t } = useLocalization();
+  const { t, locale } = useLocalization();
   const { user, profile, isLoading, signOut } = useAuth();
   const { setOpen } = useAuthModal();
   const { toast } = useToast();
   const router = useRouter();
   const { isVipPro, isDayPass, hasCredits, subscription } = useSubscription();
+  const copy = locale === "vi-VN"
+    ? {
+      account: "Tài khoản",
+      collection: "Bộ sưu tập",
+      orders: "Đơn hàng",
+      wallet: "Ví",
+      choosePlan: "Chọn gói của bạn",
+      toggleMenu: "Mở menu điều hướng",
+    }
+    : locale === "ja-JP"
+      ? {
+        account: "アカウント",
+        collection: "コレクション",
+        orders: "注文",
+        wallet: "ウォレット",
+        choosePlan: "プランを選ぶ",
+        toggleMenu: "ナビゲーションメニューを切り替え",
+      }
+      : {
+        account: "Account",
+        collection: "Collection",
+        orders: "Orders",
+        wallet: "Wallet",
+        choosePlan: "Choose Your Plan",
+        toggleMenu: "Toggle navigation menu",
+      };
 
   // Admin-created tester accounts get full access to gated marketplace features.
   const isTester = !!profile?.is_tester;
@@ -92,7 +118,7 @@ export function Header() {
       const initial = user.email ? user.email.charAt(0).toUpperCase() : "A";
       const displayEmail = user.email && user.email.length > 15
         ? user.email.substring(0, 12) + "..."
-        : (user.email || "Account");
+        : (user.email || copy.account);
 
       return (
         <DropdownMenu>
@@ -147,7 +173,7 @@ export function Header() {
             <DropdownMenuItem asChild>
               <Link href="/collection" className="flex items-center gap-2">
                 <Diamond className="h-4 w-4" />
-                Collection
+                {copy.collection}
               </Link>
             </DropdownMenuItem>
             {isTester && (
@@ -155,13 +181,13 @@ export function Header() {
                 <DropdownMenuItem asChild>
                   <Link href="/orders" className="flex items-center gap-2">
                     <Package className="h-4 w-4" />
-                    Đơn hàng
+                    {copy.orders}
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link href="/wallet" className="flex items-center gap-2">
                     <Wallet className="h-4 w-4" />
-                    Ví
+                    {copy.wallet}
                   </Link>
                 </DropdownMenuItem>
               </>
@@ -170,7 +196,7 @@ export function Header() {
             <DropdownMenuItem asChild>
               <Link href="/pricing" className="text-orange-500 font-medium flex items-center gap-2">
                 <Crown className="w-4 h-4" />
-                {t('pricing_title') || 'Upgrade & Billing'}
+                {t('pricing_title') || copy.choosePlan}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -243,7 +269,7 @@ export function Header() {
                   className="shrink-0"
                 >
                   <Menu className="h-5 w-5" />
-                  <span className="sr-only">Toggle navigation menu</span>
+                  <span className="sr-only">{copy.toggleMenu}</span>
                 </Button>
               </SheetTrigger>
               <SheetContent side="left">
@@ -264,12 +290,12 @@ export function Header() {
                     <>
                       <div className="relative group">
                         <Link href="/wallet" className="text-muted-foreground hover:text-foreground flex items-center gap-1">
-                          💰 Ví
+                          💰 {copy.wallet}
                         </Link>
                       </div>
                       <div className="relative group">
                         <Link href="/orders" className="text-muted-foreground hover:text-foreground flex items-center gap-1">
-                          📦 Đơn hàng
+                          📦 {copy.orders}
                         </Link>
                       </div>
                     </>

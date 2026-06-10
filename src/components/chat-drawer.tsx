@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
-import { vi } from "date-fns/locale";
+import { enUS, ja, vi } from "date-fns/locale";
 import { AlertTriangle, CheckCircle, CreditCard, HandCoins, Inbox, Loader2, MessageCircle, Send, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { useSupabase, useUser } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
+import { useLocalization } from "@/context/localization-context";
 
 type ConversationItem = {
     id: string;
@@ -67,9 +68,6 @@ type ChatDrawerProps = {
     initialConversationId?: string | null;
 };
 
-const SAFETY_COPY =
-    "⚠️ Safety Warning: To protect yourself from scams, ONLY conduct transactions and payments directly on CardVerse. Be highly cautious if asked to move the conversation to Facebook, Zalo, or to make direct external bank transfers.";
-
 const formatVND = (amount: number | null | undefined) =>
     amount == null ? "" : new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
 
@@ -78,6 +76,124 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     const { user } = useUser();
     const { toast } = useToast();
     const router = useRouter();
+    const { locale } = useLocalization();
+    const dateLocale = locale === "vi-VN" ? vi : locale === "ja-JP" ? ja : enUS;
+    const copy = locale === "vi-VN"
+        ? {
+            acceptOfferFailed: "Không thể chấp nhận đề nghị",
+            pleaseRetry: "Vui lòng thử lại.",
+            error: "Lỗi",
+            chatError: "Lỗi chat",
+            loadConversationsFailed: "Không thể tải hội thoại",
+            loadMessagesFailed: "Không thể tải tin nhắn",
+            blockedMessageTitle: "Không thể gửi link hoặc số điện thoại",
+            blockedMessageDescription: "Vui lòng trao đổi và thanh toán trực tiếp trên CardVerse để tránh scam.",
+            sendMessageFailed: "Không thể gửi tin nhắn",
+            safetyAlertTitle: "Cảnh báo an toàn",
+            safetyAlertDescription: "Tin nhắn có từ khóa dễ đưa giao dịch ra ngoài nền tảng. Hãy giữ thanh toán trên CardVerse.",
+            sendMessageError: "Lỗi gửi tin",
+            newCount: "mới",
+            loginRequired: "Vui lòng đăng nhập để xem tin nhắn.",
+            inboxTitle: "Hộp thư",
+            inboxSubtitle: "Quản lý trao đổi với buyer/seller",
+            loading: "Đang tải...",
+            noConversations: "Chưa có hội thoại nào.",
+            marketplaceChat: "Chat giao dịch",
+            startConversation: "Bắt đầu hội thoại",
+            selectConversation: "Chọn một hội thoại để bắt đầu.",
+            withUser: "Với",
+            buyerOffer: "Đề nghị từ người mua",
+            yourOffer: "Đề nghị của bạn",
+            offerPending: "Đang chờ người bán phản hồi",
+            offerChosen: "Đã được chấp nhận — chờ thanh toán",
+            offerAccepted: "Đã được chấp nhận",
+            offerRejected: "Đã bị từ chối",
+            acceptOffer: "Chấp nhận đề nghị",
+            payNow: "Thanh toán ngay",
+            loadingMessages: "Đang tải tin nhắn...",
+            you: "Bạn",
+            cardVerseUser: "Người dùng CardVerse",
+            offerTag: "Đề nghị giá",
+            messagePlaceholder: "Nhập tin nhắn... Không chia sẻ Zalo/Facebook/số điện thoại hoặc thanh toán ngoài.",
+            safetyBanner: "⚠️ Cảnh báo an toàn: Để tránh lừa đảo, chỉ giao dịch và thanh toán trực tiếp trên CardVerse. Hãy đặc biệt cẩn trọng nếu ai đó yêu cầu chuyển sang Facebook, Zalo hoặc chuyển khoản ngân hàng bên ngoài.",
+        }
+        : locale === "ja-JP"
+            ? {
+                acceptOfferFailed: "オファーを承認できません",
+                pleaseRetry: "もう一度お試しください。",
+                error: "エラー",
+                chatError: "チャットエラー",
+                loadConversationsFailed: "会話を読み込めません",
+                loadMessagesFailed: "メッセージを読み込めません",
+                blockedMessageTitle: "リンクや電話番号は送信できません",
+                blockedMessageDescription: "詐欺防止のため、やり取りと支払いは必ずCardVerse内で行ってください。",
+                sendMessageFailed: "メッセージを送信できません",
+                safetyAlertTitle: "安全に関する警告",
+                safetyAlertDescription: "メッセージに外部取引を促すキーワードが含まれています。支払いはCardVerse内に留めてください。",
+                sendMessageError: "送信エラー",
+                newCount: "件の新着",
+                loginRequired: "メッセージを見るにはログインしてください。",
+                inboxTitle: "受信トレイ",
+                inboxSubtitle: "購入者・販売者とのやり取りを管理します",
+                loading: "読み込み中...",
+                noConversations: "会話はまだありません。",
+                marketplaceChat: "取引チャット",
+                startConversation: "会話を開始",
+                selectConversation: "開始する会話を選択してください。",
+                withUser: "相手",
+                buyerOffer: "購入者からのオファー",
+                yourOffer: "あなたのオファー",
+                offerPending: "販売者の返信待ち",
+                offerChosen: "承認済み — 支払い待ち",
+                offerAccepted: "承認済み",
+                offerRejected: "却下されました",
+                acceptOffer: "オファーを承認",
+                payNow: "今すぐ支払う",
+                loadingMessages: "メッセージを読み込み中...",
+                you: "あなた",
+                cardVerseUser: "CardVerseユーザー",
+                offerTag: "価格オファー",
+                messagePlaceholder: "メッセージを入力... Zalo/Facebook/電話番号や外部決済情報は共有しないでください。",
+                safetyBanner: "⚠️ 安全に関する警告: 詐欺防止のため、取引と支払いは必ずCardVerse上で行ってください。Facebook、Zalo、または外部銀行送金へ誘導された場合は特に注意してください。",
+            }
+            : {
+                acceptOfferFailed: "Unable to accept offer",
+                pleaseRetry: "Please try again.",
+                error: "Error",
+                chatError: "Chat error",
+                loadConversationsFailed: "Unable to load conversations",
+                loadMessagesFailed: "Unable to load messages",
+                blockedMessageTitle: "Links or phone numbers cannot be sent",
+                blockedMessageDescription: "Please keep communication and payment on CardVerse to avoid scams.",
+                sendMessageFailed: "Unable to send message",
+                safetyAlertTitle: "Safety warning",
+                safetyAlertDescription: "This message contains terms that may move the deal off-platform. Keep payment on CardVerse.",
+                sendMessageError: "Send error",
+                newCount: "new",
+                loginRequired: "Please log in to view messages.",
+                inboxTitle: "Inbox",
+                inboxSubtitle: "Manage conversations with buyers and sellers",
+                loading: "Loading...",
+                noConversations: "No conversations yet.",
+                marketplaceChat: "Marketplace chat",
+                startConversation: "Start a conversation",
+                selectConversation: "Select a conversation to begin.",
+                withUser: "With",
+                buyerOffer: "Offer from buyer",
+                yourOffer: "Your offer",
+                offerPending: "Waiting for seller response",
+                offerChosen: "Accepted — awaiting payment",
+                offerAccepted: "Accepted",
+                offerRejected: "Rejected",
+                acceptOffer: "Accept offer",
+                payNow: "Pay now",
+                loadingMessages: "Loading messages...",
+                you: "You",
+                cardVerseUser: "CardVerse user",
+                offerTag: "Price offer",
+                messagePlaceholder: "Type a message... Do not share Zalo/Facebook/phone numbers or arrange off-platform payment.",
+                safetyBanner: "⚠️ Safety Warning: To protect yourself from scams, only conduct transactions and payments directly on CardVerse. Be highly cautious if asked to move the conversation to Facebook, Zalo, or direct external bank transfers.",
+            };
     const [conversations, setConversations] = useState<ConversationItem[]>([]);
     const [selectedId, setSelectedId] = useState<string | null>(initialConversationId || null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -124,8 +240,8 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             if (!response.ok) {
                 toast({
                     variant: "destructive",
-                    title: "Không thể chấp nhận đề nghị",
-                    description: payload.error || "Vui lòng thử lại.",
+                    title: copy.acceptOfferFailed,
+                    description: payload.error || copy.pleaseRetry,
                 });
                 return;
             }
@@ -134,7 +250,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 router.push(`/transaction/${payload.transactionId}`);
             }
         } catch {
-            toast({ variant: "destructive", title: "Lỗi", description: "Không thể chấp nhận đề nghị." });
+            toast({ variant: "destructive", title: copy.error, description: copy.acceptOfferFailed });
         } finally {
             setIsAcceptingOffer(false);
         }
@@ -146,14 +262,14 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
         try {
             const response = await fetch("/api/chat/conversations", { cache: "no-store" });
             const payload = await response.json();
-            if (!response.ok) throw new Error(payload.error || "Không thể tải hội thoại");
+            if (!response.ok) throw new Error(payload.error || copy.loadConversationsFailed);
             setConversations(payload.conversations || []);
             if (!selectedId && payload.conversations?.[0]) {
                 setSelectedId(payload.conversations[0].id);
             }
         } catch (error) {
-            const description = error instanceof Error ? error.message : "Không thể tải hội thoại";
-            toast({ variant: "destructive", title: "Lỗi chat", description });
+            const description = error instanceof Error ? error.message : copy.loadConversationsFailed;
+            toast({ variant: "destructive", title: copy.chatError, description });
         } finally {
             setIsLoadingConversations(false);
         }
@@ -164,7 +280,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
         try {
             const response = await fetch(`/api/chat/messages?conversationId=${conversationId}`, { cache: "no-store" });
             const payload = await response.json();
-            if (!response.ok) throw new Error(payload.error || "Không thể tải tin nhắn");
+            if (!response.ok) throw new Error(payload.error || copy.loadMessagesFailed);
             setMessages(payload.messages || []);
             await fetch("/api/chat/read", {
                 method: "POST",
@@ -173,8 +289,8 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             });
             void fetchConversations();
         } catch (error) {
-            const description = error instanceof Error ? error.message : "Không thể tải tin nhắn";
-            toast({ variant: "destructive", title: "Lỗi chat", description });
+            const description = error instanceof Error ? error.message : copy.loadMessagesFailed;
+            toast({ variant: "destructive", title: copy.chatError, description });
         } finally {
             setIsLoadingMessages(false);
         }
@@ -263,22 +379,22 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 setDraft(body);
                 toast({
                     variant: "destructive",
-                    title: "Không thể gửi link hoặc số điện thoại",
-                    description: "Vui lòng trao đổi và thanh toán trực tiếp trên CardVerse để tránh scam.",
+                    title: copy.blockedMessageTitle,
+                    description: copy.blockedMessageDescription,
                 });
                 return;
             }
-            if (!response.ok) throw new Error(payload.error || "Không thể gửi tin nhắn");
+            if (!response.ok) throw new Error(payload.error || copy.sendMessageFailed);
             if (payload.flaggedTerms?.length) {
                 toast({
-                    title: "Cảnh báo an toàn",
-                    description: "Tin nhắn có từ khóa dễ đưa giao dịch ra ngoài nền tảng. Hãy giữ thanh toán trên CardVerse.",
+                    title: copy.safetyAlertTitle,
+                    description: copy.safetyAlertDescription,
                 });
             }
         } catch (error) {
             setDraft(body);
-            const description = error instanceof Error ? error.message : "Không thể gửi tin nhắn";
-            toast({ variant: "destructive", title: "Lỗi gửi tin", description });
+            const description = error instanceof Error ? error.message : copy.sendMessageFailed;
+            toast({ variant: "destructive", title: copy.sendMessageError, description });
         } finally {
             setIsSending(false);
         }
@@ -287,35 +403,35 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     return (
         <Sheet open={open} onOpenChange={onOpenChange}>
             <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-5xl">
-                <SheetHeader className="border-b px-5 py-4">
-                    <SheetTitle className="flex items-center gap-2">
-                        <MessageCircle className="h-5 w-5 text-orange-500" />
-                        CardVerse Messages
-                        {unreadCount > 0 && <Badge className="bg-orange-500 text-white">{unreadCount} mới</Badge>}
-                    </SheetTitle>
-                </SheetHeader>
+                    <SheetHeader className="border-b px-5 py-4">
+                        <SheetTitle className="flex items-center gap-2">
+                            <MessageCircle className="h-5 w-5 text-orange-500" />
+                            CardVerse Messages
+                            {unreadCount > 0 && <Badge className="bg-orange-500 text-white">{unreadCount} {copy.newCount}</Badge>}
+                        </SheetTitle>
+                    </SheetHeader>
 
                 {!user ? (
                     <div className="flex flex-1 items-center justify-center p-8 text-center text-muted-foreground">
-                        Vui lòng đăng nhập để xem tin nhắn.
+                        {copy.loginRequired}
                     </div>
                 ) : (
                     <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[340px_1fr]">
                         <aside className="min-h-0 border-r">
                             <div className="border-b p-4">
-                                <p className="text-sm font-semibold">Inbox</p>
-                                <p className="text-xs text-muted-foreground">Quản lý trao đổi với buyer/seller</p>
+                                <p className="text-sm font-semibold">{copy.inboxTitle}</p>
+                                <p className="text-xs text-muted-foreground">{copy.inboxSubtitle}</p>
                             </div>
                             <ScrollArea className="h-[calc(100vh-132px)]">
                                 {isLoadingConversations && conversations.length === 0 ? (
                                     <div className="flex items-center justify-center p-6 text-muted-foreground">
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        Đang tải...
+                                        {copy.loading}
                                     </div>
                                 ) : conversations.length === 0 ? (
                                     <div className="p-6 text-center text-sm text-muted-foreground">
                                         <Inbox className="mx-auto mb-2 h-8 w-8" />
-                                        Chưa có hội thoại nào.
+                                        {copy.noConversations}
                                     </div>
                                 ) : (
                                     conversations.map(conversation => (
@@ -341,11 +457,11 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                     </p>
                                                     {conversation.unread && <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />}
                                                 </div>
-                                                <p className="truncate text-xs text-muted-foreground">{conversation.card?.name || "Marketplace chat"}</p>
-                                                <p className="mt-1 truncate text-xs">{conversation.lastMessagePreview || "Bắt đầu hội thoại"}</p>
+                                                <p className="truncate text-xs text-muted-foreground">{conversation.card?.name || copy.marketplaceChat}</p>
+                                                <p className="mt-1 truncate text-xs">{conversation.lastMessagePreview || copy.startConversation}</p>
                                                 {conversation.lastMessageAt && (
                                                     <p className="mt-1 text-[11px] text-muted-foreground">
-                                                        {formatDistanceToNow(new Date(conversation.lastMessageAt), { addSuffix: true, locale: vi })}
+                                                        {formatDistanceToNow(new Date(conversation.lastMessageAt), { addSuffix: true, locale: dateLocale })}
                                                     </p>
                                                 )}
                                             </div>
@@ -358,7 +474,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                         <section className="flex min-h-0 flex-col">
                             {!selectedConversation ? (
                                 <div className="flex flex-1 items-center justify-center p-8 text-center text-muted-foreground">
-                                    Chọn một hội thoại để bắt đầu.
+                                    {copy.selectConversation}
                                 </div>
                             ) : (
                                 <>
@@ -370,9 +486,9 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                 ) : null}
                                             </div>
                                             <div className="min-w-0 flex-1">
-                                                <p className="truncate font-semibold">{selectedConversation.card?.name || "Marketplace chat"}</p>
+                                                <p className="truncate font-semibold">{selectedConversation.card?.name || copy.marketplaceChat}</p>
                                                 <p className="truncate text-sm text-muted-foreground">
-                                                    Với {selectedConversation.otherUser?.display_name || selectedConversation.otherUser?.email || "CardVerse user"}
+                                                    {copy.withUser} {selectedConversation.otherUser?.display_name || selectedConversation.otherUser?.email || copy.cardVerseUser}
                                                     {selectedConversation.card?.price ? ` · ${formatVND(selectedConversation.card.price)}` : ""}
                                                 </p>
                                             </div>
@@ -380,7 +496,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                         <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs leading-5 text-amber-100">
                                             <div className="flex gap-2">
                                                 <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-                                                <span>{SAFETY_COPY}</span>
+                                                <span>{copy.safetyBanner}</span>
                                             </div>
                                         </div>
 
@@ -390,14 +506,14 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                     <div className="min-w-0">
                                                         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                                                             <HandCoins className="h-3.5 w-3.5 text-orange-400" />
-                                                            {selectedConversation.sellerId === user.id ? "Đề nghị từ người mua" : "Đề nghị của bạn"}
+                                                            {selectedConversation.sellerId === user.id ? copy.buyerOffer : copy.yourOffer}
                                                         </p>
                                                         <p className="text-lg font-bold text-orange-400">{formatVND(offer.price)}</p>
                                                         <p className="text-[11px] text-muted-foreground">
-                                                            {offer.status === "pending" && "Đang chờ người bán phản hồi"}
-                                                            {offer.status === "chosen" && "Đã được chấp nhận — chờ thanh toán"}
-                                                            {offer.status === "accepted" && "Đã được chấp nhận"}
-                                                            {offer.status === "rejected" && "Đã bị từ chối"}
+                                                            {offer.status === "pending" && copy.offerPending}
+                                                            {offer.status === "chosen" && copy.offerChosen}
+                                                            {offer.status === "accepted" && copy.offerAccepted}
+                                                            {offer.status === "rejected" && copy.offerRejected}
                                                         </p>
                                                     </div>
 
@@ -413,7 +529,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                             ) : (
                                                                 <CheckCircle className="mr-1.5 h-4 w-4" />
                                                             )}
-                                                            Chấp nhận đề nghị
+                                                            {copy.acceptOffer}
                                                         </Button>
                                                     )}
 
@@ -424,7 +540,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                             className="shrink-0 bg-orange-500 text-white hover:bg-orange-600"
                                                         >
                                                             <CreditCard className="mr-1.5 h-4 w-4" />
-                                                            Thanh toán ngay
+                                                            {copy.payNow}
                                                         </Button>
                                                     )}
                                                 </div>
@@ -436,7 +552,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                         {isLoadingMessages ? (
                                             <div className="flex items-center justify-center p-6 text-muted-foreground">
                                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                Đang tải tin nhắn...
+                                                {copy.loadingMessages}
                                             </div>
                                         ) : (
                                             <div className="space-y-3">
@@ -445,8 +561,8 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                     const system = message.message_type === "system";
                                                     const offerAuto = message.message_type === "offer_auto";
                                                     const senderLabel = mine
-                                                        ? "Bạn"
-                                                        : selectedConversation.otherUser?.display_name || selectedConversation.otherUser?.email || "Người dùng CardVerse";
+                                                        ? copy.you
+                                                        : selectedConversation.otherUser?.display_name || selectedConversation.otherUser?.email || copy.cardVerseUser;
                                                     if (message.message_type === "safety_warning") {
                                                         return (
                                                             <div key={message.id} className="mx-auto max-w-xl rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
@@ -460,7 +576,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                             <div key={message.id} className="mx-auto max-w-xl rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-100">
                                                                 {message.body}
                                                                 <p className="mt-1 text-[10px] text-muted-foreground">
-                                                                    {formatDistanceToNow(new Date(message.created_at), { addSuffix: true, locale: vi })}
+                                                                    {formatDistanceToNow(new Date(message.created_at), { addSuffix: true, locale: dateLocale })}
                                                                 </p>
                                                             </div>
                                                         );
@@ -475,11 +591,11 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                                         : "bg-muted"
                                                             }`}>
                                                                 <p className={`mb-1 text-[11px] font-semibold ${mine ? "text-white/80" : "text-muted-foreground"}`}>
-                                                                    {senderLabel}{offerAuto ? " · Đề nghị giá" : ""}
+                                                                    {senderLabel}{offerAuto ? ` · ${copy.offerTag}` : ""}
                                                                 </p>
                                                                 <p>{message.body}</p>
                                                                 <p className={`mt-1 text-[10px] ${mine ? "text-white/75" : "text-muted-foreground"}`}>
-                                                                    {formatDistanceToNow(new Date(message.created_at), { addSuffix: true, locale: vi })}
+                                                                    {formatDistanceToNow(new Date(message.created_at), { addSuffix: true, locale: dateLocale })}
                                                                 </p>
                                                             </div>
                                                         </div>
@@ -501,7 +617,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                         void sendMessage();
                                                     }
                                                 }}
-                                                placeholder="Nhập tin nhắn... Không chia sẻ Zalo/Facebook/số điện thoại hoặc thanh toán ngoài."
+                                                placeholder={copy.messagePlaceholder}
                                                 className="min-h-11 resize-none"
                                                 maxLength={2000}
                                             />
