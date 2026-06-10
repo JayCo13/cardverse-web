@@ -270,6 +270,91 @@ export interface Database {
                     updated_at?: string
                 }
             }
+            conversations: {
+                Row: {
+                    id: string
+                    buyer_id: string
+                    seller_id: string
+                    card_id: string | null
+                    offer_id: string | null
+                    last_message_id: string | null
+                    last_message_preview: string | null
+                    last_message_at: string | null
+                    buyer_last_read_at: string | null
+                    seller_last_read_at: string | null
+                    status: 'active' | 'archived' | 'blocked'
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    buyer_id: string
+                    seller_id: string
+                    card_id?: string | null
+                    offer_id?: string | null
+                    last_message_id?: string | null
+                    last_message_preview?: string | null
+                    last_message_at?: string | null
+                    buyer_last_read_at?: string | null
+                    seller_last_read_at?: string | null
+                    status?: 'active' | 'archived' | 'blocked'
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    buyer_id?: string
+                    seller_id?: string
+                    card_id?: string | null
+                    offer_id?: string | null
+                    last_message_id?: string | null
+                    last_message_preview?: string | null
+                    last_message_at?: string | null
+                    buyer_last_read_at?: string | null
+                    seller_last_read_at?: string | null
+                    status?: 'active' | 'archived' | 'blocked'
+                    created_at?: string
+                    updated_at?: string
+                }
+            }
+            messages: {
+                Row: {
+                    id: string
+                    conversation_id: string
+                    sender_id: string
+                    body: string
+                    message_type: 'user' | 'system' | 'offer_auto' | 'safety_warning'
+                    metadata: Json
+                    flagged_terms: string[]
+                    created_at: string
+                    edited_at: string | null
+                    deleted_at: string | null
+                }
+                Insert: {
+                    id?: string
+                    conversation_id: string
+                    sender_id: string
+                    body: string
+                    message_type?: 'user' | 'system' | 'offer_auto' | 'safety_warning'
+                    metadata?: Json
+                    flagged_terms?: string[]
+                    created_at?: string
+                    edited_at?: string | null
+                    deleted_at?: string | null
+                }
+                Update: {
+                    id?: string
+                    conversation_id?: string
+                    sender_id?: string
+                    body?: string
+                    message_type?: 'user' | 'system' | 'offer_auto' | 'safety_warning'
+                    metadata?: Json
+                    flagged_terms?: string[]
+                    created_at?: string
+                    edited_at?: string | null
+                    deleted_at?: string | null
+                }
+            }
             offers: {
                 Row: {
                     id: string
@@ -358,6 +443,8 @@ export interface Database {
                     message: string
                     card_id: string | null
                     offer_id: string | null
+                    conversation_id: string | null
+                    transaction_id: string | null
                     read: boolean
                     created_at: string
                 }
@@ -369,6 +456,8 @@ export interface Database {
                     message: string
                     card_id?: string | null
                     offer_id?: string | null
+                    conversation_id?: string | null
+                    transaction_id?: string | null
                     read?: boolean
                     created_at?: string
                 }
@@ -380,6 +469,8 @@ export interface Database {
                     message?: string
                     card_id?: string | null
                     offer_id?: string | null
+                    conversation_id?: string | null
+                    transaction_id?: string | null
                     read?: boolean
                     created_at?: string
                 }

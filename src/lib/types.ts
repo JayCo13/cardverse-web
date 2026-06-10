@@ -57,6 +57,35 @@ export interface Offer {
   transactionId?: string;
 }
 
+export interface Conversation {
+  id: string;
+  buyerId: string;
+  sellerId: string;
+  cardId?: string | null;
+  offerId?: string | null;
+  lastMessageId?: string | null;
+  lastMessagePreview?: string | null;
+  lastMessageAt?: string | null;
+  buyerLastReadAt?: string | null;
+  sellerLastReadAt?: string | null;
+  status: 'active' | 'archived' | 'blocked';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  body: string;
+  messageType: 'user' | 'system' | 'offer_auto' | 'safety_warning';
+  metadata: Record<string, unknown>;
+  flaggedTerms: string[];
+  createdAt: string;
+  editedAt?: string | null;
+  deletedAt?: string | null;
+}
+
 export interface ForumPost {
   id: string;
   title: string; // Keep for now as "headline"
@@ -81,11 +110,13 @@ export interface ForumPost {
 export interface Notification {
   id: string;
   userId: string;
-  type: 'offer_received' | 'offer_accepted' | 'offer_rejected' | 'card_sold';
+  type: 'offer_received' | 'offer_accepted' | 'offer_rejected' | 'card_sold' | 'message_received';
   title: string;
   message: string;
   cardId?: string;
   offerId?: string;
+  conversationId?: string | null;
+  transactionId?: string | null;
   read: boolean;
   createdAt: string;
 }

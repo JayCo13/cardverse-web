@@ -24,7 +24,7 @@ type OfferModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   card: OfferCard | null;
-  onSuccess?: () => void;
+  onSuccess?: (conversationId?: string) => void;
 };
 
 type ExistingOffer = { id: string; price: number };
@@ -86,6 +86,7 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
 
     setIsSubmitting(true);
     try {
+      let offerId = existingOffer?.id || null;
       if (existingOffer) {
         // Update the buyer's existing pending offer.
         const { error } = await supabase
@@ -94,32 +95,71 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
           .eq('id', existingOffer.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('offers').insert({
+        const { data, error } = await supabase.from('offers').insert({
           card_id: card.id,
           buyer_id: user.id,
           price: parsedPrice,
           message: message.trim() || null,
           status: 'pending',
-        } as never);
+        } as never).select('id').single();
         if (error) throw error;
+        offerId = (data as { id: string } | null)?.id || null;
+      }
 
-        // Notify the seller (mirrors the card-detail offer flow).
+      let conversationId: string | undefined;
+      if (offerId) {
+        try {
+          const conversationResponse = await fetch('/api/chat/conversations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cardId: card.id, offerId }),
+          });
+          const conversationPayload = await conversationResponse.json();
+          if (conversationResponse.ok && conversationPayload.conversation?.id) {
+            conversationId = conversationPayload.conversation.id;
+            await fetch('/api/chat/messages', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                conversationId,
+                messageType: 'offer_auto',
+                body: `${existingOffer ? 'Cập nhật đề nghị' : 'Gửi đề nghị'} ${formatVND(parsedPrice)} cho "${card.name}"${message.trim() ? `: ${message.trim()}` : '.'}`,
+                metadata: {
+                  offerId,
+                  cardId: card.id,
+                  price: parsedPrice,
+                },
+              }),
+            });
+          }
+        } catch (chatError) {
+          console.error('Could not create offer conversation:', chatError);
+        }
+      }
+
+      if (!existingOffer) {
+        // Notify the seller about the new offer, linking the conversation so a
+        // notification click can open the right chat thread.
         await supabase.from('notifications').insert({
           user_id: card.sellerId,
           type: 'offer_received',
           title: 'Đề xuất giá mới',
           message: `Có người đề xuất ${formatVND(parsedPrice)} cho thẻ "${card.name}"`,
           card_id: card.id,
+          offer_id: offerId,
+          conversation_id: conversationId || null,
           read: false,
         } as never);
       }
 
       toast({
         title: existingOffer ? '✅ Đã cập nhật đề nghị' : '🤝 Đã gửi đề nghị',
-        description: `Người bán sẽ xem xét mức giá ${formatVND(parsedPrice)} của bạn.`,
+        description: conversationId
+          ? `Người bán sẽ xem xét mức giá ${formatVND(parsedPrice)}. Hội thoại đã được tạo.`
+          : `Người bán sẽ xem xét mức giá ${formatVND(parsedPrice)} của bạn.`,
       });
       onOpenChange(false);
-      onSuccess?.();
+      onSuccess?.(conversationId);
     } catch (err: unknown) {
       const description = err instanceof Error ? err.message : 'Không thể gửi đề nghị. Vui lòng thử lại.';
       toast({ variant: 'destructive', title: 'Lỗi', description });

@@ -119,6 +119,10 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
     router.push(`/cards/${card.id}`);
   };
 
+  const handleDetailClick = () => {
+    router.push(`/cards/${card.id}`);
+  };
+
   const handleOfferClick = () => {
     if (!user) {
       setOpen(true);
@@ -262,7 +266,18 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
         )}
 
         {/* Image — the "display case" frame */}
-        <div className="relative w-full shrink-0 overflow-hidden md:w-40 lg:w-48">
+        <div
+          className="relative w-full shrink-0 cursor-pointer overflow-hidden md:w-40 lg:w-48"
+          onClick={handleDetailClick}
+          role="link"
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              handleDetailClick();
+            }
+          }}
+        >
           <div className="relative aspect-[3/4] w-full md:h-full">
             <Image
               src={optimizeCloudinaryUrl(card.imageUrl, 400)}
@@ -295,8 +310,9 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="flex flex-wrap items-center gap-2">
               <h3
-                className="line-clamp-2 text-lg font-bold leading-tight tracking-tight md:line-clamp-1 md:text-xl"
+                className="line-clamp-2 cursor-pointer text-lg font-bold leading-tight tracking-tight hover:text-primary md:line-clamp-1 md:text-xl"
                 style={{ fontFamily: "'Orbitron', sans-serif" }}
+                onClick={handleDetailClick}
               >
                 {card.name}
               </h3>
@@ -357,7 +373,18 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
   return (
     <Card className={`overflow-hidden flex flex-col bg-card/80 hover:bg-card transition-all duration-300 group rounded-2xl sm:rounded-3xl border shadow-lg hover:shadow-xl ${card.status === 'sold' ? 'border-green-500/50 opacity-75' : 'border-gray-700/50'}`}>
       {/* Image section */}
-      <div className="relative aspect-square overflow-hidden img-shimmer">
+      <div
+        className="relative aspect-square overflow-hidden img-shimmer cursor-pointer"
+        onClick={handleDetailClick}
+        role="link"
+        tabIndex={0}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            handleDetailClick();
+          }
+        }}
+      >
         <Image
           src={optimizeCloudinaryUrl(card.imageUrl, 400)}
           alt={card.name}
@@ -409,7 +436,10 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
       {/* Content section */}
       <div className="p-3 sm:p-4 md:p-5 flex flex-col flex-grow">
         {/* Title */}
-        <h3 className="font-bold text-sm sm:text-base md:text-lg lg:text-xl line-clamp-1 mb-1">
+        <h3
+          className="font-bold text-sm sm:text-base md:text-lg lg:text-xl line-clamp-1 mb-1 cursor-pointer hover:text-primary"
+          onClick={handleDetailClick}
+        >
           {card.name}
         </h3>
 

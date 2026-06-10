@@ -146,6 +146,14 @@ async function completeMarketplaceOrderPayment(
             .update({ status: 'sold', reserved_until: null, updated_at: now } as never)
             .eq('id', marketplaceOrder.card_id);
 
+        // If this order came from an accepted offer, close out its transaction
+        // (offer-based transactions are the only active ones on this card).
+        await supabase
+            .from('transactions')
+            .update({ status: 'completed', completed_at: now } as never)
+            .eq('card_id', marketplaceOrder.card_id)
+            .eq('status', 'active');
+
         await notifySellerOfSale(supabase, marketplaceOrder.seller_id, marketplaceOrder.card_id);
         return;
     }
@@ -167,6 +175,11 @@ async function completeMarketplaceOrderPayment(
                 .from('orders')
                 .update({ status: 'paid', updated_at: now } as never)
                 .eq('id', marketplaceOrder.id);
+            await supabase
+                .from('transactions')
+                .update({ status: 'completed', completed_at: now } as never)
+                .eq('card_id', marketplaceOrder.card_id)
+                .eq('status', 'active');
             await notifySellerOfSale(supabase, marketplaceOrder.seller_id, marketplaceOrder.card_id);
         } else {
             await supabase.from('notifications').insert({
