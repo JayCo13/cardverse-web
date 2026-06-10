@@ -43,10 +43,9 @@ export function CreatePostBox({ onPostCreated }: CreatePostBoxProps) {
         return (
             <Alert variant="destructive" className="bg-red-900/10 border-red-900/20 mb-6">
                 <ShieldAlert className="h-4 w-4" />
-                <AlertTitle>Posting Restricted</AlertTitle>
+                <AlertTitle>{t('post_restricted_title')}</AlertTitle>
                 <AlertDescription>
-                    Your reputation (Uy tín) is {currentLegitRate}%. You need at least 90% to post in the community forum.
-                    Complete more successful trades to increase your score.
+                    {t('post_restricted_desc', { rate: String(currentLegitRate) })}
                 </AlertDescription>
             </Alert>
         );
@@ -66,7 +65,7 @@ export function CreatePostBox({ onPostCreated }: CreatePostBoxProps) {
                                 className="bg-white/5 hover:bg-white/10 transition-colors rounded-3xl h-10 flex items-center px-4 cursor-pointer text-gray-400 text-sm w-full"
                                 onClick={() => setIsModalOpen(true)}
                             >
-                                What's on your mind, {profile?.display_name?.split(' ')[0] || "Trader"}?
+                                {t('post_what_on_mind', { name: profile?.display_name || "Trader" })}
                             </div>
                         </div>
                     </div>
@@ -80,7 +79,7 @@ export function CreatePostBox({ onPostCreated }: CreatePostBoxProps) {
                                 onClick={() => setIsModalOpen(true)}
                             >
                                 <ImageIcon className="h-5 w-5 text-green-500" />
-                                <span className="hidden sm:inline">Photo/Video</span>
+                                <span className="hidden sm:inline">{t('post_photo_video')}</span>
                             </Button>
                             <Button
                                 variant="ghost"
@@ -89,7 +88,7 @@ export function CreatePostBox({ onPostCreated }: CreatePostBoxProps) {
                                 onClick={() => setIsModalOpen(true)}
                             >
                                 <Smile className="h-5 w-5 text-yellow-500" />
-                                <span className="hidden sm:inline">Feeling/Activity</span>
+                                <span className="hidden sm:inline">{t('post_feeling_activity')}</span>
                             </Button>
                         </div>
                     </div>
@@ -107,4 +106,3 @@ export function CreatePostBox({ onPostCreated }: CreatePostBoxProps) {
         </>
     );
 }
-

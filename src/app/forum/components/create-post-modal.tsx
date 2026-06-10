@@ -59,7 +59,7 @@ export function CreatePostModal({ open, onOpenChange, onPost }: CreatePostModalP
             onOpenChange(false);
         } catch (error: any) {
             console.error(error);
-            alert(`Error: ${error.message}`);
+            alert(`${t('error')}: ${error.message}`);
         } finally {
             setIsPosting(false);
         }
@@ -78,7 +78,7 @@ export function CreatePostModal({ open, onOpenChange, onPost }: CreatePostModalP
                 .upload(fileName, file);
 
             if (uploadError) {
-                throw new Error(`Image upload failed: ${uploadError.message}`);
+                throw new Error(`${t('post_image_upload_failed')}: ${uploadError.message}`);
             } else {
                 const { data: publicUrlData } = supabase.storage
                     .from('forum-images')
@@ -106,7 +106,7 @@ export function CreatePostModal({ open, onOpenChange, onPost }: CreatePostModalP
             .single();
 
         if (error) {
-            throw new Error(`Post creation failed: ${error.message}`);
+            throw new Error(`${t('post_creation_failed')}: ${error.message}`);
         }
 
         if (data) {
@@ -141,7 +141,7 @@ export function CreatePostModal({ open, onOpenChange, onPost }: CreatePostModalP
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-lg bg-[#1a1b1e] border-white/10 p-0 overflow-hidden max-h-[85vh] flex flex-col">
                 <DialogHeader className="p-4 border-b border-white/5 shrink-0">
-                    <DialogTitle className="text-center text-lg font-bold text-white">Create Post</DialogTitle>
+                    <DialogTitle className="text-center text-lg font-bold text-white">{t('create_post_dialog_title')}</DialogTitle>
                 </DialogHeader>
 
                 <div className="p-4 overflow-y-auto flex-1">
@@ -189,7 +189,7 @@ export function CreatePostModal({ open, onOpenChange, onPost }: CreatePostModalP
 
                     {/* Content Area */}
                     <Textarea
-                        placeholder={`What's on your mind, ${displayName.split(' ')[0]}?`}
+                        placeholder={t('post_what_on_mind', { name: displayName })}
                         className="min-h-[100px] bg-white/5 border border-white/10 rounded-xl text-white text-base placeholder:text-gray-500 resize-none focus-visible:ring-1 focus-visible:ring-primary/50 p-3"
                         value={content}
                         onChange={(e) => setContent(e.target.value)}

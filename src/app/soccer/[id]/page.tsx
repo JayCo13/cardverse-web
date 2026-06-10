@@ -283,7 +283,7 @@ export default function SoccerCardDetailsPage() {
                                         className="w-full gap-2 h-14 text-lg bg-white/5 border border-white/10 text-white/40 cursor-not-allowed"
                                     >
                                         <Lock className="h-5 w-5" />
-                                        {locale === 'vi-VN' ? 'Chỉ dành cho VIP — Lưu vào bộ sưu tập' : locale === 'ja-JP' ? 'VIP限定 — コレクションに保存' : 'VIP Only — Save to Collection'}
+                                        {t('vip_only_save_to_collection')}
                                     </Button>
                                 )}
                                 

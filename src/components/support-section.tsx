@@ -12,6 +12,7 @@ export function SupportSection() {
     const { toast } = useToast();
     const [email, setEmail] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const title = t('support_section_title');
     const copy = locale === "vi-VN"
         ? {
             subscribeFailed: "Đăng ký thất bại",
@@ -84,9 +85,8 @@ export function SupportSection() {
             <div className="absolute inset-0 bg-gradient-to-b from-orange-950/20 via-black to-black pointer-events-none" />
 
             <div className="relative max-w-7xl mx-auto flex flex-col items-center text-center z-10">
-
                 <h2 className="text-4xl md:text-5xl font-bold font-headline text-white mb-4 tracking-tight">
-                    <span className="text-orange-500">{t('support_section_title').split(' ')[0]}</span> {t('support_section_title').split(' ').slice(1).join(' ')}
+                    <span className="text-orange-500">{title}</span>
                 </h2>
 
                 <p className="text-lg text-gray-400 max-w-2xl mb-10 font-light">
