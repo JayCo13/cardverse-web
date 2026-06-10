@@ -31,6 +31,7 @@ const CameraScanner = dynamic(
 );
 import { useCardCache } from '@/contexts/card-cache-context';
 import { PSAGradedPrices } from '@/components/psa-graded-prices';
+import { VnMarketPrice } from '@/components/vn-market-price';
 
 // Fallback mock data for when no real data exists
 const MOCK_DATA = [
@@ -2606,6 +2607,11 @@ export function MarketSpotlight() {
                                 ))}
                             </div>
                         </div>
+
+                        {/* VN market price — real completed CardVerse sales for this card */}
+                        {product && product.product_id > 0 && (
+                            <VnMarketPrice productId={product.product_id} />
+                        )}
 
                         {/* Main Chart Area */}
                         <div className="w-full bg-white/5 rounded-xl p-4 border border-white/10 backdrop-blur-sm relative h-[350px]">

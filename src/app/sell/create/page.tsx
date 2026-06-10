@@ -9,7 +9,6 @@ import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useLocalization } from '@/context/localization-context';
@@ -18,7 +17,6 @@ import { Upload, ShieldAlert, X, Loader2, Info, HandCoins, Plus, Trash2, Layers,
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useSupabase, useUser } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -54,6 +52,8 @@ import {
   type GroupedSets,
 } from '@/lib/card-catalog';
 import { type SelectedCatalogCard } from '@/components/card-picker-dialog';
+import { CatalogCardPicker, catalogTabToCategory, type CatalogPick, type CatalogTabId } from '@/components/catalog-card-picker';
+import { VnMarketPrice } from '@/components/vn-market-price';
 import { SearchableSetPicker } from '@/components/searchable-set-picker';
 import { SellerAddressForm } from '@/components/seller-address-form';
 
@@ -73,7 +73,10 @@ const FIELD_LABELS: Record<string, string> = {
   setName: 'Set / Bộ sưu tập',
   season: 'Mùa / Năm',
   quantity: 'Số lượng',
-  psaGrade: 'PSA Grade',
+  grade: 'Điểm grade',
+  gradingCompany: 'Hãng grade',
+  cardNumber: 'Số thẻ',
+  language: 'Ngôn ngữ thẻ',
   price: 'Giá bán',
   startingBid: 'Giá khởi điểm',
   auctionEnds: 'Ngày kết thúc',
@@ -126,8 +129,16 @@ const getFormSchema = (t: (key: any) => string) => z.object({
     z.number().positive().default(1)
   ),
   condition: z.string().optional(),
-  isPsaGraded: z.boolean().default(false),
-  psaGrade: z.number().min(1).max(10).optional(),
+  // Card identity (seller-listing standardization): canonical catalog link +
+  // collector number + language so completed sales feed the VN market price.
+  catalogProductId: z.number().optional(),
+  catalogSoccerId: z.number().optional(),
+  cardNumber: z.string().optional(),
+  language: z.enum(['en', 'jp']).optional(),
+  // Grading split out of the old `condition` string (raw vs PSA/BGS/CGC/SGC).
+  gradingCompany: z.enum(['raw', 'psa', 'bgs', 'cgc', 'sgc']).default('raw'),
+  grade: z.number().min(1).max(10).optional(),
+  finish: z.enum(['normal', 'holo', 'reverse', '1st', 'parallel']).default('normal'),
   listingType: z.enum(['sale', 'auction', 'razz']),
   price: z.preprocess(
     (a) => parseVndNumberInput(a),
@@ -185,13 +196,29 @@ const getFormSchema = (t: (key: any) => string) => z.object({
     return !!data.freePublisher && data.freePublisher.trim() !== '';
   }, { message: "Vui lòng nhập nhà phát hành.", path: ['freePublisher'] })
   .refine(data => {
-    if (data.isPsaGraded) return data.psaGrade !== undefined;
+    if (data.gradingCompany !== 'raw') return data.grade !== undefined;
     return true;
-  }, { message: "PSA Grade is required when PSA Graded is selected.", path: ['psaGrade'] })
+  }, { message: "Vui lòng chọn điểm grade.", path: ['grade'] })
   .refine(data => {
-    if (!data.isPsaGraded) return data.condition !== undefined && data.condition !== null && data.condition !== '';
+    if (data.gradingCompany === 'raw') return data.condition !== undefined && data.condition !== null && data.condition !== '';
     return true;
-  }, { message: "Vui lòng chọn tình trạng thẻ.", path: ['condition'] });
+  }, { message: "Vui lòng chọn tình trạng thẻ.", path: ['condition'] })
+  // Single-card listings in catalog-backed categories must carry a collector
+  // number (the identity key for VN market pricing). Bundles are exempt.
+  .refine(data => {
+    if (data.isBundle) return true;
+    if (data.category === 'Pokémon' || data.category === 'One Piece' || data.category === 'Bóng đá') {
+      return !!data.cardNumber && data.cardNumber.trim() !== '';
+    }
+    return true;
+  }, { message: "Vui lòng nhập số thẻ (vd: 199/197, OP15-118).", path: ['cardNumber'] })
+  .refine(data => {
+    if (data.isBundle) return true;
+    if (data.category === 'Pokémon' || data.category === 'One Piece') {
+      return data.language !== undefined;
+    }
+    return true;
+  }, { message: "Vui lòng chọn ngôn ngữ thẻ (EN/JP).", path: ['language'] });
 
 
 export default function CreateListingPage() {
@@ -212,7 +239,6 @@ export default function CreateListingPage() {
     defaultValues: {
       name: "",
       listingType: 'sale',
-      isPsaGraded: false,
       description: "",
       images: [],
       price: undefined,
@@ -221,7 +247,13 @@ export default function CreateListingPage() {
       ticketPrice: undefined,
       totalTickets: undefined,
       condition: undefined,
-      psaGrade: 10,
+      catalogProductId: undefined,
+      catalogSoccerId: undefined,
+      cardNumber: "",
+      language: undefined,
+      gradingCompany: 'raw',
+      grade: undefined,
+      finish: 'normal',
       publisher: undefined,
       setName: "",
       season: "",
@@ -236,7 +268,8 @@ export default function CreateListingPage() {
   });
 
   const listingType = form.watch('listingType');
-  const isPsaGraded = form.watch('isPsaGraded');
+  const gradingCompany = form.watch('gradingCompany');
+  const isGraded = gradingCompany !== 'raw';
   const images = form.watch('images');
   const selectedCategory = form.watch('category');
   const selectedPublisher = form.watch('publisher');
@@ -339,15 +372,17 @@ export default function CreateListingPage() {
   }, [user, router, toast]);
 
   useEffect(() => {
-    if (isPsaGraded) {
-      form.setValue('condition', 'PSA Graded');
+    if (isGraded) {
+      // Graded cards don't use the raw-condition select; placeholder keeps the
+      // old condition-required validation paths quiet.
+      form.setValue('condition', 'Graded');
       form.clearErrors('condition');
     } else {
-      if (form.getValues('condition') === 'PSA Graded') {
+      if (['Graded', 'PSA Graded'].includes(form.getValues('condition') || '')) {
         form.setValue('condition', undefined);
       }
     }
-  }, [isPsaGraded, form]);
+  }, [isGraded, form]);
 
   // Handle category change: reset fields, auto-set publisher, fetch DB sets
   const prevCategoryRef = useRef<string | undefined>(undefined);
@@ -497,6 +532,50 @@ export default function CreateListingPage() {
     });
   };
 
+  // Catalog pick state — the canonical card identity behind this listing.
+  const [catalogPick, setCatalogPick] = useState<CatalogPick | null>(null);
+
+  /** Seller picked the EXACT card from the real catalog — lock in its identity. */
+  const handleCatalogPicked = (pick: CatalogPick, tab: CatalogTabId) => {
+    setCatalogPick(pick);
+
+    const category = catalogTabToCategory(tab);
+    form.setValue('category', category);
+    prevCategoryRef.current = category;
+
+    form.setValue('name', pick.name);
+    form.setValue('catalogProductId', pick.productId);
+    form.setValue('catalogSoccerId', pick.soccerId);
+    form.setValue('cardNumber', pick.number || '');
+    form.setValue('language', pick.language || undefined);
+    form.clearErrors(['cardNumber', 'language', 'name', 'category']);
+
+    // Mirror handleCardPicked's set-name handling: let the category effect
+    // settle, then apply the catalog set name.
+    if (pick.setName) {
+      setTimeout(() => form.setValue('setName', pick.setName || ''), 100);
+      if (isDbSets(category)) {
+        setLoadingDbSets(true);
+        fetchDbSetsGrouped(category).then(grouped => {
+          setDbGroupedSets(grouped);
+          setLoadingDbSets(false);
+          form.setValue('setName', pick.setName || '');
+        });
+      }
+    }
+
+    toast({
+      title: '✅ Đã gắn thẻ catalog',
+      description: `${pick.name}${pick.number ? ` · #${pick.number}` : ''}${pick.language ? ` · ${pick.language.toUpperCase()}` : ''}`,
+    });
+  };
+
+  const clearCatalogPick = () => {
+    setCatalogPick(null);
+    form.setValue('catalogProductId', undefined);
+    form.setValue('catalogSoccerId', undefined);
+  };
+
   const removeImage = (index: number) => {
     const currentFiles = form.getValues('images') || [];
     const newFiles = currentFiles.filter((_, i) => i !== index);
@@ -555,8 +634,10 @@ export default function CreateListingPage() {
         })
       );
 
-      const finalCondition = values.isPsaGraded
-        ? `PSA ${values.psaGrade}`
+      // Back-compat: old UI reads `condition`, so graded cards keep the
+      // "PSA 10"-style string while the structured fields carry the truth.
+      const finalCondition = values.gradingCompany !== 'raw'
+        ? `${values.gradingCompany.toUpperCase()} ${values.grade}`
         : values.condition;
 
       // Resolve publisher/set/season — either from dropdowns or free text
@@ -584,6 +665,14 @@ export default function CreateListingPage() {
         season: resolvedSeason,
         quantity: values.isBundle ? bundleItems.filter(i => i.title.trim()).length : (values.quantity || 1),
         status: 'active',
+        // Canonical card identity for VN market pricing (null on bundles).
+        catalog_product_id: values.isBundle ? null : (values.catalogProductId ?? null),
+        catalog_soccer_id: values.isBundle ? null : (values.catalogSoccerId ?? null),
+        card_number: values.isBundle ? null : (values.cardNumber?.trim() || null),
+        language: values.isBundle ? null : (values.language ?? null),
+        grading_company: values.gradingCompany,
+        grade: values.gradingCompany !== 'raw' ? values.grade : null,
+        finish: values.finish,
       };
 
       // Add offer fields if enabled
@@ -716,13 +805,115 @@ export default function CreateListingPage() {
           }, 50);
         })} className="space-y-8">
 
-          {/* ─── Quick Fill from Collection ─── */}
-          <div className="flex items-center gap-4 p-4 rounded-xl border border-dashed border-primary/30 bg-primary/5">
-            <div className="flex-1">
-              <h3 className="text-sm font-semibold text-primary">Điền nhanh từ bộ sưu tập</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">Chọn thẻ từ bộ sưu tập của bạn để tự động điền thông tin</p>
+          {/* ─── Phần 1: Xác định thẻ (catalog identity) ─── */}
+          <div className="space-y-3 p-4 rounded-xl border border-dashed border-orange-500/30 bg-orange-500/5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-orange-500">Xác định đúng lá thẻ</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Chọn thẻ từ catalog để bài đăng gắn đúng lá thẻ — giúp tính giá thị trường VN chính xác.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <CatalogCardPicker onSelect={handleCatalogPicked} />
+                <CardPickerDialog onSelect={handleCardPicked} />
+              </div>
             </div>
-            <CardPickerDialog onSelect={handleCardPicked} />
+
+            {catalogPick && (
+              <div className="space-y-2 rounded-lg border border-orange-500/40 bg-background/60 p-3">
+                <div className="flex items-center gap-3">
+                  {catalogPick.imageUrl && (
+                    <div className="relative h-14 w-10 shrink-0 overflow-hidden rounded">
+                      <Image src={catalogPick.imageUrl} alt="" fill className="object-contain" sizes="40px" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1 text-sm">
+                    <p className="truncate font-semibold">{catalogPick.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {catalogPick.setName}
+                      {catalogPick.number ? ` · #${catalogPick.number}` : ''}
+                      {catalogPick.language ? ` · ${catalogPick.language.toUpperCase()}` : ''}
+                    </p>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" onClick={clearCatalogPick} className="shrink-0 text-muted-foreground">
+                    <X className="mr-1 h-3.5 w-3.5" /> Bỏ chọn
+                  </Button>
+                </div>
+
+                {/* Price suggestion from the catalog's TCGplayer market price (USD → VND). */}
+                {!!catalogPick.marketPrice && catalogPick.marketPrice > 0 && (() => {
+                  const suggestedVnd = Math.round((catalogPick.marketPrice * USD_TO_VND_RATE) / 1000) * 1000;
+                  return (
+                    <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-accent/30 px-3 py-2 text-sm">
+                      <span className="text-muted-foreground">Giá thị trường (TCGplayer):</span>
+                      <span className="font-semibold">${catalogPick.marketPrice}</span>
+                      <span className="font-semibold text-orange-400">
+                        ≈ {new Intl.NumberFormat('vi-VN').format(suggestedVnd)}đ
+                      </span>
+                      {listingType === 'sale' && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 border-orange-500/40 text-orange-500 hover:border-orange-500"
+                          onClick={() => {
+                            setPriceCurrency('VND');
+                            applyPrice(String(suggestedVnd), 'VND');
+                            toast({ title: '💰 Đã áp dụng giá gợi ý', description: `${new Intl.NumberFormat('vi-VN').format(suggestedVnd)}đ — bạn có thể chỉnh lại.` });
+                          }}
+                        >
+                          Dùng giá này
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Real VN market price from completed CardVerse sales, if any. */}
+                <VnMarketPrice productId={catalogPick.productId} soccerId={catalogPick.soccerId} />
+              </div>
+            )}
+
+            {/* Manual identity fallback — editable even after a catalog pick. */}
+            {!isBundle && (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="cardNumber"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">Số thẻ</FormLabel>
+                      <FormControl>
+                        <Input placeholder="VD: 199/197, OP15-118, TG12/TG30" {...field} value={field.value ?? ''} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="language"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">Ngôn ngữ thẻ</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value ?? ''}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Chọn EN / JP" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="en">EN — Tiếng Anh</SelectItem>
+                          <SelectItem value="jp">JP — Tiếng Nhật</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
           </div>
 
           {/* ─── Bundle Toggle ─── */}
@@ -808,7 +999,7 @@ export default function CreateListingPage() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className='text-lg font-semibold'>{t('condition_label')}</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value ?? ''} disabled={isPsaGraded}>
+                  <Select onValueChange={field.onChange} value={field.value ?? ''} disabled={isGraded}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder={t('condition_placeholder')} />
@@ -1027,53 +1218,93 @@ export default function CreateListingPage() {
             />
           )}
 
-          {/* PSA Graded */}
-          <FormField
-            control={form.control}
-            name="isPsaGraded"
-            render={({ field }) => (
-              <FormItem className="space-y-4">
-                <div className="flex items-center space-x-2">
-                  <FormControl>
-                    <Checkbox
-                      id="psa-graded"
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                  <Label htmlFor="psa-graded" className="text-base font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                    PSA Graded
-                  </Label>
-                </div>
-                {field.value && (
-                  <FormField
-                    control={form.control}
-                    name="psaGrade"
-                    render={({ field: sliderField }) => (
-                      <FormItem className="rounded-lg border p-4">
-                        <div className="flex justify-between items-center">
-                          <FormLabel className="text-lg font-semibold">PSA Grade</FormLabel>
-                          <span className="w-12 text-center text-lg font-bold text-primary rounded-md bg-muted px-2 py-1">{sliderField.value ?? 10}</span>
-                        </div>
-                        <FormControl>
-                          <Slider
-                            id="psa-grade-slider"
-                            min={1}
-                            max={10}
-                            step={1}
-                            defaultValue={[sliderField.value || 10]}
-                            onValueChange={(value) => sliderField.onChange(value[0])}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+          {/* ─── Phần 2: Grading & biến thể (tách khỏi condition) ─── */}
+          <div className="space-y-4 rounded-xl border p-4">
+            <h3 className="text-lg font-semibold">Tình trạng grade & biến thể</h3>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="gradingCompany"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">Hãng grade</FormLabel>
+                    <Select
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        if (value !== 'raw' && form.getValues('grade') === undefined) {
+                          form.setValue('grade', 10);
+                        }
+                      }}
+                      value={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Raw (chưa grade)" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="raw">Raw (chưa grade)</SelectItem>
+                        <SelectItem value="psa">PSA</SelectItem>
+                        <SelectItem value="bgs">BGS</SelectItem>
+                        <SelectItem value="cgc">CGC</SelectItem>
+                        <SelectItem value="sgc">SGC</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
                 )}
-                <FormMessage />
-              </FormItem>
+              />
+              <FormField
+                control={form.control}
+                name="finish"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">Biến thể / Finish</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Normal" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="normal">Normal</SelectItem>
+                        <SelectItem value="holo">Holo</SelectItem>
+                        <SelectItem value="reverse">Reverse Holo</SelectItem>
+                        <SelectItem value="1st">1st Edition</SelectItem>
+                        <SelectItem value="parallel">Parallel</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {isGraded && (
+              <FormField
+                control={form.control}
+                name="grade"
+                render={({ field }) => (
+                  <FormItem className="rounded-lg border p-4">
+                    <div className="flex justify-between items-center">
+                      <FormLabel className="text-lg font-semibold">{gradingCompany.toUpperCase()} Grade</FormLabel>
+                      <span className="w-12 text-center text-lg font-bold text-primary rounded-md bg-muted px-2 py-1">{field.value ?? 10}</span>
+                    </div>
+                    <FormControl>
+                      <Slider
+                        min={1}
+                        max={10}
+                        step={0.5}
+                        value={[field.value ?? 10]}
+                        onValueChange={(value) => field.onChange(value[0])}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             )}
-          />
+          </div>
 
           {/* Images */}
           <FormField
