@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { createShippingOrder, cancelOrder as cancelGHNOrder } from '@/lib/ghn';
 
 // GET: Fetch orders for current user
@@ -248,6 +249,46 @@ export async function PATCH(request: NextRequest) {
                     message: `Người mua đã xác nhận nhận hàng. ${sellerPayout.toLocaleString()}đ đã được cộng vào ví.`,
                     card_id: order.card_id,
                 } as never);
+
+                // Record the completed sale for VN market pricing — only
+                // standardized single-card listings (with a catalog key) count,
+                // so open asking prices can never skew the aggregate. Never
+                // let a pricing write break order confirmation.
+                try {
+                    const completedOrder = order as any;
+                    const { data: soldCard } = await supabase
+                        .from('cards')
+                        .select('id, category, catalog_product_id, catalog_soccer_id, card_number, language, grading_company, grade, finish, is_bundle')
+                        .eq('id', completedOrder.card_id)
+                        .single();
+
+                    const sc = soldCard as any;
+                    if (sc && !sc.is_bundle && (sc.catalog_product_id || sc.catalog_soccer_id)) {
+                        // tcgcsv category ids: 3 Pokémon EN / 85 Pokémon JP / 68 One Piece / 99 = soccer marker.
+                        const categoryId = sc.catalog_soccer_id
+                            ? 99
+                            : sc.category === 'One Piece'
+                                ? 68
+                                : sc.language === 'jp' ? 85 : 3;
+
+                        // Service role: vn_card_sales is read-only for clients
+                        // (RLS), only the server records sales.
+                        await createServiceSupabaseClient().from('vn_card_sales').insert({
+                            catalog_product_id: sc.catalog_product_id,
+                            catalog_soccer_id: sc.catalog_soccer_id,
+                            card_id: sc.id,
+                            category_id: categoryId,
+                            card_number: sc.card_number,
+                            language: sc.language,
+                            grading_company: sc.grading_company || 'raw',
+                            grade: sc.grade,
+                            finish: sc.finish,
+                            price: completedOrder.amount,
+                        } as never);
+                    }
+                } catch (salesError) {
+                    console.error('Could not record vn_card_sales:', salesError);
+                }
 
                 // Update seller stats
                 await supabase.rpc('increment_seller_stats' as never, {

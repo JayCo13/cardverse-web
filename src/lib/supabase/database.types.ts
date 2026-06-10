@@ -204,6 +204,13 @@ export interface Database {
                     bundle_items: Json | null
                     quantity: number
                     reserved_until: string | null
+                    catalog_product_id: number | null
+                    catalog_soccer_id: number | null
+                    card_number: string | null
+                    language: string | null
+                    grading_company: string | null
+                    grade: number | null
+                    finish: string | null
                     created_at: string
                     updated_at: string
                 }
@@ -235,6 +242,13 @@ export interface Database {
                     bundle_items?: Json | null
                     quantity?: number
                     reserved_until?: string | null
+                    catalog_product_id?: number | null
+                    catalog_soccer_id?: number | null
+                    card_number?: string | null
+                    language?: string | null
+                    grading_company?: string | null
+                    grade?: number | null
+                    finish?: string | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -266,8 +280,59 @@ export interface Database {
                     bundle_items?: Json | null
                     quantity?: number
                     reserved_until?: string | null
+                    catalog_product_id?: number | null
+                    catalog_soccer_id?: number | null
+                    card_number?: string | null
+                    language?: string | null
+                    grading_company?: string | null
+                    grade?: number | null
+                    finish?: string | null
                     created_at?: string
                     updated_at?: string
+                }
+            }
+            vn_card_sales: {
+                Row: {
+                    id: string
+                    catalog_product_id: number | null
+                    catalog_soccer_id: number | null
+                    card_id: string | null
+                    category_id: number | null
+                    card_number: string | null
+                    language: string | null
+                    grading_company: string
+                    grade: number | null
+                    finish: string | null
+                    price: number
+                    sold_at: string
+                }
+                Insert: {
+                    id?: string
+                    catalog_product_id?: number | null
+                    catalog_soccer_id?: number | null
+                    card_id?: string | null
+                    category_id?: number | null
+                    card_number?: string | null
+                    language?: string | null
+                    grading_company?: string
+                    grade?: number | null
+                    finish?: string | null
+                    price: number
+                    sold_at?: string
+                }
+                Update: {
+                    id?: string
+                    catalog_product_id?: number | null
+                    catalog_soccer_id?: number | null
+                    card_id?: string | null
+                    category_id?: number | null
+                    card_number?: string | null
+                    language?: string | null
+                    grading_company?: string
+                    grade?: number | null
+                    finish?: string | null
+                    price?: number
+                    sold_at?: string
                 }
             }
             conversations: {
