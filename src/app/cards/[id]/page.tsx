@@ -10,11 +10,18 @@ import {
     BadgeCheck,
     CalendarDays,
     CheckCircle,
+    ChevronDown,
+    CreditCard,
+    Gem,
+    HandCoins,
     Heart,
     Loader2,
     MessageCircle,
     PackageCheck,
     Search,
+    ShieldCheck,
+    Tag,
+    Truck,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
@@ -232,6 +239,15 @@ export default function CardDetailsPage() {
             itemSpecifics: "Thông tin chi tiết",
             itemDescription: "Mô tả từ người bán",
             noDetailedDescription: "Người bán chưa thêm mô tả chi tiết cho thẻ này.",
+            listingInfo: "Thông tin listing",
+            protectedCheckout: "Thanh toán được bảo vệ",
+            verifiedSeller: "Seller đã xác minh",
+            offerHint: "Gửi đề nghị để thương lượng với người bán",
+            buyHint: "Mua ngay với PayOS hoặc ví CardVerse",
+            watchHint: "Lưu thẻ này để theo dõi giá",
+            fastShip: "GHN nội địa",
+            paymentReady: "PayOS / Ví",
+            listingId: "Mã listing",
             offers: "Đề xuất giá",
             sellerTools: "Công cụ người bán",
             noOffers: "Chưa có đề xuất nào cho listing này.",
@@ -304,6 +320,15 @@ export default function CardDetailsPage() {
                 itemSpecifics: "商品の詳細",
                 itemDescription: "販売者による説明",
                 noDetailedDescription: "販売者はまだ詳細説明を追加していません。",
+                listingInfo: "出品情報",
+                protectedCheckout: "保護された決済",
+                verifiedSeller: "認証済み販売者",
+                offerHint: "販売者に交渉オファーを送信",
+                buyHint: "PayOSまたはCardVerseウォレットで購入",
+                watchHint: "このカードを保存して価格を追跡",
+                fastShip: "GHN国内配送",
+                paymentReady: "PayOS / ウォレット",
+                listingId: "出品ID",
                 offers: "オファー",
                 sellerTools: "販売者ツール",
                 noOffers: "この出品にはまだオファーがありません。",
@@ -375,6 +400,15 @@ export default function CardDetailsPage() {
                 itemSpecifics: "Item specifics",
                 itemDescription: "Item description from the seller",
                 noDetailedDescription: "The seller has not added a detailed description for this card yet.",
+                listingInfo: "Listing details",
+                protectedCheckout: "Protected checkout",
+                verifiedSeller: "Verified seller",
+                offerHint: "Send a private offer to negotiate",
+                buyHint: "Buy instantly with PayOS or CardVerse wallet",
+                watchHint: "Save this card and track price changes",
+                fastShip: "Domestic GHN",
+                paymentReady: "PayOS / Wallet",
+                listingId: "Listing ID",
                 offers: "Offers",
                 sellerTools: "Seller tools",
                 noOffers: "No offers yet for this listing.",
@@ -443,6 +477,16 @@ export default function CardDetailsPage() {
             ["Sport", card.category],
         ];
     }, [card, copy.condition, copy.ungraded]);
+
+    const listingHighlights = useMemo(() => {
+        if (!card) return [];
+        return [
+            { label: copy.condition, value: card.condition || copy.ungraded, icon: Gem },
+            { label: "Set", value: card.setName || card.publisher || "Not specified", icon: BadgeCheck },
+            { label: copy.quantity, value: `${card.quantity || 1} ${copy.available}`, icon: PackageCheck },
+            { label: copy.listingId, value: card.id.slice(0, 8).toUpperCase(), icon: Tag },
+        ];
+    }, [card, copy.available, copy.condition, copy.listingId, copy.quantity, copy.ungraded]);
 
     const fetchRelatedCards = useCallback(async (baseCard: Card) => {
         const { data } = await supabase
@@ -681,17 +725,16 @@ export default function CardDetailsPage() {
             <Header />
             <main className="flex-1">
                 <div className="mx-auto w-full max-w-[1820px] space-y-8 px-4 py-6 sm:px-6">
-                    <div className="hidden items-center gap-5 border-b pb-6 lg:grid lg:grid-cols-[230px_minmax(0,1fr)_210px_160px]">
-                        <div className="flex items-center">
-                            <Image
-                                src="/assets/logo-verse.png"
-                                width={220}
-                                height={56}
-                                alt="CardVerse logo"
-                                className="h-auto w-[210px] object-contain"
-                                priority
-                            />
-                        </div>
+                    <div className="flex items-center justify-between gap-4 border-b pb-4 lg:hidden">
+                        <Button variant="ghost" onClick={() => router.back()} className="h-9 px-2 text-muted-foreground">
+                            <ArrowLeft className="mr-2 h-4 w-4" /> {copy.back}
+                        </Button>
+                    </div>
+
+                    <div className="hidden items-center gap-5 border-b pb-6 lg:grid lg:grid-cols-[120px_minmax(0,1fr)_230px_170px]">
+                        <Button variant="ghost" onClick={() => router.back()} className="h-12 justify-start px-2 text-muted-foreground">
+                            <ArrowLeft className="mr-2 h-4 w-4" /> {copy.back}
+                        </Button>
                         <div className="flex h-14 items-center rounded-full border-2 border-foreground bg-background px-5">
                             <Search className="mr-4 h-6 w-6 text-muted-foreground" />
                             <input
@@ -700,20 +743,19 @@ export default function CardDetailsPage() {
                                 placeholder={copy.searchPlaceholder}
                             />
                         </div>
-                        <select className="h-14 rounded-full border bg-background px-5 text-sm outline-none">
-                            <option>{copy.allCategories}</option>
-                            <option>Pokemon</option>
-                            <option>Soccer</option>
-                            <option>One Piece</option>
-                        </select>
+                        <div className="relative">
+                            <select className="h-14 w-full appearance-none rounded-full border bg-background px-5 pr-12 text-sm outline-none">
+                                <option>{copy.allCategories}</option>
+                                <option>Pokemon</option>
+                                <option>Soccer</option>
+                                <option>One Piece</option>
+                            </select>
+                            <ChevronDown className="pointer-events-none absolute right-5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        </div>
                         <Button className="h-14 rounded-full bg-orange-500 text-lg font-bold text-white shadow-[0_0_24px_rgba(249,115,22,0.28)] hover:bg-orange-600">
                             {copy.search}
                         </Button>
                     </div>
-
-                    <Button variant="ghost" onClick={() => router.back()} className="h-9 px-2 text-muted-foreground">
-                        <ArrowLeft className="mr-2 h-4 w-4" /> {copy.back}
-                    </Button>
 
                     <div className="rounded-xl border bg-card px-4 py-3">
                         <div className="flex flex-wrap items-center justify-center gap-3 text-sm">
@@ -780,104 +822,154 @@ export default function CardDetailsPage() {
                         </div>
 
                         <aside className="space-y-4">
-                            <div className="space-y-4 border-b pb-4">
-                                <h1 className="text-2xl font-semibold leading-tight tracking-normal md:text-3xl">
-                                    {card.name}
-                                </h1>
-                                <div className="flex items-center gap-3">
-                                    {seller?.profile_image_url ? (
-                                        <Image src={seller.profile_image_url} alt="" width={44} height={44} className="rounded-full object-cover" />
-                                    ) : (
-                                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-orange-500 font-bold text-white">
-                                            {(seller?.display_name || "C").charAt(0).toUpperCase()}
-                                        </div>
-                                    )}
-                                    <div className="min-w-0 flex-1">
-                                        <div className="flex items-center gap-1.5">
-                                            <span className="truncate font-semibold">{seller?.display_name || card.sellerName || copy.seller}</span>
-                                            {seller?.seller_verified && <BadgeCheck className="h-4 w-4 shrink-0 text-orange-500" />}
-                                        </div>
-                                        <p className="text-sm text-muted-foreground">
-                                            {seller?.seller_rating ? `${Number(seller.seller_rating).toFixed(1)}% positive` : copy.newSeller} · {copy.sellerOtherItems}
-                                        </p>
+                            <div className="overflow-hidden rounded-xl border bg-card shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
+                                <div className="border-b p-5 md:p-6">
+                                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                                        <Badge className="rounded-full bg-orange-500/15 px-3 py-1 text-orange-300 hover:bg-orange-500/15">
+                                            {card.category}
+                                        </Badge>
+                                        {card.acceptOffers && (
+                                            <Badge variant="outline" className="rounded-full border-amber-500/60 px-3 py-1 text-amber-400">
+                                                {copy.bestOffer}
+                                            </Badge>
+                                        )}
+                                        {seller?.seller_verified && (
+                                            <Badge variant="outline" className="rounded-full border-emerald-500/50 px-3 py-1 text-emerald-400">
+                                                <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
+                                                {copy.verifiedSeller}
+                                            </Badge>
+                                        )}
                                     </div>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="rounded-full border-orange-500 text-orange-500 hover:bg-orange-500/10 hover:text-orange-400"
-                                        onClick={() => void handleStartChat()}
-                                        disabled={isOwner || startingChatOfferId === "listing"}
-                                    >
-                                        {startingChatOfferId === "listing" ? (
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    <h1 className="text-2xl font-semibold leading-tight tracking-normal md:text-3xl">
+                                        {card.name}
+                                    </h1>
+                                    <div className="mt-4 flex items-center gap-3">
+                                        {seller?.profile_image_url ? (
+                                            <Image src={seller.profile_image_url} alt="" width={44} height={44} className="rounded-full object-cover" />
                                         ) : (
-                                            <MessageCircle className="mr-2 h-4 w-4" />
+                                            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-orange-500 font-bold text-white">
+                                                {(seller?.display_name || "C").charAt(0).toUpperCase()}
+                                            </div>
                                         )}
-                                        {copy.message}
-                                    </Button>
-                                </div>
-                            </div>
-
-                            <div className="space-y-1 border-b pb-5">
-                                <div className="flex items-end gap-2">
-                                    <p className="text-4xl font-bold tracking-normal">{formatVND(card.price)}</p>
-                                    {card.acceptOffers && <span className="pb-1 text-sm text-muted-foreground">{copy.bestOffer}</span>}
-                                </div>
-                                {card.lastSoldPrice && (
-                                    <p className="text-sm text-muted-foreground">{copy.approxLastSale} {formatVND(card.lastSoldPrice)}</p>
-                                )}
-                            </div>
-
-                            <div className="space-y-3 border-b pb-5 text-sm">
-                                <div className="grid grid-cols-[130px_1fr] gap-3">
-                                    <span className="font-medium">{copy.condition}:</span>
-                                    <span>{card.condition || copy.ungraded}</span>
-                                </div>
-                                <div className="grid grid-cols-[130px_1fr] gap-3">
-                                    <span className="font-medium">{copy.quantity}:</span>
-                                    <span>{card.quantity || 1} {copy.available}</span>
-                                </div>
-                            </div>
-
-                            {isOwner ? (
-                                <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-4 text-sm text-orange-300">
-                                    {copy.ownListing}
-                                </div>
-                            ) : isUnavailable ? (
-                                <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-                                    {card.status === "sold"
-                                        ? copy.boughtBySomeone
-                                        : copy.reservedOrUnavailable}
-                                </div>
-                            ) : (
-                                <div className="space-y-3">
-                                    <Button className="h-12 w-full rounded-full bg-orange-500 text-base font-bold text-white shadow-[0_0_24px_rgba(249,115,22,0.22)] hover:bg-orange-600" onClick={handleBuyNow}>
-                                        {copy.buyNow}
-                                    </Button>
-                                    {card.acceptOffers && (
-                                        <Button variant="outline" className="h-12 w-full rounded-full border-orange-500 text-base font-bold text-orange-500 hover:bg-orange-500/10 hover:text-orange-400" onClick={handleMakeOffer}>
-                                            {copy.makeOffer}
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="truncate font-semibold">{seller?.display_name || card.sellerName || copy.seller}</span>
+                                                {seller?.seller_verified && <BadgeCheck className="h-4 w-4 shrink-0 text-orange-500" />}
+                                            </div>
+                                            <p className="text-sm text-muted-foreground">
+                                                {seller?.seller_rating ? `${Number(seller.seller_rating).toFixed(1)}% positive` : copy.newSeller} · {seller?.seller_review_count || 0} {copy.itemsSold}
+                                            </p>
+                                        </div>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="rounded-full border-orange-500 text-orange-500 hover:bg-orange-500/10 hover:text-orange-400"
+                                            onClick={() => void handleStartChat()}
+                                            disabled={isOwner || startingChatOfferId === "listing"}
+                                        >
+                                            {startingChatOfferId === "listing" ? (
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            ) : (
+                                                <MessageCircle className="mr-2 h-4 w-4" />
+                                            )}
+                                            {copy.message}
                                         </Button>
-                                    )}
-                                    <Button
-                                        variant="outline"
-                                        className="h-12 w-full rounded-full border-orange-500 text-base font-bold text-orange-500 hover:bg-orange-500/10 hover:text-orange-400"
-                                        onClick={() => void handleStartChat()}
-                                        disabled={startingChatOfferId === "listing"}
-                                    >
-                                        {startingChatOfferId === "listing" ? (
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        ) : (
-                                            <MessageCircle className="mr-2 h-4 w-4" />
-                                        )}
-                                        {copy.messageSeller}
-                                    </Button>
-                                    <Button variant="outline" className="h-12 w-full rounded-full text-base font-bold">
-                                        <Heart className="mr-2 h-4 w-4" />
-                                        {copy.addToWatchlist}
-                                    </Button>
+                                    </div>
                                 </div>
-                            )}
+
+                                <div className="space-y-5 p-5 md:p-6">
+                                    <div className="rounded-lg border bg-background/70 p-4">
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div>
+                                                <p className="text-sm text-muted-foreground">{copy.buyNow}</p>
+                                                <p className="mt-1 text-4xl font-bold tracking-normal text-orange-400">{formatVND(card.price)}</p>
+                                                {card.lastSoldPrice && (
+                                                    <p className="mt-1 text-sm text-muted-foreground">{copy.approxLastSale} {formatVND(card.lastSoldPrice)}</p>
+                                                )}
+                                            </div>
+                                            <Tag className="mt-2 h-8 w-8 text-orange-400" />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                        {listingHighlights.map(({ label, value, icon: Icon }) => (
+                                            <div key={label} className="rounded-lg border bg-background/50 p-3">
+                                                <div className="mb-1 flex items-center gap-2 text-xs uppercase text-muted-foreground">
+                                                    <Icon className="h-3.5 w-3.5" />
+                                                    {label}
+                                                </div>
+                                                <p className="line-clamp-2 text-sm font-semibold">{value}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div className="grid grid-cols-3 gap-2 text-center text-xs text-muted-foreground">
+                                        <div className="rounded-lg border bg-background/40 px-2 py-3">
+                                            <ShieldCheck className="mx-auto mb-1 h-4 w-4 text-emerald-400" />
+                                            {copy.protectedCheckout}
+                                        </div>
+                                        <div className="rounded-lg border bg-background/40 px-2 py-3">
+                                            <Truck className="mx-auto mb-1 h-4 w-4 text-sky-400" />
+                                            {copy.fastShip}
+                                        </div>
+                                        <div className="rounded-lg border bg-background/40 px-2 py-3">
+                                            <CreditCard className="mx-auto mb-1 h-4 w-4 text-violet-400" />
+                                            {copy.paymentReady}
+                                        </div>
+                                    </div>
+
+                                    {isOwner ? (
+                                        <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-4 text-sm text-orange-300">
+                                            {copy.ownListing}
+                                        </div>
+                                    ) : isUnavailable ? (
+                                        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+                                            {card.status === "sold"
+                                                ? copy.boughtBySomeone
+                                                : copy.reservedOrUnavailable}
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            <Button className="h-14 w-full rounded-lg bg-orange-500 text-base font-bold text-white shadow-[0_0_28px_rgba(249,115,22,0.25)] hover:bg-orange-600" onClick={handleBuyNow}>
+                                                <CreditCard className="mr-2 h-5 w-5" />
+                                                <span className="flex flex-col items-start leading-tight">
+                                                    <span>{copy.buyNow}</span>
+                                                    <span className="text-xs font-medium text-white/80">{copy.buyHint}</span>
+                                                </span>
+                                            </Button>
+                                            {card.acceptOffers && (
+                                                <Button variant="outline" className="h-14 w-full rounded-lg border-amber-500/80 text-base font-bold text-amber-400 hover:bg-amber-500/10 hover:text-amber-300" onClick={handleMakeOffer}>
+                                                    <HandCoins className="mr-2 h-5 w-5" />
+                                                    <span className="flex flex-col items-start leading-tight">
+                                                        <span>{copy.makeOffer}</span>
+                                                        <span className="text-xs font-medium text-muted-foreground">{copy.offerHint}</span>
+                                                    </span>
+                                                </Button>
+                                            )}
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <Button
+                                                    variant="outline"
+                                                    className="h-12 rounded-lg border-orange-500/70 font-bold text-orange-400 hover:bg-orange-500/10 hover:text-orange-300"
+                                                    onClick={() => void handleStartChat()}
+                                                    disabled={startingChatOfferId === "listing"}
+                                                >
+                                                    {startingChatOfferId === "listing" ? (
+                                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                    ) : (
+                                                        <MessageCircle className="mr-2 h-4 w-4" />
+                                                    )}
+                                                    {copy.messageSeller}
+                                                </Button>
+                                                <Button variant="outline" className="h-12 rounded-lg font-bold">
+                                                    <Heart className="mr-2 h-4 w-4" />
+                                                    {copy.addToWatchlist}
+                                                </Button>
+                                            </div>
+                                            <p className="text-xs text-muted-foreground">{copy.watchHint}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
 
                             {myOffer && !isOwner && (
                                 <div className="rounded-lg border bg-muted/40 p-4 text-sm">

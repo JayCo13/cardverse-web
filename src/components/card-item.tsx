@@ -129,6 +129,16 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
         makeOffer: '価格交渉',
         sold: '販売済み',
         bundle: 'セット {count}枚',
+        sellerOnCardVerse: 'CardVerseの販売者',
+        type: '種類',
+        quantity: '数量',
+        available: '在庫あり',
+        payment: '支払い',
+        shipping: '配送',
+        ghnReady: 'GHN対応',
+        price: '価格',
+        lastSold: '直近販売',
+        protected: 'CardVerse保護',
       }
     : locale === 'vi-VN'
       ? {
@@ -140,6 +150,16 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           makeOffer: 'Trả giá',
           sold: 'Đã bán',
           bundle: 'Combo {count} thẻ',
+          sellerOnCardVerse: 'Seller trên CardVerse',
+          type: 'Loại',
+          quantity: 'Số lượng',
+          available: 'có sẵn',
+          payment: 'Thanh toán',
+          shipping: 'Vận chuyển',
+          ghnReady: 'Sẵn sàng GHN',
+          price: 'Giá',
+          lastSold: 'Đã bán gần nhất',
+          protected: 'CardVerse bảo vệ',
         }
       : {
           yourListing: 'Your listing',
@@ -150,6 +170,16 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           makeOffer: 'Make offer',
           sold: 'Sold',
           bundle: 'Bundle {count} cards',
+          sellerOnCardVerse: 'Seller on CardVerse',
+          type: 'Type',
+          quantity: 'Qty',
+          available: 'available',
+          payment: 'Payment',
+          shipping: 'Ship',
+          ghnReady: 'GHN ready',
+          price: 'Price',
+          lastSold: 'Last sold',
+          protected: 'CardVerse protected',
         };
 
   const handleDetailClick = () => {
@@ -288,7 +318,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
     const catStyle = getCategoryStyle(card.category);
     return (
       <Card
-        className={`group relative flex w-full flex-col overflow-hidden rounded-2xl border bg-gradient-to-br from-card via-card to-card/50 transition-all duration-300 md:flex-row
+        className={`group relative flex w-full flex-col overflow-hidden rounded-lg border bg-gradient-to-br from-card via-card to-card/50 transition-all duration-300 md:flex-row
           ${card.status === 'sold'
             ? 'border-green-500/40 opacity-80'
             : 'border-border/60 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[0_10px_40px_-12px_hsl(var(--primary)/0.35)]'}`}
@@ -338,64 +368,121 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
         </div>
 
         {/* Body */}
-        <div className="flex flex-1 flex-col gap-3 p-4 sm:p-5 md:flex-row md:items-stretch md:gap-5">
-          {/* Info column */}
-          <div className="flex min-w-0 flex-1 flex-col">
+        <div className="grid flex-1 gap-5 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-stretch">
+          <div className="flex min-w-0 flex-col">
             <div className="flex flex-wrap items-center gap-2">
-              <h3
-                className="line-clamp-2 cursor-pointer text-lg font-bold leading-tight tracking-tight hover:text-primary md:line-clamp-1 md:text-xl"
-                style={{ fontFamily: "'Orbitron', sans-serif" }}
-                onClick={handleDetailClick}
-              >
-                {card.name}
-              </h3>
+              <Badge variant="outline" className="rounded-md border-primary/40 bg-primary/10 text-primary">
+                {card.category}
+              </Badge>
               {card.status === 'sold' && (
-                <Badge className="bg-green-500 text-[10px] text-white">Đã bán</Badge>
+                <Badge className="rounded-md bg-green-500 text-[10px] text-white">{copy.sold}</Badge>
               )}
               {card.isBundle && (
-                <Badge variant="outline" className="border-violet-500/50 text-[10px] text-violet-400">
+                <Badge variant="outline" className="rounded-md border-violet-500/50 text-[10px] text-violet-400">
                   {copy.bundle.replace('{count}', String(card.bundleItems?.length || 0))}
                 </Badge>
               )}
             </div>
-            <p className="mt-0.5 text-sm text-muted-foreground">{card.category}</p>
 
-            {/* meta chips */}
-            <div className="mt-3 flex flex-wrap items-center gap-1.5">
-              {card.condition && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
-                  <Gem className="h-3 w-3" />
-                  {card.condition}
-                </span>
-              )}
-              {card.publisher && (
-                <span className="rounded-full border border-border bg-muted/40 px-2.5 py-0.5 text-xs text-muted-foreground">
-                  {card.publisher}
-                </span>
-              )}
-              {card.setName && (
-                <span className="rounded-full border border-border bg-muted/40 px-2.5 py-0.5 text-xs text-muted-foreground">
-                  {card.setName}
-                </span>
+            <h3
+              className="mt-2 line-clamp-2 cursor-pointer text-2xl font-semibold leading-snug tracking-normal hover:text-primary md:text-[1.85rem]"
+              onClick={handleDetailClick}
+            >
+              {card.name}
+            </h3>
+
+            <p className="mt-1 text-base text-muted-foreground">
+              {card.condition || 'Pre-owned'}
+              {card.publisher && <span> · {card.publisher}</span>}
+              {card.setName && <span> · {card.setName}</span>}
+            </p>
+
+            <div className="mt-4 flex flex-wrap items-end gap-x-3 gap-y-1">
+              <p className="text-[1.7rem] font-bold tracking-normal text-primary md:text-[1.85rem]">
+                {card.listingType === 'sale' && card.price ? displayPrice(card.price) :
+                  card.listingType === 'auction' && card.currentBid ? displayPrice(card.currentBid) :
+                    card.listingType === 'razz' && card.ticketPrice ? displayPrice(card.ticketPrice) : 'N/A'}
+              </p>
+              {card.acceptOffers && (
+                <p className="pb-1 text-sm font-medium text-amber-500">{copy.acceptsOffers}</p>
               )}
             </div>
 
-            {/* Seller info pinned to bottom */}
-            <div className="mt-auto flex items-center gap-2 pt-4">
-              {card.sellerAvatar ? (
-                <Image src={card.sellerAvatar} alt={card.sellerName || ''} width={22} height={22} className="rounded-full object-cover ring-1 ring-border" />
-              ) : (
-                <div className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-muted ring-1 ring-border">
-                  <User className="h-3 w-3 text-muted-foreground" />
-                </div>
+            <div className="mt-3 space-y-1 text-base text-muted-foreground">
+              <p><span className="font-medium text-foreground">{copy.shipping}:</span> {copy.ghnReady}</p>
+              <p><span className="font-medium text-foreground">{copy.payment}:</span> PayOS / Wallet</p>
+              <p><span className="font-medium text-foreground">{copy.quantity}:</span> {card.quantity || 1} {copy.available}</p>
+              {card.lastSoldPrice && (
+                <p><span className="font-medium text-foreground">{copy.lastSold}:</span> {displayPrice(card.lastSoldPrice)}</p>
               )}
-              <span className="truncate text-xs text-muted-foreground">{card.sellerName || card.author}</span>
+            </div>
+
+            <div className="mt-auto flex flex-wrap gap-2 pt-4">
+              <span className="rounded-md border border-primary/50 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary shadow-[0_0_16px_rgba(249,115,22,0.22)]">
+                {card.listingType === 'sale' ? t('card_item_buy_now') : card.listingType}
+              </span>
+              <span className="rounded-md border border-emerald-500/45 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300 shadow-[0_0_16px_rgba(16,185,129,0.18)]">
+                {copy.protected}
+              </span>
             </div>
           </div>
 
-          {/* Price / action panel — separated like a display-case tag */}
-          <div className="flex shrink-0 flex-col justify-center border-t border-border/50 pt-4 md:w-44 md:border-l md:border-t-0 md:pl-5 md:pt-0">
-            {renderPriceInfo()}
+          <div className="flex flex-col justify-between gap-4 border-t border-border/50 pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+            <div className="flex min-w-0 items-center gap-3">
+              {card.sellerAvatar ? (
+                <Image src={card.sellerAvatar} alt={card.sellerName || ''} width={42} height={42} className="rounded-full object-cover ring-1 ring-border" />
+              ) : (
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/15 ring-1 ring-primary/30">
+                  <span className="text-base font-bold text-primary">{(card.sellerName || card.author || 'C').charAt(0).toUpperCase()}</span>
+                </div>
+              )}
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-foreground">{card.sellerName || card.author}</p>
+                <p className="truncate text-xs text-muted-foreground">{copy.sellerOnCardVerse}</p>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-border/70 bg-background/45 p-3 text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">{copy.price}: {card.listingType === 'sale' && card.price ? displayPrice(card.price) : 'N/A'}</p>
+              {card.acceptOffers && <p className="mt-1 text-amber-500">{copy.acceptsOffers}</p>}
+              <p className="mt-1">{copy.shipping}: {copy.ghnReady}</p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-2">
+              <Button
+                size="sm"
+                aria-label={`Buy ${card.name} now`}
+                className="h-11 rounded-lg bg-primary px-4 text-sm font-bold"
+                onClick={handleActionClick}
+                disabled={card.status === 'sold'}
+              >
+                <Tag className="mr-1.5 h-4 w-4" />
+                {card.listingType === 'sale' ? t('card_item_buy_now') :
+                  card.listingType === 'auction' ? t('card_item_place_bid') :
+                    t('card_item_buy_ticket')}
+              </Button>
+              {canOffer ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  aria-label={`Make an offer for ${card.name}`}
+                  className="h-11 rounded-lg border-amber-500/70 text-sm font-bold text-amber-500 hover:bg-amber-500/10 hover:text-amber-500"
+                  onClick={handleOfferClick}
+                >
+                  <HandCoins className="mr-1.5 h-4 w-4" />
+                  {copy.makeOffer}
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-11 rounded-lg text-sm font-bold"
+                  onClick={handleDetailClick}
+                >
+                  {copy.viewDetails}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </Card>
