@@ -3,7 +3,8 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { CircleUser, Menu, Search, Headphones, Camera, Crown, Zap, Diamond, Wallet, Package, Settings } from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
+import { CircleUser, Menu, Headphones, Camera, Crown, Zap, Diamond, Wallet, Package, Settings, ShoppingCart } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { NotificationBell } from "@/components/notification-bell"
 import { ChatInboxButton } from "@/components/chat-drawer"
@@ -35,6 +36,7 @@ export function Header() {
   const { toast } = useToast();
   const router = useRouter();
   const { isVipPro, isDayPass, hasCredits, subscription } = useSubscription();
+  const [cartCount, setCartCount] = useState(0);
   const copy = locale === "vi-VN"
     ? {
       account: "Tài khoản",
@@ -64,6 +66,27 @@ export function Header() {
 
   // Admin-created tester accounts get full access to gated marketplace features.
   const isTester = !!profile?.is_tester;
+
+  const fetchCartCount = useCallback(async () => {
+    if (!user) {
+      setCartCount(0);
+      return;
+    }
+    try {
+      const response = await fetch("/api/cart", { cache: "no-store" });
+      const payload = await response.json();
+      setCartCount(Array.isArray(payload.items) ? payload.items.length : 0);
+    } catch {
+      setCartCount(0);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    void fetchCartCount();
+    const handler = () => void fetchCartCount();
+    window.addEventListener("cardverse:cart-updated", handler);
+    return () => window.removeEventListener("cardverse:cart-updated", handler);
+  }, [fetchCartCount]);
 
   const handleComingSoon = () => {
     toast({
@@ -156,7 +179,7 @@ export function Header() {
                   </span>
                 )}
               </div>
-              <span className="hidden md:inline">{displayEmail}</span>
+              <span className="hidden lg:inline">{displayEmail}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -223,7 +246,7 @@ export function Header() {
     return (
       <Button variant="ghost" className="gap-2 px-2" onClick={() => setOpen(true)}>
         <CircleUser className="h-5 w-5" />
-        <span className="hidden md:inline">{t('log_in')}</span>
+        <span className="hidden lg:inline">{t('log_in')}</span>
       </Button>
     );
   }
@@ -232,35 +255,45 @@ export function Header() {
     <header className="sticky top-0 z-50 flex flex-col border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center">
-          <div className="hidden md:flex flex-1 items-center gap-4 text-sm text-muted-foreground">
+          <div className="hidden lg:flex flex-1 items-center gap-4 text-sm text-muted-foreground">
             <Headphones className="h-4 w-4" />
             <span>+84 812 334 511</span>
           </div>
 
-          <div className="flex-1 flex justify-start md:justify-center">
+          <div className="flex-1 flex justify-start lg:justify-center">
             <Link
               href="/"
-              className="flex items-center gap-2 text-lg font-semibold md:text-base"
+              className="flex items-center gap-2 text-lg font-semibold lg:text-base"
             >
-              <Image src="/assets/logo-verse.png" width={160} height={40} className="w-[150px] md:w-[170px] h-auto" alt="CardVerse logo" />
+              <Image src="/assets/logo-verse.png" width={160} height={40} className="w-[150px] lg:w-[170px] h-auto" alt="CardVerse logo" />
             </Link>
           </div>
 
-          <div className="flex-1 flex items-center justify-end gap-1 md:gap-2 text-sm font-medium">
-            <div className="hidden md:flex items-center gap-2">
+          <div className="flex-1 flex items-center justify-end gap-1 lg:gap-2 text-sm font-medium">
+            <div className="hidden lg:flex items-center gap-2">
               <CurrencySelector />
               <LanguageSelector />
               <div className="mx-2 h-6 w-px bg-white/50" />
             </div>
             <NotificationBell />
             <ChatInboxButton />
+            <Button variant="ghost" size="icon" className="relative" asChild>
+              <Link href="/cart" aria-label="Giỏ hàng">
+                <ShoppingCart className="h-5 w-5" />
+                {cartCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-bold text-white">
+                    {cartCount > 9 ? "9+" : cartCount}
+                  </span>
+                )}
+              </Link>
+            </Button>
             {renderUserAuth()}
           </div>
         </div>
       </div>
       <div className="border-t">
         <div className="container mx-auto px-4 flex h-16 items-center">
-          <div className="md:hidden w-full flex items-center justify-between">
+          <div className="lg:hidden w-full flex items-center justify-between">
             <Sheet>
               <SheetTrigger asChild>
                 <Button
@@ -326,8 +359,7 @@ export function Header() {
             <div className="flex items-center gap-2 flex-1 justify-end ml-2">
               <Button onClick={handleScanClick} size="sm" className="bg-orange-500 hover:bg-orange-600 text-white font-bold whitespace-nowrap px-3 h-9 text-xs sm:text-sm flex items-center gap-2 justify-center">
                 <Camera className="h-4 w-4" />
-                <span className="md:hidden">{t('scan_short')}</span>
-                <span className="hidden md:inline">{t('scan_pokemon_card')}</span>
+                <span>{t('scan_short')}</span>
               </Button>
               <div className="flex gap-1 shrink-0">
                 <CurrencySelector />
@@ -336,7 +368,7 @@ export function Header() {
             </div>
           </div>
           <div className="flex-1 flex items-center justify-center">
-            <nav className="hidden md:flex flex-row items-center gap-6 lg:gap-8 whitespace-nowrap text-sm font-medium">
+            <nav className="hidden lg:flex flex-row items-center gap-8 whitespace-nowrap text-sm font-medium">
               <div className="relative">
                 {renderBetaNavItem('/buy', t('nav_buy'), 'beta', 'text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors')}
               </div>
@@ -355,8 +387,8 @@ export function Header() {
             </nav>
           </div>
 
-          <div className="flex-1 flex w-full items-center gap-4 md:ml-auto justify-end hidden md:flex">
-            <nav className="hidden md:flex items-center gap-2 text-sm font-medium">
+          <div className="hidden flex-1 w-full items-center gap-4 lg:ml-auto lg:flex lg:justify-end">
+            <nav className="hidden lg:flex items-center gap-2 text-sm font-medium">
               <Link
                 href="/pokemon"
                 prefetch={false}

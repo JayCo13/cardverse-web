@@ -14,6 +14,9 @@ import { ListFilter } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSupabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/supabase';
+import { useAuthModal } from '@/components/auth-modal';
+import { useToast } from '@/hooks/use-toast';
 import dynamic from 'next/dynamic';
 
 // Checkout (and its heavy GHN address picker) is only needed after the user
@@ -47,6 +50,9 @@ export default function BuyPage() {
   const [sort, setSort] = useState<SortOption>('price-desc');
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const supabase = useSupabase();
+  const { user } = useAuth();
+  const { setOpen: setAuthOpen } = useAuthModal();
+  const { toast } = useToast();
   const [saleCards, setSaleCards] = useState<Card[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [checkoutCard, setCheckoutCard] = useState<Card | null>(null);
@@ -168,7 +174,25 @@ export default function BuyPage() {
       return (
         <div className="flex flex-col gap-4">
           {filteredAndSortedCards.map((card) => (
-            <CardItem key={card.id} card={card} layout="list" onBuyClick={async (c) => {
+            <CardItem key={card.id} card={card} layout="list" onAddToCart={async (c) => {
+              if (!user) {
+                setAuthOpen(true);
+                return;
+              }
+              try {
+                const response = await fetch('/api/cart', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ card_id: c.id }),
+                });
+                const payload = await response.json();
+                if (!response.ok) throw new Error(payload.error || 'Không thể thêm vào giỏ hàng');
+                toast({ title: 'Thêm vào giỏ hàng thành công' });
+                window.dispatchEvent(new Event('cardverse:cart-updated'));
+              } catch (error: any) {
+                toast({ variant: 'destructive', title: 'Lỗi giỏ hàng', description: error.message });
+              }
+            }} onBuyClick={async (c) => {
               setCheckoutCard({
                 ...c,
                 id: c.id,

@@ -20,6 +20,7 @@ import {
     PackageCheck,
     Search,
     ShieldCheck,
+    ShoppingCart,
     Tag,
     Truck,
 } from "lucide-react";
@@ -69,7 +70,10 @@ const mapOffer = (o: any): Offer => ({
     id: o.id,
     cardId: o.card_id,
     buyerId: o.buyer_id,
-    buyerEmail: o.buyer_email || "Người mua",
+    // The offers panel only renders for the card's seller (isOwner), and the
+    // offers RLS policy only lets the seller read other users' offers, so
+    // exposing the buyer name here is seller-only by construction.
+    buyerEmail: o.buyer?.display_name || o.buyer?.email || o.buyer_email || "Người mua",
     price: o.price,
     message: o.message,
     status: o.status,
@@ -127,14 +131,14 @@ function RelatedRail({ title, subtitle, cards }: { title: string; subtitle?: str
             <div className="relative">
                 <button
                     type="button"
-                    className="absolute -left-3 top-24 z-10 hidden h-10 w-10 items-center justify-center rounded-full border bg-background shadow md:flex"
+                    className="absolute -left-7 top-24 z-10 hidden h-10 w-10 items-center justify-center rounded-full border border-orange-500/70 bg-background/95 text-2xl leading-none text-orange-400 shadow-[0_0_18px_rgba(249,115,22,0.25)] transition hover:bg-orange-500/10 md:flex"
                     aria-label="Previous related items"
                 >
                     ‹
                 </button>
                 <button
                     type="button"
-                    className="absolute -right-3 top-24 z-10 hidden h-10 w-10 items-center justify-center rounded-full border bg-background shadow md:flex"
+                    className="absolute -right-7 top-24 z-10 hidden h-10 w-10 items-center justify-center rounded-full border border-orange-500/70 bg-background/95 text-2xl leading-none text-orange-400 shadow-[0_0_18px_rgba(249,115,22,0.25)] transition hover:bg-orange-500/10 md:flex"
                     aria-label="Next related items"
                 >
                     ›
@@ -220,6 +224,8 @@ export default function CardDetailsPage() {
             makeOffer: "Trả giá",
             messageSeller: "Nhắn người bán",
             addToWatchlist: "Thêm vào theo dõi",
+            addToCart: "Thêm vào giỏ hàng",
+            addToCartSuccess: "Thêm vào giỏ hàng thành công",
             currentOffer: "Đề nghị hiện tại của bạn",
             status: "Trạng thái",
             shippingPayments: "Vận chuyển, hoàn trả và thanh toán",
@@ -301,6 +307,8 @@ export default function CardDetailsPage() {
                 makeOffer: "オファーする",
                 messageSeller: "販売者に連絡",
                 addToWatchlist: "ウォッチリストに追加",
+                addToCart: "カートに追加",
+                addToCartSuccess: "カートに追加しました",
                 currentOffer: "現在のオファー",
                 status: "ステータス",
                 shippingPayments: "配送・返品・支払い",
@@ -381,6 +389,8 @@ export default function CardDetailsPage() {
                 makeOffer: "Make Offer",
                 messageSeller: "Message seller",
                 addToWatchlist: "Add to Watchlist",
+                addToCart: "Add to cart",
+                addToCartSuccess: "Added to cart successfully",
                 currentOffer: "Your current offer",
                 status: "Status",
                 shippingPayments: "Shipping, returns, and payments",
@@ -551,7 +561,7 @@ export default function CardDetailsPage() {
     const fetchOffers = useCallback(async () => {
         const { data } = await supabase
             .from("offers")
-            .select("*")
+            .select("*, buyer:profiles!offers_buyer_id_fkey(display_name, email)")
             .eq("card_id", cardId)
             .order("price", { ascending: false });
 
@@ -598,6 +608,29 @@ export default function CardDetailsPage() {
         setOfferOpen(true);
     };
 
+    const handleAddToCart = async () => {
+        if (!user) {
+            setAuthOpen(true);
+            return;
+        }
+        if (!card || isOwner || isUnavailable) return;
+
+        try {
+            const response = await fetch("/api/cart", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ card_id: card.id }),
+            });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || copy.retryLater);
+            toast({ title: copy.addToCartSuccess });
+            window.dispatchEvent(new Event("cardverse:cart-updated"));
+        } catch (error) {
+            const description = error instanceof Error ? error.message : copy.retryLater;
+            toast({ variant: "destructive", title: copy.chatError, description });
+        }
+    };
+
     const handleStartChat = async (offerId?: string) => {
         if (!user) {
             setAuthOpen(true);
@@ -630,8 +663,7 @@ export default function CardDetailsPage() {
         setAcceptingOfferId(offer.id);
 
         try {
-            // All the seller/offer/card validation, card locking, transaction
-            // creation and notification now happen server-side.
+            // All seller/offer/card validation and card locking happen server-side.
             const response = await fetch(`/api/offers/${offer.id}/accept`, { method: "POST" });
             const payload = await response.json();
 
@@ -645,7 +677,7 @@ export default function CardDetailsPage() {
                 return;
             }
 
-            router.push(`/transaction/${payload.transactionId}`);
+            router.push(payload.checkoutUrl || `/checkout?offerId=${offer.id}`);
         } catch (error) {
             console.error("Error accepting offer:", error);
             toast({
@@ -946,6 +978,13 @@ export default function CardDetailsPage() {
                                                     </span>
                                                 </Button>
                                             )}
+                                            <Button variant="outline" className="h-14 w-full rounded-lg border-emerald-500/70 text-base font-bold text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300" onClick={handleAddToCart}>
+                                                <ShoppingCart className="mr-2 h-5 w-5" />
+                                                <span className="flex flex-col items-start leading-tight">
+                                                    <span>{copy.addToCart}</span>
+                                                    <span className="text-xs font-medium text-muted-foreground">{copy.protectedCheckout}</span>
+                                                </span>
+                                            </Button>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <Button
                                                     variant="outline"

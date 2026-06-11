@@ -150,6 +150,12 @@ export async function POST(request: NextRequest) {
     const now = new Date().toISOString();
     const readColumn = conversationRow.buyer_id === user.id ? 'buyer_last_read_at' : 'seller_last_read_at';
 
+    const offerIdFromMetadata = typeof metadata?.offerId === 'string'
+        ? metadata.offerId
+        : typeof metadata?.offer_id === 'string'
+            ? metadata.offer_id
+            : null;
+
     await supabase
         .from('conversations')
         .update({
@@ -158,6 +164,7 @@ export async function POST(request: NextRequest) {
             last_message_at: (message as any).created_at,
             [readColumn]: now,
             updated_at: now,
+            ...(messageType === 'offer_auto' && offerIdFromMetadata ? { offer_id: offerIdFromMetadata } : {}),
         } as never)
         .eq('id', conversationId);
 

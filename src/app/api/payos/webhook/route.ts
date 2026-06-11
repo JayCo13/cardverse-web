@@ -25,13 +25,13 @@ async function cancelMarketplaceOrder(
     supabase: ReturnType<typeof getServiceClient>,
     paymentOrderId: string
 ) {
-    const { data: marketplaceOrder } = await supabase
+    const { data: marketplaceOrders } = await supabase
         .from('orders')
         .select('id, card_id, status')
-        .eq('payment_order_id', paymentOrderId)
-        .single();
+        .eq('payment_order_id', paymentOrderId);
 
-    if (!marketplaceOrder || marketplaceOrder.status !== 'pending_payment') {
+    const pendingOrders = (marketplaceOrders || []).filter(order => order.status === 'pending_payment');
+    if (pendingOrders.length === 0) {
         return;
     }
 
@@ -41,7 +41,7 @@ async function cancelMarketplaceOrder(
             status: 'cancelled',
             updated_at: new Date().toISOString(),
         } as never)
-        .eq('id', marketplaceOrder.id)
+        .in('id', pendingOrders.map(order => order.id))
         .eq('status', 'pending_payment');
 
     await supabase
@@ -51,7 +51,7 @@ async function cancelMarketplaceOrder(
             reserved_until: null,
             updated_at: new Date().toISOString(),
         } as never)
-        .eq('id', marketplaceOrder.card_id)
+        .in('id', pendingOrders.map(order => order.card_id))
         .eq('status', 'in_transaction');
 }
 
@@ -121,47 +121,50 @@ async function completeMarketplaceOrderPayment(
     supabase: ReturnType<typeof getServiceClient>,
     paymentOrderId: string
 ) {
-    const { data: marketplaceOrder } = await supabase
+    const { data: marketplaceOrders } = await supabase
         .from('orders')
         .select('id, card_id, seller_id, buyer_id, status')
-        .eq('payment_order_id', paymentOrderId)
-        .single();
+        .eq('payment_order_id', paymentOrderId);
 
-    if (!marketplaceOrder) {
+    if (!marketplaceOrders || marketplaceOrders.length === 0) {
         return;
     }
     const now = new Date().toISOString();
 
     // Normal path: the reservation is still alive → finalize the sale.
-    if (marketplaceOrder.status === 'pending_payment') {
+    const pendingOrders = marketplaceOrders.filter(order => order.status === 'pending_payment');
+    if (pendingOrders.length > 0) {
         await supabase
             .from('orders')
             .update({ status: 'paid', updated_at: now } as never)
-            .eq('id', marketplaceOrder.id)
+            .in('id', pendingOrders.map(order => order.id))
             .eq('status', 'pending_payment');
 
         // Lock the card as sold and clear the reservation hold.
         await supabase
             .from('cards')
             .update({ status: 'sold', reserved_until: null, updated_at: now } as never)
-            .eq('id', marketplaceOrder.card_id);
+            .in('id', pendingOrders.map(order => order.card_id));
 
         // If this order came from an accepted offer, close out its transaction
         // (offer-based transactions are the only active ones on this card).
         await supabase
             .from('transactions')
             .update({ status: 'completed', completed_at: now } as never)
-            .eq('card_id', marketplaceOrder.card_id)
+            .in('card_id', pendingOrders.map(order => order.card_id))
             .eq('status', 'active');
 
-        await notifySellerOfSale(supabase, marketplaceOrder.seller_id, marketplaceOrder.card_id);
+        for (const order of pendingOrders) {
+            await notifySellerOfSale(supabase, order.seller_id, order.card_id);
+        }
         return;
     }
 
     // Edge case: the reservation expired and the order was auto-cancelled just
     // before this payment landed. Re-acquire the card if it's still free;
     // otherwise it was taken by someone else → flag the buyer for a refund.
-    if (marketplaceOrder.status === 'cancelled') {
+    const cancelledOrders = marketplaceOrders.filter(order => order.status === 'cancelled');
+    for (const marketplaceOrder of cancelledOrders) {
         const { data: reacquired } = await supabase
             .from('cards')
             .update({ status: 'sold', reserved_until: null, updated_at: now } as never)

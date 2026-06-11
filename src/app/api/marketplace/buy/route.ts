@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { getPayOS, MARKETPLACE_ORDER_PAYMENT_TYPE } from '@/lib/payos';
 import { randomInt } from 'crypto';
 
-const PLATFORM_FEE_RATE = 0.05; // 5% platform fee
+// Fee model: the 5% platform fee is charged once, at withdrawal — orders carry
+// platform_fee = 0 and the seller is credited the full amount on completion.
 const RESERVATION_MINUTES = 15; // How long a QR/PayOS checkout holds the card
 
 type MarketplaceCard = {
@@ -109,7 +111,7 @@ export async function POST(request: NextRequest) {
         }
 
         const amount = Number(card.price);
-        const platformFee = Math.round(amount * PLATFORM_FEE_RATE);
+        const platformFee = 0; // fee is charged at withdrawal, not at sale
         const totalPaid = amount + shippingFee; // Buyer pays listed price + shipping fee
 
         // Address persistence now lives in the shipping_addresses book (managed
@@ -163,24 +165,39 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        // Wallet writes are RLS-locked; mutations go through the service client.
+        const service = createServiceSupabaseClient();
+        let walletDebited = false;
+
         try {
         if (payment_method === 'wallet') {
             // ── WALLET PAYMENT ──
             const wallet = walletRow!;
-            // Deduct from buyer wallet
+            // Deduct from buyer wallet with an optimistic lock on the balance
+            // we just read (two concurrent buys → second gets 409).
             const newBalance = wallet.available_balance - totalPaid;
-            const { error: deductError } = await supabase
+            const { data: debited, error: deductError } = await service
                 .from('wallets')
                 .update({
                     available_balance: newBalance,
                     updated_at: new Date().toISOString(),
                 } as never)
-                .eq('user_id', user.id);
+                .eq('user_id', user.id)
+                .eq('available_balance', wallet.available_balance)
+                .select('id')
+                .maybeSingle();
 
-            if (deductError) throw deductError;
+            if (deductError || !debited) {
+                // Throw (don't return) so the catch below releases the card claim.
+                const conflict = new Error('Số dư vừa thay đổi, vui lòng thử lại.');
+                (conflict as any).status = 409;
+                (conflict as any).code = 'balance_changed';
+                throw deductError || conflict;
+            }
+            walletDebited = true;
 
             // Record wallet transaction
-            await supabase.from('wallet_transactions').insert({
+            await service.from('wallet_transactions').insert({
                 wallet_id: wallet.id,
                 user_id: user.id,
                 type: 'marketplace_buy',
@@ -330,10 +347,49 @@ export async function POST(request: NextRequest) {
                 .update({ status: 'active', reserved_until: null, updated_at: new Date().toISOString() } as never)
                 .eq('id', card_id)
                 .eq('status', 'in_transaction');
+
+            // Compensation: if the wallet was debited but the order failed,
+            // put the money back (best-effort, one retry).
+            if (walletDebited) {
+                for (let attempt = 0; attempt < 2; attempt += 1) {
+                    const { data: currentWallet } = await service
+                        .from('wallets')
+                        .select('id, available_balance')
+                        .eq('user_id', user.id)
+                        .single<WalletRow>();
+                    if (!currentWallet) break;
+
+                    const refundedBalance = currentWallet.available_balance + totalPaid;
+                    const { data: refunded } = await service
+                        .from('wallets')
+                        .update({ available_balance: refundedBalance, updated_at: new Date().toISOString() } as never)
+                        .eq('user_id', user.id)
+                        .eq('available_balance', currentWallet.available_balance)
+                        .select('id')
+                        .maybeSingle();
+
+                    if (refunded) {
+                        await service.from('wallet_transactions').insert({
+                            wallet_id: currentWallet.id,
+                            user_id: user.id,
+                            type: 'refund',
+                            amount: totalPaid,
+                            balance_after: refundedBalance,
+                            description: 'Hoàn tiền - thanh toán thất bại',
+                            reference_id: card_id,
+                        } as never);
+                        break;
+                    }
+                }
+            }
             throw err;
         }
     } catch (error: any) {
         console.error('Marketplace buy error:', error);
-        return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+        const status = typeof error?.status === 'number' ? error.status : 500;
+        return NextResponse.json(
+            { error: error.message || 'Internal server error', ...(error?.code ? { code: error.code } : {}) },
+            { status },
+        );
     }
 }

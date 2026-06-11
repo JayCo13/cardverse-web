@@ -13,6 +13,11 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        // Self-healing escrow release: pay out any delivered order whose 72h
+        // confirmation window lapsed. A seller checking their orders triggers
+        // their own payout (same pattern as release_expired_card_reservations).
+        await supabase.rpc('complete_delivered_orders' as never);
+
         const { searchParams } = new URL(request.url);
         const role = searchParams.get('role') || 'buyer'; // 'buyer' | 'seller'
         const status = searchParams.get('status');
@@ -201,18 +206,24 @@ export async function PATCH(request: NextRequest) {
                     } as never)
                     .eq('id', order_id);
 
-                // Release funds to seller (amount - platform_fee)
-                const sellerPayout = order.amount - order.platform_fee;
+                // Release funds to seller. Fee model: seller gets the FULL
+                // amount — the 5% platform fee is charged once, at withdrawal.
+                const sellerPayout = order.amount;
+
+                // Cross-user wallet write (buyer's session crediting the
+                // seller's wallet) — must go through the service client since
+                // wallet writes are RLS-locked.
+                const walletService = createServiceSupabaseClient();
 
                 // Get or create seller wallet
-                let { data: sellerWallet } = await supabase
+                let { data: sellerWallet } = await walletService
                     .from('wallets')
                     .select('*')
                     .eq('user_id', order.seller_id)
                     .single();
 
                 if (!sellerWallet) {
-                    const { data: newWallet } = await supabase
+                    const { data: newWallet } = await walletService
                         .from('wallets')
                         .insert({ user_id: order.seller_id } as never)
                         .select()
@@ -222,7 +233,7 @@ export async function PATCH(request: NextRequest) {
 
                 if (sellerWallet) {
                     const newBalance = sellerWallet.available_balance + sellerPayout;
-                    await supabase
+                    await walletService
                         .from('wallets')
                         .update({
                             available_balance: newBalance,
@@ -230,7 +241,7 @@ export async function PATCH(request: NextRequest) {
                         } as never)
                         .eq('user_id', order.seller_id);
 
-                    await supabase.from('wallet_transactions').insert({
+                    await walletService.from('wallet_transactions').insert({
                         wallet_id: sellerWallet.id,
                         user_id: order.seller_id,
                         type: 'marketplace_sale',
@@ -355,9 +366,11 @@ export async function PATCH(request: NextRequest) {
                     } as never)
                     .eq('id', order_id);
 
-                // Refund buyer if paid by wallet
+                // Refund buyer if paid by wallet. Cross-user write (a seller
+                // cancelling refunds the buyer's wallet) — service client.
                 if (order.status === 'paid' && order.payment_method === 'wallet') {
-                    const { data: buyerWallet } = await supabase
+                    const walletService = createServiceSupabaseClient();
+                    const { data: buyerWallet } = await walletService
                         .from('wallets')
                         .select('*')
                         .eq('user_id', order.buyer_id)
@@ -365,7 +378,7 @@ export async function PATCH(request: NextRequest) {
 
                     if (buyerWallet) {
                         const newBalance = buyerWallet.available_balance + order.total_paid;
-                        await supabase
+                        await walletService
                             .from('wallets')
                             .update({
                                 available_balance: newBalance,
@@ -373,7 +386,7 @@ export async function PATCH(request: NextRequest) {
                             } as never)
                             .eq('user_id', order.buyer_id);
 
-                        await supabase.from('wallet_transactions').insert({
+                        await walletService.from('wallet_transactions').insert({
                             wallet_id: buyerWallet.id,
                             user_id: order.buyer_id,
                             type: 'escrow_release',
