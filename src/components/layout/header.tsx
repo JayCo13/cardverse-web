@@ -290,12 +290,12 @@ export function Header() {
                     <>
                       <div className="relative group">
                         <Link href="/wallet" className="text-muted-foreground hover:text-foreground flex items-center gap-1">
-                          💰 {copy.wallet}
+                          {copy.wallet}
                         </Link>
                       </div>
                       <div className="relative group">
                         <Link href="/orders" className="text-muted-foreground hover:text-foreground flex items-center gap-1">
-                          📦 {copy.orders}
+                          {copy.orders}
                         </Link>
                       </div>
                     </>
