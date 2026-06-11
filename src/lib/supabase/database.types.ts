@@ -499,6 +499,70 @@ export interface Database {
                     created_at?: string
                 }
             }
+            wallets: {
+                Row: {
+                    id: string
+                    user_id: string
+                    available_balance: number
+                    total_deposited: number
+                    total_withdrawn: number
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    user_id: string
+                    available_balance?: number
+                    total_deposited?: number
+                    total_withdrawn?: number
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    user_id?: string
+                    available_balance?: number
+                    total_deposited?: number
+                    total_withdrawn?: number
+                    created_at?: string
+                    updated_at?: string
+                }
+            }
+            wallet_transactions: {
+                Row: {
+                    id: string
+                    wallet_id: string
+                    user_id: string
+                    type: string
+                    amount: number
+                    balance_after: number
+                    description: string | null
+                    reference_id: string | null
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    wallet_id: string
+                    user_id: string
+                    type: string
+                    amount: number
+                    balance_after: number
+                    description?: string | null
+                    reference_id?: string | null
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    wallet_id?: string
+                    user_id?: string
+                    type?: string
+                    amount?: number
+                    balance_after?: number
+                    description?: string | null
+                    reference_id?: string | null
+                    created_at?: string
+                }
+            }
             notifications: {
                 Row: {
                     id: string

@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: insertError?.message || 'Could not create conversation' }, { status: 400 });
         }
         conversation = inserted as ConversationRow;
-    } else if (offerId && !conversation.offer_id) {
+    } else if (offerId && conversation.offer_id !== offerId) {
         const { data: updated } = await supabase
             .from('conversations')
             .update({ offer_id: offerId, updated_at: new Date().toISOString() } as never)

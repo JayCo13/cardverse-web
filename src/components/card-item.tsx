@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Clock, Tag, Ticket, Hammer, Zap, Sparkles, Target, Trophy, Star, Gem, Crown, Settings, User, HandCoins } from "lucide-react";
+import { Clock, Tag, Ticket, Hammer, Zap, Sparkles, Target, Trophy, Star, Gem, Crown, Settings, User, HandCoins, ShoppingCart } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useLocalization } from "@/context/localization-context";
 import { useCurrency } from "@/contexts/currency-context";
@@ -88,9 +88,10 @@ interface CardItemProps {
   layout?: 'grid' | 'list';
   onBuyClick?: (card: CardType) => void;
   onOfferClick?: (card: CardType) => void;
+  onAddToCart?: (card: CardType) => void;
 }
 
-export const CardItem = React.memo(function CardItem({ card, layout = 'grid', onBuyClick, onOfferClick }: CardItemProps) {
+export const CardItem = React.memo(function CardItem({ card, layout = 'grid', onBuyClick, onOfferClick, onAddToCart }: CardItemProps) {
   const { t, locale } = useLocalization();
   const { formatPrice } = useCurrency();
   const { setOpen } = useAuthModal();
@@ -127,6 +128,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
         viewDetails: '詳細を見る',
         acceptsOffers: 'オファー受付中',
         makeOffer: '価格交渉',
+        addToCart: 'カートに追加',
         sold: '販売済み',
         bundle: 'セット {count}枚',
         sellerOnCardVerse: 'CardVerseの販売者',
@@ -148,6 +150,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           viewDetails: 'Xem chi tiết',
           acceptsOffers: 'Nhận offer',
           makeOffer: 'Trả giá',
+          addToCart: 'Thêm vào giỏ hàng',
           sold: 'Đã bán',
           bundle: 'Combo {count} thẻ',
           sellerOnCardVerse: 'Seller trên CardVerse',
@@ -168,6 +171,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           viewDetails: 'View details',
           acceptsOffers: 'Accepts offers',
           makeOffer: 'Make offer',
+          addToCart: 'Add to cart',
           sold: 'Sold',
           bundle: 'Bundle {count} cards',
           sellerOnCardVerse: 'Seller on CardVerse',
@@ -192,6 +196,14 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
       return;
     }
     onOfferClick?.(card);
+  };
+
+  const handleAddToCart = () => {
+    if (!user) {
+      setOpen(true);
+      return;
+    }
+    onAddToCart?.(card);
   };
 
   // Buyer can negotiate when the seller allows offers (active sale, not owner).
@@ -482,6 +494,18 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                   {copy.viewDetails}
                 </Button>
               )}
+              {!isOwner && card.status !== 'sold' && onAddToCart && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  aria-label={`Add ${card.name} to cart`}
+                  className="h-11 rounded-lg border-emerald-500/50 text-sm font-bold text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
+                  onClick={handleAddToCart}
+                >
+                  <ShoppingCart className="mr-1.5 h-4 w-4" />
+                  {copy.addToCart}
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -605,6 +629,17 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
               </svg>
             </span>
           </Button>
+          {!isOwner && card.status !== 'sold' && onAddToCart && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleAddToCart}
+              className="rounded-full px-4 sm:px-6 py-2 sm:py-2.5 h-auto text-xs sm:text-sm font-medium gap-1 sm:gap-2 w-full justify-center border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10"
+            >
+              <ShoppingCart className="h-3.5 w-3.5" />
+              {copy.addToCart}
+            </Button>
+          )}
         </div>
       </div>
     </Card>

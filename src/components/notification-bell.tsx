@@ -144,7 +144,13 @@ export function NotificationBell() {
         await markAsRead(notification.id);
         setIsOpen(false);
 
-        // Accepted offer → go straight to the transaction room.
+        // Accepted offer → go straight to checkout. Legacy notifications may
+        // still carry a transaction id, so keep that fallback alive.
+        if (notification.type === 'offer_accepted' && notification.offerId) {
+            router.push(`/checkout?offerId=${notification.offerId}`);
+            return;
+        }
+
         if (notification.type === 'offer_accepted' && notification.transactionId) {
             router.push(`/transaction/${notification.transactionId}`);
             return;

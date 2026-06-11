@@ -40,6 +40,7 @@ type ConversationItem = {
         image_url: string | null;
         price: number | null;
         status: string | null;
+        seller_id?: string | null;
     } | null;
 };
 
@@ -209,27 +210,82 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
         () => conversations.find(conversation => conversation.id === selectedId) || null,
         [conversations, selectedId],
     );
+    const isSellerInSelectedConversation =
+        !!user && !!selectedConversation && (
+            selectedConversation.sellerId === user.id ||
+            selectedConversation.card?.seller_id === user.id
+        );
 
     const unreadCount = conversations.filter(conversation => conversation.unread).length;
-
-    const offerId = selectedConversation?.offerId || null;
+    const latestOfferMessageId = useMemo(() => {
+        for (let index = messages.length - 1; index >= 0; index -= 1) {
+            const metadata = messages[index].metadata || {};
+            const offerId = metadata.offerId || metadata.offer_id;
+            if (typeof offerId === "string" && offerId) return offerId;
+        }
+        return selectedConversation?.offerId || null;
+    }, [messages, selectedConversation?.offerId]);
 
     const fetchOffer = useCallback(async () => {
-        if (!offerId) {
+        if (latestOfferMessageId) {
+            // NOTE: offers has no updated_at column — selecting it makes PostgREST
+            // error out silently and the offer banner never renders.
+            const { data } = await supabase
+                .from("offers")
+                .select("id, price, status, buyer_id, transaction_id, created_at")
+                .eq("id", latestOfferMessageId)
+                .in("status", ["pending", "chosen"])
+                .maybeSingle();
+
+            if (data) {
+                setOffer(data as OfferSummary);
+                return;
+            }
+        }
+
+        if (!selectedConversation?.cardId || !selectedConversation.buyerId) {
             setOffer(null);
             return;
         }
+
         const { data } = await supabase
             .from("offers")
-            .select("id, price, status, buyer_id, transaction_id")
-            .eq("id", offerId)
+            .select("id, price, status, buyer_id, transaction_id, created_at")
+            .eq("card_id", selectedConversation.cardId)
+            .eq("buyer_id", selectedConversation.buyerId)
+            .in("status", ["pending", "chosen"])
+            .order("created_at", { ascending: false })
+            .limit(1)
             .maybeSingle();
-        setOffer((data as OfferSummary | null) || null);
-    }, [offerId, supabase]);
 
+        setOffer((data as OfferSummary | null) || null);
+    }, [latestOfferMessageId, selectedConversation?.buyerId, selectedConversation?.cardId, supabase]);
+
+    // Re-fetch the offer whenever a new message lands: offer updates reuse the
+    // same offer row (same id), so `latestOfferMessageId` alone won't change and
+    // the banner would keep showing the stale price.
+    const lastMessageId = messages.length ? messages[messages.length - 1].id : null;
     useEffect(() => {
         void fetchOffer();
-    }, [fetchOffer]);
+    }, [fetchOffer, lastMessageId]);
+
+    // Realtime: watch the offers row itself (price/status changes that don't
+    // produce a chat message, e.g. seller accept/reject from card detail).
+    useEffect(() => {
+        if (!open || !selectedConversation?.cardId) return;
+        const channel = supabase
+            .channel(`chat-offers-${selectedConversation.cardId}`)
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "offers", filter: `card_id=eq.${selectedConversation.cardId}` },
+                () => void fetchOffer(),
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [fetchOffer, open, selectedConversation?.cardId, supabase]);
 
     const handleAcceptOffer = async () => {
         if (!offer || isAcceptingOffer) return;
@@ -246,8 +302,8 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 return;
             }
             await fetchOffer();
-            if (payload.transactionId) {
-                router.push(`/transaction/${payload.transactionId}`);
+            if (payload.checkoutUrl) {
+                router.push(payload.checkoutUrl);
             }
         } catch {
             toast({ variant: "destructive", title: copy.error, description: copy.acceptOfferFailed });
@@ -506,7 +562,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                     <div className="min-w-0">
                                                         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                                                             <HandCoins className="h-3.5 w-3.5 text-orange-400" />
-                                                            {selectedConversation.sellerId === user.id ? copy.buyerOffer : copy.yourOffer}
+                                                            {isSellerInSelectedConversation ? copy.buyerOffer : copy.yourOffer}
                                                         </p>
                                                         <p className="text-lg font-bold text-orange-400">{formatVND(offer.price)}</p>
                                                         <p className="text-[11px] text-muted-foreground">
@@ -517,7 +573,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                         </p>
                                                     </div>
 
-                                                    {selectedConversation.sellerId === user.id && offer.status === "pending" && (
+                                                    {isSellerInSelectedConversation && offer.status === "pending" && (
                                                         <Button
                                                             type="button"
                                                             onClick={() => void handleAcceptOffer()}
@@ -533,10 +589,10 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                         </Button>
                                                     )}
 
-                                                    {offer.buyer_id === user.id && offer.status === "chosen" && offer.transaction_id && (
+                                                    {offer.buyer_id === user.id && offer.status === "chosen" && (
                                                         <Button
                                                             type="button"
-                                                            onClick={() => router.push(`/transaction/${offer.transaction_id}`)}
+                                                            onClick={() => router.push(`/checkout?offerId=${offer.id}`)}
                                                             className="shrink-0 bg-orange-500 text-white hover:bg-orange-600"
                                                         >
                                                             <CreditCard className="mr-1.5 h-4 w-4" />

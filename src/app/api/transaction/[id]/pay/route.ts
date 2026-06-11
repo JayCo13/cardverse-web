@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { getPayOS, MARKETPLACE_ORDER_PAYMENT_TYPE } from '@/lib/payos';
 import { randomInt } from 'crypto';
 
@@ -7,8 +8,10 @@ import { randomInt } from 'crypto';
 // driven by an existing transaction (card already in_transaction, buyer fixed,
 // price = the agreed offer price). Money is held by the platform until the
 // order pipeline releases it on delivery — same anti-scam model as Buy.
+//
+// Fee model: the 5% platform fee is charged once, at withdrawal — orders carry
+// platform_fee = 0 and the seller is credited the full amount on completion.
 
-const PLATFORM_FEE_RATE = 0.05;
 const RESERVATION_MINUTES = 15; // How long a PayOS checkout holds the card.
 
 type TransactionRow = {
@@ -106,7 +109,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         }
 
         const amount = Number(transaction.price);
-        const platformFee = Math.round(amount * PLATFORM_FEE_RATE);
+        const platformFee = 0; // fee is charged at withdrawal, not at sale
         const totalPaid = amount + shippingFee;
 
         // Wallet pre-check (no mutation) before doing anything irreversible.
@@ -150,16 +153,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
         if (payment_method === 'wallet') {
             // ── WALLET PAYMENT (synchronous escrow) ──
+            // Wallet writes are RLS-locked; mutate through the service client
+            // with an optimistic lock on the balance we just read.
+            const service = createServiceSupabaseClient();
             const wallet = walletRow!;
             const newBalance = wallet.available_balance - totalPaid;
 
-            const { error: deductError } = await supabase
+            const { data: debited, error: deductError } = await service
                 .from('wallets')
                 .update({ available_balance: newBalance, updated_at: new Date().toISOString() } as never)
-                .eq('user_id', user.id);
-            if (deductError) throw deductError;
+                .eq('user_id', user.id)
+                .eq('available_balance', wallet.available_balance)
+                .select('id')
+                .maybeSingle();
+            if (deductError || !debited) {
+                return NextResponse.json(
+                    { error: 'Số dư vừa thay đổi, vui lòng thử lại.', code: 'balance_changed' },
+                    { status: 409 },
+                );
+            }
 
-            await supabase.from('wallet_transactions').insert({
+            await service.from('wallet_transactions').insert({
                 wallet_id: wallet.id,
                 user_id: user.id,
                 type: 'marketplace_buy',
@@ -189,10 +203,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
             if (orderError) {
                 // Refund the wallet if the order couldn't be created.
-                await supabase
+                await service
                     .from('wallets')
                     .update({ available_balance: wallet.available_balance, updated_at: new Date().toISOString() } as never)
-                    .eq('user_id', user.id);
+                    .eq('user_id', user.id)
+                    .eq('available_balance', newBalance);
                 throw orderError;
             }
 

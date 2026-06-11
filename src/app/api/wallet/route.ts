@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
 // GET: Get wallet balance
 export async function GET() {
@@ -11,7 +12,12 @@ export async function GET() {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Get or create wallet
+        // Self-healing escrow release: a seller checking their balance pays out
+        // any of their delivered orders whose 72h confirmation window lapsed.
+        await supabase.rpc('complete_delivered_orders' as never);
+
+        // Get or create wallet (reads go through the session client — RLS
+        // allows owners to SELECT their own row; writes are service-only).
         let { data: wallet, error } = await supabase
             .from('wallets')
             .select('*')
@@ -19,8 +25,9 @@ export async function GET() {
             .single();
 
         if (error && error.code === 'PGRST116') {
-            // No wallet exists, create one
-            const { data: newWallet, error: createError } = await supabase
+            // No wallet exists (pre-trigger account) — create one. Wallet
+            // writes are RLS-locked, so this insert needs the service client.
+            const { data: newWallet, error: createError } = await createServiceSupabaseClient()
                 .from('wallets')
                 .insert({ user_id: user.id } as never)
                 .select()
