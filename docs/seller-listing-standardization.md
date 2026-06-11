@@ -183,3 +183,61 @@ Trong `src/components/market-spotlight.tsx`, sau khi scan match ra `product` (đ
 2. Hoàn tất 1 đơn → có 1 dòng trong `vn_card_sales` với đúng `catalog_product_id` + `price`.
 3. Scan lại đúng lá thẻ đó → hiển thị “Giá thị trường VN: …” khớp với median của `vn_market_price`.
 4. Thẻ chưa có giao dịch VN → không hiện giá VN (không lỗi).
+
+---
+
+## 9. YÊU CẦU: Nâng cấp Bộ lọc (Filters) trang mua (`/buy`)
+
+Bộ lọc hiện tại chỉ có: tìm theo tên + danh mục + tình trạng → quá thô và một số giá trị **không khớp** dữ liệu chuẩn hoá. Cập nhật như sau.
+
+### 9.1. Tìm kiếm (nâng cấp)
+- Ô search phải tìm theo **tên VÀ số thẻ**: gõ `Charizard`, `199/197`, `OP15-118`, `TG12/TG30` đều ra.
+- Query: `name ilike %q% OR card_number ilike %q%`.
+
+### 9.2. Danh mục (sửa cho khớp catalog thật)
+- Giá trị ĐÚNG: **Pokémon · One Piece · Bóng đá (Soccer) · Khác**.
+- ⚠️ Hiện đang có **“Ma thuật” (Magic)** và **THIẾU “One Piece”** → sai. Sửa lại đúng 4 danh mục trên (theo `category` thực trong `cards`).
+
+### 9.3. Ngôn ngữ (MỚI — chỉ hiện cho Pokémon / One Piece)
+- Giá trị: **Tiếng Anh (en) · Tiếng Nhật (jp)**.
+- Cột: `cards.language`. Ẩn filter này khi danh mục là Soccer/Khác.
+
+### 9.4. Bộ / Set (MỚI — phụ thuộc danh mục)
+- Dropdown chọn **Set** (vd “Surging Sparks”, “OP15”). Nguồn: `cards.set_name` (distinct theo category đang lọc), hoặc dùng catalog sets như form đăng bán.
+- Chỉ hiện khi đã chọn danh mục có set (Pokémon/OP).
+
+### 9.5. Phân loại Grade (MỚI)
+- Giá trị: **Raw · PSA · BGS · CGC · SGC**. Cột: `cards.grading_company`.
+
+### 9.6. Điểm grade (MỚI — phụ thuộc 9.5)
+- Khi chọn 1 hãng graded (PSA/BGS/CGC/SGC) → hiện filter **điểm**: 10 / 9.5 / 9 / 8 / … (hoặc khoảng ≥9, ≥8). Cột: `cards.grade`.
+
+### 9.7. Tình trạng (sửa — chỉ áp dụng cho Raw)
+- **Chỉ hiện khi Grade = Raw** (thẻ graded dùng điểm, không dùng tình trạng).
+- ⚠️ **Chuẩn hoá giá trị KHỚP với form đăng bán** (single source of truth). Chốt 1 bộ — đề xuất chuẩn TCG:
+  **Near Mint (NM) · Lightly Played (LP) · Moderately Played (MP) · Heavily Played (HP) · Damaged (DMG)**.
+  Bộ 5 mức tiếng Việt hiện tại (Hoàn hảo/Gần như mới/Tuyệt vời/Tốt/Đã qua sử dụng) phải map về đúng các giá trị **lưu trong DB** — filter value PHẢI bằng giá trị `cards.condition` đang lưu, nếu không lọc ra rỗng.
+
+### 9.8. Biến thể / Finish (MỚI)
+- Giá trị: **Thường · Holo · Reverse Holo · 1st Edition · Parallel**. Cột: `cards.finish`.
+
+### 9.9. Hình thức bán (MỚI, tuỳ chọn)
+- **Bán thẳng · Đấu giá · Razz**. Cột: `cards.listing_type`.
+
+### 9.10. Khoảng giá (MỚI, tuỳ chọn)
+- Min/max VND. Cột: `cards.price` (hoặc `current_bid` cho đấu giá).
+
+### 9.11. Sắp xếp (MỚI, tuỳ chọn)
+- Mới nhất · Giá tăng dần · Giá giảm dần.
+
+### Quy tắc phụ thuộc (quan trọng)
+1. **Grade vs Tình trạng loại trừ nhau**: Raw → hiện *Tình trạng* (9.7); graded → hiện *Điểm* (9.6).
+2. **Ngôn ngữ & Set** chỉ hiện khi danh mục là Pokémon/One Piece.
+3. **Mọi filter value phải == giá trị lưu trong DB** (đặc biệt `condition`, `finish`, `grading_company`) — tránh lọc ra rỗng. Lý tưởng: dùng chung enum với form đăng bán (mục 3).
+4. Filter rỗng/không chọn = không áp điều kiện đó.
+
+### Acceptance
+- Lọc `Pokémon + JP + Set "..." + PSA + 10` → ra đúng các thẻ Pokémon Nhật PSA 10 thuộc set đó.
+- Lọc `Raw + NM` → ra thẻ raw NM; không lẫn thẻ graded.
+- Search `199/197` → ra mọi listing có số thẻ đó.
+- Đổi danh mục sang Soccer → ẩn filter Ngôn ngữ & Set.
