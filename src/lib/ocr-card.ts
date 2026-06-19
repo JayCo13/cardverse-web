@@ -82,16 +82,21 @@ function parseCardNumber(textRaw: string): OcrCardResult | null {
  * data URL. Returns a confident {cardId, category} or null (→ caller uses AI).
  */
 export async function ocrCardNumber(imageBase64: string): Promise<OcrCardResult | null> {
+    const t0 = (globalThis.performance?.now?.() ?? 0);
     try {
+        console.log('[OCR] starting (loading Tesseract + reading bottom strip)…');
         const dataUrl = imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`;
         const strip = await cropBottomStrip(dataUrl);
         const worker = await getWorker();
         const { data } = await worker.recognize(strip);
-        const parsed = parseCardNumber(data.text || '');
-        if (parsed) console.log(`OCR read number: ${parsed.cardId} (${parsed.category})`);
+        const raw = (data.text || '').replace(/\n/g, ' ').trim();
+        const ms = Math.round((globalThis.performance?.now?.() ?? 0) - t0);
+        console.log(`[OCR] raw text (${ms}ms): "${raw.slice(0, 160)}"`);
+        const parsed = parseCardNumber(raw);
+        console.log(parsed ? `[OCR] ✓ parsed number: ${parsed.cardId} (${parsed.category})` : '[OCR] ✗ no valid card number in text → AI fallback');
         return parsed;
     } catch (e) {
-        console.warn('OCR error, will fall back to AI:', e);
+        console.warn('[OCR] error → AI fallback:', e);
         return null;
     }
 }
