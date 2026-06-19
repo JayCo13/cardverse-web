@@ -22,6 +22,7 @@ import { useCurrency } from '@/contexts/currency-context';
 import { useLocalization } from '@/context/localization-context';
 import { useScanLimit } from '@/hooks/useScanLimit';
 import { ScanLimitModal } from '@/components/scan-limit-modal';
+import { ocrCardNumber } from '@/lib/ocr-card';
 import dynamic from 'next/dynamic';
 // Lazy-load the camera scanner so its code (camera + per-frame analysis) is NOT
 // in the homepage bundle — it's fetched only when the user opens "Scan nhanh".
@@ -564,6 +565,44 @@ export function MarketSpotlight() {
             setIsScannedResult(true);
             setScannedImagePreview(`data:image/jpeg;base64,${imageBase64}`);
 
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            let identification: any = null;
+            let lastError: Error | null = null;
+
+            // ── TIER 1: OCR-first (NO AI). Read the collector number locally and
+            // commit only if it actually exists in the catalog; otherwise fall
+            // through to AI. Cuts most AI calls for standard EN/JP/OP cards. ──
+            try {
+                setScanStatus('Đang đọc số thẻ...');
+                const ocr = await ocrCardNumber(imageBase64);
+                if (ocr) {
+                    const verifyCats = ocr.category === 'onepiece'
+                        ? [CATEGORY_ONEPIECE]
+                        : [CATEGORY_POKEMON_ENGLISH, CATEGORY_POKEMON_JAPANESE];
+                    const colTok = ocr.cardId.split('/')[0].toUpperCase();
+                    const vRes = await fetch('/api/scan/pokemon-match', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            catIds: verifyCats,
+                            numberFormats: [ocr.cardId, ocr.cardId.toUpperCase()],
+                            collectorPatterns: ocr.cardId.includes('/') && colTok.length >= 2 ? [`${colTok}/*`] : [],
+                        }),
+                    });
+                    const vJson = vRes.ok ? await vRes.json() : { products: [] };
+                    if (Array.isArray(vJson.products) && vJson.products.length > 0) {
+                        console.log(`OCR-first verified (${vJson.products.length} catalog matches) — skipping AI`);
+                        identification = { category: ocr.category, card_id: ocr.cardId, official_en_name: null, language: null, set_code: null, _viaOcr: true };
+                    } else {
+                        console.log('OCR number not found in catalog — falling back to AI');
+                    }
+                }
+            } catch (ocrErr) {
+                console.warn('OCR-first failed, falling back to AI:', ocrErr);
+            }
+
+            // ── TIER 2: AI identify (Gemini → Groq) — only when OCR wasn't confident ──
+            if (!identification) {
             // ─── WARM-UP: Ensure Edge Function is ready before scanning ───
             if (!isWarmRef.current) {
                 console.log('Edge function may be cold, warming up before scan...');
@@ -607,10 +646,6 @@ export function MarketSpotlight() {
                 'Still working... retrying...',
                 'Almost there... one more try...',
             ];
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            let identification: any = null;
-            let lastError: Error | null = null;
 
             for (let attempt = 0; attempt < RETRY_TIMEOUTS.length; attempt++) {
                 // Wait before retry (skip delay on first attempt)
@@ -674,6 +709,7 @@ export function MarketSpotlight() {
                     }
                 }
             }
+            } // end TIER 2 (AI identify — skipped when OCR-first succeeded)
 
             // All retries exhausted or non-retryable error
             if (!identification) {

@@ -63,6 +63,7 @@
         "recharts": "^2.13.3",
         "tailwind-merge": "^2.5.4",
         "tailwindcss-animate": "^1.0.7",
+        "tesseract.js": "^7.0.0",
         "uuid": "^13.0.0",
         "zod": "^3.23.8"
     },
