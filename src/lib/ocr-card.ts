@@ -18,6 +18,7 @@ async function getWorker() {
             await worker.setParameters({
                 // card numbers are digits + a few letters + separators only
                 tessedit_char_whitelist: '0123456789/-ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+                tessedit_pageseg_mode: '11', // sparse text — find numbers anywhere
             });
             return worker;
         })();
@@ -31,14 +32,29 @@ async function cropBottomStrip(dataUrl: string): Promise<string> {
     return new Promise((resolve) => {
         const img = new Image();
         img.onload = () => {
-            const stripH = Math.round(img.height * 0.30); // bottom 30%
-            const scale = 2; // upscale for OCR clarity
+            // Thin bottom strip = the row that holds the collector number, WITHOUT
+            // the attack/flavor text above it (that text was drowning the number).
+            const stripH = Math.max(40, Math.round(img.height * 0.15)); // bottom 15%
+            const scale = 3; // upscale small text for OCR
             const canvas = document.createElement('canvas');
             canvas.width = img.width * scale;
             canvas.height = stripH * scale;
             const ctx = canvas.getContext('2d');
             if (!ctx) { resolve(dataUrl); return; }
+            ctx.imageSmoothingEnabled = true;
             ctx.drawImage(img, 0, img.height - stripH, img.width, stripH, 0, 0, canvas.width, canvas.height);
+            // Grayscale + contrast boost so the number stands out from the art.
+            try {
+                const im = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const d = im.data;
+                for (let i = 0; i < d.length; i += 4) {
+                    let v = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+                    v = (v - 128) * 1.6 + 128;        // contrast
+                    v = v < 0 ? 0 : v > 255 ? 255 : v;
+                    d[i] = d[i + 1] = d[i + 2] = v;
+                }
+                ctx.putImageData(im, 0, 0);
+            } catch { /* tainted canvas etc. — use as-is */ }
             resolve(canvas.toDataURL('image/png'));
         };
         img.onerror = () => resolve(dataUrl);
