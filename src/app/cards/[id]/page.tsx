@@ -18,6 +18,7 @@ import {
     Loader2,
     MessageCircle,
     PackageCheck,
+    Pencil,
     Search,
     ShieldCheck,
     ShoppingCart,
@@ -100,6 +101,9 @@ const mapCard = (c: any): Card => ({
     author: c.profiles?.display_name || c.seller_id,
     sellerName: c.profiles?.display_name || "Người bán CardVerse",
     sellerAvatar: c.profiles?.profile_image_url || undefined,
+    sellerVerified: c.profiles?.seller_verified || false,
+    sellerRating: c.profiles?.seller_rating ?? null,
+    sellerReviewCount: c.profiles?.seller_review_count ?? 0,
     description: c.description,
     lastSoldPrice: c.last_sold_price,
     status: c.status,
@@ -116,6 +120,13 @@ const mapCard = (c: any): Card => ({
 
 function RelatedRail({ title, subtitle, cards }: { title: string; subtitle?: string; cards: Card[] }) {
     if (cards.length === 0) return null;
+
+    const sellerStats = (item: Card) => {
+        const soldCount = item.sellerReviewCount ?? 0;
+        return item.sellerRating && item.sellerRating > 0
+            ? `${Number(item.sellerRating).toFixed(1)}% uy tín · ${soldCount} đã bán`
+            : `Người bán mới · ${soldCount} đã bán`;
+    };
 
     return (
         <section className="space-y-3">
@@ -160,7 +171,7 @@ function RelatedRail({ title, subtitle, cards }: { title: string; subtitle?: str
                             <p className="mt-2 line-clamp-2 text-sm font-medium underline-offset-2 group-hover:underline">{item.name}</p>
                             <p className="mt-1 text-xs text-muted-foreground">{item.condition || "Pre-owned"}</p>
                             <p className="mt-1 font-semibold">{formatCurrency(item.price, "Contact")}</p>
-                            <p className="text-xs text-muted-foreground">Seller trên CardVerse</p>
+                            <p className="text-xs text-muted-foreground">{sellerStats(item)}</p>
                         </a>
                     ))}
                 </div>
@@ -186,10 +197,11 @@ export default function CardDetailsPage() {
             seller: "Người bán CardVerse",
             viewAll: "Xem tất cả",
             preOwned: "Đã qua sử dụng",
-            sellerOnCardVerse: "Người bán trên CardVerse",
+            sellerOnCardVerse: "Độ uy tín người bán",
             openChatFailed: "Không thể mở chat",
             chatError: "Lỗi chat",
             acceptOfferFailed: "Không thể chấp nhận đề nghị",
+            rejectOfferFailed: "Không thể từ chối đề nghị",
             retryLater: "Đã xảy ra lỗi. Vui lòng thử lại.",
             notFound: "Không tìm thấy thẻ",
             back: "Quay lại",
@@ -222,6 +234,7 @@ export default function CardDetailsPage() {
             reservedOrUnavailable: "Thẻ này đang được giữ để thanh toán hoặc không còn khả dụng.",
             buyNow: "Mua ngay",
             makeOffer: "Trả giá",
+            viewOfferHistory: "Lịch sử offer",
             messageSeller: "Nhắn người bán",
             addToWatchlist: "Thêm vào theo dõi",
             addToCart: "Thêm vào giỏ hàng",
@@ -256,9 +269,11 @@ export default function CardDetailsPage() {
             listingId: "Mã listing",
             offers: "Đề xuất giá",
             sellerTools: "Công cụ người bán",
+            editListing: "Chỉnh sửa listing",
             noOffers: "Chưa có đề xuất nào cho listing này.",
             chat: "Chat",
             accept: "Chấp nhận",
+            reject: "Từ chối",
             chosen: "Đã chọn",
             processed: "Đã xử lý",
         }
@@ -269,10 +284,11 @@ export default function CardDetailsPage() {
                 seller: "CardVerse販売者",
                 viewAll: "すべて見る",
                 preOwned: "中古",
-                sellerOnCardVerse: "CardVerseの販売者",
+                sellerOnCardVerse: "販売者評価",
                 openChatFailed: "チャットを開けません",
                 chatError: "チャットエラー",
                 acceptOfferFailed: "オファーを承認できません",
+                rejectOfferFailed: "オファーを却下できません",
                 retryLater: "エラーが発生しました。もう一度お試しください。",
                 notFound: "カードが見つかりません",
                 back: "戻る",
@@ -305,6 +321,7 @@ export default function CardDetailsPage() {
                 reservedOrUnavailable: "このカードは支払い確保中、または現在利用できません。",
                 buyNow: "今すぐ購入",
                 makeOffer: "オファーする",
+                viewOfferHistory: "提案履歴",
                 messageSeller: "販売者に連絡",
                 addToWatchlist: "ウォッチリストに追加",
                 addToCart: "カートに追加",
@@ -339,9 +356,11 @@ export default function CardDetailsPage() {
                 listingId: "出品ID",
                 offers: "オファー",
                 sellerTools: "販売者ツール",
+                editListing: "出品を編集",
                 noOffers: "この出品にはまだオファーがありません。",
                 chat: "チャット",
                 accept: "承認",
+                reject: "却下",
                 chosen: "選択済み",
                 processed: "処理済み",
             }
@@ -351,10 +370,11 @@ export default function CardDetailsPage() {
                 seller: "CardVerse seller",
                 viewAll: "View all",
                 preOwned: "Pre-owned",
-                sellerOnCardVerse: "Seller on CardVerse",
+                sellerOnCardVerse: "Seller reputation",
                 openChatFailed: "Unable to open chat",
                 chatError: "Chat error",
                 acceptOfferFailed: "Unable to accept offer",
+                rejectOfferFailed: "Unable to reject offer",
                 retryLater: "Something went wrong. Please try again.",
                 notFound: "Card not found",
                 back: "Back",
@@ -387,6 +407,7 @@ export default function CardDetailsPage() {
                 reservedOrUnavailable: "This card is reserved for payment or is no longer available.",
                 buyNow: "Buy It Now",
                 makeOffer: "Make Offer",
+                viewOfferHistory: "Offer history",
                 messageSeller: "Message seller",
                 addToWatchlist: "Add to Watchlist",
                 addToCart: "Add to cart",
@@ -421,9 +442,11 @@ export default function CardDetailsPage() {
                 listingId: "Listing ID",
                 offers: "Offers",
                 sellerTools: "Seller tools",
+                editListing: "Edit listing",
                 noOffers: "No offers yet for this listing.",
                 chat: "Chat",
                 accept: "Accept",
+                reject: "Reject",
                 chosen: "Chosen",
                 processed: "Processed",
             };
@@ -441,6 +464,7 @@ export default function CardDetailsPage() {
     const [chatConversationId, setChatConversationId] = useState<string | null>(null);
     const [startingChatOfferId, setStartingChatOfferId] = useState<string | null>(null);
     const [acceptingOfferId, setAcceptingOfferId] = useState<string | null>(null);
+    const [rejectingOfferId, setRejectingOfferId] = useState<string | null>(null);
 
     const isOwner = user?.id === card?.sellerId;
     const isSale = card?.listingType === "sale";
@@ -501,7 +525,7 @@ export default function CardDetailsPage() {
     const fetchRelatedCards = useCallback(async (baseCard: Card) => {
         const { data } = await supabase
             .from("cards")
-            .select("*, profiles:seller_id(display_name, profile_image_url)")
+            .select("*, profiles:seller_id(display_name, profile_image_url, seller_verified, seller_rating, seller_review_count)")
             .eq("listing_type", "sale")
             .neq("id", baseCard.id)
             .limit(12);
@@ -686,6 +710,37 @@ export default function CardDetailsPage() {
                 description: copy.retryLater,
             });
             setAcceptingOfferId(null);
+        }
+    };
+
+    const handleRejectOffer = async (offer: Offer) => {
+        if (!card || rejectingOfferId) return;
+        setRejectingOfferId(offer.id);
+
+        try {
+            const response = await fetch(`/api/offers/${offer.id}/reject`, { method: "POST" });
+            const payload = await response.json();
+
+            if (!response.ok) {
+                toast({
+                    variant: "destructive",
+                    title: copy.rejectOfferFailed,
+                    description: payload.error || copy.retryLater,
+                });
+                return;
+            }
+
+            window.dispatchEvent(new Event("cardverse:chat-updated"));
+            void fetchOffers();
+        } catch (error) {
+            console.error("Error rejecting offer:", error);
+            toast({
+                variant: "destructive",
+                title: copy.rejectOfferFailed,
+                description: copy.retryLater,
+            });
+        } finally {
+            setRejectingOfferId(null);
         }
     };
 
@@ -951,8 +1006,19 @@ export default function CardDetailsPage() {
                                     </div>
 
                                     {isOwner ? (
-                                        <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-4 text-sm text-orange-300">
-                                            {copy.ownListing}
+                                        <div className="flex flex-col gap-3 rounded-lg border border-orange-500/30 bg-orange-500/10 p-4 text-sm text-orange-300 sm:flex-row sm:items-center sm:justify-between">
+                                            <span>{copy.ownListing}</span>
+                                            {card.status === "active" && card.listingType === "sale" && (
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    className="shrink-0 bg-orange-500 text-white hover:bg-orange-600"
+                                                    onClick={() => router.push(`/sell/edit/${card.id}`)}
+                                                >
+                                                    <Pencil className="mr-2 h-4 w-4" />
+                                                    {copy.editListing}
+                                                </Button>
+                                            )}
                                         </div>
                                     ) : isUnavailable ? (
                                         <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
@@ -973,7 +1039,7 @@ export default function CardDetailsPage() {
                                                 <Button variant="outline" className="h-14 w-full rounded-lg border-amber-500/80 text-base font-bold text-amber-400 hover:bg-amber-500/10 hover:text-amber-300" onClick={handleMakeOffer}>
                                                     <HandCoins className="mr-2 h-5 w-5" />
                                                     <span className="flex flex-col items-start leading-tight">
-                                                        <span>{copy.makeOffer}</span>
+                                                        <span>{myOffer ? copy.viewOfferHistory : copy.makeOffer}</span>
                                                         <span className="text-xs font-medium text-muted-foreground">{copy.offerHint}</span>
                                                     </span>
                                                 </Button>
@@ -1106,16 +1172,32 @@ export default function CardDetailsPage() {
                                                     {copy.chat}
                                                 </Button>
                                                 {offer.status === "pending" ? (
-                                                    <Button size="sm" onClick={() => handleAcceptOffer(offer)} disabled={!!acceptingOfferId}>
-                                                        {acceptingOfferId === offer.id ? (
-                                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                        ) : (
-                                                            <CheckCircle className="mr-2 h-4 w-4" />
-                                                        )}
-                                                        {copy.accept}
-                                                    </Button>
+                                                    <>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="border-red-500/70 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                                                            onClick={() => handleRejectOffer(offer)}
+                                                            disabled={!!acceptingOfferId || !!rejectingOfferId}
+                                                        >
+                                                            {rejectingOfferId === offer.id ? (
+                                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                            ) : null}
+                                                            {copy.reject}
+                                                        </Button>
+                                                        <Button size="sm" onClick={() => handleAcceptOffer(offer)} disabled={!!acceptingOfferId || !!rejectingOfferId}>
+                                                            {acceptingOfferId === offer.id ? (
+                                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                            ) : (
+                                                                <CheckCircle className="mr-2 h-4 w-4" />
+                                                            )}
+                                                            {copy.accept}
+                                                        </Button>
+                                                    </>
                                                 ) : (
-                                                    <Badge className="w-fit bg-green-500">{offer.status === "chosen" ? copy.chosen : copy.processed}</Badge>
+                                                    <Badge className={`w-fit ${offer.status === "rejected" ? "bg-red-500" : "bg-green-500"}`}>
+                                                        {offer.status === "chosen" ? copy.chosen : offer.status === "rejected" ? copy.reject : copy.processed}
+                                                    </Badge>
                                                 )}
                                             </div>
                                         </div>

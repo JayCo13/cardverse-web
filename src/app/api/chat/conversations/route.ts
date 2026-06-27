@@ -22,6 +22,7 @@ const mapConversation = (
     currentUserId: string,
     profiles: Map<string, any>,
     cards: Map<string, any>,
+    mutedConversationIds: Set<string>,
 ) => {
     const otherUserId = conversation.buyer_id === currentUserId ? conversation.seller_id : conversation.buyer_id;
     const ownLastRead = conversation.buyer_id === currentUserId
@@ -44,6 +45,7 @@ const mapConversation = (
         createdAt: conversation.created_at,
         updatedAt: conversation.updated_at,
         unread,
+        muted: mutedConversationIds.has(conversation.id),
         otherUser: profiles.get(otherUserId) || null,
         card: conversation.card_id ? cards.get(conversation.card_id) || null : null,
     };
@@ -82,12 +84,69 @@ export async function GET() {
             : Promise.resolve({ data: [] as any[] }),
     ]);
 
+    const { data: mutedPreferences } = rows.length > 0
+        ? await supabase
+            .from('conversation_notification_preferences')
+            .select('conversation_id')
+            .eq('user_id', user.id)
+            .eq('muted', true)
+            .in('conversation_id', rows.map(row => row.id))
+        : { data: [] as Array<{ conversation_id: string }> };
+
     const profiles = new Map((profilesResult.data || []).map(profile => [profile.id, profile]));
     const cards = new Map((cardsResult.data || []).map(card => [card.id, card]));
+    const mutedConversationIds = new Set((mutedPreferences || []).map(preference => preference.conversation_id));
 
     return NextResponse.json({
-        conversations: rows.map(row => mapConversation(row, user.id, profiles, cards)),
+        conversations: rows.map(row => mapConversation(row, user.id, profiles, cards, mutedConversationIds)),
     });
+}
+
+export async function PATCH(request: NextRequest) {
+    const supabase = await createServerSupabaseClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const conversationId = String(body.conversationId || body.conversation_id || '');
+    const muted = body.muted;
+
+    if (!conversationId || typeof muted !== 'boolean') {
+        return NextResponse.json({ error: 'conversationId and muted are required' }, { status: 400 });
+    }
+
+    const { data: conversation, error: conversationError } = await supabase
+        .from('conversations')
+        .select('id, buyer_id, seller_id')
+        .eq('id', conversationId)
+        .single();
+
+    if (conversationError || !conversation) {
+        return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
+    }
+
+    const conversationRow = conversation as { id: string; buyer_id: string; seller_id: string };
+    if (conversationRow.buyer_id !== user.id && conversationRow.seller_id !== user.id) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const { error: preferenceError } = await supabase
+        .from('conversation_notification_preferences')
+        .upsert({
+            conversation_id: conversationId,
+            user_id: user.id,
+            muted,
+            updated_at: new Date().toISOString(),
+        } as never, { onConflict: 'conversation_id,user_id' });
+
+    if (preferenceError) {
+        return NextResponse.json({ error: preferenceError.message }, { status: 400 });
+    }
+
+    return NextResponse.json({ conversationId, muted });
 }
 
 export async function POST(request: NextRequest) {

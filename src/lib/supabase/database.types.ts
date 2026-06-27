@@ -382,6 +382,29 @@ export interface Database {
                     updated_at?: string
                 }
             }
+            conversation_notification_preferences: {
+                Row: {
+                    conversation_id: string
+                    user_id: string
+                    muted: boolean
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    conversation_id: string
+                    user_id: string
+                    muted?: boolean
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    conversation_id?: string
+                    user_id?: string
+                    muted?: boolean
+                    created_at?: string
+                    updated_at?: string
+                }
+            }
             messages: {
                 Row: {
                     id: string

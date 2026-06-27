@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { enUS, ja, vi } from "date-fns/locale";
-import { AlertTriangle, CheckCircle, CreditCard, HandCoins, Inbox, Loader2, MessageCircle, Send, ShieldAlert } from "lucide-react";
+import { AlertTriangle, Bell, BellOff, CheckCircle, CreditCard, HandCoins, Inbox, Loader2, MessageCircle, Send, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -27,6 +27,7 @@ type ConversationItem = {
     buyerLastReadAt: string | null;
     sellerLastReadAt: string | null;
     unread: boolean;
+    muted: boolean;
     otherUser: {
         id: string;
         display_name: string | null;
@@ -117,6 +118,9 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             offerTag: "Đề nghị giá",
             messagePlaceholder: "Nhập tin nhắn... Không chia sẻ Zalo/Facebook/số điện thoại hoặc thanh toán ngoài.",
             safetyBanner: "⚠️ Cảnh báo an toàn: Để tránh lừa đảo, chỉ giao dịch và thanh toán trực tiếp trên CardVerse. Hãy đặc biệt cẩn trọng nếu ai đó yêu cầu chuyển sang Facebook, Zalo hoặc chuyển khoản ngân hàng bên ngoài.",
+            muteConversation: "Tắt thông báo đoạn chat",
+            unmuteConversation: "Bật thông báo đoạn chat",
+            muteUpdateFailed: "Không thể cập nhật thông báo đoạn chat",
         }
         : locale === "ja-JP"
             ? {
@@ -156,6 +160,9 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 offerTag: "価格オファー",
                 messagePlaceholder: "メッセージを入力... Zalo/Facebook/電話番号や外部決済情報は共有しないでください。",
                 safetyBanner: "⚠️ 安全に関する警告: 詐欺防止のため、取引と支払いは必ずCardVerse上で行ってください。Facebook、Zalo、または外部銀行送金へ誘導された場合は特に注意してください。",
+                muteConversation: "このチャットの通知をオフにする",
+                unmuteConversation: "このチャットの通知をオンにする",
+                muteUpdateFailed: "チャット通知を更新できません",
             }
             : {
                 acceptOfferFailed: "Unable to accept offer",
@@ -194,6 +201,9 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 offerTag: "Price offer",
                 messagePlaceholder: "Type a message... Do not share Zalo/Facebook/phone numbers or arrange off-platform payment.",
                 safetyBanner: "⚠️ Safety Warning: To protect yourself from scams, only conduct transactions and payments directly on CardVerse. Be highly cautious if asked to move the conversation to Facebook, Zalo, or direct external bank transfers.",
+                muteConversation: "Mute this conversation",
+                unmuteConversation: "Unmute this conversation",
+                muteUpdateFailed: "Unable to update conversation notifications",
             };
     const [conversations, setConversations] = useState<ConversationItem[]>([]);
     const [selectedId, setSelectedId] = useState<string | null>(initialConversationId || null);
@@ -202,9 +212,14 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     const [isLoadingConversations, setIsLoadingConversations] = useState(false);
     const [isLoadingMessages, setIsLoadingMessages] = useState(false);
     const [isSending, setIsSending] = useState(false);
+    const [isUpdatingMute, setIsUpdatingMute] = useState(false);
     const [offer, setOffer] = useState<OfferSummary | null>(null);
     const [isAcceptingOffer, setIsAcceptingOffer] = useState(false);
     const bottomRef = useRef<HTMLDivElement | null>(null);
+    const draftRef = useRef("");
+    const isComposingRef = useRef(false);
+    const isSendingRef = useRef(false);
+    const selectedIdRef = useRef<string | null>(selectedId);
 
     const selectedConversation = useMemo(
         () => conversations.find(conversation => conversation.id === selectedId) || null,
@@ -217,6 +232,10 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
         );
 
     const unreadCount = conversations.filter(conversation => conversation.unread).length;
+
+    useEffect(() => {
+        selectedIdRef.current = selectedId;
+    }, [selectedId]);
     const latestOfferMessageId = useMemo(() => {
         for (let index = messages.length - 1; index >= 0; index -= 1) {
             const metadata = messages[index].metadata || {};
@@ -309,6 +328,33 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             toast({ variant: "destructive", title: copy.error, description: copy.acceptOfferFailed });
         } finally {
             setIsAcceptingOffer(false);
+        }
+    };
+
+    const handleToggleMute = async () => {
+        if (!selectedConversation || isUpdatingMute) return;
+        const conversationId = selectedConversation.id;
+        const muted = !selectedConversation.muted;
+        setIsUpdatingMute(true);
+        try {
+            const response = await fetch("/api/chat/conversations", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ conversationId, muted }),
+            });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || copy.muteUpdateFailed);
+            setConversations(current => current.map(conversation =>
+                conversation.id === conversationId ? { ...conversation, muted } : conversation,
+            ));
+            window.dispatchEvent(new CustomEvent("cardverse:conversation-muted", {
+                detail: { conversationId, muted },
+            }));
+        } catch (error) {
+            const description = error instanceof Error ? error.message : copy.muteUpdateFailed;
+            toast({ variant: "destructive", title: copy.chatError, description });
+        } finally {
+            setIsUpdatingMute(false);
         }
     };
 
@@ -420,19 +466,32 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     }, [messages.length, selectedId]);
 
     const sendMessage = async () => {
-        if (!selectedId || !draft.trim() || isSending) return;
-        const body = draft.trim();
+        const conversationId = selectedIdRef.current;
+        const body = draftRef.current.trim();
+        if (!conversationId || !body || isSendingRef.current) return;
+
+        isSendingRef.current = true;
+        draftRef.current = "";
         setDraft("");
         setIsSending(true);
+
+        const restoreDraft = () => {
+            if (selectedIdRef.current !== conversationId) return;
+            const currentDraft = draftRef.current;
+            const restoredDraft = currentDraft.trim() ? `${body}\n${currentDraft}` : body;
+            draftRef.current = restoredDraft;
+            setDraft(restoredDraft);
+        };
+
         try {
             const response = await fetch("/api/chat/messages", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ conversationId: selectedId, body }),
+                body: JSON.stringify({ conversationId, body }),
             });
             const payload = await response.json();
             if (response.status === 422 && (payload.code === "blocked_phone_number" || payload.code === "blocked_external_link")) {
-                setDraft(body);
+                restoreDraft();
                 toast({
                     variant: "destructive",
                     title: copy.blockedMessageTitle,
@@ -448,10 +507,11 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 });
             }
         } catch (error) {
-            setDraft(body);
+            restoreDraft();
             const description = error instanceof Error ? error.message : copy.sendMessageFailed;
             toast({ variant: "destructive", title: copy.sendMessageError, description });
         } finally {
+            isSendingRef.current = false;
             setIsSending(false);
         }
     };
@@ -511,7 +571,10 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                     <p className="truncate text-sm font-semibold">
                                                         {conversation.otherUser?.display_name || conversation.otherUser?.email || "CardVerse user"}
                                                     </p>
-                                                    {conversation.unread && <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />}
+                                                    <div className="flex items-center gap-1.5">
+                                                        {conversation.muted && <BellOff className="h-3.5 w-3.5 text-muted-foreground" />}
+                                                        {conversation.unread && <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />}
+                                                    </div>
                                                 </div>
                                                 <p className="truncate text-xs text-muted-foreground">{conversation.card?.name || copy.marketplaceChat}</p>
                                                 <p className="mt-1 truncate text-xs">{conversation.lastMessagePreview || copy.startConversation}</p>
@@ -548,6 +611,24 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                     {selectedConversation.card?.price ? ` · ${formatVND(selectedConversation.card.price)}` : ""}
                                                 </p>
                                             </div>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => void handleToggleMute()}
+                                                disabled={isUpdatingMute}
+                                                aria-label={selectedConversation.muted ? copy.unmuteConversation : copy.muteConversation}
+                                                title={selectedConversation.muted ? copy.unmuteConversation : copy.muteConversation}
+                                                className="shrink-0"
+                                            >
+                                                {isUpdatingMute ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : selectedConversation.muted ? (
+                                                    <BellOff className="h-4 w-4" />
+                                                ) : (
+                                                    <Bell className="h-4 w-4" />
+                                                )}
+                                            </Button>
                                         </div>
                                         <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs leading-5 text-amber-100">
                                             <div className="flex gap-2">
@@ -666,9 +747,24 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                         <div className="flex gap-2">
                                             <Textarea
                                                 value={draft}
-                                                onChange={event => setDraft(event.target.value)}
+                                                onChange={event => {
+                                                    draftRef.current = event.currentTarget.value;
+                                                    setDraft(event.currentTarget.value);
+                                                }}
+                                                onCompositionStart={() => {
+                                                    isComposingRef.current = true;
+                                                }}
+                                                onCompositionEnd={event => {
+                                                    isComposingRef.current = false;
+                                                    draftRef.current = event.currentTarget.value;
+                                                    setDraft(event.currentTarget.value);
+                                                }}
                                                 onKeyDown={event => {
                                                     if (event.key === "Enter" && !event.shiftKey) {
+                                                        const nativeEvent = event.nativeEvent;
+                                                        if (isComposingRef.current || nativeEvent.isComposing || nativeEvent.keyCode === 229) {
+                                                            return;
+                                                        }
                                                         event.preventDefault();
                                                         void sendMessage();
                                                     }
@@ -739,6 +835,12 @@ export function ChatInboxButton() {
 
     useEffect(() => {
         void fetchUnreadCount();
+    }, [fetchUnreadCount]);
+
+    useEffect(() => {
+        const handleChatUpdated = () => void fetchUnreadCount();
+        window.addEventListener("cardverse:chat-updated", handleChatUpdated);
+        return () => window.removeEventListener("cardverse:chat-updated", handleChatUpdated);
     }, [fetchUnreadCount]);
 
     useEffect(() => {

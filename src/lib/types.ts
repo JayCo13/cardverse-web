@@ -1,6 +1,6 @@
 
 
-export type CardCategory = "Pokémon" | "Soccer" | "Magic" | "Other" | "Bóng đá" | "Ma thuật" | "Khác";
+export type CardCategory = "Pokémon" | "Soccer" | "Bóng đá" | "Basketball" | "Bóng rổ" | "One Piece" | "Yu-Gi-Oh" | "F1" | "Magic" | "Other" | "Ma thuật" | "Khác";
 export type CardCondition = "Mint" | "Near Mint" | "Excellent" | "Good" | "Played" | "Hoàn hảo" | "Gần như mới" | "Tuyệt vời" | "Tốt" | "Đã qua sử dụng";
 export type ListingType = "sale" | "auction" | "razz";
 
@@ -36,11 +36,20 @@ export interface Card {
   setName?: string;
   sellerName?: string;
   sellerAvatar?: string;
+  sellerVerified?: boolean;
+  sellerRating?: number | null;
+  sellerReviewCount?: number | null;
+  buyerOfferStatus?: 'pending' | 'accepted' | 'rejected' | 'chosen' | null;
   isBundle?: boolean;
   bundleItems?: { title: string; price: number }[];
   acceptOffers?: boolean;
   /** Minimum offer as a percent of the listed price (0 = no minimum). */
   minOfferPercent?: number;
+  cardNumber?: string;
+  language?: string;
+  gradingCompany?: string;
+  grade?: number;
+  createdAt?: string;
   /** If true, price is already in VND (marketplace listings). If false/undefined, price is in USD. */
   priceIsVnd?: boolean;
 }

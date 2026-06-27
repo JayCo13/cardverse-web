@@ -135,6 +135,7 @@ type LocaleCopy = {
   bundleDisplayPrice: string;
   bundleTotalValue: string;
   processingImages: string;
+  imageUploadHint: string;
   priceUsdPlaceholder: string;
   priceBundlePlaceholder: string;
   priceVndPlaceholder: string;
@@ -232,6 +233,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       bundleDisplayPrice: 'マーケット表示価格:',
       bundleTotalValue: '合計価値:',
       processingImages: '画像を処理中...',
+      imageUploadHint: 'カード全体が収まる縦向きの写真がおすすめです。',
       priceUsdPlaceholder: 'USD価格を入力 例: 30',
       priceBundlePlaceholder: 'セット販売価格をVNDで入力',
       priceVndPlaceholder: 'VND価格を入力 例: 700000',
@@ -329,6 +331,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       bundleDisplayPrice: 'Giá hiển thị trên chợ:',
       bundleTotalValue: 'Tổng giá trị:',
       processingImages: 'Đang xử lý ảnh...',
+      imageUploadHint: 'Nên upload ảnh chiều dọc, chụp trọn 4 góc thẻ để hiển thị đẹp nhất.',
       priceUsdPlaceholder: 'Nhập giá bằng USD, ví dụ 30',
       priceBundlePlaceholder: 'Nhập giá bán cho cả bộ (VND)',
       priceVndPlaceholder: 'Nhập giá bằng VND, ví dụ 700000',
@@ -425,6 +428,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
     bundleDisplayPrice: 'Marketplace display price:',
     bundleTotalValue: 'Total value:',
     processingImages: 'Processing images...',
+    imageUploadHint: 'Upload portrait photos with all four card corners visible for the best display.',
     priceUsdPlaceholder: 'Enter USD price, e.g. 30',
     priceBundlePlaceholder: 'Enter bundle price in VND',
     priceVndPlaceholder: 'Enter VND price, e.g. 700000',
@@ -471,6 +475,14 @@ function parseVndNumberInput(value: unknown): number | undefined {
   const parsed = Number.parseInt(normalized, 10);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
+
+function formatNumericInput(value: unknown): string {
+  const parsed = parseVndNumberInput(value);
+  return parsed ? new Intl.NumberFormat('vi-VN').format(parsed) : '';
+}
+
+const shouldShowCatalogIdentity = (category?: string, isBundle = false) =>
+  !isBundle && (category === 'Pokémon' || category === 'One Piece');
 
 const getFormSchema = (copy: LocaleCopy) => z.object({
   name: z.string().min(5, { message: copy.titleMin }),
@@ -565,15 +577,13 @@ const getFormSchema = (copy: LocaleCopy) => z.object({
   // Single-card listings in catalog-backed categories must carry a collector
   // number (the identity key for VN market pricing). Bundles are exempt.
   .refine(data => {
-    if (data.isBundle) return true;
-    if (data.category === 'Pokémon' || data.category === 'One Piece' || data.category === 'Bóng đá') {
+    if (shouldShowCatalogIdentity(data.category, data.isBundle)) {
       return !!data.cardNumber && data.cardNumber.trim() !== '';
     }
     return true;
   }, { message: copy.enterCardNumber, path: ['cardNumber'] })
   .refine(data => {
-    if (data.isBundle) return true;
-    if (data.category === 'Pokémon' || data.category === 'One Piece') {
+    if (shouldShowCatalogIdentity(data.category, data.isBundle)) {
       return data.language !== undefined;
     }
     return true;
@@ -805,14 +815,15 @@ export default function CreateListingPage() {
 
   // Convert the typed amount into the VND value we actually store.
   const priceInputNumber = parseVndNumberInput(priceInput) ?? 0;
+  const formattedPriceInput = formatNumericInput(priceInput);
   const convertedVnd = priceCurrency === 'USD'
     ? Math.round(priceInputNumber * USD_TO_VND_RATE)
     : priceInputNumber;
 
   // Keep the form's `price` (always VND) in sync with the typed value + unit.
   const applyPrice = (raw: string, currency: 'VND' | 'USD') => {
-    setPriceInput(raw);
     const num = parseVndNumberInput(raw) ?? 0;
+    setPriceInput(num > 0 ? String(num) : '');
     const vnd = currency === 'USD' ? Math.round(num * USD_TO_VND_RATE) : num;
     form.setValue('price', vnd > 0 ? vnd : undefined, { shouldValidate: true });
   };
@@ -894,6 +905,7 @@ export default function CreateListingPage() {
 
   // Catalog pick state — the canonical card identity behind this listing.
   const [catalogPick, setCatalogPick] = useState<CatalogPick | null>(null);
+  const showCatalogIdentity = shouldShowCatalogIdentity(selectedCategory, isBundle);
 
   /** Seller picked the EXACT card from the real catalog — lock in its identity. */
   const handleCatalogPicked = (pick: CatalogPick, tab: CatalogTabId) => {
@@ -943,6 +955,17 @@ export default function CreateListingPage() {
     form.setValue('catalogProductId', undefined);
     form.setValue('catalogSoccerId', undefined);
   };
+
+  useEffect(() => {
+    if (showCatalogIdentity) return;
+    setCatalogPick(null);
+    form.setValue('catalogProductId', undefined);
+    form.setValue('catalogSoccerId', undefined);
+    form.setValue('cardNumber', '');
+    form.setValue('language', undefined);
+    form.clearErrors(['cardNumber', 'language']);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCatalogIdentity]);
 
   const removeImage = (index: number) => {
     const currentFiles = form.getValues('images') || [];
@@ -1172,78 +1195,74 @@ export default function CreateListingPage() {
           }, 50);
         })} className="space-y-8">
 
-          {/* ─── Phần 1: Xác định thẻ (catalog identity) ─── */}
-          <div className="space-y-3 p-4 rounded-xl border border-dashed border-orange-500/30 bg-orange-500/5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="flex-1">
-                <h3 className="text-sm font-semibold text-orange-500">{copy.cardIdentityTitle}</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {copy.cardIdentityDesc}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <CatalogCardPicker onSelect={handleCatalogPicked} />
-                <CardPickerDialog onSelect={handleCardPicked} />
-              </div>
-            </div>
-
-            {catalogPick && (
-              <div className="space-y-2 rounded-lg border border-orange-500/40 bg-background/60 p-3">
-                <div className="flex items-center gap-3">
-                  {catalogPick.imageUrl && (
-                    <div className="relative h-14 w-10 shrink-0 overflow-hidden rounded">
-                      <Image src={catalogPick.imageUrl} alt="" fill className="object-contain" sizes="40px" />
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1 text-sm">
-                    <p className="truncate font-semibold">{catalogPick.name}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {catalogPick.setName}
-                      {catalogPick.number ? ` · #${catalogPick.number}` : ''}
-                      {catalogPick.language ? ` · ${catalogPick.language.toUpperCase()}` : ''}
-                    </p>
-                  </div>
-                  <Button type="button" variant="ghost" size="sm" onClick={clearCatalogPick} className="shrink-0 text-muted-foreground">
-                    <X className="mr-1 h-3.5 w-3.5" /> {copy.clearSelection}
-                  </Button>
+          {showCatalogIdentity && (
+            <div className="space-y-3 p-4 rounded-xl border border-dashed border-orange-500/30 bg-orange-500/5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold text-orange-500">{copy.cardIdentityTitle}</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {copy.cardIdentityDesc}
+                  </p>
                 </div>
-
-                {/* Price suggestion from the catalog's TCGplayer market price (USD → VND). */}
-                {!!catalogPick.marketPrice && catalogPick.marketPrice > 0 && (() => {
-                  const suggestedVnd = Math.round((catalogPick.marketPrice * USD_TO_VND_RATE) / 1000) * 1000;
-                  return (
-                    <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-accent/30 px-3 py-2 text-sm">
-                      <span className="text-muted-foreground">{copy.marketPrice}</span>
-                      <span className="font-semibold">${catalogPick.marketPrice}</span>
-                      <span className="font-semibold text-orange-400">
-                        ≈ {new Intl.NumberFormat('vi-VN').format(suggestedVnd)}đ
-                      </span>
-                      {listingType === 'sale' && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="h-7 border-orange-500/40 text-orange-500 hover:border-orange-500"
-                          onClick={() => {
-                            setPriceCurrency('VND');
-                            applyPrice(String(suggestedVnd), 'VND');
-                            toast({ title: copy.suggestedApplied, description: `${new Intl.NumberFormat('vi-VN').format(suggestedVnd)}đ` });
-                          }}
-                        >
-                          {copy.useThisPrice}
-                        </Button>
-                      )}
-                    </div>
-                  );
-                })()}
-
-                {/* Real VN market price from completed CardVerse sales, if any. */}
-                <VnMarketPrice productId={catalogPick.productId} soccerId={catalogPick.soccerId} />
+                <div className="flex gap-2">
+                  <CatalogCardPicker onSelect={handleCatalogPicked} />
+                  <CardPickerDialog onSelect={handleCardPicked} />
+                </div>
               </div>
-            )}
 
-            {/* Manual identity fallback — editable even after a catalog pick. */}
-            {!isBundle && (
+              {catalogPick && (
+                <div className="space-y-2 rounded-lg border border-orange-500/40 bg-background/60 p-3">
+                  <div className="flex items-center gap-3">
+                    {catalogPick.imageUrl && (
+                      <div className="relative h-14 w-10 shrink-0 overflow-hidden rounded">
+                        <Image src={catalogPick.imageUrl} alt="" fill className="object-contain" sizes="40px" />
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1 text-sm">
+                      <p className="truncate font-semibold">{catalogPick.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {catalogPick.setName}
+                        {catalogPick.number ? ` · #${catalogPick.number}` : ''}
+                        {catalogPick.language ? ` · ${catalogPick.language.toUpperCase()}` : ''}
+                      </p>
+                    </div>
+                    <Button type="button" variant="ghost" size="sm" onClick={clearCatalogPick} className="shrink-0 text-muted-foreground">
+                      <X className="mr-1 h-3.5 w-3.5" /> {copy.clearSelection}
+                    </Button>
+                  </div>
+
+                  {!!catalogPick.marketPrice && catalogPick.marketPrice > 0 && (() => {
+                    const suggestedVnd = Math.round((catalogPick.marketPrice * USD_TO_VND_RATE) / 1000) * 1000;
+                    return (
+                      <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-accent/30 px-3 py-2 text-sm">
+                        <span className="text-muted-foreground">{copy.marketPrice}</span>
+                        <span className="font-semibold">${catalogPick.marketPrice}</span>
+                        <span className="font-semibold text-orange-400">
+                          ≈ {new Intl.NumberFormat('vi-VN').format(suggestedVnd)}đ
+                        </span>
+                        {listingType === 'sale' && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 border-orange-500/40 text-orange-500 hover:border-orange-500"
+                            onClick={() => {
+                              setPriceCurrency('VND');
+                              applyPrice(String(suggestedVnd), 'VND');
+                              toast({ title: copy.suggestedApplied, description: `${new Intl.NumberFormat('vi-VN').format(suggestedVnd)}đ` });
+                            }}
+                          >
+                            {copy.useThisPrice}
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  <VnMarketPrice productId={catalogPick.productId} soccerId={catalogPick.soccerId} />
+                </div>
+              )}
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <FormField
                   control={form.control}
@@ -1280,8 +1299,8 @@ export default function CreateListingPage() {
                   )}
                 />
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* ─── Bundle Toggle ─── */}
           <FormField
@@ -1680,6 +1699,7 @@ export default function CreateListingPage() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel className='text-lg font-semibold'>{t('images_label')}</FormLabel>
+                <p className="text-sm text-muted-foreground">{copy.imageUploadHint}</p>
                 <FormControl>
                   <div
                     className='border-2 border-dashed border-muted rounded-lg p-8 text-center cursor-pointer'
@@ -1720,7 +1740,7 @@ export default function CreateListingPage() {
                         <img
                           src={URL.createObjectURL(file)}
                           alt={`preview ${index}`}
-                          className="object-cover rounded-md w-full h-full"
+                          className="object-contain rounded-md w-full h-full bg-black/20 p-2"
                         />
                         <Button
                           type="button"
@@ -1817,9 +1837,10 @@ export default function CreateListingPage() {
                         className="text-sm"
                       />
                       <Input
-                        type="number"
+                        type="text"
+                        inputMode="numeric"
                         placeholder="Giá (VNĐ)"
-                        value={item.price ?? ''}
+                        value={formatNumericInput(item.price)}
                         onChange={(e) => updateBundleItem(item.id, 'price', e.target.value)}
                         className="text-sm"
                       />
@@ -1894,7 +1915,7 @@ export default function CreateListingPage() {
                         ? copy.priceUsdPlaceholder
                         : (isBundle ? copy.priceBundlePlaceholder : copy.priceVndPlaceholder)
                       }
-                      value={priceInput}
+                      value={formattedPriceInput}
                       onChange={(e) => applyPrice(e.target.value, priceCurrency)}
                     />
                   </FormControl>
@@ -1912,11 +1933,9 @@ export default function CreateListingPage() {
                       💡 Tổng giá từng thẻ: {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(bundlePriceRange.total)} — Bạn có thể đặt giá bán cả bộ thấp hơn hoặc cao hơn
                     </p>
                   )}
-                  <p className="text-xs text-muted-foreground">
-                    {priceCurrency === 'USD'
-                      ? copy.usdNote
-                      : copy.vndNote}
-                  </p>
+                  {priceCurrency === 'USD' && (
+                    <p className="text-xs text-muted-foreground">{copy.usdNote}</p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
@@ -1932,9 +1951,15 @@ export default function CreateListingPage() {
                   <FormItem>
                     <FormLabel className='text-lg font-semibold'>{t('starting_bid_label')}</FormLabel>
                     <FormControl>
-                      <Input type="text" inputMode="numeric" placeholder={copy.priceVndPlaceholder} {...field} value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value)} />
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder={copy.priceVndPlaceholder}
+                        {...field}
+                        value={formatNumericInput(field.value)}
+                        onChange={(e) => field.onChange(e.target.value)}
+                      />
                     </FormControl>
-                    <p className="text-xs text-muted-foreground">{copy.inputVndNote}</p>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1964,9 +1989,15 @@ export default function CreateListingPage() {
                   <FormItem>
                     <FormLabel className='text-lg font-semibold'>{t('ticket_price_label')}</FormLabel>
                     <FormControl>
-                      <Input type="text" inputMode="numeric" placeholder={copy.priceVndPlaceholder} {...field} value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value)} />
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder={copy.priceVndPlaceholder}
+                        {...field}
+                        value={formatNumericInput(field.value)}
+                        onChange={(e) => field.onChange(e.target.value)}
+                      />
                     </FormControl>
-                    <p className="text-xs text-muted-foreground">{copy.inputVndNote}</p>
                     <FormMessage />
                   </FormItem>
                 )}
