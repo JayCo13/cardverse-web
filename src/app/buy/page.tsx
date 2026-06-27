@@ -36,9 +36,17 @@ export type Filters = {
   search: string;
   categories: CardCategory[];
   conditions: CardCondition[];
+  minPrice?: string;
+  maxPrice?: string;
+  publishers?: string[];
+  sets?: string[];
+  acceptsOffers?: boolean;
+  verifiedSellers?: boolean;
+  bundlesOnly?: boolean;
+  gradedOnly?: boolean;
 };
 
-type SortOption = 'price-asc' | 'price-desc';
+type SortOption = 'newest' | 'price-asc' | 'price-desc';
 
 export default function BuyPage() {
   const { t, locale } = useLocalization();
@@ -46,6 +54,14 @@ export default function BuyPage() {
     search: '',
     categories: [],
     conditions: [],
+    minPrice: '',
+    maxPrice: '',
+    publishers: [],
+    sets: [],
+    acceptsOffers: false,
+    verifiedSellers: false,
+    bundlesOnly: false,
+    gradedOnly: false,
   });
   const [sort, setSort] = useState<SortOption>('price-desc');
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -69,12 +85,12 @@ export default function BuyPage() {
 
       const { data, error } = await supabase
         .from('cards')
-        .select('*, profiles:seller_id(display_name, profile_image_url)')
+        .select('*, profiles:seller_id(display_name, profile_image_url, seller_verified, seller_rating, seller_review_count)')
         .eq('listing_type', 'sale')
         .eq('status', 'active');
 
       if (data && !error) {
-        const cards: Card[] = (data as any[]).map((c: any) => ({
+        let cards: Card[] = (data as any[]).map((c: any) => ({
           id: c.id,
           name: c.name,
           imageUrl: c.image_url || '',
@@ -93,6 +109,9 @@ export default function BuyPage() {
           author: c.profiles?.display_name || 'Unknown Seller',
           sellerName: c.profiles?.display_name || 'Unknown Seller',
           sellerAvatar: c.profiles?.profile_image_url || null,
+          sellerVerified: c.profiles?.seller_verified || false,
+          sellerRating: c.profiles?.seller_rating ?? null,
+          sellerReviewCount: c.profiles?.seller_review_count ?? 0,
           description: c.description,
           lastSoldPrice: c.last_sold_price,
           status: c.status,
@@ -104,25 +123,70 @@ export default function BuyPage() {
           bundleItems: c.bundle_items,
           acceptOffers: c.accept_offers,
           minOfferPercent: c.min_offer_percent,
+          cardNumber: c.card_number,
+          language: c.language,
+          gradingCompany: c.grading_company,
+          grade: c.grade,
+          createdAt: c.created_at,
           priceIsVnd: true, // Marketplace listings are entered in VND
         }));
+        if (user && cards.length > 0) {
+          const cardIds = cards.map(card => card.id);
+          const { data: offers } = await supabase
+            .from('offers')
+            .select('card_id, status, created_at')
+            .eq('buyer_id', user.id)
+            .in('card_id', cardIds)
+            .order('created_at', { ascending: false });
+
+          const latestOfferByCard = new Map<string, 'pending' | 'accepted' | 'rejected' | 'chosen'>();
+          (offers || []).forEach((offer: any) => {
+            if (!latestOfferByCard.has(offer.card_id)) {
+              latestOfferByCard.set(offer.card_id, offer.status);
+            }
+          });
+
+          cards = cards.map(card => ({
+            ...card,
+            buyerOfferStatus: latestOfferByCard.get(card.id) || null,
+          }));
+        }
         setSaleCards(cards);
       }
       setIsLoading(false);
     };
     fetchCards();
-  }, []); // supabase is stable singleton
+  }, [supabase, user]);
 
   const filteredAndSortedCards = useMemo(() => {
     if (!saleCards) return [];
 
     let filtered = saleCards.filter((card) => {
-      const { search, categories, conditions } = filters;
+      const {
+        search,
+        categories,
+        conditions,
+        minPrice,
+        maxPrice,
+        publishers = [],
+        sets = [],
+        acceptsOffers,
+        verifiedSellers,
+        bundlesOnly,
+        gradedOnly,
+      } = filters;
 
-      const name = card.name.toLowerCase();
-      const searchTerm = search.toLowerCase();
+      const searchTerm = search.trim().toLocaleLowerCase(locale);
+      const searchableText = [
+        card.name,
+        card.cardNumber,
+        card.publisher,
+        card.setName,
+        card.season,
+        card.sellerName,
+      ].filter(Boolean).join(' ').toLocaleLowerCase(locale);
 
-      if (search && !name.includes(searchTerm)) {
+      if (searchTerm && !searchableText.includes(searchTerm)) {
         return false;
       }
       if (categories.length && !categories.includes(card.category as CardCategory)) {
@@ -131,11 +195,24 @@ export default function BuyPage() {
       if (conditions.length && !conditions.includes(card.condition as CardCondition)) {
         return false;
       }
+      const price = card.price ?? 0;
+      const min = Number(minPrice || 0);
+      const max = Number(maxPrice || 0);
+      if (min > 0 && price < min) return false;
+      if (max > 0 && price > max) return false;
+      if (publishers.length && (!card.publisher || !publishers.includes(card.publisher))) return false;
+      if (sets.length && (!card.setName || !sets.includes(card.setName))) return false;
+      if (acceptsOffers && !card.acceptOffers) return false;
+      if (verifiedSellers && !card.sellerVerified) return false;
+      if (bundlesOnly && !card.isBundle) return false;
+      if (gradedOnly && (!card.gradingCompany || card.gradingCompany === 'raw')) return false;
       return true;
     });
 
     return filtered.sort((a, b) => {
       switch (sort) {
+        case 'newest':
+          return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
         case 'price-asc':
           return (a.price ?? 0) - (b.price ?? 0);
         case 'price-desc':
@@ -144,7 +221,7 @@ export default function BuyPage() {
           return 0;
       }
     });
-  }, [filters, sort, saleCards]);
+  }, [filters, locale, sort, saleCards]);
 
   const renderCardList = () => {
     if (isLoading) {
@@ -254,7 +331,7 @@ export default function BuyPage() {
         </div>
         <div className="flex gap-8">
           <div className="hidden md:block w-1/4">
-            <FilterSidebar filters={filters} onFiltersChange={setFilters} showListingTypeFilter={false} />
+            <FilterSidebar filters={filters} onFiltersChange={setFilters} showListingTypeFilter={false} showAdvancedFilters availableCards={saleCards} />
           </div>
           <div className="w-full md:w-3/4">
             <div className="flex justify-between items-center mb-6">
@@ -270,10 +347,7 @@ export default function BuyPage() {
                       </Button>
                     </SheetTrigger>
                     <SheetContent side="left" className="w-3/4">
-                      <FilterSidebar filters={filters} onFiltersChange={(newFilters) => {
-                        setFilters(newFilters);
-                        setSidebarOpen(false);
-                      }} showListingTypeFilter={false} />
+                      <FilterSidebar filters={filters} onFiltersChange={setFilters} showListingTypeFilter={false} showAdvancedFilters availableCards={saleCards} />
                     </SheetContent>
                   </Sheet>
                 </div>
@@ -282,6 +356,7 @@ export default function BuyPage() {
                     <SelectValue placeholder={t('sort_by_placeholder')} />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="newest">{locale === 'vi-VN' ? 'Mới đăng' : locale === 'ja-JP' ? '新着順' : 'Newest'}</SelectItem>
                     <SelectItem value="price-desc">{t('sort_price_desc')}</SelectItem>
                     <SelectItem value="price-asc">{t('sort_price_asc')}</SelectItem>
                   </SelectContent>
@@ -323,6 +398,14 @@ export default function BuyPage() {
             price: offerCard.price ?? 0,
             sellerId: offerCard.sellerId,
             minOfferPercent: offerCard.minOfferPercent ?? 0,
+          }}
+          onSuccess={(conversationId) => {
+            setSaleCards(cards => cards.map(card => (
+              card.id === offerCard.id ? { ...card, buyerOfferStatus: 'pending' } : card
+            )));
+            if (conversationId) {
+              window.dispatchEvent(new CustomEvent('cardverse:open-chat', { detail: { conversationId } }));
+            }
           }}
         />
       )}

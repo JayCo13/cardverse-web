@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Clock, Tag, Ticket, Hammer, Zap, Sparkles, Target, Trophy, Star, Gem, Crown, Settings, User, HandCoins, ShoppingCart } from "lucide-react";
+import { Clock, Tag, Ticket, Hammer, Zap, Sparkles, Target, Trophy, Star, Gem, Crown, Pencil, User, HandCoins, ShoppingCart, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useLocalization } from "@/context/localization-context";
 import { useCurrency } from "@/contexts/currency-context";
@@ -77,6 +77,18 @@ const getCategoryStyle = (category: string) => {
   };
 };
 
+const getCategoryCode = (category: string) => {
+  const normalized = category.toLowerCase();
+  if (normalized.includes('pokemon') || normalized.includes('pokémon')) return 'POK';
+  if (normalized.includes('one piece')) return 'OP';
+  if (normalized.includes('soccer') || normalized.includes('football') || normalized.includes('bóng đá')) return 'SOC';
+  if (normalized.includes('basketball') || normalized.includes('nba') || normalized.includes('bóng rổ')) return 'NBA';
+  if (normalized.includes('yugioh') || normalized.includes('yu-gi-oh')) return 'YGO';
+  if (normalized.includes('f1') || normalized.includes('formula')) return 'F1';
+  if (normalized.includes('khác') || normalized.includes('other')) return 'OTH';
+  return category.slice(0, 3).toUpperCase();
+};
+
 /** Format price directly in VND without conversion */
 const formatVnd = (price: number | null | undefined): string => {
   if (price === null || price === undefined) return '-';
@@ -108,7 +120,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
   const isOwner = user?.id === card.sellerId;
 
   const handleActionClick = () => {
-    if (onBuyClick && card.listingType === 'sale' && card.status !== 'sold') {
+    if (!isOwner && onBuyClick && card.listingType === 'sale' && card.status !== 'sold') {
       onBuyClick(card);
     } else {
       router.push(`/cards/${card.id}`);
@@ -116,22 +128,25 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
   };
 
   const handleManageClick = () => {
-    // Navigate to card details/manage page
-    router.push(`/cards/${card.id}`);
+    router.push(`/sell/edit/${card.id}`);
   };
 
   const copy = locale === 'ja-JP'
     ? {
         yourListing: 'あなたの出品',
-        manage: '管理',
+        manage: '編集',
         soldPrice: '販売価格',
         viewDetails: '詳細を見る',
         acceptsOffers: 'オファー受付中',
         makeOffer: '価格交渉',
+        viewOfferHistory: '提案履歴',
         addToCart: 'カートに追加',
         sold: '販売済み',
         bundle: 'セット {count}枚',
-        sellerOnCardVerse: 'CardVerseの販売者',
+        sellerOnCardVerse: '販売者評価',
+        newSeller: '新規販売者',
+        positive: '高評価',
+        itemsSold: '件販売済み',
         type: '種類',
         quantity: '数量',
         available: '在庫あり',
@@ -145,15 +160,19 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
     : locale === 'vi-VN'
       ? {
           yourListing: 'Bài đăng của bạn',
-          manage: 'Quản lý',
+          manage: 'Chỉnh sửa',
           soldPrice: 'Giá đã bán',
           viewDetails: 'Xem chi tiết',
           acceptsOffers: 'Nhận offer',
           makeOffer: 'Trả giá',
+          viewOfferHistory: 'Lịch sử offer',
           addToCart: 'Thêm vào giỏ hàng',
           sold: 'Đã bán',
           bundle: 'Combo {count} thẻ',
-          sellerOnCardVerse: 'Seller trên CardVerse',
+          sellerOnCardVerse: 'Độ uy tín người bán',
+          newSeller: 'Người bán mới',
+          positive: 'uy tín',
+          itemsSold: 'đã bán',
           type: 'Loại',
           quantity: 'Số lượng',
           available: 'có sẵn',
@@ -166,15 +185,19 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
         }
       : {
           yourListing: 'Your listing',
-          manage: 'Manage',
+          manage: 'Edit',
           soldPrice: 'Sold price',
           viewDetails: 'View details',
           acceptsOffers: 'Accepts offers',
           makeOffer: 'Make offer',
+          viewOfferHistory: 'Offer history',
           addToCart: 'Add to cart',
           sold: 'Sold',
           bundle: 'Bundle {count} cards',
-          sellerOnCardVerse: 'Seller on CardVerse',
+          sellerOnCardVerse: 'Seller reputation',
+          newSeller: 'New seller',
+          positive: 'positive',
+          itemsSold: 'sold',
           type: 'Type',
           quantity: 'Qty',
           available: 'available',
@@ -206,6 +229,48 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
     onAddToCart?.(card);
   };
 
+  const images = React.useMemo(
+    () => Array.from(new Set([card.imageUrl, ...(card.imageUrls || [])].filter(Boolean))),
+    [card.imageUrl, card.imageUrls]
+  );
+  const [activeImageIndex, setActiveImageIndex] = React.useState(0);
+
+  React.useEffect(() => {
+    setActiveImageIndex(0);
+  }, [card.id, images.length]);
+
+  React.useEffect(() => {
+    if (layout !== 'list' || images.length < 2) return;
+
+    const intervalId = window.setInterval(() => {
+      setActiveImageIndex((current) => (current + 1) % images.length);
+    }, 3500);
+
+    return () => window.clearInterval(intervalId);
+  }, [images.length, layout]);
+
+  const activeImage = images[activeImageIndex] || card.imageUrl;
+
+  const sellerStatsText = React.useMemo(() => {
+    const rating = card.sellerRating;
+    const soldCount = card.sellerReviewCount ?? 0;
+    const ratingText = typeof rating === 'number' && rating > 0
+      ? `${rating.toFixed(1)}% ${copy.positive}`
+      : copy.newSeller;
+
+    return `${ratingText} · ${soldCount} ${copy.itemsSold}`;
+  }, [card.sellerRating, card.sellerReviewCount, copy.itemsSold, copy.newSeller, copy.positive]);
+
+  const showPreviousImage = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    setActiveImageIndex((current) => (current - 1 + images.length) % images.length);
+  };
+
+  const showNextImage = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    setActiveImageIndex((current) => (current + 1) % images.length);
+  };
+
   // Buyer can negotiate when the seller allows offers (active sale, not owner).
   const canOffer =
     !!onOfferClick &&
@@ -213,6 +278,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
     card.listingType === 'sale' &&
     card.status !== 'sold' &&
     !!card.acceptOffers;
+  const offerActionLabel = card.buyerOfferStatus ? copy.viewOfferHistory : copy.makeOffer;
 
   const getBadgeVariant = (condition?: string) => {
     if (!condition) return 'outline';
@@ -243,7 +309,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
             className="w-full mt-1 sm:mt-2 text-xs sm:text-sm h-7 sm:h-8 md:h-9"
             onClick={handleManageClick}
           >
-            <Settings className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+            <Pencil className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
             {copy.manage}
           </Button>
         </div>
@@ -290,7 +356,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                 onClick={handleOfferClick}
               >
                 <HandCoins className="mr-1 h-3 w-3 sm:h-4 sm:w-4" />
-                {copy.makeOffer}
+                {offerActionLabel}
               </Button>
             )}
           </div>
@@ -328,6 +394,11 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
 
   if (layout === 'list') {
     const catStyle = getCategoryStyle(card.category);
+    const listTitleSize = card.name.length > 110
+      ? 'text-lg md:text-xl'
+      : card.name.length > 70
+        ? 'text-xl md:text-2xl'
+        : 'text-2xl md:text-[1.85rem]';
     return (
       <Card
         className={`group relative flex w-full flex-col overflow-hidden rounded-lg border bg-gradient-to-br from-card via-card to-card/50 transition-all duration-300 md:flex-row
@@ -342,7 +413,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
 
         {/* Image — the "display case" frame */}
         <div
-          className="relative w-full shrink-0 cursor-pointer overflow-hidden md:w-40 lg:w-48"
+          className="relative w-full shrink-0 cursor-pointer overflow-hidden bg-black/25 md:w-56 lg:w-64"
           onClick={handleDetailClick}
           role="link"
           tabIndex={0}
@@ -355,18 +426,18 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
         >
           <div className="relative aspect-[3/4] w-full md:h-full">
             <Image
-              src={optimizeCloudinaryUrl(card.imageUrl, 400)}
+              src={optimizeCloudinaryUrl(activeImage, 500)}
               alt={card.name}
               data-ai-hint={card.imageHint || 'trading card'}
               fill
-              sizes="(max-width: 768px) 100vw, 12rem"
-              className={`object-cover transition-transform duration-500 ${card.status === 'sold' ? 'grayscale' : 'group-hover:scale-[1.06]'}`}
+              sizes="(max-width: 768px) 100vw, 16rem"
+              className={`object-contain p-2 transition-transform duration-500 ${card.status === 'sold' ? 'grayscale' : 'group-hover:scale-[1.02]'}`}
             />
             {/* depth / blend into card body */}
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent md:bg-gradient-to-r md:from-transparent md:via-transparent md:to-card/40" />
             {/* category chip */}
             <div className={`absolute left-2.5 top-2.5 rounded-md border border-white/20 ${catStyle.gradient} px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-lg ${catStyle.shadow}`}>
-              {card.category.slice(0, 3)}
+              {getCategoryCode(card.category)}
             </div>
             {/* sold overlay */}
             {card.status === 'sold' && (
@@ -375,6 +446,40 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                   {copy.sold}
                 </span>
               </div>
+            )}
+            {images.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Previous image"
+                  className="absolute left-2 top-1/2 z-20 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-background/80 text-foreground shadow transition hover:bg-background"
+                  onClick={showPreviousImage}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Next image"
+                  className="absolute right-2 top-1/2 z-20 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-background/80 text-foreground shadow transition hover:bg-background"
+                  onClick={showNextImage}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+                <div className="absolute bottom-2 left-1/2 z-20 flex -translate-x-1/2 gap-1">
+                  {images.map((image, index) => (
+                    <button
+                      key={`${image}-${index}`}
+                      type="button"
+                      aria-label={`Show image ${index + 1}`}
+                      className={`h-1.5 rounded-full transition-all ${activeImageIndex === index ? 'w-5 bg-primary' : 'w-1.5 bg-white/60 hover:bg-white'}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setActiveImageIndex(index);
+                      }}
+                    />
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -397,8 +502,9 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
             </div>
 
             <h3
-              className="mt-2 line-clamp-2 cursor-pointer text-2xl font-semibold leading-snug tracking-normal hover:text-primary md:text-[1.85rem]"
+              className={`mt-2 cursor-pointer break-words font-semibold leading-snug tracking-normal hover:text-primary [overflow-wrap:anywhere] ${listTitleSize}`}
               onClick={handleDetailClick}
+              title={card.name}
             >
               {card.name}
             </h3>
@@ -421,7 +527,6 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
             </div>
 
             <div className="mt-3 space-y-1 text-base text-muted-foreground">
-              <p><span className="font-medium text-foreground">{copy.shipping}:</span> {copy.ghnReady}</p>
               <p><span className="font-medium text-foreground">{copy.payment}:</span> PayOS / Wallet</p>
               <p><span className="font-medium text-foreground">{copy.quantity}:</span> {card.quantity || 1} {copy.available}</p>
               {card.lastSoldPrice && (
@@ -450,29 +555,40 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
               )}
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-foreground">{card.sellerName || card.author}</p>
-                <p className="truncate text-xs text-muted-foreground">{copy.sellerOnCardVerse}</p>
+                <p className="truncate text-xs text-muted-foreground">{sellerStatsText}</p>
               </div>
             </div>
 
             <div className="rounded-lg border border-border/70 bg-background/45 p-3 text-sm text-muted-foreground">
               <p className="font-medium text-foreground">{copy.price}: {card.listingType === 'sale' && card.price ? displayPrice(card.price) : 'N/A'}</p>
               {card.acceptOffers && <p className="mt-1 text-amber-500">{copy.acceptsOffers}</p>}
-              <p className="mt-1">{copy.shipping}: {copy.ghnReady}</p>
             </div>
 
             <div className="grid grid-cols-1 gap-2">
-              <Button
-                size="sm"
-                aria-label={`Buy ${card.name} now`}
-                className="h-11 rounded-lg bg-primary px-4 text-sm font-bold"
-                onClick={handleActionClick}
-                disabled={card.status === 'sold'}
-              >
-                <Tag className="mr-1.5 h-4 w-4" />
-                {card.listingType === 'sale' ? t('card_item_buy_now') :
-                  card.listingType === 'auction' ? t('card_item_place_bid') :
-                    t('card_item_buy_ticket')}
-              </Button>
+              {isOwner ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="h-11 rounded-lg px-4 text-sm font-bold"
+                  onClick={handleManageClick}
+                >
+                  <Pencil className="mr-1.5 h-4 w-4" />
+                  {copy.manage}
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  aria-label={`Buy ${card.name} now`}
+                  className="h-11 rounded-lg bg-primary px-4 text-sm font-bold"
+                  onClick={handleActionClick}
+                  disabled={card.status === 'sold'}
+                >
+                  <Tag className="mr-1.5 h-4 w-4" />
+                  {card.listingType === 'sale' ? t('card_item_buy_now') :
+                    card.listingType === 'auction' ? t('card_item_place_bid') :
+                      t('card_item_buy_ticket')}
+                </Button>
+              )}
               {canOffer ? (
                 <Button
                   size="sm"
@@ -482,7 +598,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                   onClick={handleOfferClick}
                 >
                   <HandCoins className="mr-1.5 h-4 w-4" />
-                  {copy.makeOffer}
+                  {offerActionLabel}
                 </Button>
               ) : (
                 <Button
@@ -571,7 +687,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
               shadow-lg ${style.shadow}
               border border-white/20
             `}>
-              <span className="uppercase tracking-wide">{card.category.slice(0, 3)}</span>
+              <span className="uppercase tracking-wide">{getCategoryCode(card.category)}</span>
             </div>
           );
         })()}
@@ -614,31 +730,44 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                 card.listingType === 'razz' && card.ticketPrice ? displayPrice(card.ticketPrice) : 'N/A'}
           </span>
 
-          {/* Buy Now button with arrow - below price */}
-          <Button
-            size="sm"
-            onClick={handleActionClick}
-            className="rounded-full px-4 sm:px-6 py-2 sm:py-2.5 h-auto text-xs sm:text-sm font-medium gap-1 sm:gap-2 w-full justify-center"
-          >
-            {card.listingType === 'sale' ? t('card_item_buy_now') :
-              card.listingType === 'auction' ? t('card_item_place_bid') :
-                t('card_item_buy_ticket')}
-            <span className="bg-white/20 rounded-full p-0.5 sm:p-1">
-              <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 17L17 7M17 7H7M17 7v10" />
-              </svg>
-            </span>
-          </Button>
-          {!isOwner && card.status !== 'sold' && onAddToCart && (
+          {isOwner ? (
             <Button
               size="sm"
-              variant="outline"
-              onClick={handleAddToCart}
-              className="rounded-full px-4 sm:px-6 py-2 sm:py-2.5 h-auto text-xs sm:text-sm font-medium gap-1 sm:gap-2 w-full justify-center border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10"
+              variant="secondary"
+              onClick={handleManageClick}
+              className="rounded-full px-4 sm:px-6 py-2 sm:py-2.5 h-auto text-xs sm:text-sm font-medium gap-1 sm:gap-2 w-full justify-center"
             >
-              <ShoppingCart className="h-3.5 w-3.5" />
-              {copy.addToCart}
+              <Pencil className="h-3.5 w-3.5" />
+              {copy.manage}
             </Button>
+          ) : (
+            <>
+              <Button
+                size="sm"
+                onClick={handleActionClick}
+                className="rounded-full px-4 sm:px-6 py-2 sm:py-2.5 h-auto text-xs sm:text-sm font-medium gap-1 sm:gap-2 w-full justify-center"
+              >
+                {card.listingType === 'sale' ? t('card_item_buy_now') :
+                  card.listingType === 'auction' ? t('card_item_place_bid') :
+                    t('card_item_buy_ticket')}
+                <span className="bg-white/20 rounded-full p-0.5 sm:p-1">
+                  <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 17L17 7M17 7H7M17 7v10" />
+                  </svg>
+                </span>
+              </Button>
+              {card.status !== 'sold' && onAddToCart && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleAddToCart}
+                  className="rounded-full px-4 sm:px-6 py-2 sm:py-2.5 h-auto text-xs sm:text-sm font-medium gap-1 sm:gap-2 w-full justify-center border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10"
+                >
+                  <ShoppingCart className="h-3.5 w-3.5" />
+                  {copy.addToCart}
+                </Button>
+              )}
+            </>
           )}
         </div>
       </div>

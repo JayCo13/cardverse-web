@@ -25,18 +25,106 @@ export function NotificationBell() {
     const [isOpen, setIsOpen] = useState(false);
     const [previousUnreadCount, setPreviousUnreadCount] = useState(0);
     const [isRinging, setIsRinging] = useState(false);
+    const [browserPermission, setBrowserPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
 
     // Pre-load audio for better playback
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    const audioUnlockedRef = useRef(false);
+    const browserPermissionRef = useRef<NotificationPermission | 'unsupported'>('unsupported');
+    const mutedConversationIdsRef = useRef<Set<string>>(new Set());
     useEffect(() => {
-        audioRef.current = new Audio('/assets/notify.wav');
-        audioRef.current.load();
+        const audio = new Audio('/assets/notify.wav');
+        audio.preload = 'auto';
+        audio.volume = 0.5;
+        audio.load();
+        audioRef.current = audio;
+
+        // Chrome/Safari block media started from a background realtime event
+        // until this document has played media during a user gesture. Unlock
+        // the notification element silently on the first interaction so later
+        // incoming messages can play even while the tab is in the background.
+        let disposed = false;
+        const removeUnlockListeners = () => {
+            document.removeEventListener('pointerdown', unlockAudio, true);
+            document.removeEventListener('keydown', unlockAudio, true);
+        };
+        const unlockAudio = () => {
+            if (audioUnlockedRef.current) {
+                removeUnlockListeners();
+                return;
+            }
+
+            const previousVolume = audio.volume;
+            audio.volume = 0;
+            void audio.play()
+                .then(() => {
+                    audio.pause();
+                    audio.currentTime = 0;
+                    audio.volume = previousVolume;
+                    if (disposed) return;
+                    audioUnlockedRef.current = true;
+                    removeUnlockListeners();
+                })
+                .catch((error) => {
+                    audio.volume = previousVolume;
+                    console.warn('Could not unlock notification sound:', error);
+                });
+        };
+
+        document.addEventListener('pointerdown', unlockAudio, true);
+        document.addEventListener('keydown', unlockAudio, true);
+
+        const permission = 'Notification' in window ? window.Notification.permission : 'unsupported';
+        browserPermissionRef.current = permission;
+        setBrowserPermission(permission);
+
+        return () => {
+            disposed = true;
+            removeUnlockListeners();
+            audio.pause();
+            audioRef.current = null;
+        };
     }, []);
+
+    useEffect(() => {
+        const handleConversationMuted = (event: Event) => {
+            const detail = (event as CustomEvent<{ conversationId?: string; muted?: boolean }>).detail;
+            if (!detail?.conversationId || typeof detail.muted !== 'boolean') return;
+            const next = new Set(mutedConversationIdsRef.current);
+            if (detail.muted) next.add(detail.conversationId);
+            else next.delete(detail.conversationId);
+            mutedConversationIdsRef.current = next;
+        };
+        window.addEventListener('cardverse:conversation-muted', handleConversationMuted);
+        return () => window.removeEventListener('cardverse:conversation-muted', handleConversationMuted);
+    }, []);
+
+    const requestBrowserNotifications = async () => {
+        if (!('Notification' in window)) return;
+        const permission = await window.Notification.requestPermission();
+        browserPermissionRef.current = permission;
+        setBrowserPermission(permission);
+    };
 
     // Fetch and subscribe to notifications for current user
     useEffect(() => {
         if (!user) return;
         const uid = user.id;
+
+        const fetchMutedConversationIds = async () => {
+            const { data, error } = await supabase
+                .from('conversation_notification_preferences')
+                .select('conversation_id')
+                .eq('user_id', uid)
+                .eq('muted', true);
+
+            if (error) {
+                console.error('Error fetching muted conversations:', error);
+                return;
+            }
+            const preferences = (data || []) as Array<{ conversation_id: string }>;
+            mutedConversationIdsRef.current = new Set(preferences.map(preference => preference.conversation_id));
+        };
 
         // Initial fetch
         const fetchNotifications = async () => {
@@ -70,7 +158,8 @@ export function NotificationBell() {
             setPreviousUnreadCount(notificationsData.filter(n => !n.read).length);
         };
 
-        fetchNotifications();
+        void fetchNotifications();
+        const mutedPreferencesPromise = fetchMutedConversationIds();
 
         // Subscribe to realtime updates
         const channel = supabase
@@ -83,7 +172,7 @@ export function NotificationBell() {
                     table: 'notifications',
                     filter: `user_id=eq.${uid}`,
                 },
-                (payload) => {
+                async (payload) => {
                     const newNotification = {
                         id: payload.new.id,
                         userId: payload.new.user_id,
@@ -99,21 +188,75 @@ export function NotificationBell() {
                     };
 
                     setNotifications(prev => [newNotification, ...prev]);
+                    await mutedPreferencesPromise;
 
-                    // Play pre-loaded notification sound
-                    if (audioRef.current) {
-                        audioRef.current.currentTime = 0;
-                        audioRef.current.volume = 0.5;
-                        audioRef.current.play().catch(err => console.log('Could not play notification sound:', err));
+                    const isMutedMessage = newNotification.type === 'message_received'
+                        && !!newNotification.conversationId
+                        && mutedConversationIdsRef.current.has(newNotification.conversationId);
+
+                    if (!isMutedMessage) {
+                        // Play pre-loaded notification sound
+                        if (audioRef.current) {
+                            audioRef.current.currentTime = 0;
+                            audioRef.current.volume = 0.5;
+                            audioRef.current.play().catch(error => {
+                                console.warn('Could not play notification sound:', error);
+                            });
+                        }
+
+                        // Update browser tab title
+                        document.title = `Có (1) thông báo mới`;
+
+                        // Trigger bell ringing animation
+                        setIsRinging(true);
+                        setTimeout(() => setIsRinging(false), 3000);
+
+                        // A browser notification complements the in-app unread state
+                        // while CardVerse is open in a background tab.
+                        if (browserPermissionRef.current === 'granted' && document.hidden) {
+                            const browserNotification = new window.Notification(newNotification.title, {
+                                body: newNotification.message,
+                                icon: '/assets/brow-logo.png',
+                                tag: newNotification.conversationId
+                                    ? `cardverse-chat-${newNotification.conversationId}`
+                                    : `cardverse-notification-${newNotification.id}`,
+                            });
+                            browserNotification.onclick = () => {
+                                window.focus();
+                                browserNotification.close();
+                                void supabase
+                                    .from('notifications')
+                                    .update({ read: true } as never)
+                                    .eq('id', newNotification.id);
+                                setNotifications(current => current.map(notification =>
+                                    notification.id === newNotification.id ? { ...notification, read: true } : notification,
+                                ));
+
+                                if (newNotification.type === 'offer_accepted' && newNotification.offerId) {
+                                    window.location.assign(`/checkout?offerId=${newNotification.offerId}`);
+                                } else if (newNotification.type === 'offer_accepted' && newNotification.transactionId) {
+                                    window.location.assign(`/transaction/${newNotification.transactionId}`);
+                                } else if (newNotification.conversationId) {
+                                    window.dispatchEvent(new CustomEvent('cardverse:open-chat', {
+                                        detail: { conversationId: newNotification.conversationId },
+                                    }));
+                                } else if (newNotification.cardId) {
+                                    window.location.assign(`/cards/${newNotification.cardId}`);
+                                }
+                            };
+                        }
                     }
-
-                    // Update browser tab title
-                    document.title = `Có (1) thông báo mới`;
-
-                    // Trigger bell ringing animation
-                    setIsRinging(true);
-                    setTimeout(() => setIsRinging(false), 3000);
-                }
+                },
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'conversation_notification_preferences',
+                    filter: `user_id=eq.${uid}`,
+                },
+                () => void fetchMutedConversationIds(),
             )
             .subscribe();
 
@@ -158,7 +301,7 @@ export function NotificationBell() {
 
         // New message or received offer with a conversation → open the chat drawer.
         if (
-            (notification.type === 'message_received' || notification.type === 'offer_received') &&
+            (notification.type === 'message_received' || notification.type === 'offer_received' || notification.type === 'offer_rejected') &&
             notification.conversationId
         ) {
             window.dispatchEvent(
@@ -196,6 +339,8 @@ export function NotificationBell() {
                 return <Tag className="h-4 w-4 text-blue-500" />;
             case "offer_accepted":
                 return <CheckCircle className="h-4 w-4 text-green-500" />;
+            case "offer_rejected":
+                return <Tag className="h-4 w-4 text-red-500" />;
             case "card_sold":
                 return <Package className="h-4 w-4 text-green-500" />;
             case "message_received":
@@ -235,6 +380,29 @@ export function NotificationBell() {
                     )}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                {browserPermission === 'default' && (
+                    <>
+                        <DropdownMenuItem
+                            onSelect={(event) => {
+                                event.preventDefault();
+                                void requestBrowserNotifications();
+                            }}
+                            className="cursor-pointer text-sm"
+                        >
+                            <Bell className="mr-2 h-4 w-4 text-orange-500" />
+                            Bật thông báo trên trình duyệt
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                    </>
+                )}
+                {browserPermission === 'denied' && (
+                    <>
+                        <div className="px-3 py-2 text-xs text-muted-foreground">
+                            Thông báo trình duyệt đang bị chặn. Hãy bật lại trong cài đặt của trình duyệt.
+                        </div>
+                        <DropdownMenuSeparator />
+                    </>
+                )}
                 {notifications.length === 0 ? (
                     <div className="p-4 text-center text-muted-foreground text-sm">
                         Không có thông báo
