@@ -131,7 +131,7 @@ export async function PATCH(request: NextRequest) {
                         from_ward_name: sellerProfile.address_ward_name || '',
                         from_district_id: sellerProfile.address_district_id,
                         client_order_code: order_id.substring(0, 20),
-                        insurance_value: Math.min(order.amount || 0, 2000000), // cap matches checkout quote
+                        insurance_value: Math.min(order.amount || 0, 500000), // cap matches checkout quote; CardVerse escrow covers the rest
                         note: 'Thẻ bài - Xử lý cẩn thận',
                         required_note: 'CHOTHUHANG',
                     });

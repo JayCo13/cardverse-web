@@ -95,7 +95,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
                 sender_id: user.id,
                 body,
                 message_type: 'system',
-                metadata: { offerId: offerRow.id, cardId: cardRow.id },
+                metadata: { offerId: offerRow.id, cardId: cardRow.id, kind: 'offer_rejected', price: Number(offerRow.price) },
                 flagged_terms: [],
             } as never)
             .select('id, created_at')

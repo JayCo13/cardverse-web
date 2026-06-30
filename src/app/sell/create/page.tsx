@@ -134,8 +134,20 @@ type LocaleCopy = {
   cardItemPlaceholder: string;
   bundleDisplayPrice: string;
   bundleTotalValue: string;
+  bundleAttrsTitle: string;
+  bundleAttrsHint: string;
+  attrCondition: string;
+  attrSet: string;
+  attrGrading: string;
+  attrLanguage: string;
+  poolSetPlaceholder: string;
+  poolGradingPlaceholder: string;
+  poolAddBtn: string;
+  attrAssignPlaceholder: string;
   processingImages: string;
   imageUploadHint: string;
+  imageReorderHint: string;
+  coverImageBadge: string;
   priceUsdPlaceholder: string;
   priceBundlePlaceholder: string;
   priceVndPlaceholder: string;
@@ -144,6 +156,7 @@ type LocaleCopy = {
   inputVndNote: string;
   acceptOffers: string;
   acceptOffersDesc: string;
+  bundleOfferNote: string;
   minOffer: string;
   acceptAllOffers: string;
   nearOriginalPrice: string;
@@ -169,7 +182,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       minSalePrice: `最低販売価格は${MIN_MARKETPLACE_PRICE_VND.toLocaleString('ja-JP')} VNDです。`,
       minStartingBid: `最低開始価格は${MIN_MARKETPLACE_PRICE_VND.toLocaleString('ja-JP')} VNDです。`,
       minTicketPrice: `最低チケット価格は${MIN_MARKETPLACE_PRICE_VND.toLocaleString('ja-JP')} VNDです。`,
-      descriptionMin: '説明は10文字以上必要です。',
+      descriptionMin: '説明は300文字以上必要です。',
       minImages: '画像を1枚以上アップロードしてください。',
       maxImages: '画像は最大4枚までです。',
       enterPrice: '販売価格を入力してください。',
@@ -232,8 +245,20 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       cardItemPlaceholder: 'カード名 #{number}, 例: Holo Charizard',
       bundleDisplayPrice: 'マーケット表示価格:',
       bundleTotalValue: '合計価値:',
+      bundleAttrsTitle: 'カードごとの属性',
+      bundleAttrsHint: '上で値を複数選び、各カードに1つずつ割り当てます（プールから選択）。',
+      attrCondition: 'コンディション',
+      attrSet: 'セット',
+      attrGrading: 'グレード',
+      attrLanguage: '言語',
+      poolSetPlaceholder: 'セットを追加（例: Base Set）',
+      poolGradingPlaceholder: 'グレードを追加（例: PSA 10, raw）',
+      poolAddBtn: '追加',
+      attrAssignPlaceholder: '選択',
       processingImages: '画像を処理中...',
       imageUploadHint: 'カード全体が収まる縦向きの写真がおすすめです。',
+      imageReorderHint: 'ドラッグして並べ替え。最初の写真がカバーになります。',
+      coverImageBadge: 'カバー',
       priceUsdPlaceholder: 'USD価格を入力 例: 30',
       priceBundlePlaceholder: 'セット販売価格をVNDで入力',
       priceVndPlaceholder: 'VND価格を入力 例: 700000',
@@ -242,6 +267,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       inputVndNote: 'VNDで入力してください。例: 10000 = 10,000đ。',
       acceptOffers: 'オファーを受け付ける',
       acceptOffersDesc: '購入者が価格提案を送れるようにします',
+      bundleOfferNote: 'オファーはセット全体（ロット単位）に適用され、カード単位ではありません。',
       minOffer: 'この割合未満のオファーは受けない',
       acceptAllOffers: 'すべてのオファーを受ける',
       nearOriginalPrice: '元値に近いオファーのみ',
@@ -267,7 +293,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       minSalePrice: `Giá bán tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.`,
       minStartingBid: `Giá khởi điểm tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.`,
       minTicketPrice: `Giá vé tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.`,
-      descriptionMin: 'Mô tả cần ít nhất 10 ký tự.',
+      descriptionMin: 'Mô tả cần ít nhất 300 ký tự.',
       minImages: 'Vui lòng tải lên ít nhất 1 ảnh.',
       maxImages: 'Tối đa 4 ảnh.',
       enterPrice: 'Vui lòng nhập giá bán.',
@@ -330,8 +356,20 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       cardItemPlaceholder: 'Tên thẻ #{number}, VD: Holo Charizard',
       bundleDisplayPrice: 'Giá hiển thị trên chợ:',
       bundleTotalValue: 'Tổng giá trị:',
+      bundleAttrsTitle: 'Thuộc tính theo từng thẻ',
+      bundleAttrsHint: 'Chọn nhiều giá trị ở đây, rồi gán cho từng thẻ phía dưới (chọn 1 từ pool).',
+      attrCondition: 'Tình trạng',
+      attrSet: 'Bộ thẻ / Set',
+      attrGrading: 'Grading',
+      attrLanguage: 'Ngôn ngữ',
+      poolSetPlaceholder: 'Thêm set (vd: Base Set)',
+      poolGradingPlaceholder: 'Thêm grading (vd: PSA 10, raw)',
+      poolAddBtn: 'Thêm',
+      attrAssignPlaceholder: 'Chọn',
       processingImages: 'Đang xử lý ảnh...',
       imageUploadHint: 'Nên upload ảnh chiều dọc, chụp trọn 4 góc thẻ để hiển thị đẹp nhất.',
+      imageReorderHint: 'Kéo để sắp xếp lại thứ tự. Ảnh đầu tiên là ảnh bìa.',
+      coverImageBadge: 'Ảnh bìa',
       priceUsdPlaceholder: 'Nhập giá bằng USD, ví dụ 30',
       priceBundlePlaceholder: 'Nhập giá bán cho cả bộ (VND)',
       priceVndPlaceholder: 'Nhập giá bằng VND, ví dụ 700000',
@@ -340,6 +378,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       inputVndNote: 'Nhập theo VND. Ví dụ: 10000 = 10.000đ.',
       acceptOffers: 'Nhận offer',
       acceptOffersDesc: 'Cho phép người mua gửi đề nghị giá cho thẻ này',
+      bundleOfferNote: 'Offer áp dụng cho CẢ LÔ (toàn bộ bundle), không theo từng thẻ.',
       minOffer: 'Không nhận offer dưới',
       acceptAllOffers: 'Nhận mọi offer',
       nearOriginalPrice: 'Chỉ nhận gần giá gốc',
@@ -364,7 +403,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
     minSalePrice: `Minimum sale price is ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('en-US')} VND.`,
     minStartingBid: `Minimum starting bid is ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('en-US')} VND.`,
     minTicketPrice: `Minimum ticket price is ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('en-US')} VND.`,
-    descriptionMin: 'Description must be at least 10 characters.',
+    descriptionMin: 'Description must be at least 300 characters.',
     minImages: 'Please upload at least 1 image.',
     maxImages: 'Maximum 4 images.',
     enterPrice: 'Please enter a sale price.',
@@ -427,8 +466,20 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
     cardItemPlaceholder: 'Card #{number} name, e.g. Holo Charizard',
     bundleDisplayPrice: 'Marketplace display price:',
     bundleTotalValue: 'Total value:',
+    bundleAttrsTitle: 'Per-card attributes',
+    bundleAttrsHint: 'Pick multiple values here, then assign one to each card below (choose from the pool).',
+    attrCondition: 'Condition',
+    attrSet: 'Set',
+    attrGrading: 'Grading',
+    attrLanguage: 'Language',
+    poolSetPlaceholder: 'Add a set (e.g. Base Set)',
+    poolGradingPlaceholder: 'Add grading (e.g. PSA 10, raw)',
+    poolAddBtn: 'Add',
+    attrAssignPlaceholder: 'Select',
     processingImages: 'Processing images...',
     imageUploadHint: 'Upload portrait photos with all four card corners visible for the best display.',
+    imageReorderHint: 'Drag to reorder. The first photo is the cover.',
+    coverImageBadge: 'Cover',
     priceUsdPlaceholder: 'Enter USD price, e.g. 30',
     priceBundlePlaceholder: 'Enter bundle price in VND',
     priceVndPlaceholder: 'Enter VND price, e.g. 700000',
@@ -437,6 +488,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
     inputVndNote: 'Enter VND. Example: 10000 = 10,000đ.',
     acceptOffers: 'Accept offers',
     acceptOffersDesc: 'Allow buyers to send price offers for this card',
+    bundleOfferNote: 'Offers apply to the WHOLE LOT (entire bundle), not per card.',
     minOffer: 'Do not accept offers below',
     acceptAllOffers: 'Accept all offers',
     nearOriginalPrice: 'Only near original price',
@@ -449,11 +501,20 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
   };
 };
 
+/** Attributes that can vary card-to-card inside a bundle. The seller builds a
+ * pool of allowed values for each (multi-select above), then assigns one value
+ * per card from that pool — so bundle data stays normalized (no free text). */
+const BUNDLE_ATTR_KEYS = ['publisher', 'setName', 'season'] as const;
+type BundleAttrKey = (typeof BUNDLE_ATTR_KEYS)[number];
+type BundleAttrPools = Record<BundleAttrKey, string[]>;
+const EMPTY_BUNDLE_POOLS: BundleAttrPools = { publisher: [], setName: [], season: [] };
+
 /** Individual card in a bundle */
 interface BundleItem {
   id: string;
   title: string;
   price: number | undefined;
+  attrs: Partial<Record<BundleAttrKey, string>>;
 }
 
 const MIN_MARKETPLACE_PRICE_VND = 1000;
@@ -528,7 +589,7 @@ const getFormSchema = (copy: LocaleCopy) => z.object({
     (a) => a ? parseInt(z.string().parse(a), 10) : undefined,
     z.number().positive().optional()
   ),
-  description: z.string().min(10, { message: copy.descriptionMin }),
+  description: z.string().min(300, { message: copy.descriptionMin }),
   images: z.array(z.instanceof(File)).min(1, copy.minImages).max(4, copy.maxImages),
   // Offer settings
   acceptOffers: z.boolean().default(false),
@@ -557,13 +618,14 @@ const getFormSchema = (copy: LocaleCopy) => z.object({
     return true;
   }, { message: copy.enterRazz, path: ['ticketPrice'] })
   // Publisher: bắt buộc theo dropdown ở category thường; ở category "Khác"
-  // (free-text) thì thay bằng ô freePublisher.
+  // (free-text) thì thay bằng ô freePublisher. Bundle dùng pool nhiều giá trị
+  // (validate riêng), nên bỏ qua hai ràng buộc này.
   .refine(data => {
-    if (isFreeText(data.category)) return true;
+    if (data.isBundle || isFreeText(data.category)) return true;
     return data.publisher !== undefined && data.publisher !== '';
   }, { message: copy.choosePublisher, path: ['publisher'] })
   .refine(data => {
-    if (!isFreeText(data.category)) return true;
+    if (data.isBundle || !isFreeText(data.category)) return true;
     return !!data.freePublisher && data.freePublisher.trim() !== '';
   }, { message: copy.enterPublisher, path: ['freePublisher'] })
   .refine(data => {
@@ -641,6 +703,7 @@ export default function CreateListingPage() {
   const gradingCompany = form.watch('gradingCompany');
   const isGraded = gradingCompany !== 'raw';
   const images = form.watch('images');
+  const [dragImageIndex, setDragImageIndex] = useState<number | null>(null);
   const selectedCategory = form.watch('category');
   const selectedPublisher = form.watch('publisher');
   const acceptOffers = form.watch('acceptOffers');
@@ -649,12 +712,14 @@ export default function CreateListingPage() {
 
   // Bundle items state (managed outside react-hook-form for flexibility)
   const [bundleItems, setBundleItems] = useState<BundleItem[]>([
-    { id: crypto.randomUUID(), title: '', price: undefined },
-    { id: crypto.randomUUID(), title: '', price: undefined },
+    { id: crypto.randomUUID(), title: '', price: undefined, attrs: {} },
+    { id: crypto.randomUUID(), title: '', price: undefined, attrs: {} },
   ]);
+  // Per-attribute value pools the seller defines once and assigns per card.
+  const [bundlePools, setBundlePools] = useState<BundleAttrPools>(EMPTY_BUNDLE_POOLS);
 
   const addBundleItem = () => {
-    setBundleItems(prev => [...prev, { id: crypto.randomUUID(), title: '', price: undefined }]);
+    setBundleItems(prev => [...prev, { id: crypto.randomUUID(), title: '', price: undefined, attrs: {} }]);
   };
 
   const removeBundleItem = (id: string) => {
@@ -671,6 +736,38 @@ export default function CreateListingPage() {
       return { ...item, [field]: value };
     }));
   };
+
+  const updateBundleItemAttr = (id: string, key: BundleAttrKey, value: string) => {
+    setBundleItems(prev => prev.map(item => (
+      item.id === id ? { ...item, attrs: { ...item.attrs, [key]: value || undefined } } : item
+    )));
+  };
+
+  // Add/remove a value from an attribute pool. Removing a value also clears it
+  // from any card that had it assigned, so cards never reference a dead option.
+  const addBundlePoolValue = (key: BundleAttrKey, rawValue: string) => {
+    const value = rawValue.trim();
+    if (!value) return;
+    setBundlePools(prev => (prev[key].includes(value) ? prev : { ...prev, [key]: [...prev[key], value] }));
+  };
+
+  const removeBundlePoolValue = (key: BundleAttrKey, value: string) => {
+    setBundlePools(prev => ({ ...prev, [key]: prev[key].filter(v => v !== value) }));
+    setBundleItems(prev => prev.map(item => (
+      item.attrs[key] === value ? { ...item, attrs: { ...item.attrs, [key]: undefined } } : item
+    )));
+  };
+
+  const toggleBundlePoolValue = (key: BundleAttrKey, value: string) => {
+    if (bundlePools[key].includes(value)) {
+      removeBundlePoolValue(key, value);
+    } else {
+      addBundlePoolValue(key, value);
+    }
+  };
+
+  // Local input state for free-text pool adds (used for the "Khác" category).
+  const [poolDraft, setPoolDraft] = useState<Record<BundleAttrKey, string>>({ publisher: '', setName: '', season: '' });
 
   // Computed bundle price range
   const bundlePriceRange = (() => {
@@ -802,6 +899,61 @@ export default function CreateListingPage() {
   const conditions = locale === 'en-US'
     ? ['Mint', 'Near Mint', 'Excellent', 'Good', 'Played']
     : ['Hoàn hảo', 'Gần như mới', 'Tuyệt vời', 'Tốt', 'Đã qua sử dụng'];
+
+  // Per-card bundle attribute labels + which attributes currently have a pool.
+  const bundleAttrLabels: Record<BundleAttrKey, string> = {
+    publisher: copy.publisher,
+    setName: copy.setLabel,
+    season: copy.season,
+  };
+  const activeBundleAttrKeys = BUNDLE_ATTR_KEYS.filter(key => bundlePools[key].length > 0);
+
+  // ── Bundle pool render helpers (multi-select from the Detail section) ──
+  const renderPoolChips = (key: BundleAttrKey) => (
+    bundlePools[key].length > 0 ? (
+      <div className="flex flex-wrap gap-1.5 pt-1">
+        {bundlePools[key].map(v => (
+          <span key={v} className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs text-primary">
+            {v}
+            <button type="button" onClick={() => removeBundlePoolValue(key, v)} className="hover:text-destructive"><X className="h-3 w-3" /></button>
+          </span>
+        ))}
+      </div>
+    ) : null
+  );
+
+  const renderPoolToggle = (key: BundleAttrKey, options: string[]) => (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map(o => (
+        <button
+          key={o}
+          type="button"
+          onClick={() => toggleBundlePoolValue(key, o)}
+          className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${bundlePools[key].includes(o) ? 'border-primary bg-primary/15 text-primary' : 'border-border/60 text-muted-foreground hover:border-primary/40'}`}
+        >
+          {o}
+        </button>
+      ))}
+    </div>
+  );
+
+  const renderPoolTextAdd = (key: BundleAttrKey, placeholder: string) => (
+    <>
+      <div className="flex gap-2">
+        <Input
+          value={poolDraft[key]}
+          onChange={(e) => setPoolDraft(p => ({ ...p, [key]: e.target.value }))}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addBundlePoolValue(key, poolDraft[key]); setPoolDraft(p => ({ ...p, [key]: '' })); } }}
+          placeholder={placeholder}
+          className="h-9 text-sm"
+        />
+        <Button type="button" variant="outline" size="sm" className="h-9 shrink-0" onClick={() => { addBundlePoolValue(key, poolDraft[key]); setPoolDraft(p => ({ ...p, [key]: '' })); }}>
+          {copy.poolAddBtn}
+        </Button>
+      </div>
+      {renderPoolChips(key)}
+    </>
+  );
 
   const [isProcessingImages, setIsProcessingImages] = useState(false);
 
@@ -973,6 +1125,17 @@ export default function CreateListingPage() {
     form.setValue('images', newFiles, { shouldValidate: true });
   };
 
+  // Drag-to-reorder previews. The first image is the listing cover, so letting
+  // sellers reorder lets them pick which photo leads.
+  const moveImage = (from: number, to: number) => {
+    if (from === to) return;
+    const currentFiles = [...(form.getValues('images') || [])];
+    if (from < 0 || from >= currentFiles.length || to < 0 || to >= currentFiles.length) return;
+    const [moved] = currentFiles.splice(from, 1);
+    currentFiles.splice(to, 0, moved);
+    form.setValue('images', currentFiles, { shouldValidate: true });
+  };
+
   // Gate the real submit: if the seller priced in USD, confirm the converted
   // VND amount first (handleSubmit has already validated by this point).
   function onSubmit(values: z.infer<typeof formSchema>) {
@@ -1031,16 +1194,24 @@ export default function CreateListingPage() {
         ? `${values.gradingCompany.toUpperCase()} ${values.grade}`
         : values.condition;
 
-      // Resolve publisher/set/season — either from dropdowns or free text
-      const resolvedPublisher = freeTextMode
-        ? (values.freePublisher || 'Khác')
-        : values.publisher;
-      const resolvedSetName = freeTextMode
-        ? (values.freeSetName || '')
-        : (values.setName || '');
-      const resolvedSeason = freeTextMode
-        ? (values.freeSeason || '')
-        : (values.season || '');
+      // Resolve publisher/set/season — for bundles these come from the pools
+      // (use the first selected value as the listing-level representative),
+      // otherwise from the single dropdowns or free text.
+      const resolvedPublisher = values.isBundle
+        ? (bundlePools.publisher[0] || (freeTextMode ? 'Khác' : ''))
+        : freeTextMode
+          ? (values.freePublisher || 'Khác')
+          : values.publisher;
+      const resolvedSetName = values.isBundle
+        ? (bundlePools.setName[0] || '')
+        : freeTextMode
+          ? (values.freeSetName || '')
+          : (values.setName || '');
+      const resolvedSeason = values.isBundle
+        ? (bundlePools.season[0] || '')
+        : freeTextMode
+          ? (values.freeSeason || '')
+          : (values.season || '');
 
       const cardData: any = {
         seller_id: user.id,
@@ -1077,7 +1248,16 @@ export default function CreateListingPage() {
         cardData.is_bundle = true;
         cardData.bundle_items = bundleItems
           .filter(i => i.title.trim() && i.price && i.price > 0)
-          .map(i => ({ title: i.title, price: i.price }));
+          .map(i => {
+            const entry: Record<string, unknown> = { title: i.title.trim(), price: i.price };
+            // Only persist attributes whose value still exists in its pool, so a
+            // removed pool option never leaves a dangling value on a card.
+            for (const key of BUNDLE_ATTR_KEYS) {
+              const value = i.attrs[key];
+              if (value && bundlePools[key].includes(value)) entry[key] = value;
+            }
+            return entry;
+          });
       }
 
       if (values.listingType === 'sale') {
@@ -1411,7 +1591,49 @@ export default function CreateListingPage() {
                 </h3>
               </div>
 
-              {freeTextMode ? (
+              {isBundle ? (
+                /* ─── Bundle: multi-select pools, assigned per card below ─── */
+                <div className="space-y-4">
+                  <p className="text-xs text-muted-foreground">{copy.bundleAttrsHint}</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Publisher pool */}
+                    <div className="space-y-1.5">
+                      <FormLabel>{copy.publisher}</FormLabel>
+                      {freeTextMode
+                        ? renderPoolTextAdd('publisher', copy.publisherInputPlaceholder)
+                        : renderPoolToggle('publisher', availablePublishers)}
+                    </div>
+                    {/* Set pool */}
+                    <div className="space-y-1.5">
+                      <FormLabel>{copy.setLabel}</FormLabel>
+                      {freeTextMode ? (
+                        renderPoolTextAdd('setName', copy.setPlaceholder)
+                      ) : (
+                        <>
+                          <SearchableSetPicker
+                            value={undefined}
+                            onChange={(val) => { if (val) addBundlePoolValue('setName', val); }}
+                            groupedSets={useDbSets ? dbGroupedSets : undefined}
+                            flatSets={!useDbSets ? staticSets : undefined}
+                            loading={loadingDbSets}
+                            disabled={loadingDbSets}
+                          />
+                          {renderPoolChips('setName')}
+                        </>
+                      )}
+                    </div>
+                    {/* Season pool */}
+                    {(freeTextMode || categoryConfig?.hasSeasons) && (
+                      <div className="space-y-1.5">
+                        <FormLabel>{copy.season}</FormLabel>
+                        {freeTextMode
+                          ? renderPoolTextAdd('season', copy.seasonPlaceholder)
+                          : renderPoolToggle('season', availableSeasons)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : freeTextMode ? (
                 /* ─── Free Text Mode (for "Khác" category) ─── */
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <FormField
@@ -1557,7 +1779,7 @@ export default function CreateListingPage() {
               )}
 
               {/* If has seasons, show quantity on a separate row */}
-              {categoryConfig?.hasSeasons && !freeTextMode && (
+              {categoryConfig?.hasSeasons && !freeTextMode && !isBundle && (
                 <FormField
                   control={form.control}
                   name="quantity"
@@ -1733,27 +1955,49 @@ export default function CreateListingPage() {
                 </FormControl>
                 <FormMessage />
                 {images && images.length > 0 && (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-4">
-                    {images.map((file, index) => (
-                      <div key={index} className="relative group aspect-square">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={URL.createObjectURL(file)}
-                          alt={`preview ${index}`}
-                          className="object-contain rounded-md w-full h-full bg-black/20 p-2"
-                        />
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          size="icon"
-                          className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={() => removeImage(index)}
+                  <>
+                    <p className="mt-4 text-xs text-muted-foreground">{copy.imageReorderHint}</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-2">
+                      {images.map((file, index) => (
+                        <div
+                          key={index}
+                          draggable
+                          onDragStart={() => setDragImageIndex(index)}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            if (dragImageIndex !== null) moveImage(dragImageIndex, index);
+                            setDragImageIndex(null);
+                          }}
+                          onDragEnd={() => setDragImageIndex(null)}
+                          className={`relative group aspect-square cursor-move rounded-md ring-2 transition-all ${
+                            dragImageIndex === index ? 'opacity-50 ring-orange-500' : 'ring-transparent'
+                          }`}
                         >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={URL.createObjectURL(file)}
+                            alt={`preview ${index}`}
+                            className="object-contain rounded-md w-full h-full bg-black/20 p-2 pointer-events-none"
+                          />
+                          <span className={`absolute bottom-1 left-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                            index === 0 ? 'bg-orange-500 text-white' : 'bg-black/60 text-white'
+                          }`}>
+                            {index === 0 ? copy.coverImageBadge : `#${index + 1}`}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="icon"
+                            className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => removeImage(index)}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
               </FormItem>
             )}
@@ -1829,21 +2073,40 @@ export default function CreateListingPage() {
                     <span className="flex items-center justify-center h-8 w-8 rounded-full bg-violet-500/10 text-violet-500 text-sm font-bold shrink-0 mt-0.5">
                       {index + 1}
                     </span>
-                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-[1fr_140px] gap-2">
-                      <Input
-                        placeholder={copy.cardItemPlaceholder.replace('{number}', String(index + 1))}
-                        value={item.title}
-                        onChange={(e) => updateBundleItem(item.id, 'title', e.target.value)}
-                        className="text-sm"
-                      />
-                      <Input
-                        type="text"
-                        inputMode="numeric"
-                        placeholder="Giá (VNĐ)"
-                        value={formatNumericInput(item.price)}
-                        onChange={(e) => updateBundleItem(item.id, 'price', e.target.value)}
-                        className="text-sm"
-                      />
+                    <div className="flex-1 space-y-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px] gap-2">
+                        <Input
+                          placeholder={copy.cardItemPlaceholder.replace('{number}', String(index + 1))}
+                          value={item.title}
+                          onChange={(e) => updateBundleItem(item.id, 'title', e.target.value)}
+                          className="text-sm"
+                        />
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="Giá (VNĐ)"
+                          value={formatNumericInput(item.price)}
+                          onChange={(e) => updateBundleItem(item.id, 'price', e.target.value)}
+                          className="text-sm"
+                        />
+                      </div>
+                      {activeBundleAttrKeys.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {activeBundleAttrKeys.map(key => (
+                            <select
+                              key={key}
+                              value={item.attrs[key] ?? ''}
+                              onChange={(e) => updateBundleItemAttr(item.id, key, e.target.value)}
+                              className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+                            >
+                              <option value="">{bundleAttrLabels[key]}: {copy.attrAssignPlaceholder}</option>
+                              {bundlePools[key].map(v => (
+                                <option key={v} value={v}>{v}</option>
+                              ))}
+                            </select>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <Button
                       type="button"
@@ -2044,6 +2307,13 @@ export default function CreateListingPage() {
                 )}
               />
 
+              {isBundle && (
+                <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-600">
+                  <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>{copy.bundleOfferNote}</span>
+                </div>
+              )}
+
               {acceptOffers && (
                 <FormField
                   control={form.control}
@@ -2093,9 +2363,14 @@ export default function CreateListingPage() {
               <FormItem>
                 <FormLabel className='text-lg font-semibold'>{t('description_label')}</FormLabel>
                 <FormControl>
-                  <Textarea placeholder={t('description_placeholder')} rows={5} {...field} />
+                  <Textarea placeholder={t('description_placeholder')} rows={6} {...field} />
                 </FormControl>
-                <FormMessage />
+                <div className="flex items-center justify-between">
+                  <FormMessage />
+                  <span className={`ml-auto text-xs ${(field.value?.length || 0) < 300 ? 'text-muted-foreground' : 'text-green-500'}`}>
+                    {field.value?.length || 0}/300
+                  </span>
+                </div>
               </FormItem>
             )}
           />

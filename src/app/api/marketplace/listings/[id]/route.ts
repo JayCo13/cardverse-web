@@ -58,8 +58,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     if (name.length < 5 || name.length > 200) {
         return NextResponse.json({ error: 'Listing title must contain 5-200 characters' }, { status: 400 });
     }
-    if (description.length < 10 || description.length > 5000) {
-        return NextResponse.json({ error: 'Description must contain 10-5000 characters' }, { status: 400 });
+    if (description.length < 300 || description.length > 5000) {
+        return NextResponse.json({ error: 'Description must contain 300-5000 characters' }, { status: 400 });
     }
     if (!Number.isSafeInteger(price) || price < 1000) {
         return NextResponse.json({ error: 'Price must be at least 1.000đ' }, { status: 400 });

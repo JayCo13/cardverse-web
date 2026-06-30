@@ -209,10 +209,7 @@ export async function calculateShippingFee(params: {
         height = CARD_DEFAULTS.height,
     } = params;
 
-    const resolvedServiceId = serviceId
-        || (await getAvailableServices(fromDistrictId, toDistrictId).then((services) => services[0]?.service_id).catch(() => undefined));
-
-    const body: Record<string, unknown> = {
+    const baseBody = {
         from_district_id: fromDistrictId,
         from_ward_code: fromWardCode,
         to_district_id: toDistrictId,
@@ -224,13 +221,30 @@ export async function calculateShippingFee(params: {
         insurance_value: insuranceValue,
     };
 
-    if (resolvedServiceId) {
-        body.service_id = resolvedServiceId;
-    } else {
-        body.service_type_id = CARD_DEFAULTS.service_type_id;
+    const quoteFor = (extra: Record<string, unknown>) =>
+        ghnFetch<GHNShippingFee>('/shipping-order/fee', { useV2: true, body: { ...baseBody, ...extra } });
+
+    // Caller pinned a specific service.
+    if (serviceId) {
+        return quoteFor({ service_id: serviceId });
     }
 
-    return ghnFetch<GHNShippingFee>('/shipping-order/fee', { useV2: true, body });
+    // Otherwise quote EVERY available service and return the cheapest. GHN lists
+    // services in no guaranteed price order, so blindly taking the first one made
+    // quoted fees higher than they needed to be.
+    const services = await getAvailableServices(fromDistrictId, toDistrictId).catch(() => [] as GHNService[]);
+    if (services.length > 0) {
+        const quotes = await Promise.all(
+            services.map((s) => quoteFor({ service_id: s.service_id }).catch(() => null)),
+        );
+        const valid = quotes.filter((q): q is GHNShippingFee => !!q);
+        if (valid.length > 0) {
+            return valid.reduce((cheapest, q) => (q.total < cheapest.total ? q : cheapest));
+        }
+    }
+
+    // Fallback: let GHN choose the default service for the standard e-commerce type.
+    return quoteFor({ service_type_id: CARD_DEFAULTS.service_type_id });
 }
 
 // ── Order Management ──

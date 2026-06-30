@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { enUS, ja, vi } from "date-fns/locale";
-import { AlertTriangle, Bell, BellOff, CheckCircle, CreditCard, HandCoins, Inbox, Loader2, MessageCircle, Send, ShieldAlert } from "lucide-react";
+import { AlertTriangle, Bell, BellOff, CheckCircle, CreditCard, HandCoins, Image as ImageIcon, Inbox, Loader2, MessageCircle, Send, ShieldAlert, Smile, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -14,7 +14,16 @@ import { Badge } from "@/components/ui/badge";
 import { useSupabase, useUser } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
+import { getCloudinarySignature, uploadImageDirectToCloudinary } from "@/lib/cloudinary-direct";
 import { useLocalization } from "@/context/localization-context";
+
+// Curated emoji set for the lightweight inline picker (no extra dependency).
+const CHAT_EMOJIS = [
+    "😀", "😁", "😂", "🤣", "😊", "😍", "😘", "😎", "🤩", "🥳",
+    "🙂", "🤔", "😅", "😉", "😌", "😴", "🤝", "👍", "👎", "👌",
+    "🙏", "👏", "💪", "🔥", "✨", "⭐", "❤️", "💯", "🎉", "🤑",
+    "😢", "😭", "😡", "😱", "🤗", "🫶", "💰", "💸", "📦", "🃏",
+];
 
 type ConversationItem = {
     id: string;
@@ -50,7 +59,7 @@ type ChatMessage = {
     conversation_id: string;
     sender_id: string;
     body: string;
-    message_type: "user" | "system" | "offer_auto" | "safety_warning";
+    message_type: "user" | "system" | "offer_auto" | "safety_warning" | "image";
     metadata: Record<string, unknown>;
     flagged_terms: string[];
     created_at: string;
@@ -111,6 +120,13 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             offerAccepted: "Đã được chấp nhận",
             offerRejected: "Đã bị từ chối",
             acceptOffer: "Chấp nhận đề nghị",
+            declineOffer: "Từ chối",
+            declineOfferFailed: "Không thể từ chối đề nghị",
+            offerMessageLabel: "Lời nhắn",
+            offerPriceLabel: "Giá đề nghị",
+            offerRejectedMsg: "Đề nghị {price} đã bị từ chối. Người mua có thể gửi offer mới với mức giá cao hơn.",
+            offerAcceptedMsg: "Đề nghị {price} đã được chấp nhận. Vào checkout để thanh toán trực tiếp trên CardVerse.",
+            safetyWarningMsg: "⚠️ CardVerse phát hiện nội dung có thể đưa giao dịch ra ngoài nền tảng. Để tránh scam, hãy trao đổi và thanh toán trực tiếp trên CardVerse.",
             payNow: "Thanh toán ngay",
             loadingMessages: "Đang tải tin nhắn...",
             you: "Bạn",
@@ -121,6 +137,13 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             muteConversation: "Tắt thông báo đoạn chat",
             unmuteConversation: "Bật thông báo đoạn chat",
             muteUpdateFailed: "Không thể cập nhật thông báo đoạn chat",
+            imageButton: "Gửi ảnh",
+            emojiButton: "Biểu tượng cảm xúc",
+            uploadingImage: "Đang tải ảnh...",
+            imageTooLarge: "Ảnh quá lớn (tối đa 8MB).",
+            invalidImage: "Tệp không phải ảnh hợp lệ.",
+            imageBlockedDescription: "Ảnh chứa số điện thoại bị chặn. Vui lòng giữ giao dịch trên CardVerse.",
+            imageAlt: "Hình ảnh đính kèm",
         }
         : locale === "ja-JP"
             ? {
@@ -153,6 +176,13 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 offerAccepted: "承認済み",
                 offerRejected: "却下されました",
                 acceptOffer: "オファーを承認",
+                declineOffer: "拒否",
+                declineOfferFailed: "オファーを拒否できません",
+                offerMessageLabel: "メッセージ",
+                offerPriceLabel: "提案価格",
+                offerRejectedMsg: "{price} のオファーは拒否されました。購入者はより高い金額で再提案できます。",
+                offerAcceptedMsg: "{price} のオファーが承認されました。チェックアウトでCardVerse上の支払いを完了してください。",
+                safetyWarningMsg: "⚠️ 取引を外部に移す可能性のある内容を検出しました。詐欺防止のため、やり取りと支払いはCardVerse上で行ってください。",
                 payNow: "今すぐ支払う",
                 loadingMessages: "メッセージを読み込み中...",
                 you: "あなた",
@@ -163,6 +193,13 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 muteConversation: "このチャットの通知をオフにする",
                 unmuteConversation: "このチャットの通知をオンにする",
                 muteUpdateFailed: "チャット通知を更新できません",
+                imageButton: "画像を送信",
+                emojiButton: "絵文字",
+                uploadingImage: "画像をアップロード中...",
+                imageTooLarge: "画像が大きすぎます（最大8MB）。",
+                invalidImage: "有効な画像ファイルではありません。",
+                imageBlockedDescription: "画像に電話番号が含まれています。取引はCardVerse内で行ってください。",
+                imageAlt: "添付画像",
             }
             : {
                 acceptOfferFailed: "Unable to accept offer",
@@ -194,6 +231,13 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 offerAccepted: "Accepted",
                 offerRejected: "Rejected",
                 acceptOffer: "Accept offer",
+                declineOffer: "Decline",
+                declineOfferFailed: "Unable to decline offer",
+                offerMessageLabel: "Message",
+                offerPriceLabel: "Offer price",
+                offerRejectedMsg: "The {price} offer was declined. The buyer can send a new, higher offer.",
+                offerAcceptedMsg: "The {price} offer was accepted. Go to checkout to pay directly on CardVerse.",
+                safetyWarningMsg: "⚠️ CardVerse detected content that may move the deal off-platform. Keep communication and payment on CardVerse to avoid scams.",
                 payNow: "Pay now",
                 loadingMessages: "Loading messages...",
                 you: "You",
@@ -204,6 +248,13 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 muteConversation: "Mute this conversation",
                 unmuteConversation: "Unmute this conversation",
                 muteUpdateFailed: "Unable to update conversation notifications",
+                imageButton: "Send image",
+                emojiButton: "Emoji",
+                uploadingImage: "Uploading image...",
+                imageTooLarge: "Image is too large (max 8MB).",
+                invalidImage: "Not a valid image file.",
+                imageBlockedDescription: "The image contains a blocked phone number. Please keep the deal on CardVerse.",
+                imageAlt: "Attached image",
             };
     const [conversations, setConversations] = useState<ConversationItem[]>([]);
     const [selectedId, setSelectedId] = useState<string | null>(initialConversationId || null);
@@ -212,10 +263,15 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     const [isLoadingConversations, setIsLoadingConversations] = useState(false);
     const [isLoadingMessages, setIsLoadingMessages] = useState(false);
     const [isSending, setIsSending] = useState(false);
+    const [isUploadingImage, setIsUploadingImage] = useState(false);
+    const [showEmoji, setShowEmoji] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
     const [isUpdatingMute, setIsUpdatingMute] = useState(false);
     const [offer, setOffer] = useState<OfferSummary | null>(null);
     const [isAcceptingOffer, setIsAcceptingOffer] = useState(false);
+    const [isRejectingOffer, setIsRejectingOffer] = useState(false);
     const bottomRef = useRef<HTMLDivElement | null>(null);
+    const lastScrolledConversationRef = useRef<string | null>(null);
     const draftRef = useRef("");
     const isComposingRef = useRef(false);
     const isSendingRef = useRef(false);
@@ -331,6 +387,28 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
         }
     };
 
+    const handleRejectOffer = async () => {
+        if (!offer || isRejectingOffer) return;
+        setIsRejectingOffer(true);
+        try {
+            const response = await fetch(`/api/offers/${offer.id}/reject`, { method: "POST" });
+            const payload = await response.json();
+            if (!response.ok) {
+                toast({
+                    variant: "destructive",
+                    title: copy.declineOfferFailed,
+                    description: payload.error || copy.pleaseRetry,
+                });
+                return;
+            }
+            await fetchOffer();
+        } catch {
+            toast({ variant: "destructive", title: copy.error, description: copy.declineOfferFailed });
+        } finally {
+            setIsRejectingOffer(false);
+        }
+    };
+
     const handleToggleMute = async () => {
         if (!selectedConversation || isUpdatingMute) return;
         const conversationId = selectedConversation.id;
@@ -431,8 +509,10 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     }, [fetchConversations, open, supabase, user]);
 
     useEffect(() => {
+        // Clear immediately so the scroll-to-bottom effect doesn't act on the
+        // previous conversation's messages while the new ones are loading.
+        setMessages([]);
         if (!open || !selectedId) {
-            setMessages([]);
             return;
         }
         void fetchMessages(selectedId);
@@ -462,8 +542,20 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     }, [fetchConversations, fetchMessages, open, selectedId, supabase]);
 
     useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    }, [messages.length, selectedId]);
+        if (isLoadingMessages || messages.length === 0) return;
+        // Jump instantly when opening/switching a conversation; scroll smoothly for
+        // new messages within the conversation already in view.
+        const switchedConversation = lastScrolledConversationRef.current !== selectedId;
+        lastScrolledConversationRef.current = selectedId;
+        const behavior: ScrollBehavior = switchedConversation ? "auto" : "smooth";
+        // Defer to after layout/paint so the freshly rendered messages are measured.
+        const raf = requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                bottomRef.current?.scrollIntoView({ behavior, block: "end" });
+            });
+        });
+        return () => cancelAnimationFrame(raf);
+    }, [messages.length, selectedId, isLoadingMessages]);
 
     const sendMessage = async () => {
         const conversationId = selectedIdRef.current;
@@ -513,6 +605,61 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
         } finally {
             isSendingRef.current = false;
             setIsSending(false);
+        }
+    };
+
+    const insertEmoji = (emoji: string) => {
+        const next = `${draftRef.current}${emoji}`;
+        draftRef.current = next;
+        setDraft(next);
+    };
+
+    const sendImageMessage = async (file: File) => {
+        const conversationId = selectedIdRef.current;
+        if (!conversationId || isUploadingImage) return;
+
+        if (!file.type.startsWith("image/")) {
+            toast({ variant: "destructive", title: copy.sendMessageError, description: copy.invalidImage });
+            return;
+        }
+        if (file.size > 8 * 1024 * 1024) {
+            toast({ variant: "destructive", title: copy.sendMessageError, description: copy.imageTooLarge });
+            return;
+        }
+
+        setIsUploadingImage(true);
+        try {
+            const signature = await getCloudinarySignature("cardverse/chat");
+            const { secureUrl } = await uploadImageDirectToCloudinary(file, signature);
+
+            const response = await fetch("/api/chat/messages", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    conversationId,
+                    body: "",
+                    messageType: "image",
+                    metadata: { imageUrl: secureUrl },
+                }),
+            });
+            const payload = await response.json();
+            if (response.status === 422 && payload.code === "blocked_phone_number") {
+                toast({
+                    variant: "destructive",
+                    title: copy.blockedMessageTitle,
+                    description: copy.imageBlockedDescription,
+                });
+                return;
+            }
+            if (!response.ok) throw new Error(payload.error || copy.sendMessageFailed);
+            if (payload.flaggedTerms?.length) {
+                toast({ title: copy.safetyAlertTitle, description: copy.safetyAlertDescription });
+            }
+        } catch (error) {
+            const description = error instanceof Error ? error.message : copy.sendMessageFailed;
+            toast({ variant: "destructive", title: copy.sendMessageError, description });
+        } finally {
+            setIsUploadingImage(false);
         }
     };
 
@@ -655,19 +802,35 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                     </div>
 
                                                     {isSellerInSelectedConversation && offer.status === "pending" && (
-                                                        <Button
-                                                            type="button"
-                                                            onClick={() => void handleAcceptOffer()}
-                                                            disabled={isAcceptingOffer}
-                                                            className="shrink-0 bg-orange-500 text-white hover:bg-orange-600"
-                                                        >
-                                                            {isAcceptingOffer ? (
-                                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                                            ) : (
-                                                                <CheckCircle className="mr-1.5 h-4 w-4" />
-                                                            )}
-                                                            {copy.acceptOffer}
-                                                        </Button>
+                                                        <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                                                            <Button
+                                                                type="button"
+                                                                onClick={() => void handleAcceptOffer()}
+                                                                disabled={isAcceptingOffer || isRejectingOffer}
+                                                                className="bg-orange-500 text-white hover:bg-orange-600"
+                                                            >
+                                                                {isAcceptingOffer ? (
+                                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                                ) : (
+                                                                    <CheckCircle className="mr-1.5 h-4 w-4" />
+                                                                )}
+                                                                {copy.acceptOffer}
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                onClick={() => void handleRejectOffer()}
+                                                                disabled={isAcceptingOffer || isRejectingOffer}
+                                                                className="border-rose-500/50 text-rose-500 hover:bg-rose-500/10 hover:text-rose-500"
+                                                            >
+                                                                {isRejectingOffer ? (
+                                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                                ) : (
+                                                                    <X className="mr-1.5 h-4 w-4" />
+                                                                )}
+                                                                {copy.declineOffer}
+                                                            </Button>
+                                                        </div>
                                                     )}
 
                                                     {offer.buyer_id === user.id && offer.status === "chosen" && (
@@ -704,17 +867,88 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                         return (
                                                             <div key={message.id} className="mx-auto max-w-xl rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
                                                                 <AlertTriangle className="mr-1 inline h-3.5 w-3.5 text-amber-400" />
-                                                                {message.body}
+                                                                {copy.safetyWarningMsg}
                                                             </div>
                                                         );
                                                     }
                                                     if (system) {
+                                                        // Render server-generated system messages in the viewer's language
+                                                        // (neutral wording works for both buyer and seller); fall back to
+                                                        // the stored body for older messages without a `kind`.
+                                                        const meta = (message.metadata || {}) as { kind?: string; price?: number };
+                                                        const systemBody = meta.kind === "offer_rejected" && typeof meta.price === "number"
+                                                            ? copy.offerRejectedMsg.replace("{price}", formatVND(meta.price))
+                                                            : meta.kind === "offer_accepted" && typeof meta.price === "number"
+                                                                ? copy.offerAcceptedMsg.replace("{price}", formatVND(meta.price))
+                                                                : message.body;
                                                         return (
                                                             <div key={message.id} className="mx-auto max-w-xl rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-100">
-                                                                {message.body}
+                                                                {systemBody}
                                                                 <p className="mt-1 text-[10px] text-muted-foreground">
                                                                     {formatDistanceToNow(new Date(message.created_at), { addSuffix: true, locale: dateLocale })}
                                                                 </p>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    if (message.message_type === "image") {
+                                                        const imageUrl = typeof message.metadata?.imageUrl === "string" ? message.metadata.imageUrl : null;
+                                                        return (
+                                                            <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                                                                <div className={`max-w-[78%] overflow-hidden rounded-2xl ${mine ? "bg-orange-500 text-white" : "bg-muted"}`}>
+                                                                    <p className={`px-3 pt-2 text-[11px] font-semibold ${mine ? "text-white/80" : "text-muted-foreground"}`}>
+                                                                        {senderLabel}
+                                                                    </p>
+                                                                    {imageUrl && (
+                                                                        <a href={imageUrl} target="_blank" rel="noopener noreferrer" className="mt-1 block">
+                                                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                                            <img
+                                                                                src={optimizeCloudinaryUrl(imageUrl, 480)}
+                                                                                alt={copy.imageAlt}
+                                                                                className="max-h-72 w-auto max-w-full object-contain"
+                                                                            />
+                                                                        </a>
+                                                                    )}
+                                                                    {message.body && <p className="px-3 pt-2 text-sm leading-6">{message.body}</p>}
+                                                                    <p className={`px-3 pb-2 pt-1 text-[10px] ${mine ? "text-white/75" : "text-muted-foreground"}`}>
+                                                                        {formatDistanceToNow(new Date(message.created_at), { addSuffix: true, locale: dateLocale })}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    if (offerAuto) {
+                                                        const meta = (message.metadata || {}) as { price?: number; offerText?: string | null; cardName?: string };
+                                                        const offerPrice = typeof meta.price === "number" ? meta.price : null;
+                                                        const offerText = typeof meta.offerText === "string" ? meta.offerText : null;
+                                                        const offerCardName = typeof meta.cardName === "string" ? meta.cardName : null;
+                                                        return (
+                                                            <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                                                                <div className="max-w-[78%] overflow-hidden rounded-2xl border border-orange-500/30 bg-orange-500/10">
+                                                                    <div className="flex items-center gap-1.5 border-b border-orange-500/20 px-3 py-1.5 text-[11px] font-semibold text-orange-300">
+                                                                        <HandCoins className="h-3.5 w-3.5" />
+                                                                        {senderLabel} · {copy.offerTag}
+                                                                    </div>
+                                                                    <div className="px-3 py-2">
+                                                                        {offerPrice !== null ? (
+                                                                            <>
+                                                                                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{copy.offerPriceLabel}</p>
+                                                                                <p className="text-lg font-bold text-orange-400">{formatVND(offerPrice)}</p>
+                                                                            </>
+                                                                        ) : (
+                                                                            <p className="text-sm text-orange-100">{message.body}</p>
+                                                                        )}
+                                                                        {offerCardName && <p className="mt-0.5 text-xs text-muted-foreground">{offerCardName}</p>}
+                                                                        {offerText && (
+                                                                            <div className="mt-2 rounded-md bg-background/40 px-2.5 py-1.5">
+                                                                                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{copy.offerMessageLabel}</p>
+                                                                                <p className="text-sm text-foreground">{offerText}</p>
+                                                                            </div>
+                                                                        )}
+                                                                        <p className="mt-1.5 text-[10px] text-muted-foreground">
+                                                                            {formatDistanceToNow(new Date(message.created_at), { addSuffix: true, locale: dateLocale })}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
                                                             </div>
                                                         );
                                                     }
@@ -723,9 +957,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                             <div className={`max-w-[78%] rounded-2xl px-4 py-2 text-sm leading-6 ${
                                                                 mine
                                                                     ? "bg-orange-500 text-white"
-                                                                    : offerAuto
-                                                                        ? "border border-orange-500/30 bg-orange-500/10 text-orange-100"
-                                                                        : "bg-muted"
+                                                                    : "bg-muted"
                                                             }`}>
                                                                 <p className={`mb-1 text-[11px] font-semibold ${mine ? "text-white/80" : "text-muted-foreground"}`}>
                                                                     {senderLabel}{offerAuto ? ` · ${copy.offerTag}` : ""}
@@ -744,7 +976,53 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                     </ScrollArea>
 
                                     <div className="border-t p-4">
-                                        <div className="flex gap-2">
+                                        {showEmoji && (
+                                            <div className="mb-2 grid grid-cols-10 gap-1 rounded-lg border bg-background p-2">
+                                                {CHAT_EMOJIS.map(emoji => (
+                                                    <button
+                                                        key={emoji}
+                                                        type="button"
+                                                        className="rounded p-1 text-lg transition-colors hover:bg-muted"
+                                                        onClick={() => insertEmoji(emoji)}
+                                                    >
+                                                        {emoji}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        <input
+                                            ref={fileInputRef}
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            onChange={event => {
+                                                const file = event.currentTarget.files?.[0];
+                                                event.currentTarget.value = "";
+                                                if (file) void sendImageMessage(file);
+                                            }}
+                                        />
+                                        <div className="flex items-end gap-2">
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                aria-label={copy.emojiButton}
+                                                onClick={() => setShowEmoji(prev => !prev)}
+                                                className="h-11 w-11 shrink-0"
+                                            >
+                                                <Smile className="h-5 w-5" />
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                aria-label={copy.imageButton}
+                                                onClick={() => fileInputRef.current?.click()}
+                                                disabled={isUploadingImage}
+                                                className="h-11 w-11 shrink-0"
+                                            >
+                                                {isUploadingImage ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
+                                            </Button>
                                             <Textarea
                                                 value={draft}
                                                 onChange={event => {

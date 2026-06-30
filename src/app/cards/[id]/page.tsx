@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import { formatDistanceToNow } from "date-fns";
@@ -11,6 +11,8 @@ import {
     CalendarDays,
     CheckCircle,
     ChevronDown,
+    ChevronLeft,
+    ChevronRight,
     CreditCard,
     Gem,
     HandCoins,
@@ -36,6 +38,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthModal } from "@/components/auth-modal";
 import { useSupabase, useUser } from "@/lib/supabase";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
+import { getCategoryCode } from "@/lib/category-code";
 import type { Card, Offer } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { useLocalization } from "@/context/localization-context";
@@ -60,6 +63,20 @@ type CheckoutCard = {
     category: string;
     condition: string;
     seller_id: string;
+};
+
+/**
+ * Category-code badge colors, copied from the navbar's per-category palette
+ * (POK → yellow, OP → red, SOC → green). Kept here (not in src/lib) because
+ * Tailwind only scans src/{app,components,pages} for class names.
+ */
+const categoryBadgeClass = (category: string): string => {
+    switch (getCategoryCode(category)) {
+        case "POK": return "bg-yellow-400 text-yellow-950 shadow-[0_0_12px_rgba(250,204,21,0.55)]";
+        case "OP": return "bg-red-500 text-white shadow-[0_0_12px_rgba(239,68,68,0.55)]";
+        case "SOC": return "bg-green-500 text-white shadow-[0_0_12px_rgba(34,197,94,0.55)]";
+        default: return "bg-zinc-800 text-white shadow-[0_0_10px_rgba(0,0,0,0.4)]";
+    }
 };
 
 const formatCurrency = (amount: number | null | undefined, fallback: string) =>
@@ -118,63 +135,106 @@ const mapCard = (c: any): Card => ({
     priceIsVnd: true,
 });
 
-function RelatedRail({ title, subtitle, cards }: { title: string; subtitle?: string; cards: Card[] }) {
+function RelatedRail({ title, subtitle, cards, labels }: { title: string; subtitle?: string; cards: Card[]; labels: { cond: string; price: string; sold: string } }) {
+    const scrollRef = useRef<HTMLDivElement>(null);
     if (cards.length === 0) return null;
 
-    const sellerStats = (item: Card) => {
-        const soldCount = item.sellerReviewCount ?? 0;
-        return item.sellerRating && item.sellerRating > 0
-            ? `${Number(item.sellerRating).toFixed(1)}% uy tín · ${soldCount} đã bán`
-            : `Người bán mới · ${soldCount} đã bán`;
+    // Show 5 cards per view (each ~1/5 of the row); any extras stay in the
+    // scrollable row and are reached with the prev/next buttons. The buttons
+    // only appear when there is actually something to scroll to.
+    const items = cards;
+    const showNav = cards.length > 5;
+    // Width per card so up to 5 fill one view; with fewer cards they grow to
+    // fill the row instead of leaving an awkward gap. (gap-4 = 1rem between cards)
+    const perView = Math.min(5, Math.max(1, items.length));
+    const cardWidth = `calc((100% - ${perView - 1}rem) / ${perView})`;
+
+    const scrollByDir = (dir: number) => {
+        const el = scrollRef.current;
+        if (!el) return;
+        el.scrollBy({ left: dir * el.clientWidth, behavior: "smooth" });
     };
 
     return (
         <section className="space-y-3">
             <div className="flex items-end justify-between gap-4">
                 <div>
-                    <h2 className="text-2xl font-semibold tracking-normal">{title}</h2>
+                    <h2 className="text-xl font-semibold tracking-normal md:text-2xl">{title}</h2>
                     {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
                 </div>
-                <button type="button" className="text-sm font-medium underline underline-offset-4">
-                    View all
-                </button>
             </div>
-            <div className="relative">
-                <button
-                    type="button"
-                    className="absolute -left-7 top-24 z-10 hidden h-10 w-10 items-center justify-center rounded-full border border-orange-500/70 bg-background/95 text-2xl leading-none text-orange-400 shadow-[0_0_18px_rgba(249,115,22,0.25)] transition hover:bg-orange-500/10 md:flex"
-                    aria-label="Previous related items"
-                >
-                    ‹
-                </button>
-                <button
-                    type="button"
-                    className="absolute -right-7 top-24 z-10 hidden h-10 w-10 items-center justify-center rounded-full border border-orange-500/70 bg-background/95 text-2xl leading-none text-orange-400 shadow-[0_0_18px_rgba(249,115,22,0.25)] transition hover:bg-orange-500/10 md:flex"
-                    aria-label="Next related items"
-                >
-                    ›
-                </button>
-                <div className="flex gap-5 overflow-x-auto pb-2">
-                    {cards.map(item => (
-                        <a key={item.id} href={`/cards/${item.id}`} className="group w-[210px] shrink-0">
-                            <div className="relative aspect-square overflow-hidden rounded-xl bg-muted">
+            {/* prev | cards | next — buttons sit in their own side gutters, never over the cards */}
+            <div className="flex items-center gap-2 sm:gap-3">
+                {showNav && (
+                    <button
+                        type="button"
+                        onClick={() => scrollByDir(-1)}
+                        aria-label="Previous related items"
+                        className="hidden h-11 w-11 shrink-0 items-center justify-center self-center rounded-full border-2 border-orange-500/60 bg-card text-orange-400 shadow-md ring-1 ring-black/5 transition hover:scale-105 hover:border-orange-500 hover:bg-orange-500 hover:text-white active:scale-95 sm:flex"
+                    >
+                        <ChevronLeft className="h-5 w-5" />
+                    </button>
+                )}
+                <div ref={scrollRef} className="flex min-w-0 flex-1 gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {items.map(item => (
+                        <a
+                            key={item.id}
+                            href={`/cards/${item.id}`}
+                            style={{ width: cardWidth }}
+                            className="card-border-shimmer group flex min-w-[160px] shrink-0 snap-start flex-col overflow-hidden rounded-xl border border-orange-500/25 bg-card transition duration-200 hover:-translate-y-0.5 hover:animate-none hover:border-orange-500 hover:shadow-[0_12px_32px_-12px_rgba(249,115,22,0.55)]"
+                        >
+                            <div className="relative aspect-square overflow-hidden bg-muted">
                                 <Image
                                     src={optimizeCloudinaryUrl(item.imageUrl, 420)}
                                     alt={item.name}
                                     fill
-                                    className="object-cover transition-transform duration-300 group-hover:scale-105"
+                                    className={`object-cover transition-transform duration-300 group-hover:scale-105 ${item.status === "sold" ? "grayscale" : ""}`}
                                 />
-                                <span className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-background/90 text-foreground shadow">
-                                    <Heart className="h-4 w-4" />
+                                <span className={`absolute left-2 top-2 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${categoryBadgeClass(item.category)}`}>
+                                    {getCategoryCode(item.category)}
                                 </span>
+                                {item.status === "sold" && (
+                                    <span className="absolute right-2 top-2 rounded-md bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase text-white">
+                                        {labels.sold}
+                                    </span>
+                                )}
                             </div>
-                            <p className="mt-2 line-clamp-2 text-sm font-medium underline-offset-2 group-hover:underline">{item.name}</p>
-                            <p className="mt-1 text-xs text-muted-foreground">{item.condition || "Pre-owned"}</p>
-                            <p className="mt-1 font-semibold">{formatCurrency(item.price, "Contact")}</p>
-                            <p className="text-xs text-muted-foreground">{sellerStats(item)}</p>
+                            <div className="flex flex-1 flex-col gap-2 p-3">
+                                <p className="line-clamp-2 min-h-[2.5rem] text-sm font-semibold leading-snug group-hover:text-orange-400">
+                                    {item.name}
+                                </p>
+                                <span className="w-fit rounded-md border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-400">
+                                    {labels.cond}: <span className="text-amber-300">{item.condition || "Pre-owned"}</span>
+                                </span>
+                                <p className="mt-auto text-base font-bold text-orange-400">
+                                    <span className="text-xs font-medium text-muted-foreground">{labels.price}: </span>
+                                    {formatCurrency(item.price, "Contact")}
+                                </p>
+                                <div className="flex items-center gap-2 border-t pt-2">
+                                    {item.sellerAvatar ? (
+                                        <Image src={item.sellerAvatar} alt="" width={22} height={22} className="h-[22px] w-[22px] rounded-full object-cover" />
+                                    ) : (
+                                        <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white">
+                                            {(item.sellerName || "C").charAt(0).toUpperCase()}
+                                        </span>
+                                    )}
+                                    <span className="truncate text-xs text-muted-foreground">{item.sellerName}</span>
+                                    {item.sellerVerified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-orange-500" />}
+                                </div>
+                            </div>
                         </a>
                     ))}
                 </div>
+                {showNav && (
+                    <button
+                        type="button"
+                        onClick={() => scrollByDir(1)}
+                        aria-label="Next related items"
+                        className="hidden h-11 w-11 shrink-0 items-center justify-center self-center rounded-full border-2 border-orange-500/60 bg-card text-orange-400 shadow-md ring-1 ring-black/5 transition hover:scale-105 hover:border-orange-500 hover:bg-orange-500 hover:text-white active:scale-95 sm:flex"
+                    >
+                        <ChevronRight className="h-5 w-5" />
+                    </button>
+                )}
             </div>
         </section>
     );
@@ -212,6 +272,11 @@ export default function CardDetailsPage() {
             allCategories: "Tất cả danh mục",
             similarFrom: "Tìm các mặt hàng tương tự từ",
             itemsSold: "mặt hàng đã bán",
+            positive: "uy tín",
+            aboutSeller: "Về người bán",
+            relatedItems: "Sản phẩm liên quan",
+            condLabel: "Tình trạng",
+            priceLabel: "Giá",
             shopStore: "Xem shop trên CardVerse",
             sponsored: "Tài trợ",
             viewedAlso: "Người xem sản phẩm này cũng xem",
@@ -299,6 +364,11 @@ export default function CardDetailsPage() {
                 allCategories: "すべてのカテゴリ",
                 similarFrom: "この販売者の類似商品",
                 itemsSold: "件販売",
+                positive: "高評価",
+                aboutSeller: "販売者について",
+                relatedItems: "関連商品",
+                condLabel: "状態",
+                priceLabel: "価格",
                 shopStore: "CardVerseストアを見る",
                 sponsored: "スポンサー",
                 viewedAlso: "この商品を見た人はこちらも見ています",
@@ -385,6 +455,11 @@ export default function CardDetailsPage() {
                 allCategories: "All Categories",
                 similarFrom: "Find similar items from",
                 itemsSold: "items sold",
+                positive: "positive",
+                aboutSeller: "About the seller",
+                relatedItems: "Related items",
+                condLabel: "Cond",
+                priceLabel: "Price",
                 shopStore: "Shop store on CardVerse",
                 sponsored: "Sponsored",
                 viewedAlso: "People who viewed this item also viewed",
@@ -812,54 +887,13 @@ export default function CardDetailsPage() {
             <Header />
             <main className="flex-1">
                 <div className="mx-auto w-full max-w-[1820px] space-y-8 px-4 py-6 sm:px-6">
-                    <div className="flex items-center justify-between gap-4 border-b pb-4 lg:hidden">
+                    <div className="flex items-center justify-between gap-4 border-b pb-4">
                         <Button variant="ghost" onClick={() => router.back()} className="h-9 px-2 text-muted-foreground">
                             <ArrowLeft className="mr-2 h-4 w-4" /> {copy.back}
                         </Button>
                     </div>
 
-                    <div className="hidden items-center gap-5 border-b pb-6 lg:grid lg:grid-cols-[120px_minmax(0,1fr)_230px_170px]">
-                        <Button variant="ghost" onClick={() => router.back()} className="h-12 justify-start px-2 text-muted-foreground">
-                            <ArrowLeft className="mr-2 h-4 w-4" /> {copy.back}
-                        </Button>
-                        <div className="flex h-14 items-center rounded-full border-2 border-foreground bg-background px-5">
-                            <Search className="mr-4 h-6 w-6 text-muted-foreground" />
-                            <input
-                                aria-label="Search marketplace"
-                                className="h-full min-w-0 flex-1 bg-transparent text-lg outline-none"
-                                placeholder={copy.searchPlaceholder}
-                            />
-                        </div>
-                        <div className="relative">
-                            <select className="h-14 w-full appearance-none rounded-full border bg-background px-5 pr-12 text-sm outline-none">
-                                <option>{copy.allCategories}</option>
-                                <option>Pokemon</option>
-                                <option>Soccer</option>
-                                <option>One Piece</option>
-                            </select>
-                            <ChevronDown className="pointer-events-none absolute right-5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        </div>
-                        <Button className="h-14 rounded-full bg-orange-500 text-lg font-bold text-white shadow-[0_0_24px_rgba(249,115,22,0.28)] hover:bg-orange-600">
-                            {copy.search}
-                        </Button>
-                    </div>
-
-                    <div className="rounded-xl border bg-card px-4 py-3">
-                        <div className="flex flex-wrap items-center justify-center gap-3 text-sm">
-                            <span className="text-muted-foreground">{copy.similarFrom}</span>
-                            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-500 font-bold text-white">
-                                {(seller?.display_name || "C").charAt(0).toUpperCase()}
-                            </span>
-                            <span className="font-semibold">{seller?.display_name || copy.seller}</span>
-                            <span className="text-muted-foreground">({seller?.seller_review_count || 0} {copy.itemsSold})</span>
-                            <button type="button" className="font-semibold underline underline-offset-4">{copy.shopStore}</button>
-                            <span className="ml-auto hidden text-muted-foreground md:block">{copy.sponsored}</span>
-                        </div>
-                    </div>
-
-                    <RelatedRail title={copy.viewedAlso} cards={displayRelatedCards.slice(0, 6)} />
-
-                    <section className="grid grid-cols-1 gap-10 xl:grid-cols-[minmax(0,920px)_minmax(460px,1fr)] 2xl:grid-cols-[minmax(0,980px)_minmax(520px,1fr)]">
+                    <section className="grid grid-cols-1 gap-8 xl:grid-cols-[minmax(0,920px)_minmax(460px,1fr)] 2xl:grid-cols-[minmax(0,980px)_minmax(520px,1fr)]">
                         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[96px_minmax(0,1fr)]">
                             <div className="order-2 flex gap-3 overflow-x-auto lg:order-1 lg:block lg:space-y-3 lg:overflow-visible">
                                 {images.map((image, index) => (
@@ -891,14 +925,6 @@ export default function CardDetailsPage() {
                                     ) : (
                                         <div className="flex h-full items-center justify-center text-muted-foreground">{copy.noImage}</div>
                                     )}
-                                    <div className="absolute right-5 top-5 flex gap-3">
-                                        <button type="button" className="flex h-14 w-14 items-center justify-center rounded-full bg-background/90 shadow">
-                                            <Search className="h-6 w-6" />
-                                        </button>
-                                        <button type="button" className="flex h-14 w-14 items-center justify-center rounded-full bg-background/90 shadow">
-                                            <Heart className="h-6 w-6" />
-                                        </button>
-                                    </div>
                                     {isUnavailable && (
                                         <div className="absolute left-5 top-5 rounded-full bg-red-600 px-4 py-1.5 text-sm font-bold text-white">
                                             {card.status === "sold" ? copy.sold : card.status === "in_transaction" ? copy.inTransaction : copy.unavailable}
@@ -1028,49 +1054,20 @@ export default function CardDetailsPage() {
                                         </div>
                                     ) : (
                                         <div className="space-y-3">
-                                            <Button className="h-14 w-full rounded-lg bg-orange-500 text-base font-bold text-white shadow-[0_0_28px_rgba(249,115,22,0.25)] hover:bg-orange-600" onClick={handleBuyNow}>
+                                            <Button className="h-12 w-full rounded-lg bg-orange-500 text-base font-bold text-white shadow-[0_0_28px_rgba(249,115,22,0.25)] hover:bg-orange-600" onClick={handleBuyNow}>
                                                 <CreditCard className="mr-2 h-5 w-5" />
-                                                <span className="flex flex-col items-start leading-tight">
-                                                    <span>{copy.buyNow}</span>
-                                                    <span className="text-xs font-medium text-white/80">{copy.buyHint}</span>
-                                                </span>
+                                                {copy.buyNow}
                                             </Button>
                                             {card.acceptOffers && (
-                                                <Button variant="outline" className="h-14 w-full rounded-lg border-amber-500/80 text-base font-bold text-amber-400 hover:bg-amber-500/10 hover:text-amber-300" onClick={handleMakeOffer}>
+                                                <Button variant="outline" className="h-12 w-full rounded-lg border-amber-500/80 text-base font-bold text-amber-400 hover:bg-amber-500/10 hover:text-amber-300" onClick={handleMakeOffer}>
                                                     <HandCoins className="mr-2 h-5 w-5" />
-                                                    <span className="flex flex-col items-start leading-tight">
-                                                        <span>{myOffer ? copy.viewOfferHistory : copy.makeOffer}</span>
-                                                        <span className="text-xs font-medium text-muted-foreground">{copy.offerHint}</span>
-                                                    </span>
+                                                    {myOffer ? copy.viewOfferHistory : copy.makeOffer}
                                                 </Button>
                                             )}
-                                            <Button variant="outline" className="h-14 w-full rounded-lg border-emerald-500/70 text-base font-bold text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300" onClick={handleAddToCart}>
+                                            <Button variant="outline" className="h-12 w-full rounded-lg border-emerald-500/70 text-base font-bold text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300" onClick={handleAddToCart}>
                                                 <ShoppingCart className="mr-2 h-5 w-5" />
-                                                <span className="flex flex-col items-start leading-tight">
-                                                    <span>{copy.addToCart}</span>
-                                                    <span className="text-xs font-medium text-muted-foreground">{copy.protectedCheckout}</span>
-                                                </span>
+                                                {copy.addToCart}
                                             </Button>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <Button
-                                                    variant="outline"
-                                                    className="h-12 rounded-lg border-orange-500/70 font-bold text-orange-400 hover:bg-orange-500/10 hover:text-orange-300"
-                                                    onClick={() => void handleStartChat()}
-                                                    disabled={startingChatOfferId === "listing"}
-                                                >
-                                                    {startingChatOfferId === "listing" ? (
-                                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                    ) : (
-                                                        <MessageCircle className="mr-2 h-4 w-4" />
-                                                    )}
-                                                    {copy.messageSeller}
-                                                </Button>
-                                                <Button variant="outline" className="h-12 rounded-lg font-bold">
-                                                    <Heart className="mr-2 h-4 w-4" />
-                                                    {copy.addToWatchlist}
-                                                </Button>
-                                            </div>
-                                            <p className="text-xs text-muted-foreground">{copy.watchHint}</p>
                                         </div>
                                     )}
                                 </div>
@@ -1110,28 +1107,26 @@ export default function CardDetailsPage() {
                         </aside>
                     </section>
 
-                    <RelatedRail title={copy.similarItems} subtitle={copy.sponsored} cards={displayRelatedCards.slice(0, 6)} />
-
                     <section className="rounded-lg border bg-card">
                         <div className="border-b px-5 py-3">
                             <span className="rounded-t-md border bg-background px-4 py-3 text-sm font-semibold text-orange-500">{copy.aboutItem}</span>
                         </div>
-                        <div className="p-5">
-                            <div className="mb-8 flex justify-between gap-4 text-sm text-muted-foreground">
+                        <div className="p-5 md:p-6">
+                            <div className="mb-6 flex flex-wrap justify-between gap-x-4 gap-y-1 text-sm text-muted-foreground">
                                 <span>{copy.sellerResponsibility}</span>
                                 <span>{copy.itemNumber}: <b>{card.id.slice(0, 8).toUpperCase()}</b></span>
                             </div>
-                            <h2 className="mb-6 text-2xl font-bold tracking-normal">{copy.itemSpecifics}</h2>
-                            <div className="grid grid-cols-1 gap-x-12 gap-y-4 md:grid-cols-2">
+                            <h2 className="mb-5 text-xl font-bold tracking-normal md:text-2xl">{copy.itemSpecifics}</h2>
+                            <div className="grid grid-cols-1 gap-x-12 gap-y-3 md:grid-cols-2">
                                 {itemSpecifics.map(([label, value]) => (
-                                    <div key={label} className="grid grid-cols-[160px_1fr] gap-4 text-sm">
+                                    <div key={label} className="grid grid-cols-[120px_1fr] gap-3 border-b border-border/40 py-1.5 text-sm sm:grid-cols-[160px_1fr]">
                                         <span className="text-muted-foreground">{label}</span>
-                                        <span className="font-medium">{value}</span>
+                                        <span className="font-medium [overflow-wrap:anywhere]">{value}</span>
                                     </div>
                                 ))}
                             </div>
-                            <h2 className="mb-4 mt-10 text-2xl font-bold tracking-normal">{copy.itemDescription}</h2>
-                            <div className="min-h-40 rounded-md bg-background p-5 text-sm leading-7">
+                            <h2 className="mb-4 mt-8 text-xl font-bold tracking-normal md:text-2xl">{copy.itemDescription}</h2>
+                            <div className="min-h-32 whitespace-pre-line rounded-md bg-background p-4 text-sm leading-7 md:p-5">
                                 {card.description || copy.noDetailedDescription}
                             </div>
                         </div>
@@ -1207,54 +1202,40 @@ export default function CardDetailsPage() {
                         </section>
                     )}
 
-                    <section className="grid grid-cols-1 gap-8 bg-muted/40 p-6 md:grid-cols-[360px_1fr]">
-                        <div className="space-y-5">
-                            <h2 className="text-2xl font-bold tracking-normal">{locale === "vi-VN" ? "Về người bán này" : locale === "ja-JP" ? "この販売者について" : "About this seller"}</h2>
-                            <div className="flex items-center gap-4">
-                                {seller?.profile_image_url ? (
-                                    <Image src={seller.profile_image_url} alt="" width={92} height={92} className="rounded-full object-cover" />
-                                ) : (
-                                    <div className="flex h-24 w-24 items-center justify-center rounded-full bg-orange-500 text-4xl font-bold text-white">
-                                        {(seller?.display_name || "C").charAt(0).toUpperCase()}
-                                    </div>
-                                )}
-                                <div>
-                                    <p className="text-xl font-semibold">{seller?.display_name || card.sellerName || copy.seller}</p>
-                                    <p className="text-muted-foreground">{seller?.seller_rating ? `${Number(seller.seller_rating).toFixed(1)}% positive feedback` : copy.newSeller} · {seller?.seller_review_count || 0} {copy.itemsSold}</p>
+                    <section className="space-y-4 rounded-xl border bg-card p-5 md:p-6">
+                        <h2 className="text-xl font-semibold">{copy.aboutSeller}</h2>
+                        <div className="flex flex-wrap items-center gap-4">
+                            {seller?.profile_image_url ? (
+                                <Image src={seller.profile_image_url} alt="" width={72} height={72} className="h-16 w-16 rounded-full object-cover" />
+                            ) : (
+                                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-500 text-2xl font-bold text-white">
+                                    {(seller?.display_name || "C").charAt(0).toUpperCase()}
                                 </div>
+                            )}
+                            <div className="min-w-0">
+                                <p className="flex items-center gap-1.5 text-lg font-semibold">
+                                    <span className="truncate">{seller?.display_name || card.sellerName || copy.seller}</span>
+                                    {seller?.seller_verified && <BadgeCheck className="h-4 w-4 shrink-0 text-orange-500" />}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                    {seller?.seller_rating ? `${Number(seller.seller_rating).toFixed(1)}% ${copy.positive}` : copy.newSeller} · {seller?.seller_review_count || 0} {copy.itemsSold}
+                                </p>
                             </div>
-                            <div className="space-y-2 text-sm">
-                                <p className="flex items-center gap-2"><CalendarDays className="h-4 w-4" /> {locale === "vi-VN" ? "Đã tham gia marketplace CardVerse" : locale === "ja-JP" ? "CardVerseマーケットプレイスに参加" : "Joined CardVerse marketplace"}</p>
-                                <p className="flex items-center gap-2"><PackageCheck className="h-4 w-4" /> {locale === "vi-VN" ? "Thường gửi hàng sau khi xác nhận thanh toán" : locale === "ja-JP" ? "通常は支払い確認後に発送します" : "Usually ships after payment confirmation"}</p>
-                            </div>
-                            <Button className="h-11 w-full rounded-full bg-orange-500 font-bold text-white hover:bg-orange-600">{copy.sellerOtherItems}</Button>
-                            <Button
-                                variant="outline"
-                                className="h-11 w-full rounded-full border-orange-500 font-bold text-orange-500 hover:bg-orange-500/10 hover:text-orange-400"
-                                onClick={() => void handleStartChat()}
-                                disabled={isOwner || startingChatOfferId === "listing"}
-                            >
-                                {startingChatOfferId === "listing" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                {copy.messageSeller}
-                            </Button>
-                            <Button variant="outline" className="h-11 w-full rounded-full border-orange-500 font-bold text-orange-500 hover:bg-orange-500/10 hover:text-orange-400">{locale === "vi-VN" ? "Lưu người bán" : locale === "ja-JP" ? "販売者を保存" : "Save seller"}</Button>
-                        </div>
-                        <div className="space-y-5">
-                            <h2 className="text-2xl font-bold tracking-normal">{locale === "vi-VN" ? "Đánh giá người bán" : locale === "ja-JP" ? "販売者の評価" : "Seller feedback"} <span className="text-muted-foreground">({seller?.seller_review_count || offers.length || 0})</span></h2>
-                            {[1, 2, 3, 4].map((item) => (
-                                <div key={item} className="border-b pb-4">
-                                    <div className="mb-2 flex items-center justify-between text-sm text-muted-foreground">
-                                        <span className="flex items-center gap-2"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-green-600 text-xs text-white">+</span> {locale === "vi-VN" ? "Đánh giá từ người mua · Tháng trước" : locale === "ja-JP" ? "購入者レビュー · 先月" : "Buyer feedback · Past month"}</span>
-                                        <span>{locale === "vi-VN" ? "Đã xác minh mua hàng" : locale === "ja-JP" ? "購入確認済み" : "Verified purchase"}</span>
-                                    </div>
-                                    <p className="text-sm">{locale === "vi-VN" ? "Giao dịch nhanh, đóng gói cẩn thận, thẻ đúng như mô tả. Sẽ tiếp tục mua từ seller này." : locale === "ja-JP" ? "取引が早く、梱包も丁寧で、説明どおりのカードでした。またこの販売者から購入したいです。" : "Fast transaction, careful packaging, and the card matched the description. Would buy from this seller again."}</p>
-                                </div>
-                            ))}
+                            {!isOwner && (
+                                <Button
+                                    variant="outline"
+                                    className="rounded-full border-orange-500 font-bold text-orange-500 hover:bg-orange-500/10 hover:text-orange-400 sm:ml-auto"
+                                    onClick={() => void handleStartChat()}
+                                    disabled={startingChatOfferId === "listing"}
+                                >
+                                    {startingChatOfferId === "listing" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageCircle className="mr-2 h-4 w-4" />}
+                                    {copy.messageSeller}
+                                </Button>
+                            )}
                         </div>
                     </section>
 
-                    <RelatedRail title={locale === "vi-VN" ? "Khám phá sản phẩm liên quan" : locale === "ja-JP" ? "関連商品を探す" : "Explore related items"} subtitle={copy.sponsored} cards={displayRelatedCards.slice(0, 6)} />
-                    <RelatedRail title={locale === "vi-VN" ? "Có thể bạn cũng thích" : locale === "ja-JP" ? "こちらもおすすめ" : "You may also like"} cards={displayRelatedCards.slice(0, 6)} />
+                    <RelatedRail title={copy.relatedItems} cards={displayRelatedCards} labels={{ cond: copy.condLabel, price: copy.priceLabel, sold: copy.sold }} />
                 </div>
             </main>
             <Footer />

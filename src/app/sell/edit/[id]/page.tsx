@@ -68,6 +68,7 @@ export default function EditListingPage() {
             saveFailed: "Không thể lưu thay đổi.",
             saved: "Đã cập nhật listing",
             unavailable: "Chỉ listing bán ngay đang hoạt động mới có thể chỉnh sửa.",
+            descriptionMin: "Mô tả cần ít nhất 300 ký tự.",
         }
         : locale === "ja-JP"
             ? {
@@ -84,6 +85,7 @@ export default function EditListingPage() {
                 saveFailed: "変更を保存できません。",
                 saved: "出品を更新しました",
                 unavailable: "有効な即時販売の出品のみ編集できます。",
+                descriptionMin: "説明は300文字以上必要です。",
             }
             : {
                 title: "Edit listing",
@@ -99,6 +101,7 @@ export default function EditListingPage() {
                 saveFailed: "Unable to save changes.",
                 saved: "Listing updated",
                 unavailable: "Only active Buy Now listings can be edited.",
+                descriptionMin: "Description must be at least 300 characters.",
             };
 
     useEffect(() => {
@@ -131,6 +134,10 @@ export default function EditListingPage() {
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         if (!listing || isSaving) return;
+        if (description.trim().length < 300) {
+            toast({ variant: "destructive", title: copy.saveFailed, description: copy.descriptionMin });
+            return;
+        }
         setIsSaving(true);
         try {
             const response = await fetch(`/api/marketplace/listings/${id}`, {
@@ -209,7 +216,10 @@ export default function EditListingPage() {
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="listing-description">{copy.description}</Label>
-                                        <Textarea id="listing-description" value={description} onChange={event => setDescription(event.target.value)} minLength={10} maxLength={5000} required className="min-h-36" />
+                                        <Textarea id="listing-description" value={description} onChange={event => setDescription(event.target.value)} minLength={300} maxLength={5000} required className="min-h-36" />
+                                        <p className={`text-right text-xs ${description.trim().length < 300 ? 'text-muted-foreground' : 'text-green-500'}`}>
+                                            {description.trim().length}/300
+                                        </p>
                                     </div>
                                     <div className="grid gap-4 sm:grid-cols-2">
                                         <div className="space-y-2">

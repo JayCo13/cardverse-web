@@ -11,7 +11,7 @@ cloudinary.config({
 const KYC_UPLOAD_FOLDER = 'cardverse/cards/kyc';
 // Folders the client is allowed to request a signature for. The server signs
 // only these exact values so a tampered request can't write anywhere else.
-const ALLOWED_FOLDERS = new Set(['cardverse/cards', KYC_UPLOAD_FOLDER]);
+const ALLOWED_FOLDERS = new Set(['cardverse/cards', KYC_UPLOAD_FOLDER, 'cardverse/chat']);
 
 export async function POST(request: Request) {
     try {

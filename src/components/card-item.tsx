@@ -17,6 +17,7 @@ import { useUser } from "@/lib/supabase";
 import { useAuthModal } from "@/components/auth-modal";
 import { useRouter } from "next/navigation";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
+import { getCategoryCode } from "@/lib/category-code";
 
 // Category badge styles with colors and gradients (no icons for cleaner look)
 const getCategoryStyle = (category: string) => {
@@ -75,18 +76,6 @@ const getCategoryStyle = (category: string) => {
     gradient: 'bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600',
     shadow: 'shadow-blue-500/50',
   };
-};
-
-const getCategoryCode = (category: string) => {
-  const normalized = category.toLowerCase();
-  if (normalized.includes('pokemon') || normalized.includes('pokémon')) return 'POK';
-  if (normalized.includes('one piece')) return 'OP';
-  if (normalized.includes('soccer') || normalized.includes('football') || normalized.includes('bóng đá')) return 'SOC';
-  if (normalized.includes('basketball') || normalized.includes('nba') || normalized.includes('bóng rổ')) return 'NBA';
-  if (normalized.includes('yugioh') || normalized.includes('yu-gi-oh')) return 'YGO';
-  if (normalized.includes('f1') || normalized.includes('formula')) return 'F1';
-  if (normalized.includes('khác') || normalized.includes('other')) return 'OTH';
-  return category.slice(0, 3).toUpperCase();
 };
 
 /** Format price directly in VND without conversion */
@@ -156,6 +145,11 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
         price: '価格',
         lastSold: '直近販売',
         protected: 'CardVerse保護',
+        grading: 'グレード',
+        cardNumber: 'カード番号',
+        language: '言語',
+        season: 'シーズン',
+        noOffers: 'オファー不可',
       }
     : locale === 'vi-VN'
       ? {
@@ -182,6 +176,11 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           price: 'Giá',
           lastSold: 'Đã bán gần nhất',
           protected: 'CardVerse bảo vệ',
+          grading: 'Grading',
+          cardNumber: 'Số thẻ',
+          language: 'Ngôn ngữ',
+          season: 'Mùa giải',
+          noOffers: 'Không nhận offer',
         }
       : {
           yourListing: 'Your listing',
@@ -207,6 +206,11 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           price: 'Price',
           lastSold: 'Last sold',
           protected: 'CardVerse protected',
+          grading: 'Grading',
+          cardNumber: 'Card no.',
+          language: 'Language',
+          season: 'Season',
+          noOffers: 'No offers',
         };
 
   const handleDetailClick = () => {
@@ -395,10 +399,10 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
   if (layout === 'list') {
     const catStyle = getCategoryStyle(card.category);
     const listTitleSize = card.name.length > 110
-      ? 'text-lg md:text-xl'
+      ? 'text-base md:text-lg'
       : card.name.length > 70
-        ? 'text-xl md:text-2xl'
-        : 'text-2xl md:text-[1.85rem]';
+        ? 'text-lg md:text-xl'
+        : 'text-xl md:text-2xl';
     return (
       <Card
         className={`group relative flex w-full flex-col overflow-hidden rounded-lg border bg-gradient-to-br from-card via-card to-card/50 transition-all duration-300 md:flex-row
@@ -487,59 +491,69 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
         {/* Body */}
         <div className="grid flex-1 gap-5 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-stretch">
           <div className="flex min-w-0 flex-col">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="rounded-md border-primary/40 bg-primary/10 text-primary">
-                {card.category}
-              </Badge>
-              {card.status === 'sold' && (
-                <Badge className="rounded-md bg-green-500 text-[10px] text-white">{copy.sold}</Badge>
-              )}
-              {card.isBundle && (
-                <Badge variant="outline" className="rounded-md border-violet-500/50 text-[10px] text-violet-400">
-                  {copy.bundle.replace('{count}', String(card.bundleItems?.length || 0))}
-                </Badge>
-              )}
-            </div>
+            {(card.status === 'sold' || card.isBundle) && (
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                {card.status === 'sold' && (
+                  <Badge className="rounded-md bg-green-500 text-[10px] text-white">{copy.sold}</Badge>
+                )}
+                {card.isBundle && (
+                  <Badge variant="outline" className="rounded-md border-violet-500/50 text-[10px] text-violet-400">
+                    {copy.bundle.replace('{count}', String(card.bundleItems?.length || 0))}
+                  </Badge>
+                )}
+              </div>
+            )}
 
             <h3
-              className={`mt-2 cursor-pointer break-words font-semibold leading-snug tracking-normal hover:text-primary [overflow-wrap:anywhere] ${listTitleSize}`}
+              className={`line-clamp-2 cursor-pointer break-words font-semibold leading-snug tracking-normal hover:text-primary [overflow-wrap:anywhere] ${listTitleSize}`}
               onClick={handleDetailClick}
               title={card.name}
             >
               {card.name}
             </h3>
 
-            <p className="mt-1 text-base text-muted-foreground">
+            <p className="mt-1.5 text-sm text-muted-foreground">
               {card.condition || 'Pre-owned'}
               {card.publisher && <span> · {card.publisher}</span>}
               {card.setName && <span> · {card.setName}</span>}
             </p>
 
-            <div className="mt-4 flex flex-wrap items-end gap-x-3 gap-y-1">
-              <p className="text-[1.7rem] font-bold tracking-normal text-primary md:text-[1.85rem]">
-                {card.listingType === 'sale' && card.price ? displayPrice(card.price) :
-                  card.listingType === 'auction' && card.currentBid ? displayPrice(card.currentBid) :
-                    card.listingType === 'razz' && card.ticketPrice ? displayPrice(card.ticketPrice) : 'N/A'}
-              </p>
-              {card.acceptOffers && (
-                <p className="pb-1 text-sm font-medium text-amber-500">{copy.acceptsOffers}</p>
-              )}
-            </div>
+            {(() => {
+              const specs = [
+                (card.gradingCompany || card.grade != null) && {
+                  label: copy.grading,
+                  value: [card.gradingCompany, card.grade].filter((v) => v != null && v !== '').join(' ') || '—',
+                },
+                card.cardNumber && { label: copy.cardNumber, value: card.cardNumber },
+                card.language && { label: copy.language, value: card.language },
+                card.season && { label: copy.season, value: card.season },
+                { label: copy.quantity, value: `${card.quantity || 1} ${copy.available}` },
+                card.lastSoldPrice && { label: copy.lastSold, value: displayPrice(card.lastSoldPrice) },
+              ].filter(Boolean) as { label: string; value: string }[];
+              return (
+                <dl className="mt-5 flex flex-wrap gap-x-8 gap-y-4 border-t border-border/40 pt-5">
+                  {specs.map((s, i) => (
+                    <div key={i} className="flex flex-col">
+                      <dt className="text-[11px] uppercase tracking-wider text-muted-foreground/60">{s.label}</dt>
+                      <dd className="mt-1 text-[0.95rem] font-semibold text-foreground">{s.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              );
+            })()}
 
-            <div className="mt-3 space-y-1 text-base text-muted-foreground">
-              <p><span className="font-medium text-foreground">{copy.payment}:</span> PayOS / Wallet</p>
-              <p><span className="font-medium text-foreground">{copy.quantity}:</span> {card.quantity || 1} {copy.available}</p>
-              {card.lastSoldPrice && (
-                <p><span className="font-medium text-foreground">{copy.lastSold}:</span> {displayPrice(card.lastSoldPrice)}</p>
-              )}
-            </div>
-
-            <div className="mt-auto flex flex-wrap gap-2 pt-4">
-              <span className="rounded-md border border-primary/50 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary shadow-[0_0_16px_rgba(249,115,22,0.22)]">
-                {card.listingType === 'sale' ? t('card_item_buy_now') : card.listingType}
-              </span>
-              <span className="rounded-md border border-emerald-500/45 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300 shadow-[0_0_16px_rgba(16,185,129,0.18)]">
+            <div className="mt-auto flex flex-wrap items-center gap-x-5 gap-y-2 pt-6 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5 font-medium text-emerald-400">
+                <Sparkles className="h-3.5 w-3.5 shrink-0" />
                 {copy.protected}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <HandCoins className="h-3.5 w-3.5 shrink-0" />
+                PayOS / Wallet
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Zap className="h-3.5 w-3.5 shrink-0" />
+                {copy.ghnReady}
               </span>
             </div>
           </div>
@@ -559,9 +573,23 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
               </div>
             </div>
 
-            <div className="rounded-lg border border-border/70 bg-background/45 p-3 text-sm text-muted-foreground">
-              <p className="font-medium text-foreground">{copy.price}: {card.listingType === 'sale' && card.price ? displayPrice(card.price) : 'N/A'}</p>
-              {card.acceptOffers && <p className="mt-1 text-amber-500">{copy.acceptsOffers}</p>}
+            <div className="rounded-xl border border-amber-500/40 bg-gradient-to-br from-amber-500/10 to-amber-500/[0.02] p-3.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{copy.price}</span>
+                {card.acceptOffers ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-400">
+                    <HandCoins className="h-3 w-3" />
+                    {copy.acceptsOffers}
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-[11px] font-medium text-rose-400/90">
+                    {copy.noOffers}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1.5 text-lg font-bold leading-none text-amber-500 md:text-xl">
+                {card.listingType === 'sale' && card.price ? displayPrice(card.price) : 'N/A'}
+              </p>
             </div>
 
             <div className="grid grid-cols-1 gap-2">

@@ -243,7 +243,16 @@ export async function POST(request: NextRequest) {
                 sender_id: user.id,
                 body: messageBody,
                 message_type: 'offer_auto',
-                metadata: { offerId: offer.id, cardId, price },
+                // Store the parts separately so the chat can render the price and
+                // the buyer's note distinctly instead of one merged sentence.
+                metadata: {
+                    offerId: offer.id,
+                    cardId,
+                    price,
+                    cardName: cardRow.name,
+                    offerText: message || null,
+                    resend: !!latestRejectedOffer,
+                },
                 flagged_terms: [],
             } as never)
             .select('id, created_at')

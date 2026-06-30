@@ -707,3 +707,18 @@ body {
   background: linear-gradient(180deg, rgba(251,146,60,0.0), rgba(251,146,60,0.25), rgba(251,146,60,0.0));
   animation: scan-sheen 1.8s ease-in-out infinite;
 }
+
+/* Subtle shimmering orange border for product cards (related-items rail). */
+@keyframes card-border-shimmer {
+  0%, 100% {
+    border-color: rgba(249, 115, 22, 0.25);
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0);
+  }
+  50% {
+    border-color: rgba(249, 115, 22, 0.7);
+    box-shadow: 0 0 10px -1px rgba(249, 115, 22, 0.45);
+  }
+}
+.card-border-shimmer {
+  animation: card-border-shimmer 2.6s ease-in-out infinite;
+}

@@ -357,7 +357,7 @@ export default function CheckoutPage() {
           from_ward_code: group.wardCode,
           to_district_id: address.district_id.toString(),
           to_ward_code: address.ward_code,
-          insurance_value: Math.min(group.insuranceValue, 2000000).toString(),
+          insurance_value: Math.min(group.insuranceValue, 500000).toString(), // GHN insurance cap; CardVerse escrow covers the rest
         });
         const response = await fetch(`/api/shipping/fee?${params}`);
         const payload = await response.json();

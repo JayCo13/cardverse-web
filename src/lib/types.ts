@@ -41,7 +41,7 @@ export interface Card {
   sellerReviewCount?: number | null;
   buyerOfferStatus?: 'pending' | 'accepted' | 'rejected' | 'chosen' | null;
   isBundle?: boolean;
-  bundleItems?: { title: string; price: number }[];
+  bundleItems?: { title: string; price: number; publisher?: string; setName?: string; season?: string }[];
   acceptOffers?: boolean;
   /** Minimum offer as a percent of the listed price (0 = no minimum). */
   minOfferPercent?: number;

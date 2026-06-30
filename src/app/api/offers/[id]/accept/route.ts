@@ -140,7 +140,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
                 sender_id: user.id,
                 body: systemBody,
                 message_type: 'system',
-                metadata: { offerId: offerRow.id, cardId: cardRow.id, checkoutUrl },
+                metadata: { offerId: offerRow.id, cardId: cardRow.id, checkoutUrl, kind: 'offer_accepted', price: Number(offerRow.price) },
             } as never)
             .select('id, created_at')
             .single();

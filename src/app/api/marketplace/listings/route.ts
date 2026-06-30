@@ -39,6 +39,9 @@ export async function POST(request: NextRequest) {
         }
 
         const body = await request.json();
+        if (typeof body.description !== 'string' || body.description.trim().length < 300) {
+            return NextResponse.json({ error: 'Mô tả cần ít nhất 300 ký tự.' }, { status: 400 });
+        }
         if (body.listing_type === 'sale' && Number(body.price) < MIN_MARKETPLACE_PRICE_VND) {
             return NextResponse.json({ error: `Giá bán tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.` }, { status: 400 });
         }
