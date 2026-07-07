@@ -74,6 +74,8 @@ export default function WalletPage() {
       minAmount: 'Số tiền tối thiểu là 10,000đ',
       failedDeposit: 'Không thể tạo lệnh nạp tiền',
       error: 'Lỗi',
+      loadError: 'Không thể tải thông tin ví.',
+      retry: 'Thử lại',
       loginTitle: 'Đăng nhập để sử dụng Ví',
       loginButton: 'Đăng nhập',
       depositTitle: 'Nạp tiền vào ví',
@@ -128,6 +130,8 @@ export default function WalletPage() {
         minAmount: '最低金額は10,000đです',
         failedDeposit: '入金リンクを作成できません',
         error: 'エラー',
+        loadError: 'ウォレット情報を読み込めませんでした。',
+        retry: '再試行',
         loginTitle: 'ウォレットを使うにはログインしてください',
         loginButton: 'ログイン',
         depositTitle: 'ウォレットへ入金',
@@ -181,6 +185,8 @@ export default function WalletPage() {
         minAmount: 'Minimum amount is 10,000đ',
         failedDeposit: 'Failed to create deposit order',
         error: 'Error',
+        loadError: 'Unable to load wallet information.',
+        retry: 'Retry',
         loginTitle: 'Log in to use Wallet',
         loginButton: 'Log in',
         depositTitle: 'Add money to wallet',
@@ -233,6 +239,7 @@ export default function WalletPage() {
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [walletLoadError, setWalletLoadError] = useState('');
   const [depositAmount, setDepositAmount] = useState<number>(100000);
   const [customAmount, setCustomAmount] = useState('');
   const [isDepositing, setIsDepositing] = useState(false);
@@ -245,19 +252,23 @@ export default function WalletPage() {
   const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
 
   const fetchWallet = useCallback(async () => {
+    setIsLoading(true);
+    setWalletLoadError('');
     try {
       const res = await fetch('/api/wallet');
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || copy.loadError);
       if (data.wallet) {
         setWallet(data.wallet);
         setTransactions(data.transactions || []);
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Failed to fetch wallet:', err);
+      setWalletLoadError(err instanceof Error ? err.message : copy.loadError);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [copy.loadError]);
 
   const fetchSellerStatus = useCallback(async () => {
     try {
@@ -382,6 +393,20 @@ export default function WalletPage() {
           <Wallet className="h-16 w-16 text-muted-foreground mb-4" />
           <h2 className="text-2xl font-semibold mb-2">{copy.loginTitle}</h2>
           <Button onClick={() => setOpen(true)}>{copy.loginButton}</Button>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (walletLoadError) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <Header />
+        <main className="flex-1 container mx-auto px-4 py-8 flex flex-col items-center justify-center text-center">
+          <AlertTriangle className="h-14 w-14 text-red-400 mb-4" />
+          <p className="text-lg font-medium text-red-300">{walletLoadError}</p>
+          <Button variant="outline" className="mt-4" onClick={() => void fetchWallet()}>{copy.retry}</Button>
         </main>
         <Footer />
       </div>

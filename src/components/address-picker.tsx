@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, MapPin } from 'lucide-react';
+import { AlertCircle, Loader2, MapPin, RefreshCw } from 'lucide-react';
 import { useLocalization } from '@/context/localization-context';
 
 type Province = { ProvinceID: number; ProvinceName: string };
@@ -49,6 +49,8 @@ export function AddressPicker({
             selectProvince: 'Chọn Tỉnh/Thành',
             selectDistrict: 'Chọn Quận/Huyện',
             selectWard: 'Chọn Phường/Xã',
+            loadError: 'Không thể tải dữ liệu địa chỉ.',
+            retry: 'Thử lại',
         }
         : locale === 'ja-JP'
             ? {
@@ -60,6 +62,8 @@ export function AddressPicker({
                 selectProvince: '都道府県を選択',
                 selectDistrict: '区・郡を選択',
                 selectWard: '区・町・村を選択',
+                loadError: '住所データを読み込めませんでした。',
+                retry: '再試行',
             }
             : {
                 detailPlaceholder: 'House number, street...',
@@ -70,6 +74,8 @@ export function AddressPicker({
                 selectProvince: 'Select province/city',
                 selectDistrict: 'Select district',
                 selectWard: 'Select ward',
+                loadError: 'Unable to load address data.',
+                retry: 'Retry',
             };
     const [provinces, setProvinces] = useState<Province[]>([]);
     const [districts, setDistricts] = useState<District[]>([]);
@@ -83,6 +89,8 @@ export function AddressPicker({
     const [loadingProvinces, setLoadingProvinces] = useState(false);
     const [loadingDistricts, setLoadingDistricts] = useState(false);
     const [loadingWards, setLoadingWards] = useState(false);
+    const [loadError, setLoadError] = useState('');
+    const [retryNonce, setRetryNonce] = useState(0);
     const onChangeRef = useRef(onChange);
     const lastEmittedRef = useRef<string | null>(null);
 
@@ -101,18 +109,21 @@ export function AddressPicker({
     useEffect(() => {
         const fetchProvinces = async () => {
             setLoadingProvinces(true);
+            setLoadError('');
             try {
                 const res = await fetch('/api/shipping/provinces');
                 const data = await res.json();
+                if (!res.ok) throw new Error(data.error || copy.loadError);
                 setProvinces(data.data || []);
             } catch (err) {
                 console.error('Failed to fetch provinces:', err);
+                setLoadError(err instanceof Error ? err.message : copy.loadError);
             } finally {
                 setLoadingProvinces(false);
             }
         };
         fetchProvinces();
-    }, []);
+    }, [retryNonce]);
 
     // Load districts when province changes
     useEffect(() => {
@@ -122,18 +133,21 @@ export function AddressPicker({
         }
         const fetchDistricts = async () => {
             setLoadingDistricts(true);
+            setLoadError('');
             try {
                 const res = await fetch(`/api/shipping/districts?province_id=${selectedProvince}`);
                 const data = await res.json();
+                if (!res.ok) throw new Error(data.error || copy.loadError);
                 setDistricts(data.data || []);
             } catch (err) {
                 console.error('Failed to fetch districts:', err);
+                setLoadError(err instanceof Error ? err.message : copy.loadError);
             } finally {
                 setLoadingDistricts(false);
             }
         };
         fetchDistricts();
-    }, [selectedProvince]);
+    }, [selectedProvince, retryNonce]);
 
     // Load wards when district changes
     useEffect(() => {
@@ -143,18 +157,21 @@ export function AddressPicker({
         }
         const fetchWards = async () => {
             setLoadingWards(true);
+            setLoadError('');
             try {
                 const res = await fetch(`/api/shipping/wards?district_id=${selectedDistrict}`);
                 const data = await res.json();
+                if (!res.ok) throw new Error(data.error || copy.loadError);
                 setWards(data.data || []);
             } catch (err) {
                 console.error('Failed to fetch wards:', err);
+                setLoadError(err instanceof Error ? err.message : copy.loadError);
             } finally {
                 setLoadingWards(false);
             }
         };
         fetchWards();
-    }, [selectedDistrict]);
+    }, [selectedDistrict, retryNonce]);
 
     // Emit changes
     const emitChange = useCallback((
@@ -225,6 +242,18 @@ export function AddressPicker({
                     <MapPin className="h-3.5 w-3.5" />
                     {label}
                 </Label>
+            )}
+
+            {loadError && (
+                <div className="flex items-center justify-between gap-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                    <span className="flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        {loadError}
+                    </span>
+                    <button type="button" className="flex shrink-0 items-center gap-1 font-medium hover:text-red-200" onClick={() => setRetryNonce(value => value + 1)}>
+                        <RefreshCw className="h-3.5 w-3.5" /> {copy.retry}
+                    </button>
+                </div>
             )}
 
             <div className={`grid ${gridCols} gap-2`}>

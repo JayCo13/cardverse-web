@@ -581,6 +581,9 @@ export const ja = {
   privacy_section_7_desc: '本プライバシーポリシーについて質問がある場合は、support@cardversehub.comまでお問い合わせいただくか、お問い合わせページをご覧ください。',
 
   // KYC Overlay
+  cart_add_success: 'カートに追加しました',
+  cart_add_failed: 'このカードをカートに追加できません',
+  cart_error_title: 'カートエラー',
   kyc_verifying_title: 'Card Verse Hubが確認中...',
   kyc_verifying_subtitle: 'Card Verse Hubの自動システムが身分証と銀行情報を照合しています',
 };

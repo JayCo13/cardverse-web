@@ -279,8 +279,8 @@ export default function SellPage() {
         console.error('[KYC] HEIC → JPEG conversion failed:', err);
         toast({
           variant: 'destructive',
-          title: 'Không đọc được ảnh',
-          description: 'Vui lòng thử lại hoặc chọn ảnh định dạng JPG/PNG.',
+          title: tx('Không đọc được ảnh', 'Unable to read image', '画像を読み込めません'),
+          description: tx('Vui lòng thử lại hoặc chọn ảnh định dạng JPG/PNG.', 'Try again or choose a JPG/PNG image.', 'もう一度試すか、JPG/PNG画像を選択してください。'),
         });
         setProcessingType(null);
         return;
@@ -528,7 +528,7 @@ export default function SellPage() {
     setIsAIChecking(true);
     setAIError(null);
     setAIResult(null);
-    setAiCheckStage('Đang chuẩn bị quét...');
+    setAiCheckStage(tx('Đang chuẩn bị quét...', 'Preparing scan...', 'スキャンを準備中...'));
     setSlowStageHint(null);
     setAiScanAttempts(prev => prev + 1);
     const requestId = `kyc-${Date.now()}`;
@@ -606,18 +606,18 @@ export default function SellPage() {
       }
 
       if (result.issues && result.issues.length > 0) {
-        toast({ variant: 'destructive', title: '⚠️ Phát hiện vấn đề', description: result.issues[0] });
+        toast({ variant: 'destructive', title: tx('⚠️ Phát hiện vấn đề', '⚠️ Issue detected', '⚠️ 問題が検出されました'), description: result.issues[0] });
       } else if (result.is_name_match && result.confidence >= 0.7) {
-        toast({ title: '✅ Xác minh thành công!', description: 'Tất cả thông tin trùng khớp.' });
+        toast({ title: tx('✅ Xác minh thành công!', '✅ Verification successful!', '✅ 確認が完了しました'), description: tx('Tất cả thông tin trùng khớp.', 'All information matches.', 'すべての情報が一致しています。') });
       } else {
-        toast({ variant: 'destructive', title: '⚠️ Cần kiểm tra lại', description: 'Ảnh hợp lệ nhưng bạn nên kiểm tra và chỉnh sửa lại thông tin ngân hàng nếu hệ thống đọc sai.' });
+        toast({ variant: 'destructive', title: tx('⚠️ Cần kiểm tra lại', '⚠️ Review required', '⚠️ 再確認が必要です'), description: tx('Ảnh hợp lệ nhưng bạn nên kiểm tra và chỉnh sửa lại thông tin ngân hàng nếu hệ thống đọc sai.', 'The images are valid, but review and correct the bank details if they were read incorrectly.', '画像は有効ですが、読み取りが間違っている場合は銀行情報を確認・修正してください。') });
       }
 
       // Cross-account duplicate warning (CCCD / bank already used elsewhere).
       if (result.duplicate && (result.duplicate.cccdDuplicate || result.duplicate.bankDuplicate)) {
         toast({
           variant: 'destructive',
-          title: tx('Thong tin da duoc su dung', 'Information already used', 'この情報は既に使用されています'),
+          title: tx('Thông tin đã được sử dụng', 'Information already used', 'この情報は既に使用されています'),
           description: result.duplicate.notes || tx('CCCD hoặc số tài khoản này đã đăng ký ở tài khoản khác.', 'This ID or bank account number is already registered on another account.', 'この身分証または口座番号は別のアカウントに登録されています。'),
         });
       }
@@ -626,7 +626,7 @@ export default function SellPage() {
       );
     } catch (err: any) {
       console.error(`[KYC Flow][${requestId}] Failed after ${(performance.now() - scanStart).toFixed(0)}ms`, err);
-      setAIError(err.message || 'Lỗi kết nối hệ thống');
+      setAIError(err.message || tx('Lỗi kết nối hệ thống', 'System connection error', 'システム接続エラー'));
     } finally {
       setIsAIChecking(false);
       setAiCheckStage(null);
@@ -668,12 +668,12 @@ export default function SellPage() {
   // Final submit
   const handleKYCSubmit = async () => {
     if (!fullName || !bankName || !idFrontFile || !idBackFile || !bankScreenshotFile || !phoneNumber) {
-      toast({ variant: 'destructive', title: 'Vui lòng điền đầy đủ thông tin ở tất cả các bước' });
+      toast({ variant: 'destructive', title: tx('Vui lòng điền đầy đủ thông tin ở tất cả các bước', 'Complete all required information in every step', '各ステップの必須情報をすべて入力してください') });
       return;
     }
 
     if (!aiResult) {
-      toast({ variant: 'destructive', title: 'Vui lòng chạy kiểm tra ở Bước 1 trước' });
+      toast({ variant: 'destructive', title: tx('Vui lòng chạy kiểm tra ở Bước 1 trước', 'Run the verification in Step 1 first', '先にステップ1の確認を実行してください') });
       return;
     }
 
@@ -715,10 +715,10 @@ export default function SellPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      toast({ title: tx('Da gui yeu cau xac minh', 'Verification request submitted', '確認申請を送信しました'), description: tx('Hệ thống đã tiền duyệt hồ sơ. Admin sẽ xác nhận lần cuối trong vài giờ.', 'The system pre-approved your profile. Admin will do the final check within a few hours.', 'システムがプロフィールを事前承認しました。管理者が数時間以内に最終確認します。') });
+      toast({ title: tx('Đã gửi yêu cầu xác minh', 'Verification request submitted', '確認申請を送信しました'), description: tx('Hệ thống đã tiền duyệt hồ sơ. Admin sẽ xác nhận lần cuối trong vài giờ.', 'The system pre-approved your profile. Admin will do the final check within a few hours.', 'システムがプロフィールを事前承認しました。管理者が数時間以内に最終確認します。') });
       fetchVerification();
     } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Lỗi', description: err.message });
+      toast({ variant: 'destructive', title: tx('Lỗi', 'Error', 'エラー'), description: err.message });
     } finally {
       setIsSubmitting(false);
     }
@@ -730,8 +730,8 @@ export default function SellPage() {
     paid: { label: copy.waitingShip, icon: <Package className="h-4 w-4" />, color: 'text-blue-400' },
     shipping: { label: copy.shipping, icon: <Package className="h-4 w-4" />, color: 'text-yellow-400' },
     completed: { label: copy.completed, icon: <CheckCircle className="h-4 w-4" />, color: 'text-green-400' },
-    disputed: { label: 'Khiếu nại', icon: <XCircle className="h-4 w-4" />, color: 'text-red-400' },
-    cancelled: { label: 'Đã hủy', icon: <XCircle className="h-4 w-4" />, color: 'text-muted-foreground' },
+    disputed: { label: tx('Khiếu nại', 'Disputed', '紛争中'), icon: <XCircle className="h-4 w-4" />, color: 'text-red-400' },
+    cancelled: { label: tx('Đã hủy', 'Cancelled', 'キャンセル済み'), icon: <XCircle className="h-4 w-4" />, color: 'text-muted-foreground' },
   };
 
   const isPhoneValid = /^0[3-9]\d{8}$/.test(phoneNumber);

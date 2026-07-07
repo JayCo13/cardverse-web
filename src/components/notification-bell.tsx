@@ -14,13 +14,42 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Bell, CheckCircle, MessageCircle, Tag, Package } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { vi } from "date-fns/locale";
+import { enUS, ja, vi } from "date-fns/locale";
 import { useRouter } from "next/navigation";
+import { useLocalization } from "@/context/localization-context";
 
 export function NotificationBell() {
     const supabase = useSupabase();
     const { user } = useUser();
     const router = useRouter();
+    const { locale } = useLocalization();
+    const copy = locale === 'ja-JP'
+        ? {
+            title: '通知',
+            markAllRead: 'すべて既読にする',
+            enableBrowser: 'ブラウザ通知を有効にする',
+            browserBlocked: 'ブラウザ通知がブロックされています。ブラウザの設定で有効にしてください。',
+            empty: '通知はありません',
+            unreadTitle: '新しい通知が{count}件あります',
+        }
+        : locale === 'vi-VN'
+            ? {
+                title: 'Thông báo',
+                markAllRead: 'Đánh dấu đã đọc',
+                enableBrowser: 'Bật thông báo trên trình duyệt',
+                browserBlocked: 'Thông báo trình duyệt đang bị chặn. Hãy bật lại trong cài đặt của trình duyệt.',
+                empty: 'Không có thông báo',
+                unreadTitle: 'Có ({count}) thông báo mới',
+            }
+            : {
+                title: 'Notifications',
+                markAllRead: 'Mark all as read',
+                enableBrowser: 'Enable browser notifications',
+                browserBlocked: 'Browser notifications are blocked. Enable them in your browser settings.',
+                empty: 'No notifications',
+                unreadTitle: '{count} new notification(s)',
+            };
+    const distanceLocale = locale === 'ja-JP' ? ja : locale === 'vi-VN' ? vi : enUS;
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [isOpen, setIsOpen] = useState(false);
     const [previousUnreadCount, setPreviousUnreadCount] = useState(0);
@@ -32,6 +61,7 @@ export function NotificationBell() {
     const audioUnlockedRef = useRef(false);
     const browserPermissionRef = useRef<NotificationPermission | 'unsupported'>('unsupported');
     const mutedConversationIdsRef = useRef<Set<string>>(new Set());
+    const originalTitleRef = useRef<string | null>(null);
     useEffect(() => {
         const audio = new Audio('/assets/notify.wav');
         audio.preload = 'auto';
@@ -205,7 +235,7 @@ export function NotificationBell() {
                         }
 
                         // Update browser tab title
-                        document.title = `Có (1) thông báo mới`;
+                        document.title = copy.unreadTitle.replace('{count}', '1');
 
                         // Trigger bell ringing animation
                         setIsRinging(true);
@@ -333,6 +363,18 @@ export function NotificationBell() {
 
     const unreadCount = notifications.filter((n) => !n.read).length;
 
+    useEffect(() => {
+        if (originalTitleRef.current === null) originalTitleRef.current = document.title;
+        if (unreadCount > 0) {
+            document.title = copy.unreadTitle.replace('{count}', String(unreadCount));
+        } else if (originalTitleRef.current) {
+            document.title = originalTitleRef.current;
+        }
+        return () => {
+            if (originalTitleRef.current) document.title = originalTitleRef.current;
+        };
+    }, [copy.unreadTitle, unreadCount]);
+
     const getNotificationIcon = (type: Notification["type"]) => {
         switch (type) {
             case "offer_received":
@@ -372,10 +414,10 @@ export function NotificationBell() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-80">
                 <DropdownMenuLabel className="flex items-center justify-between">
-                    <span>Thông báo</span>
+                    <span>{copy.title}</span>
                     {unreadCount > 0 && (
                         <Button variant="ghost" size="sm" className="text-xs h-6" onClick={markAllAsRead}>
-                            Đánh dấu đã đọc
+                            {copy.markAllRead}
                         </Button>
                     )}
                 </DropdownMenuLabel>
@@ -390,7 +432,7 @@ export function NotificationBell() {
                             className="cursor-pointer text-sm"
                         >
                             <Bell className="mr-2 h-4 w-4 text-orange-500" />
-                            Bật thông báo trên trình duyệt
+                            {copy.enableBrowser}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                     </>
@@ -398,14 +440,14 @@ export function NotificationBell() {
                 {browserPermission === 'denied' && (
                     <>
                         <div className="px-3 py-2 text-xs text-muted-foreground">
-                            Thông báo trình duyệt đang bị chặn. Hãy bật lại trong cài đặt của trình duyệt.
+                            {copy.browserBlocked}
                         </div>
                         <DropdownMenuSeparator />
                     </>
                 )}
                 {notifications.length === 0 ? (
                     <div className="p-4 text-center text-muted-foreground text-sm">
-                        Không có thông báo
+                        {copy.empty}
                     </div>
                 ) : (
                     <div className="max-h-80 overflow-y-auto">
@@ -429,7 +471,7 @@ export function NotificationBell() {
                                     <p className="text-xs text-muted-foreground mt-1">
                                         {formatDistanceToNow(new Date(notification.createdAt), {
                                             addSuffix: true,
-                                            locale: vi,
+                                            locale: distanceLocale,
                                         })}
                                     </p>
                                 </div>

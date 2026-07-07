@@ -80,7 +80,7 @@ type ChatDrawerProps = {
 };
 
 const formatVND = (amount: number | null | undefined) =>
-    amount == null ? "" : new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
+    amount == null ? "" : `${new Intl.NumberFormat("vi-VN").format(amount)}đ`;
 
 export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDrawerProps) {
     const supabase = useSupabase();
@@ -129,6 +129,8 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             safetyWarningMsg: "⚠️ CardVerse phát hiện nội dung có thể đưa giao dịch ra ngoài nền tảng. Để tránh scam, hãy trao đổi và thanh toán trực tiếp trên CardVerse.",
             payNow: "Thanh toán ngay",
             loadingMessages: "Đang tải tin nhắn...",
+            title: "Tin nhắn CardVerse",
+            loadOlderMessages: "Tải tin nhắn cũ hơn",
             you: "Bạn",
             cardVerseUser: "Người dùng CardVerse",
             offerTag: "Đề nghị giá",
@@ -185,6 +187,8 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 safetyWarningMsg: "⚠️ 取引を外部に移す可能性のある内容を検出しました。詐欺防止のため、やり取りと支払いはCardVerse上で行ってください。",
                 payNow: "今すぐ支払う",
                 loadingMessages: "メッセージを読み込み中...",
+                title: "CardVerseメッセージ",
+                loadOlderMessages: "以前のメッセージを読み込む",
                 you: "あなた",
                 cardVerseUser: "CardVerseユーザー",
                 offerTag: "価格オファー",
@@ -240,6 +244,8 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 safetyWarningMsg: "⚠️ CardVerse detected content that may move the deal off-platform. Keep communication and payment on CardVerse to avoid scams.",
                 payNow: "Pay now",
                 loadingMessages: "Loading messages...",
+                title: "CardVerse Messages",
+                loadOlderMessages: "Load older messages",
                 you: "You",
                 cardVerseUser: "CardVerse user",
                 offerTag: "Price offer",
@@ -259,6 +265,8 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     const [conversations, setConversations] = useState<ConversationItem[]>([]);
     const [selectedId, setSelectedId] = useState<string | null>(initialConversationId || null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [hasMoreMessages, setHasMoreMessages] = useState(false);
+    const [isLoadingOlder, setIsLoadingOlder] = useState(false);
     const [draft, setDraft] = useState("");
     const [isLoadingConversations, setIsLoadingConversations] = useState(false);
     const [isLoadingMessages, setIsLoadingMessages] = useState(false);
@@ -272,6 +280,9 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     const [isRejectingOffer, setIsRejectingOffer] = useState(false);
     const bottomRef = useRef<HTMLDivElement | null>(null);
     const lastScrolledConversationRef = useRef<string | null>(null);
+    // Set when prepending older history so the auto-scroll effect doesn't yank
+    // the user back to the bottom.
+    const skipAutoScrollRef = useRef(false);
     const draftRef = useRef("");
     const isComposingRef = useRef(false);
     const isSendingRef = useRef(false);
@@ -462,6 +473,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || copy.loadMessagesFailed);
             setMessages(payload.messages || []);
+            setHasMoreMessages(Boolean(payload.hasMore));
             await fetch("/api/chat/read", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -475,6 +487,33 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             setIsLoadingMessages(false);
         }
     }, [fetchConversations, toast]);
+
+    const loadOlderMessages = useCallback(async () => {
+        const conversationId = selectedIdRef.current;
+        const oldest = messages[0];
+        if (!conversationId || !oldest || isLoadingOlder) return;
+        setIsLoadingOlder(true);
+        try {
+            const response = await fetch(
+                `/api/chat/messages?conversationId=${conversationId}&before=${encodeURIComponent(oldest.created_at)}`,
+                { cache: "no-store" },
+            );
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || copy.loadMessagesFailed);
+            skipAutoScrollRef.current = true;
+            setMessages(prev => {
+                const existing = new Set(prev.map(message => message.id));
+                const older = ((payload.messages || []) as ChatMessage[]).filter(message => !existing.has(message.id));
+                return [...older, ...prev];
+            });
+            setHasMoreMessages(Boolean(payload.hasMore));
+        } catch (error) {
+            const description = error instanceof Error ? error.message : copy.loadMessagesFailed;
+            toast({ variant: "destructive", title: copy.chatError, description });
+        } finally {
+            setIsLoadingOlder(false);
+        }
+    }, [messages, isLoadingOlder, toast]);
 
     useEffect(() => {
         if (initialConversationId) {
@@ -543,6 +582,11 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
 
     useEffect(() => {
         if (isLoadingMessages || messages.length === 0) return;
+        if (skipAutoScrollRef.current) {
+            // Older history was just prepended — keep the user's position.
+            skipAutoScrollRef.current = false;
+            return;
+        }
         // Jump instantly when opening/switching a conversation; scroll smoothly for
         // new messages within the conversation already in view.
         const switchedConversation = lastScrolledConversationRef.current !== selectedId;
@@ -669,7 +713,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                     <SheetHeader className="border-b px-5 py-4">
                         <SheetTitle className="flex items-center gap-2">
                             <MessageCircle className="h-5 w-5 text-orange-500" />
-                            CardVerse Messages
+                            {copy.title}
                             {unreadCount > 0 && <Badge className="bg-orange-500 text-white">{unreadCount} {copy.newCount}</Badge>}
                         </SheetTitle>
                     </SheetHeader>
@@ -856,6 +900,20 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                             </div>
                                         ) : (
                                             <div className="space-y-3">
+                                                {hasMoreMessages && (
+                                                    <div className="flex justify-center pb-1">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-7 text-xs text-muted-foreground"
+                                                            disabled={isLoadingOlder}
+                                                            onClick={() => void loadOlderMessages()}
+                                                        >
+                                                            {isLoadingOlder && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+                                                            {copy.loadOlderMessages}
+                                                        </Button>
+                                                    </div>
+                                                )}
                                                 {messages.map(message => {
                                                     const mine = message.sender_id === user.id;
                                                     const system = message.message_type === "system";

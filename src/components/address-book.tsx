@@ -48,6 +48,7 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
     const copy = locale === 'ja-JP'
         ? {
             missingTitle: '情報が不足しています',
+            errorTitle: 'エラー',
             missingDesc: '名前、電話番号、住所を入力してください。',
             updated: '住所を更新しました',
             added: '住所を追加しました',
@@ -69,10 +70,12 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
             setDefault: '既定にする',
             delete: '削除',
             addNew: '新しい住所を追加',
+            detailPlaceholder: '番地、通り名...',
           }
         : locale === 'vi-VN'
             ? {
                 missingTitle: 'Thiếu thông tin',
+                errorTitle: 'Lỗi',
                 missingDesc: 'Nhập tên, SĐT và chọn đầy đủ địa chỉ.',
                 updated: 'Đã cập nhật địa chỉ',
                 added: 'Đã thêm địa chỉ',
@@ -94,9 +97,11 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                 setDefault: 'Đặt mặc định',
                 delete: 'Xóa',
                 addNew: 'Thêm địa chỉ mới',
+                detailPlaceholder: 'Số nhà, tên đường...',
               }
             : {
                 missingTitle: 'Missing information',
+                errorTitle: 'Error',
                 missingDesc: 'Enter name, phone number, and full address.',
                 updated: 'Address updated',
                 added: 'Address added',
@@ -118,6 +123,7 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                 setDefault: 'Set default',
                 delete: 'Delete',
                 addNew: 'Add new address',
+                detailPlaceholder: 'Street number, street name...',
               };
     const [addresses, setAddresses] = useState<SavedAddress[]>([]);
     const [loading, setLoading] = useState(true);
@@ -148,10 +154,15 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
             if (list.length === 0) setMode('list');
         } catch (err) {
             console.error('Failed to load addresses:', err);
+            toast({
+                variant: 'destructive',
+                title: copy.errorTitle,
+                description: err instanceof Error ? err.message : copy.saveError,
+            });
         } finally {
             setLoading(false);
         }
-    }, [emitList, selectable, onSelect]);
+    }, [copy.errorTitle, copy.saveError, emitList, onSelect, selectable, toast]);
 
     useEffect(() => {
         void load(true);
@@ -226,7 +237,7 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
             toast({ title: editing ? copy.updated : copy.added });
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : copy.saveError;
-            toast({ variant: 'destructive', title: 'Error', description: message });
+            toast({ variant: 'destructive', title: copy.errorTitle, description: message });
         } finally {
             setSaving(false);
         }
@@ -247,7 +258,7 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
             toast({ title: copy.deleted });
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : copy.deleteError;
-            toast({ variant: 'destructive', title: 'Error', description: message });
+            toast({ variant: 'destructive', title: copy.errorTitle, description: message });
         } finally {
             setDeletingId(null);
         }
@@ -266,7 +277,7 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
             toast({ title: copy.defaulted });
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : copy.defaultError;
-            toast({ variant: 'destructive', title: 'Error', description: message });
+            toast({ variant: 'destructive', title: copy.errorTitle, description: message });
         }
     };
 
@@ -301,7 +312,7 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                 <AddressPicker
                     value={form.address ?? undefined}
                     onChange={handleAddressChange}
-                    detailPlaceholder="Số nhà, tên đường..."
+                    detailPlaceholder={copy.detailPlaceholder}
                 />
 
                 <label className="flex items-center gap-2 text-sm cursor-pointer">

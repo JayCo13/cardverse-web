@@ -90,9 +90,10 @@ interface CardItemProps {
   onBuyClick?: (card: CardType) => void;
   onOfferClick?: (card: CardType) => void;
   onAddToCart?: (card: CardType) => void;
+  showGhnReadiness?: boolean;
 }
 
-export const CardItem = React.memo(function CardItem({ card, layout = 'grid', onBuyClick, onOfferClick, onAddToCart }: CardItemProps) {
+export const CardItem = React.memo(function CardItem({ card, layout = 'grid', onBuyClick, onOfferClick, onAddToCart, showGhnReadiness = true }: CardItemProps) {
   const { t, locale } = useLocalization();
   const { formatPrice } = useCurrency();
   const { setOpen } = useAuthModal();
@@ -551,10 +552,12 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                 <HandCoins className="h-3.5 w-3.5 shrink-0" />
                 PayOS / Wallet
               </span>
-              <span className="inline-flex items-center gap-1.5">
-                <Zap className="h-3.5 w-3.5 shrink-0" />
-                {copy.ghnReady}
-              </span>
+              {showGhnReadiness && (
+                <span className="inline-flex items-center gap-1.5">
+                  <Zap className="h-3.5 w-3.5 shrink-0" />
+                  {copy.ghnReady}
+                </span>
+              )}
             </div>
           </div>
 

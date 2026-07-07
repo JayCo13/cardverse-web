@@ -108,7 +108,9 @@ export async function POST(request: NextRequest) {
                 user_id: user.id,
                 type: 'withdrawal',
                 amount: -amountNet,
-                balance_after: newBalance,
+                // Ledger rows describe the running balance: deduct the net
+                // transfer first, then the platform fee in the next row.
+                balance_after: newBalance + fee,
                 description: `Rút tiền về ${kyc.bank_name} ****${kyc.bank_account_number.slice(-4)}`,
             },
             {

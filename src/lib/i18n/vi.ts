@@ -582,6 +582,9 @@ export const vi = {
   privacy_section_7_desc: 'Nếu bạn có bất kỳ câu hỏi nào về Chính Sách Bảo Mật này, vui lòng liên hệ với chúng tôi tại support@cardversehub.com hoặc truy cập trang Liên Hệ.',
 
   // KYC Overlay
+  cart_add_success: 'Thêm vào giỏ hàng thành công',
+  cart_add_failed: 'Không thể thêm thẻ này vào giỏ hàng',
+  cart_error_title: 'Lỗi giỏ hàng',
   kyc_verifying_title: 'Card Verse Hub Verifying...',
   kyc_verifying_subtitle: 'Hệ thống tự động Card Verse Hub đang soi chéo CCCD & Ngân hàng',
 };

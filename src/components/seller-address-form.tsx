@@ -20,7 +20,7 @@ type SellerAddressFormProps = {
  * address stored on `profiles.address_*`). This is required before listing a
  * card so the marketplace can calculate shipping fees for buyers.
  */
-export function SellerAddressForm({ onSaved, submitLabel = 'Lưu địa chỉ lấy hàng' }: SellerAddressFormProps) {
+export function SellerAddressForm({ onSaved, submitLabel }: SellerAddressFormProps) {
   const supabase = useSupabase();
   const { user } = useUser();
   const { toast } = useToast();
@@ -42,8 +42,8 @@ export function SellerAddressForm({ onSaved, submitLabel = 'Lưu địa chỉ l�
           submit: 'Lưu địa chỉ lấy hàng',
           incompleteTitle: 'Địa chỉ chưa đầy đủ',
           incompleteDesc: 'Vui lòng chọn đầy đủ Tỉnh/Thành, Quận/Huyện và Phường/Xã.',
-          savedTitle: 'Da luu dia chi lay hang',
-          savedDesc: 'Bay gio ban co the dang ban the.',
+          savedTitle: 'Đã lưu địa chỉ lấy hàng',
+          savedDesc: 'Bây giờ bạn có thể đăng bán thẻ.',
           errorTitle: 'Lỗi',
           errorDesc: 'Không thể lưu địa chỉ.',
           detailPlaceholder: 'Số nhà, tên đường...',
@@ -151,7 +151,7 @@ export function SellerAddressForm({ onSaved, submitLabel = 'Lưu địa chỉ l�
         className="bg-orange-500 hover:bg-orange-600 text-white"
       >
         {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-        {submitLabel === 'Lưu địa chỉ lấy hàng' ? copy.submit : submitLabel}
+        {submitLabel ?? copy.submit}
       </Button>
     </div>
   );

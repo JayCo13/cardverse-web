@@ -200,7 +200,14 @@ export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
 
-        if (body?.data?.orderCode === 123) {
+        // PayOS uses orderCode=123 for webhook verification. Never bypass
+        // signature validation in production; local/test environments must
+        // opt in explicitly as well.
+        if (
+            process.env.NODE_ENV !== 'production' &&
+            process.env.PAYOS_ALLOW_TEST_WEBHOOK_BYPASS === 'true' &&
+            body?.data?.orderCode === 123
+        ) {
             return NextResponse.json({ success: true });
         }
 

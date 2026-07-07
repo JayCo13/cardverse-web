@@ -15,6 +15,7 @@ import { useSupabase } from "@/lib/supabase";
 import { useAuthModal } from "@/components/auth-modal";
 import { useToast } from "@/hooks/use-toast";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
+import { getCategoryCode } from "@/lib/category-code";
 import { CreditCard, Loader2, PackageCheck, ShieldCheck, Store, Truck, Wallet } from "lucide-react";
 import { useLocalization } from "@/context/localization-context";
 
@@ -52,141 +53,141 @@ export default function CheckoutPage() {
   const { locale } = useLocalization();
   const copy = locale === "vi-VN"
     ? {
+      pageTitle: "Checkout",
+      pageSubtitle: "Xác nhận địa chỉ, phí ship và phương thức thanh toán.",
+      loadCartError: "Không thể tải giỏ hàng",
+      offerNotFound: "Không tìm thấy offer.",
+      offerForbidden: "Bạn không có quyền thanh toán offer này.",
+      offerNotReady: "Offer này chưa sẵn sàng để checkout.",
+      openCheckoutError: "Không thể mở checkout",
+      shippingFeeError: "Không thể tính phí ship",
+      shippingFeeTitle: "Lỗi phí ship",
+      payError: "Không thể thanh toán",
+      payosTitle: "Đang chuyển tới PayOS",
+      payosDescription: "Vui lòng hoàn tất thanh toán trên trang PayOS.",
+      paymentSuccess: "Thanh toán thành công",
+      emptyTitle: "Không có sản phẩm để checkout",
+      backToCart: "Về giỏ hàng",
+      shippingAddress: "Địa chỉ nhận hàng",
+      missingPickup: "Một số seller chưa cập nhật địa chỉ gửi hàng. Vui lòng chọn sản phẩm khác hoặc liên hệ seller.",
+      products: "Sản phẩm",
+      seller: "Seller",
+      cardVerseSeller: "CardVerse seller",
+      ship: "Ship",
+      calculating: "Đang tính...",
+      chooseAddressForFee: "Chọn địa chỉ để tính",
+      ghnReady: "GHN ready",
+      payment: "Thanh toán",
+      walletPayos: "Ví / PayOS",
+      protection: "Bảo vệ",
+      protected: "CardVerse giữ tiền",
+      itemPrice: "Giá thẻ",
+      shippingAtCheckout: "Phí ship theo địa chỉ",
+      combinedShipping: "Gộp chung lô",
+      paymentMethod: "Phương thức thanh toán",
+      wallet: "Ví CardVerse",
+      balance: "Số dư",
+      payos: "Chuyển khoản / QR PayOS",
+      payosDesc: "Thanh toán qua ngân hàng nội địa.",
+      orderSummary: "Tóm tắt đơn hàng",
+      subtotal: "Tạm tính",
+      shipping: "Phí ship",
+      total: "Thành tiền",
+      insufficient: "Số dư ví không đủ. Vui lòng nạp thêm hoặc chọn PayOS.",
+      payWithPayos: "Thanh toán qua PayOS",
+      pay: "Thanh toán",
+    }
+    : locale === "ja-JP"
+      ? {
+        pageTitle: "チェックアウト",
+        pageSubtitle: "配送先、送料、支払い方法を確認してください。",
+        loadCartError: "カートを読み込めません",
+        offerNotFound: "オファーが見つかりません。",
+        offerForbidden: "このオファーを支払う権限がありません。",
+        offerNotReady: "このオファーはまだチェックアウトできません。",
+        openCheckoutError: "チェックアウトを開けません",
+        shippingFeeError: "送料を計算できません",
+        shippingFeeTitle: "送料エラー",
+        payError: "支払いできません",
+        payosTitle: "PayOSへ移動しています",
+        payosDescription: "PayOSページで支払いを完了してください。",
+        paymentSuccess: "支払いが完了しました",
+        emptyTitle: "チェックアウトする商品がありません",
+        backToCart: "カートへ戻る",
+        shippingAddress: "配送先住所",
+        missingPickup: "一部の販売者が発送元住所を未設定です。別の商品を選ぶか販売者に連絡してください。",
+        products: "商品",
+        seller: "販売者",
+        cardVerseSeller: "CardVerse販売者",
+        ship: "配送",
+        calculating: "計算中...",
+        chooseAddressForFee: "住所を選択して計算",
+        ghnReady: "GHN対応",
+        payment: "支払い",
+        walletPayos: "ウォレット / PayOS",
+        protection: "保護",
+        protected: "CardVerseが代金を保持",
+        itemPrice: "商品価格",
+        shippingAtCheckout: "住所に基づく送料",
+        combinedShipping: "同梱配送",
+        paymentMethod: "支払い方法",
+        wallet: "CardVerseウォレット",
+        balance: "残高",
+        payos: "銀行振込 / QR PayOS",
+        payosDesc: "国内銀行決済で支払います。",
+        orderSummary: "注文概要",
+        subtotal: "小計",
+        shipping: "送料",
+        total: "合計",
+        insufficient: "ウォレット残高が不足しています。チャージするかPayOSを選択してください。",
+        payWithPayos: "PayOSで支払う",
+        pay: "支払う",
+      }
+      : {
         pageTitle: "Checkout",
-        pageSubtitle: "Xác nhận địa chỉ, phí ship và phương thức thanh toán.",
-        loadCartError: "Không thể tải giỏ hàng",
-        offerNotFound: "Không tìm thấy offer.",
-        offerForbidden: "Bạn không có quyền thanh toán offer này.",
-        offerNotReady: "Offer này chưa sẵn sàng để checkout.",
-        openCheckoutError: "Không thể mở checkout",
-        shippingFeeError: "Không thể tính phí ship",
-        shippingFeeTitle: "Lỗi phí ship",
-        payError: "Không thể thanh toán",
-        payosTitle: "Đang chuyển tới PayOS",
-        payosDescription: "Vui lòng hoàn tất thanh toán trên trang PayOS.",
-        paymentSuccess: "Thanh toán thành công",
-        emptyTitle: "Không có sản phẩm để checkout",
-        backToCart: "Về giỏ hàng",
-        shippingAddress: "Địa chỉ nhận hàng",
-        missingPickup: "Một số seller chưa cập nhật địa chỉ gửi hàng. Vui lòng chọn sản phẩm khác hoặc liên hệ seller.",
-        products: "Sản phẩm",
+        pageSubtitle: "Confirm your address, shipping fee, and payment method.",
+        loadCartError: "Unable to load cart",
+        offerNotFound: "Offer not found.",
+        offerForbidden: "You are not allowed to pay for this offer.",
+        offerNotReady: "This offer is not ready for checkout.",
+        openCheckoutError: "Unable to open checkout",
+        shippingFeeError: "Unable to calculate shipping fee",
+        shippingFeeTitle: "Shipping fee error",
+        payError: "Unable to pay",
+        payosTitle: "Opening PayOS",
+        payosDescription: "Please complete payment on the PayOS page.",
+        paymentSuccess: "Payment successful",
+        emptyTitle: "No items to checkout",
+        backToCart: "Back to cart",
+        shippingAddress: "Shipping address",
+        missingPickup: "Some sellers have not added a pickup address. Please choose another item or contact the seller.",
+        products: "Products",
         seller: "Seller",
         cardVerseSeller: "CardVerse seller",
         ship: "Ship",
-        calculating: "Đang tính...",
-        chooseAddressForFee: "Chọn địa chỉ để tính",
+        calculating: "Calculating...",
+        chooseAddressForFee: "Choose an address to calculate",
         ghnReady: "GHN ready",
-        payment: "Thanh toán",
-        walletPayos: "Ví / PayOS",
-        protection: "Bảo vệ",
-        protected: "CardVerse giữ tiền",
-        itemPrice: "Giá thẻ",
-        shippingAtCheckout: "Phí ship theo địa chỉ",
-        combinedShipping: "Gộp chung lô",
-        paymentMethod: "Phương thức thanh toán",
-        wallet: "Ví CardVerse",
-        balance: "Số dư",
-        payos: "Chuyển khoản / QR PayOS",
-        payosDesc: "Thanh toán qua ngân hàng nội địa.",
+        payment: "Payment",
+        walletPayos: "Wallet / PayOS",
+        protection: "Protection",
+        protected: "CardVerse held",
+        itemPrice: "Item price",
+        shippingAtCheckout: "Address-based shipping",
+        combinedShipping: "Combined shipment",
+        paymentMethod: "Payment method",
+        wallet: "CardVerse Wallet",
+        balance: "Balance",
+        payos: "Bank transfer / QR PayOS",
+        payosDesc: "Pay through domestic bank transfer.",
         orderSummary: "Order summary",
         subtotal: "Subtotal",
         shipping: "Shipping",
         total: "Total",
-        insufficient: "Số dư ví không đủ. Vui lòng nạp thêm hoặc chọn PayOS.",
-        payWithPayos: "Thanh toán qua PayOS",
-        pay: "Thanh toán",
-      }
-    : locale === "ja-JP"
-      ? {
-          pageTitle: "チェックアウト",
-          pageSubtitle: "配送先、送料、支払い方法を確認してください。",
-          loadCartError: "カートを読み込めません",
-          offerNotFound: "オファーが見つかりません。",
-          offerForbidden: "このオファーを支払う権限がありません。",
-          offerNotReady: "このオファーはまだチェックアウトできません。",
-          openCheckoutError: "チェックアウトを開けません",
-          shippingFeeError: "送料を計算できません",
-          shippingFeeTitle: "送料エラー",
-          payError: "支払いできません",
-          payosTitle: "PayOSへ移動しています",
-          payosDescription: "PayOSページで支払いを完了してください。",
-          paymentSuccess: "支払いが完了しました",
-          emptyTitle: "チェックアウトする商品がありません",
-          backToCart: "カートへ戻る",
-          shippingAddress: "配送先住所",
-          missingPickup: "一部の販売者が発送元住所を未設定です。別の商品を選ぶか販売者に連絡してください。",
-          products: "商品",
-          seller: "販売者",
-          cardVerseSeller: "CardVerse販売者",
-          ship: "配送",
-          calculating: "計算中...",
-          chooseAddressForFee: "住所を選択して計算",
-          ghnReady: "GHN対応",
-          payment: "支払い",
-          walletPayos: "ウォレット / PayOS",
-          protection: "保護",
-          protected: "CardVerseが代金を保持",
-          itemPrice: "商品価格",
-          shippingAtCheckout: "住所に基づく送料",
-          combinedShipping: "同梱配送",
-          paymentMethod: "支払い方法",
-          wallet: "CardVerseウォレット",
-          balance: "残高",
-          payos: "銀行振込 / QR PayOS",
-          payosDesc: "国内銀行決済で支払います。",
-          orderSummary: "注文概要",
-          subtotal: "小計",
-          shipping: "送料",
-          total: "合計",
-          insufficient: "ウォレット残高が不足しています。チャージするかPayOSを選択してください。",
-          payWithPayos: "PayOSで支払う",
-          pay: "支払う",
-        }
-      : {
-          pageTitle: "Checkout",
-          pageSubtitle: "Confirm your address, shipping fee, and payment method.",
-          loadCartError: "Unable to load cart",
-          offerNotFound: "Offer not found.",
-          offerForbidden: "You are not allowed to pay for this offer.",
-          offerNotReady: "This offer is not ready for checkout.",
-          openCheckoutError: "Unable to open checkout",
-          shippingFeeError: "Unable to calculate shipping fee",
-          shippingFeeTitle: "Shipping fee error",
-          payError: "Unable to pay",
-          payosTitle: "Opening PayOS",
-          payosDescription: "Please complete payment on the PayOS page.",
-          paymentSuccess: "Payment successful",
-          emptyTitle: "No items to checkout",
-          backToCart: "Back to cart",
-          shippingAddress: "Shipping address",
-          missingPickup: "Some sellers have not added a pickup address. Please choose another item or contact the seller.",
-          products: "Products",
-          seller: "Seller",
-          cardVerseSeller: "CardVerse seller",
-          ship: "Ship",
-          calculating: "Calculating...",
-          chooseAddressForFee: "Choose an address to calculate",
-          ghnReady: "GHN ready",
-          payment: "Payment",
-          walletPayos: "Wallet / PayOS",
-          protection: "Protection",
-          protected: "CardVerse held",
-          itemPrice: "Item price",
-          shippingAtCheckout: "Address-based shipping",
-          combinedShipping: "Combined shipment",
-          paymentMethod: "Payment method",
-          wallet: "CardVerse Wallet",
-          balance: "Balance",
-          payos: "Bank transfer / QR PayOS",
-          payosDesc: "Pay through domestic bank transfer.",
-          orderSummary: "Order summary",
-          subtotal: "Subtotal",
-          shipping: "Shipping",
-          total: "Total",
-          insufficient: "Wallet balance is not enough. Please top up or choose PayOS.",
-          payWithPayos: "Pay with PayOS",
-          pay: "Pay",
-        };
+        insufficient: "Wallet balance is not enough. Please top up or choose PayOS.",
+        payWithPayos: "Pay with PayOS",
+        pay: "Pay",
+      };
 
   const [items, setItems] = useState<CheckoutItem[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<SavedAddress | null>(null);
@@ -234,9 +235,9 @@ export default function CheckoutPage() {
           sellerName: item.cards.profiles?.display_name,
           sellerPickup: item.cards.profiles?.address_district_id && item.cards.profiles?.address_ward_code
             ? {
-                districtId: item.cards.profiles.address_district_id,
-                wardCode: item.cards.profiles.address_ward_code,
-              }
+              districtId: item.cards.profiles.address_district_id,
+              wardCode: item.cards.profiles.address_ward_code,
+            }
             : null,
         },
         amount: Number(item.cards.price || 0),
@@ -292,9 +293,9 @@ export default function CheckoutPage() {
         sellerName: card.profiles?.display_name,
         sellerPickup: card.profiles?.address_district_id && card.profiles?.address_ward_code
           ? {
-              districtId: card.profiles.address_district_id,
-              wardCode: card.profiles.address_ward_code,
-            }
+            districtId: card.profiles.address_district_id,
+            wardCode: card.profiles.address_ward_code,
+          }
           : null,
       },
       amount: Number(row.price || 0),
@@ -490,7 +491,7 @@ export default function CheckoutPage() {
                           ) : null}
                         </div>
                         <span className="absolute left-3 top-3 rounded-md border border-orange-400/50 bg-orange-500/90 px-2 py-0.5 text-[10px] font-bold text-white shadow">
-                          {item.card.category}
+                          {getCategoryCode(item.card.category)}
                         </span>
                       </div>
 
@@ -509,16 +510,16 @@ export default function CheckoutPage() {
                         </div>
                         <div className="mt-4 grid gap-2 text-sm sm:grid-cols-3">
                           <div className="rounded-lg border border-white/10 bg-card/60 p-2.5">
-                            <p className="text-xs text-muted-foreground">{copy.ship}</p>
-                            <p className="font-semibold">{copy.ghnReady}</p>
+                            <p className="mb-1 text-xs text-muted-foreground whitespace-nowrap leading-tight">{copy.ship}</p>
+                            <p className="font-semibold leading-tight">{copy.ghnReady}</p>
                           </div>
                           <div className="rounded-lg border border-white/10 bg-card/60 p-2.5">
-                            <p className="text-xs text-muted-foreground">{copy.payment}</p>
-                            <p className="font-semibold">{copy.walletPayos}</p>
+                            <p className="mb-1 text-xs text-muted-foreground whitespace-nowrap leading-tight">{copy.payment}</p>
+                            <p className="font-semibold leading-tight">{copy.walletPayos}</p>
                           </div>
                           <div className="rounded-lg border border-white/10 bg-card/60 p-2.5">
-                            <p className="text-xs text-muted-foreground">{copy.protection}</p>
-                            <p className="font-semibold">{copy.protected}</p>
+                            <p className="mb-1 text-xs text-muted-foreground whitespace-nowrap leading-tight">{copy.protection}</p>
+                            <p className="font-semibold leading-tight">{copy.protected}</p>
                           </div>
                         </div>
                       </div>
@@ -532,13 +533,13 @@ export default function CheckoutPage() {
                           <div className="flex items-center justify-between gap-3">
                             <span className="text-muted-foreground">{copy.shipping}</span>
                             <span className="font-semibold text-orange-100 text-right">
-                            {isLoadingFee
-                              ? copy.calculating
-                              : item.shippingFee !== null
-                                ? item.shippingFee === 0
-                                  ? `${formatVND(0)} · ${copy.combinedShipping}`
-                                  : formatVND(item.shippingFee)
-                                : copy.chooseAddressForFee}
+                              {isLoadingFee
+                                ? copy.calculating
+                                : item.shippingFee !== null
+                                  ? item.shippingFee === 0
+                                    ? `${formatVND(0)} · ${copy.combinedShipping}`
+                                    : formatVND(item.shippingFee)
+                                  : copy.chooseAddressForFee}
                             </span>
                           </div>
                           <p className="mt-1 text-xs text-muted-foreground">{copy.shippingAtCheckout}</p>

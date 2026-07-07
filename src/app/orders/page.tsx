@@ -50,39 +50,21 @@ type Order = {
   seller: { id: string; display_name: string; email: string; profile_image_url: string | null; seller_verified: boolean; seller_rating: number } | null;
 };
 
-const STATUS_CONFIG: Record<string, { label: string; icon: React.ReactNode; color: string; bgColor: string }> = {
-  pending_payment: { label: 'Chờ thanh toán', icon: <Clock className="h-4 w-4" />, color: 'text-gray-400', bgColor: 'bg-gray-500/10' },
-  paid: { label: 'Đã thanh toán', icon: <CheckCircle className="h-4 w-4" />, color: 'text-blue-400', bgColor: 'bg-blue-500/10' },
-  shipping: { label: 'Đang vận chuyển', icon: <Truck className="h-4 w-4" />, color: 'text-yellow-400', bgColor: 'bg-yellow-500/10' },
-  delivered: { label: 'Đã giao', icon: <Package className="h-4 w-4" />, color: 'text-cyan-400', bgColor: 'bg-cyan-500/10' },
-  completed: { label: 'Hoàn tất', icon: <CheckCircle className="h-4 w-4" />, color: 'text-green-400', bgColor: 'bg-green-500/10' },
-  disputed: { label: 'Khiếu nại', icon: <AlertTriangle className="h-4 w-4" />, color: 'text-red-400', bgColor: 'bg-red-500/10' },
-  refunded: { label: 'Đã hoàn tiền', icon: <XCircle className="h-4 w-4" />, color: 'text-purple-400', bgColor: 'bg-purple-500/10' },
-  cancelled: { label: 'Đã hủy', icon: <XCircle className="h-4 w-4" />, color: 'text-muted-foreground', bgColor: 'bg-muted/50' },
+// Icons/colors are locale-independent; the labels live in the per-locale
+// `copy.statusLabels` object inside the component (previously they were
+// hardcoded Vietnamese for every locale).
+const STATUS_CONFIG: Record<string, { icon: React.ReactNode; color: string; bgColor: string }> = {
+  pending_payment: { icon: <Clock className="h-4 w-4" />, color: 'text-gray-400', bgColor: 'bg-gray-500/10' },
+  paid: { icon: <CheckCircle className="h-4 w-4" />, color: 'text-blue-400', bgColor: 'bg-blue-500/10' },
+  shipping: { icon: <Truck className="h-4 w-4" />, color: 'text-yellow-400', bgColor: 'bg-yellow-500/10' },
+  delivered: { icon: <Package className="h-4 w-4" />, color: 'text-cyan-400', bgColor: 'bg-cyan-500/10' },
+  completed: { icon: <CheckCircle className="h-4 w-4" />, color: 'text-green-400', bgColor: 'bg-green-500/10' },
+  disputed: { icon: <AlertTriangle className="h-4 w-4" />, color: 'text-red-400', bgColor: 'bg-red-500/10' },
+  refunded: { icon: <XCircle className="h-4 w-4" />, color: 'text-purple-400', bgColor: 'bg-purple-500/10' },
+  cancelled: { icon: <XCircle className="h-4 w-4" />, color: 'text-muted-foreground', bgColor: 'bg-muted/50' },
 };
 
-const GHN_STATUS_LABELS: Record<string, string> = {
-  ready_to_pick: 'Chờ lấy hàng',
-  picking: 'Đang lấy hàng',
-  picked: 'Đã lấy hàng',
-  storing: 'Đang lưu kho',
-  transporting: 'Đang vận chuyển',
-  sorting: 'Đang phân loại',
-  delivering: 'Đang giao hàng',
-  delivered: 'Đã giao hàng',
-  delivery_fail: 'Giao thất bại',
-  cancel: 'Đã hủy',
-  returning: 'Đang trả hàng',
-  returned: 'Đã hoàn',
-};
-
-const TRACKING_STEPS = [
-  { key: 'created', label: 'Đã tạo đơn' },
-  { key: 'picked', label: 'Đã lấy hàng' },
-  { key: 'transporting', label: 'Vận chuyển' },
-  { key: 'delivering', label: 'Đang giao' },
-  { key: 'delivered', label: 'Đã giao' },
-];
+const TRACKING_STEP_KEYS = ['created', 'picked', 'transporting', 'delivering', 'delivered'] as const;
 
 function getGHNStep(status: string | null): number {
   if (!status) return 0;
@@ -127,6 +109,37 @@ export default function OrdersPage() {
         seller: 'Seller',
         buyer: 'Buyer',
         noCard: 'Unknown card',
+        errorTitle: 'エラー',
+        loadError: '注文を読み込めませんでした。',
+        retry: '再試行',
+        orderPrefix: '注文 #',
+        shipFeeLabel: '+ 配送:',
+        expectedLabel: '配達予定:',
+        statusLabels: {
+          pending_payment: '支払い待ち',
+          paid: '支払い済み',
+          shipping: '配送中',
+          delivered: '配達済み',
+          completed: '完了',
+          disputed: '紛争中',
+          refunded: '返金済み',
+          cancelled: 'キャンセル済み',
+        } as Record<string, string>,
+        ghnStatusLabels: {
+          ready_to_pick: '集荷待ち',
+          picking: '集荷中',
+          picked: '集荷済み',
+          storing: '保管中',
+          transporting: '輸送中',
+          sorting: '仕分け中',
+          delivering: '配達中',
+          delivered: '配達済み',
+          delivery_fail: '配達失敗',
+          cancel: 'キャンセル',
+          returning: '返送中',
+          returned: '返送済み',
+        } as Record<string, string>,
+        trackingSteps: ['作成済み', '集荷済み', '輸送中', '配達中', '配達済み'],
       }
     : locale === 'vi-VN'
       ? {
@@ -154,6 +167,37 @@ export default function OrdersPage() {
           seller: 'Người bán',
           buyer: 'Người mua',
           noCard: 'Thẻ không xác định',
+          errorTitle: 'Lỗi',
+          loadError: 'Không thể tải danh sách đơn hàng.',
+          retry: 'Thử lại',
+          orderPrefix: 'Đơn #',
+          shipFeeLabel: '+ Ship:',
+          expectedLabel: 'Dự kiến:',
+          statusLabels: {
+            pending_payment: 'Chờ thanh toán',
+            paid: 'Đã thanh toán',
+            shipping: 'Đang vận chuyển',
+            delivered: 'Đã giao',
+            completed: 'Hoàn tất',
+            disputed: 'Khiếu nại',
+            refunded: 'Đã hoàn tiền',
+            cancelled: 'Đã hủy',
+          } as Record<string, string>,
+          ghnStatusLabels: {
+            ready_to_pick: 'Chờ lấy hàng',
+            picking: 'Đang lấy hàng',
+            picked: 'Đã lấy hàng',
+            storing: 'Đang lưu kho',
+            transporting: 'Đang vận chuyển',
+            sorting: 'Đang phân loại',
+            delivering: 'Đang giao hàng',
+            delivered: 'Đã giao hàng',
+            delivery_fail: 'Giao thất bại',
+            cancel: 'Đã hủy',
+            returning: 'Đang trả hàng',
+            returned: 'Đã hoàn',
+          } as Record<string, string>,
+          trackingSteps: ['Đã tạo đơn', 'Đã lấy hàng', 'Vận chuyển', 'Đang giao', 'Đã giao'],
         }
       : {
           title: 'Order management',
@@ -180,10 +224,42 @@ export default function OrdersPage() {
           seller: 'Seller',
           buyer: 'Buyer',
           noCard: 'Unknown card',
+          errorTitle: 'Error',
+          loadError: 'Unable to load orders.',
+          retry: 'Retry',
+          orderPrefix: 'Order #',
+          shipFeeLabel: '+ Shipping:',
+          expectedLabel: 'Expected:',
+          statusLabels: {
+            pending_payment: 'Awaiting payment',
+            paid: 'Paid',
+            shipping: 'Shipping',
+            delivered: 'Delivered',
+            completed: 'Completed',
+            disputed: 'Disputed',
+            refunded: 'Refunded',
+            cancelled: 'Cancelled',
+          } as Record<string, string>,
+          ghnStatusLabels: {
+            ready_to_pick: 'Awaiting pickup',
+            picking: 'Picking up',
+            picked: 'Picked up',
+            storing: 'In warehouse',
+            transporting: 'In transit',
+            sorting: 'Sorting',
+            delivering: 'Out for delivery',
+            delivered: 'Delivered',
+            delivery_fail: 'Delivery failed',
+            cancel: 'Cancelled',
+            returning: 'Returning',
+            returned: 'Returned',
+          } as Record<string, string>,
+          trackingSteps: ['Created', 'Picked up', 'In transit', 'Delivering', 'Delivered'],
         };
   const [activeTab, setActiveTab] = useState('buyer');
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // Dispute dialog
@@ -199,16 +275,19 @@ export default function OrdersPage() {
 
   const fetchOrders = useCallback(async (role: string) => {
     setIsLoading(true);
+    setLoadError('');
     try {
       const res = await fetch(`/api/marketplace/orders?role=${role}`);
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || copy.loadError);
       setOrders(data.orders || []);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Failed to fetch orders:', err);
+      setLoadError(err instanceof Error ? err.message : copy.loadError);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [copy.loadError]);
 
   useEffect(() => {
     if (user) fetchOrders(activeTab);
@@ -242,7 +321,7 @@ export default function OrdersPage() {
       toast({ title: copy.success, description: copy.updated });
       fetchOrders(activeTab);
     } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Lỗi', description: err.message });
+      toast({ variant: 'destructive', title: copy.errorTitle, description: err.message });
     } finally {
       setActionLoading(null);
       setDisputeDialog({ open: false, orderId: '' });
@@ -259,26 +338,26 @@ export default function OrdersPage() {
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-medium text-muted-foreground">{copy.tracking}</span>
           <span className="text-[10px] text-muted-foreground font-mono">
-            {GHN_STATUS_LABELS[order.ghn_status || ''] || order.ghn_status}
+            {copy.ghnStatusLabels[order.ghn_status || ''] || order.ghn_status}
           </span>
         </div>
         <div className="flex items-center gap-1">
-          {TRACKING_STEPS.map((step, i) => (
-            <div key={step.key} className="flex-1 flex flex-col items-center">
+          {TRACKING_STEP_KEYS.map((key, i) => (
+            <div key={key} className="flex-1 flex flex-col items-center">
               <div className={`w-full h-1.5 rounded-full transition-colors ${
                 i < currentStep ? 'bg-green-500' :
                 i === currentStep ? 'bg-yellow-400 animate-pulse' :
                 'bg-white/10'
               }`} />
-              <span className={`text-[8px] mt-1 ${i <= currentStep ? 'text-white/70' : 'text-white/30'}`}>
-                {step.label}
+              <span className={`text-[10px] mt-1 ${i <= currentStep ? 'text-white/70' : 'text-white/30'}`}>
+                {copy.trackingSteps[i]}
               </span>
             </div>
           ))}
         </div>
         {order.ghn_expected_delivery && (
           <p className="text-[10px] text-muted-foreground mt-2">
-            Dự kiến: {new Date(order.ghn_expected_delivery).toLocaleDateString('vi-VN')}
+            {copy.expectedLabel} {new Date(order.ghn_expected_delivery).toLocaleDateString(locale)}
           </p>
         )}
       </div>
@@ -286,7 +365,8 @@ export default function OrdersPage() {
   };
 
   const renderOrderCard = (order: Order) => {
-    const statusInfo = STATUS_CONFIG[order.status] || { label: order.status, icon: null, color: '', bgColor: '' };
+    const statusInfo = STATUS_CONFIG[order.status] || { icon: null, color: '', bgColor: '' };
+    const statusLabel = copy.statusLabels[order.status] || order.status;
     const isBuyer = activeTab === 'buyer';
 
     return (
@@ -307,11 +387,11 @@ export default function OrdersPage() {
                 <div>
                   <h3 className="font-semibold line-clamp-1">{order.card?.name || copy.noCard}</h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Đơn #{order.id.substring(0, 8)} • {new Date(order.created_at).toLocaleDateString('vi-VN')}
+                    {copy.orderPrefix}{order.id.substring(0, 8)} • {new Date(order.created_at).toLocaleDateString(locale)}
                   </p>
                 </div>
                 <span className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${statusInfo.bgColor} ${statusInfo.color}`}>
-                  {statusInfo.icon} {statusInfo.label}
+                  {statusInfo.icon} {statusLabel}
                 </span>
               </div>
 
@@ -319,7 +399,7 @@ export default function OrdersPage() {
                 <span className="font-semibold text-orange-400">{formatVND(order.amount)}</span>
                 {order.shipping_fee > 0 && (
                   <span className="text-xs text-muted-foreground">
-                    + Ship: <span className="text-foreground">{formatVND(order.shipping_fee)}</span>
+                    {copy.shipFeeLabel} <span className="text-foreground">{formatVND(order.shipping_fee)}</span>
                   </span>
                 )}
                 {order.ghn_order_code && (
@@ -459,6 +539,14 @@ export default function OrdersPage() {
               {isLoading ? (
                 <div className="space-y-4">
                   {[1, 2, 3].map(i => <Skeleton key={i} className="h-32 w-full rounded-xl" />)}
+                </div>
+              ) : loadError ? (
+                <div className="flex flex-col items-center rounded-xl border border-red-500/30 bg-red-500/10 py-12 text-center">
+                  <AlertTriangle className="mb-3 h-10 w-10 text-red-400" />
+                  <p className="font-medium text-red-300">{loadError}</p>
+                  <Button variant="outline" className="mt-4" onClick={() => void fetchOrders(activeTab)}>
+                    {copy.retry}
+                  </Button>
                 </div>
               ) : orders.length === 0 ? (
                 <div className="text-center py-16">

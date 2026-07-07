@@ -135,7 +135,7 @@ const mapCard = (c: any): Card => ({
     priceIsVnd: true,
 });
 
-function RelatedRail({ title, subtitle, cards, labels }: { title: string; subtitle?: string; cards: Card[]; labels: { cond: string; price: string; sold: string } }) {
+function RelatedRail({ title, subtitle, cards, labels }: { title: string; subtitle?: string; cards: Card[]; labels: { cond: string; price: string; sold: string; preOwned: string; contact: string } }) {
     const scrollRef = useRef<HTMLDivElement>(null);
     if (cards.length === 0) return null;
 
@@ -204,11 +204,11 @@ function RelatedRail({ title, subtitle, cards, labels }: { title: string; subtit
                                     {item.name}
                                 </p>
                                 <span className="w-fit rounded-md border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-400">
-                                    {labels.cond}: <span className="text-amber-300">{item.condition || "Pre-owned"}</span>
+                                    {labels.cond}: <span className="text-amber-300">{item.condition || labels.preOwned}</span>
                                 </span>
                                 <p className="mt-auto text-base font-bold text-orange-400">
                                     <span className="text-xs font-medium text-muted-foreground">{labels.price}: </span>
-                                    {formatCurrency(item.price, "Contact")}
+                                    {formatCurrency(item.price, labels.contact)}
                                 </p>
                                 <div className="flex items-center gap-2 border-t pt-2">
                                     {item.sellerAvatar ? (
@@ -257,6 +257,13 @@ export default function CardDetailsPage() {
             seller: "Người bán CardVerse",
             viewAll: "Xem tất cả",
             preOwned: "Đã qua sử dụng",
+            notSpecified: "Chưa xác định",
+            categoryLabel: "Danh mục", setLabel: "Bộ thẻ", playerLabel: "Nhân vật/Cầu thủ",
+            manufacturerLabel: "Nhà sản xuất", seasonLabel: "Mùa", typeLabel: "Loại",
+            tradingCard: "Thẻ sưu tầm thể thao", cardSizeLabel: "Kích thước thẻ", standard: "Tiêu chuẩn",
+            autographedLabel: "Có chữ ký", originalReprintLabel: "Bản gốc/Tái bản có phép", original: "Bản gốc",
+            gradedLabel: "Đã chấm điểm", sportLabel: "Môn thể thao", yes: "Có", no: "Không",
+            pending: "Đang chờ", rejected: "Bị từ chối",
             sellerOnCardVerse: "Độ uy tín người bán",
             openChatFailed: "Không thể mở chat",
             chatError: "Lỗi chat",
@@ -349,6 +356,13 @@ export default function CardDetailsPage() {
                 seller: "CardVerse販売者",
                 viewAll: "すべて見る",
                 preOwned: "中古",
+                notSpecified: "未指定",
+                categoryLabel: "カテゴリー", setLabel: "セット", playerLabel: "選手/キャラクター",
+                manufacturerLabel: "メーカー", seasonLabel: "シーズン", typeLabel: "種類",
+                tradingCard: "スポーツトレーディングカード", cardSizeLabel: "カードサイズ", standard: "標準",
+                autographedLabel: "サイン入り", originalReprintLabel: "オリジナル/公式復刻", original: "オリジナル",
+                gradedLabel: "鑑定済み", sportLabel: "スポーツ", yes: "はい", no: "いいえ",
+                pending: "保留中", rejected: "却下済み",
                 sellerOnCardVerse: "販売者評価",
                 openChatFailed: "チャットを開けません",
                 chatError: "チャットエラー",
@@ -440,6 +454,13 @@ export default function CardDetailsPage() {
                 seller: "CardVerse seller",
                 viewAll: "View all",
                 preOwned: "Pre-owned",
+                notSpecified: "Not specified",
+                categoryLabel: "Category", setLabel: "Set", playerLabel: "Player/Athlete",
+                manufacturerLabel: "Manufacturer", seasonLabel: "Season", typeLabel: "Type",
+                tradingCard: "Sports Trading Card", cardSizeLabel: "Card Size", standard: "Standard",
+                autographedLabel: "Autographed", originalReprintLabel: "Original/Licensed Reprint", original: "Original",
+                gradedLabel: "Graded", sportLabel: "Sport", yes: "Yes", no: "No",
+                pending: "Pending", rejected: "Rejected",
                 sellerOnCardVerse: "Seller reputation",
                 openChatFailed: "Unable to open chat",
                 chatError: "Chat error",
@@ -573,29 +594,29 @@ export default function CardDetailsPage() {
         if (!card) return [];
         return [
             [copy.condition, card.condition || copy.ungraded],
-            ["Category", card.category],
-            ["Set", card.setName || "Not specified"],
-            ["Player/Athlete", card.name],
-            ["Manufacturer", card.publisher || "Not specified"],
-            ["Season", card.season || "Not specified"],
-            ["Type", "Sports Trading Card"],
-            ["Card Size", "Standard"],
-            ["Autographed", card.name.toLowerCase().includes("auto") ? "Yes" : "No"],
-            ["Original/Licensed Reprint", "Original"],
-            ["Graded", card.condition?.toLowerCase().includes("psa") ? "Yes" : "No"],
-            ["Sport", card.category],
+            [copy.categoryLabel, card.category],
+            [copy.setLabel, card.setName || copy.notSpecified],
+            [copy.playerLabel, card.name],
+            [copy.manufacturerLabel, card.publisher || copy.notSpecified],
+            [copy.seasonLabel, card.season || copy.notSpecified],
+            [copy.typeLabel, copy.tradingCard],
+            [copy.cardSizeLabel, copy.standard],
+            [copy.autographedLabel, card.name.toLowerCase().includes("auto") ? copy.yes : copy.no],
+            [copy.originalReprintLabel, copy.original],
+            [copy.gradedLabel, card.condition?.toLowerCase().includes("psa") ? copy.yes : copy.no],
+            [copy.sportLabel, card.category],
         ];
-    }, [card, copy.condition, copy.ungraded]);
+    }, [card, copy]);
 
     const listingHighlights = useMemo(() => {
         if (!card) return [];
         return [
             { label: copy.condition, value: card.condition || copy.ungraded, icon: Gem },
-            { label: "Set", value: card.setName || card.publisher || "Not specified", icon: BadgeCheck },
+            { label: copy.setLabel, value: card.setName || card.publisher || copy.notSpecified, icon: BadgeCheck },
             { label: copy.quantity, value: `${card.quantity || 1} ${copy.available}`, icon: PackageCheck },
             { label: copy.listingId, value: card.id.slice(0, 8).toUpperCase(), icon: Tag },
         ];
-    }, [card, copy.available, copy.condition, copy.listingId, copy.quantity, copy.ungraded]);
+    }, [card, copy]);
 
     const fetchRelatedCards = useCallback(async (baseCard: Card) => {
         const { data } = await supabase
@@ -970,7 +991,7 @@ export default function CardDetailsPage() {
                                                 {seller?.seller_verified && <BadgeCheck className="h-4 w-4 shrink-0 text-orange-500" />}
                                             </div>
                                             <p className="text-sm text-muted-foreground">
-                                                {seller?.seller_rating ? `${Number(seller.seller_rating).toFixed(1)}% positive` : copy.newSeller} · {seller?.seller_review_count || 0} {copy.itemsSold}
+                                                {seller?.seller_rating ? `${Number(seller.seller_rating).toFixed(1)}% ${copy.positive}` : copy.newSeller} · {seller?.seller_review_count || 0} {copy.itemsSold}
                                             </p>
                                         </div>
                                         <Button
@@ -1077,7 +1098,9 @@ export default function CardDetailsPage() {
                                 <div className="rounded-lg border bg-muted/40 p-4 text-sm">
                                     <p className="text-muted-foreground">{copy.currentOffer}</p>
                                     <p className="text-lg font-semibold">{formatVND(myOffer.price)}</p>
-                                    <p className="text-xs text-muted-foreground">{copy.status}: {myOffer.status}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {copy.status}: {myOffer.status === "chosen" ? copy.chosen : myOffer.status === "rejected" ? copy.rejected : myOffer.status === "pending" ? copy.pending : copy.processed}
+                                    </p>
                                 </div>
                             )}
 
@@ -1235,7 +1258,7 @@ export default function CardDetailsPage() {
                         </div>
                     </section>
 
-                    <RelatedRail title={copy.relatedItems} cards={displayRelatedCards} labels={{ cond: copy.condLabel, price: copy.priceLabel, sold: copy.sold }} />
+                    <RelatedRail title={copy.relatedItems} cards={displayRelatedCards} labels={{ cond: copy.condLabel, price: copy.priceLabel, sold: copy.sold, preOwned: copy.preOwned, contact: copy.contact }} />
                 </div>
             </main>
             <Footer />

@@ -232,10 +232,20 @@ export async function POST(request: NextRequest) {
     const service = createServiceSupabaseClient();
 
     const claimedCardIds: string[] = [];
+    const soldCardIds: string[] = [];
+    const createdOrderIds: string[] = [];
     let walletDebited = false;
+
+    const unavailableError = (message: string) => {
+      const err = new Error(message);
+      (err as any).status = 409;
+      (err as any).code = 'card_unavailable';
+      return err;
+    };
+
     try {
+      const reservedUntil = new Date(Date.now() + RESERVATION_MINUTES * 60 * 1000).toISOString();
       if (mode === 'cart') {
-        const reservedUntil = new Date(Date.now() + RESERVATION_MINUTES * 60 * 1000).toISOString();
         for (const item of checkoutItems) {
           const { data: claimed } = await supabase
             .from('cards')
@@ -247,10 +257,43 @@ export async function POST(request: NextRequest) {
             .maybeSingle<{ id: string }>();
 
           if (!claimed) {
-            throw new Error('Một thẻ vừa được người khác mua hoặc giữ thanh toán.');
+            throw unavailableError('Một thẻ vừa được người khác mua hoặc giữ thanh toán.');
           }
           claimedCardIds.push(item.card.id);
         }
+      } else {
+        // Offer mode: claim the card atomically too (previously only cart
+        // mode claimed, leaving a TOCTOU window where an expired 2h offer
+        // hold was re-sold to someone else and this path still force-sold
+        // the card a second time). The accept flow left the card
+        // 'in_transaction'; it may have lapsed back to 'active' — both are
+        // claimable, but only if nobody else has a live order on the card.
+        const item = checkoutItems[0];
+
+        const { data: conflictingOrder } = await supabase
+          .from('orders')
+          .select('id')
+          .eq('card_id', item.card.id)
+          .neq('buyer_id', user.id)
+          .in('status', ['pending_payment', 'paid', 'shipping', 'delivered', 'completed'])
+          .limit(1)
+          .maybeSingle();
+        if (conflictingOrder) {
+          throw unavailableError('Thẻ này đã được người khác mua.');
+        }
+
+        const { data: claimed } = await supabase
+          .from('cards')
+          .update({ status: 'in_transaction', reserved_until: reservedUntil, updated_at: new Date().toISOString() } as never)
+          .eq('id', item.card.id)
+          .in('status', ['active', 'in_transaction'])
+          .select('id')
+          .maybeSingle<{ id: string }>();
+
+        if (!claimed) {
+          throw unavailableError('Thẻ này không còn khả dụng.');
+        }
+        claimedCardIds.push(item.card.id);
       }
 
       if (paymentMethod === 'wallet') {
@@ -309,13 +352,30 @@ export async function POST(request: NextRequest) {
 
           if (orderError) throw orderError;
           orders.push(order);
+          createdOrderIds.push((order as { id: string }).id);
 
-          await supabase
+          // Guarded: only a card still holding OUR claim can be sold. If the
+          // claim was raced away, abort — the catch rolls back the orders and
+          // refunds, instead of force-selling a card someone else bought.
+          const { data: soldCard } = await supabase
             .from('cards')
             .update({ status: 'sold', reserved_until: null, updated_at: new Date().toISOString() } as never)
-            .eq('id', item.card.id);
+            .eq('id', item.card.id)
+            .eq('status', 'in_transaction')
+            .select('id')
+            .maybeSingle<{ id: string }>();
 
-          await supabase.from('notifications').insert({
+          if (!soldCard) {
+            throw unavailableError('Một thẻ vừa được người khác mua hoặc giữ thanh toán.');
+          }
+          soldCardIds.push(item.card.id);
+        }
+
+        // Notify sellers only after every order committed — a mid-loop
+        // failure must not leave sellers with "please ship" notifications
+        // for orders that were rolled back.
+        for (const item of checkoutItems) {
+          await service.from('notifications').insert({
             user_id: item.card.seller_id,
             type: 'order_new',
             title: 'Đơn hàng mới!',
@@ -370,18 +430,15 @@ export async function POST(request: NextRequest) {
           .single();
         if (orderError) throw orderError;
         orders.push(order);
+        createdOrderIds.push((order as { id: string }).id);
       }
 
       if (mode === 'cart') {
         const cartItemIds = checkoutItems.map(item => item.cartItemId).filter(Boolean) as string[];
         await supabase.from('cart_items').delete().eq('user_id', user.id).in('id', cartItemIds);
-      } else {
-        const reservedUntil = new Date(Date.now() + RESERVATION_MINUTES * 60 * 1000).toISOString();
-        await supabase
-          .from('cards')
-          .update({ status: 'in_transaction', reserved_until: reservedUntil, updated_at: new Date().toISOString() } as never)
-          .eq('id', checkoutItems[0].card.id);
       }
+      // (Offer mode: the card was already claimed 'in_transaction' with a
+      // fresh reserved_until in the atomic claim above.)
 
       const origin = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
       const paymentLink = await getPayOS().paymentRequests.create({
@@ -415,15 +472,39 @@ export async function POST(request: NextRequest) {
         orderCode,
       });
     } catch (err) {
-      for (const cardId of claimedCardIds) {
+      // Full rollback, in dependency order. Previously a mid-loop failure in
+      // a multi-item wallet checkout left earlier orders 'paid' and their
+      // cards 'sold' while STILL refunding the buyer 100% — free cards.
+      // 1) Remove every order this request created (paid or pending_payment).
+      if (createdOrderIds.length > 0) {
+        await service.from('orders').delete().in('id', createdOrderIds);
+      }
+
+      // 2) Un-sell cards this request flipped to 'sold' (guarded so a card
+      //    legitimately re-sold elsewhere is never clobbered back to active).
+      if (soldCardIds.length > 0) {
         await supabase
           .from('cards')
           .update({ status: 'active', reserved_until: null, updated_at: new Date().toISOString() } as never)
-          .eq('id', cardId)
-          .eq('status', 'in_transaction');
+          .in('id', soldCardIds)
+          .eq('status', 'sold');
       }
 
-      // Compensation: if the wallet was already debited but order creation
+      // 3) Release cart claims that never reached 'sold'. Offer-mode cards
+      //    stay 'in_transaction' — the offer is still 'chosen', so the hold
+      //    should persist (release_expired_card_reservations self-heals it
+      //    when the fresh reserved_until lapses).
+      if (mode === 'cart') {
+        for (const cardId of claimedCardIds) {
+          await supabase
+            .from('cards')
+            .update({ status: 'active', reserved_until: null, updated_at: new Date().toISOString() } as never)
+            .eq('id', cardId)
+            .eq('status', 'in_transaction');
+        }
+      }
+
+      // 4) Compensation: if the wallet was already debited but order creation
       // failed afterwards, put the money back (best-effort with one retry —
       // previously the buyer simply lost the balance).
       if (walletDebited) {

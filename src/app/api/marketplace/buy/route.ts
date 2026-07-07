@@ -243,7 +243,7 @@ export async function POST(request: NextRequest) {
                 .eq('id', card_id);
 
             // Notify seller
-            await supabase.from('notifications').insert({
+            await createServiceSupabaseClient().from('notifications').insert({
                 user_id: card.seller_id,
                 type: 'order_new',
                 title: 'Đơn hàng mới!',

@@ -12,6 +12,7 @@ import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
 import { AddressBook, type SavedAddress } from '@/components/address-book';
 import { useLocalization } from '@/context/localization-context';
+import { getCategoryCode } from '@/lib/category-code';
 import Image from 'next/image';
 
 type Card = {
@@ -69,6 +70,9 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
         cancel: 'キャンセル',
         chooseAddressFirst: '先に住所を選択',
         payViaPayos: 'PayOSで支払う',
+        errorTitle: 'エラー',
+        walletLoadError: 'ウォレット残高を読み込めませんでした。',
+        payAmount: '支払う {amount}',
       }
     : locale === 'vi-VN'
       ? {
@@ -99,6 +103,9 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
           cancel: 'Hủy',
           chooseAddressFirst: 'Chọn địa chỉ trước',
           payViaPayos: 'Thanh toán qua PayOS',
+          errorTitle: 'Lỗi',
+          walletLoadError: 'Không thể tải số dư ví.',
+          payAmount: 'Thanh toán {amount}',
         }
       : {
           feeError: 'Could not calculate shipping fee. Please try again.',
@@ -128,6 +135,9 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
           cancel: 'Cancel',
           chooseAddressFirst: 'Choose address first',
           payViaPayos: 'Pay via PayOS',
+          errorTitle: 'Error',
+          walletLoadError: 'Unable to load wallet balance.',
+          payAmount: 'Pay {amount}',
         };
   const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'direct_payos'>('wallet');
   const [walletBalance, setWalletBalance] = useState<number>(0);
@@ -159,9 +169,15 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
     try {
       const res = await fetch('/api/wallet');
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || copy.walletLoadError);
       setWalletBalance(data.wallet?.available_balance || 0);
     } catch (err) {
       console.error('Failed to fetch wallet:', err);
+      toast({
+        variant: 'destructive',
+        title: copy.errorTitle,
+        description: err instanceof Error ? err.message : copy.walletLoadError,
+      });
     } finally {
       setIsLoadingWallet(false);
     }
@@ -281,7 +297,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
       onOpenChange(false);
       onSuccess?.();
     } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Lỗi', description: err.message });
+      toast({ variant: 'destructive', title: copy.errorTitle, description: err.message });
     } finally {
       setIsPurchasing(false);
     }
@@ -304,13 +320,13 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
           {/* Card Summary */}
           <div className="flex gap-3 p-3 rounded-lg bg-accent/50">
             {card.image_url && (
-              <div className="relative w-16 h-22 rounded overflow-hidden flex-shrink-0">
+              <div className="relative h-[88px] w-16 rounded overflow-hidden flex-shrink-0">
                 <Image src={card.image_url} alt="" width={64} height={88} className="object-cover rounded" />
               </div>
             )}
             <div className="flex-1 min-w-0">
               <p className="font-semibold line-clamp-2 text-sm">{card.name}</p>
-              <p className="text-xs text-muted-foreground">{card.category} • {card.condition}</p>
+              <p className="text-xs text-muted-foreground">{getCategoryCode(card.category)} • {card.condition}</p>
               <p className="text-lg font-bold text-orange-500 mt-1">{formatVND(card.price)}</p>
             </div>
           </div>
@@ -362,20 +378,6 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
           {/* Payment Method */}
           <div className="space-y-3">
             <Label className="text-sm font-medium">{copy.paymentMethod}</Label>
-            <div className="rounded-lg border border-border/50 bg-accent/20 p-3 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Tiền thẻ</span>
-                <span>{formatVND(card.price)}</span>
-              </div>
-              <div className="mt-2 flex items-center justify-between">
-                <span className="text-muted-foreground">Tiền ship</span>
-                <span>{shippingFee !== null ? formatVND(shippingFee) : '--'}</span>
-              </div>
-              <div className="mt-2 flex items-center justify-between border-t border-border/50 pt-2 font-semibold">
-                <span>Tổng cần thanh toán</span>
-                <span className="text-orange-400">{shippingFee !== null ? formatVND(totalAmount) : '--'}</span>
-              </div>
-            </div>
             <RadioGroup value={paymentMethod} onValueChange={v => setPaymentMethod(v as 'wallet' | 'direct_payos')} className="mt-2 space-y-2">
               <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${paymentMethod === 'wallet' ? 'border-orange-500 bg-orange-500/5' : 'hover:bg-accent/50'}`}>
                 <RadioGroupItem value="wallet" id="wallet" />
@@ -432,7 +434,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
               <CheckCircle className="h-4 w-4 mr-2" />
             )}
             {shippingFee !== null
-              ? `Thanh toán ${formatVND(totalAmount)}`
+              ? copy.payAmount.replace('{amount}', formatVND(totalAmount))
               : paymentMethod === 'wallet'
                 ? copy.chooseAddressFirst
                 : copy.payViaPayos

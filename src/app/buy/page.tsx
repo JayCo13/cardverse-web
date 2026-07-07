@@ -251,7 +251,7 @@ export default function BuyPage() {
       return (
         <div className="flex flex-col gap-4">
           {filteredAndSortedCards.map((card) => (
-            <CardItem key={card.id} card={card} layout="list" onAddToCart={async (c) => {
+            <CardItem key={card.id} card={card} layout="list" showGhnReadiness={false} onAddToCart={async (c) => {
               if (!user) {
                 setAuthOpen(true);
                 return;
@@ -263,11 +263,11 @@ export default function BuyPage() {
                   body: JSON.stringify({ card_id: c.id }),
                 });
                 const payload = await response.json();
-                if (!response.ok) throw new Error(payload.error || 'Không thể thêm vào giỏ hàng');
-                toast({ title: 'Thêm vào giỏ hàng thành công' });
+                if (!response.ok) throw new Error(payload.error || t('cart_add_failed'));
+                toast({ title: t('cart_add_success') });
                 window.dispatchEvent(new Event('cardverse:cart-updated'));
               } catch (error: any) {
-                toast({ variant: 'destructive', title: 'Lỗi giỏ hàng', description: error.message });
+                toast({ variant: 'destructive', title: t('cart_error_title'), description: error.message });
               }
             }} onBuyClick={async (c) => {
               setCheckoutCard({

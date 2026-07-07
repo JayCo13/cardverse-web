@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
 const formatVND = (amount: number) =>
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
@@ -272,22 +273,11 @@ export async function POST(request: NextRequest) {
             .eq('id', conversationId);
     }
 
-    await supabase.from('notifications').insert({
+    await createServiceSupabaseClient().from('notifications').insert({
         user_id: cardRow.seller_id,
         type: 'offer_received',
         title: 'Đề xuất giá mới',
         message: `Có người đề xuất ${formatVND(price)} cho thẻ "${cardRow.name}"`,
-        card_id: cardId,
-        offer_id: offer.id,
-        conversation_id: conversationId,
-        read: false,
-    } as never);
-
-    await supabase.from('notifications').insert({
-        user_id: user.id,
-        type: 'message_received',
-        title: 'Hội thoại offer đã được tạo',
-        message: `Bạn đã gửi offer ${formatVND(price)} cho "${cardRow.name}".`,
         card_id: cardId,
         offer_id: offer.id,
         conversation_id: conversationId,

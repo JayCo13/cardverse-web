@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
 const formatVND = (amount: number) => new Intl.NumberFormat('vi-VN').format(amount) + 'đ';
 
@@ -94,6 +95,38 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
         return NextResponse.json({ error: offerUpdateError.message || 'Không thể chấp nhận đề nghị.' }, { status: 400 });
     }
 
+    // Resolve the losing bids: every other pending offer on this card is
+    // rejected and its buyer notified. Previously they dangled as 'pending'
+    // forever, which also blocked those buyers from ever re-offering
+    // (pending_offer_exists).
+    const { data: siblingOffers } = await supabase
+        .from('offers')
+        .select('id, buyer_id')
+        .eq('card_id', cardRow.id)
+        .eq('status', 'pending')
+        .neq('id', offerRow.id);
+
+    const losers = (siblingOffers || []) as { id: string; buyer_id: string }[];
+    if (losers.length > 0) {
+        const { error: siblingError } = await supabase
+            .from('offers')
+            .update({ status: 'rejected' } as never)
+            .in('id', losers.map(o => o.id))
+            .eq('status', 'pending');
+
+        if (!siblingError) {
+            await createServiceSupabaseClient().from('notifications').insert(losers.map(loser => ({
+                user_id: loser.buyer_id,
+                type: 'offer_rejected',
+                title: 'Offer không được chọn',
+                message: `Người bán đã chấp nhận một đề nghị khác cho thẻ "${cardRow.name}".`,
+                card_id: cardRow.id,
+                offer_id: loser.id,
+                read: false,
+            })) as never[]);
+        }
+    }
+
     const checkoutUrl = `/checkout?offerId=${offerRow.id}`;
 
     // Resolve (or create) the buyer/seller conversation for this card so the
@@ -158,7 +191,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
         }
     }
 
-    await supabase.from('notifications').insert({
+    await createServiceSupabaseClient().from('notifications').insert({
         user_id: offerRow.buyer_id,
         type: 'offer_accepted',
         title: 'Đề xuất được chấp nhận!',
