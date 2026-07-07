@@ -13,6 +13,7 @@ import { useAuthModal } from "@/components/auth-modal";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowRight, CreditCard, Eye, PackageCheck, ShieldCheck, ShoppingCart, Store, Trash2, Truck } from "lucide-react";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
+import { getCategoryCode } from "@/lib/category-code";
 import { useLocalization } from "@/context/localization-context";
 
 type CartItem = {
@@ -45,114 +46,114 @@ export default function CartPage() {
   const { locale } = useLocalization();
   const copy = locale === "vi-VN"
     ? {
-        loadCartError: "Không thể tải giỏ hàng",
-        cartErrorTitle: "Lỗi giỏ hàng",
-        removeError: "Không thể xóa sản phẩm",
-        errorTitle: "Lỗi",
-        title: "Giỏ hàng",
-        subtitle: "Kiểm tra thẻ trước khi thanh toán an toàn trên CardVerse.",
-        continueShopping: "Tiếp tục mua",
-        emptyTitle: "Giỏ hàng đang trống",
-        emptyHint: "Thêm thẻ từ trang Buy hoặc trang chi tiết để bắt đầu.",
-        goShopping: "Đi mua thẻ",
-        selectAll: "Chọn tất cả",
-        selectForPayment: "Chọn sản phẩm để thanh toán",
-        unavailable: "Không còn khả dụng",
-        checkoutable: "Có thể checkout",
-        missingCard: "Sản phẩm không tồn tại",
-        sellerFallback: "Seller trên CardVerse",
+      loadCartError: "Không thể tải giỏ hàng",
+      cartErrorTitle: "Lỗi giỏ hàng",
+      removeError: "Không thể xóa sản phẩm",
+      errorTitle: "Lỗi",
+      title: "Giỏ hàng",
+      subtitle: "Kiểm tra thẻ trước khi thanh toán an toàn trên CardVerse.",
+      continueShopping: "Tiếp tục mua",
+      emptyTitle: "Giỏ hàng đang trống",
+      emptyHint: "Thêm thẻ từ trang Buy hoặc trang chi tiết để bắt đầu.",
+      goShopping: "Đi mua thẻ",
+      selectAll: "Chọn tất cả",
+      selectForPayment: "Chọn sản phẩm để thanh toán",
+      unavailable: "Không còn khả dụng",
+      checkoutable: "Có thể checkout",
+      missingCard: "Sản phẩm không tồn tại",
+      sellerFallback: "Seller trên CardVerse",
+      cardVerseSeller: "CardVerse seller",
+      ship: "Ship",
+      ghnReady: "GHN ready",
+      payment: "Thanh toán",
+      walletPayos: "Ví / PayOS",
+      protection: "Bảo vệ",
+      protected: "CardVerse giữ tiền",
+      itemPrice: "Giá thẻ",
+      shippingAtCheckout: "Phí ship tính ở checkout",
+      viewDetail: "Xem chi tiết",
+      removeFromCart: "Xóa khỏi giỏ",
+      orderSummary: "Tóm tắt đơn hàng",
+      selectedForPayment: "Đã chọn thanh toán",
+      unavailableCount: "Không khả dụng",
+      subtotal: "Tạm tính",
+      shippingNote: "Phí ship GHN sẽ được tính ở trang checkout theo địa chỉ nhận hàng.",
+      total: "Thành tiền",
+      checkout: "Thanh toán",
+    }
+    : locale === "ja-JP"
+      ? {
+        loadCartError: "カートを読み込めません",
+        cartErrorTitle: "カートエラー",
+        removeError: "商品を削除できません",
+        errorTitle: "エラー",
+        title: "ショッピングカート",
+        subtitle: "CardVerseで安全に支払う前にカードを確認してください。",
+        continueShopping: "買い物を続ける",
+        emptyTitle: "カートは空です",
+        emptyHint: "Buyページまたはカードページからカードを追加してください。",
+        goShopping: "カードを探す",
+        selectAll: "すべて選択",
+        selectForPayment: "支払う商品を選択",
+        unavailable: "在庫なし",
+        checkoutable: "購入可能",
+        missingCard: "商品が存在しません",
+        sellerFallback: "CardVerseの販売者",
+        cardVerseSeller: "CardVerse販売者",
+        ship: "配送",
+        ghnReady: "GHN対応",
+        payment: "支払い",
+        walletPayos: "ウォレット / PayOS",
+        protection: "保護",
+        protected: "CardVerseが代金を保持",
+        itemPrice: "商品価格",
+        shippingAtCheckout: "送料はチェックアウトで計算",
+        viewDetail: "詳細を見る",
+        removeFromCart: "カートから削除",
+        orderSummary: "注文概要",
+        selectedForPayment: "支払い対象",
+        unavailableCount: "在庫なし",
+        subtotal: "小計",
+        shippingNote: "GHN送料はチェックアウトページで配送先住所に基づいて計算されます。",
+        total: "合計",
+        checkout: "支払う",
+      }
+      : {
+        loadCartError: "Unable to load cart",
+        cartErrorTitle: "Cart error",
+        removeError: "Unable to remove item",
+        errorTitle: "Error",
+        title: "Shopping cart",
+        subtitle: "Review your cards before paying safely on CardVerse.",
+        continueShopping: "Continue shopping",
+        emptyTitle: "Your cart is empty",
+        emptyHint: "Add cards from the Buy page or a card detail page to get started.",
+        goShopping: "Browse cards",
+        selectAll: "Select all",
+        selectForPayment: "Select item for checkout",
+        unavailable: "No longer available",
+        checkoutable: "Ready to checkout",
+        missingCard: "Item no longer exists",
+        sellerFallback: "Seller on CardVerse",
         cardVerseSeller: "CardVerse seller",
         ship: "Ship",
         ghnReady: "GHN ready",
-        payment: "Thanh toán",
-        walletPayos: "Ví / PayOS",
-        protection: "Bảo vệ",
-        protected: "CardVerse giữ tiền",
-        itemPrice: "Giá thẻ",
-        shippingAtCheckout: "Phí ship tính ở checkout",
-        viewDetail: "Xem chi tiết",
-        removeFromCart: "Xóa khỏi giỏ",
-        orderSummary: "Tóm tắt đơn hàng",
-        selectedForPayment: "Đã chọn thanh toán",
-        unavailableCount: "Không khả dụng",
-        subtotal: "Tạm tính",
-        shippingNote: "Phí ship GHN sẽ được tính ở trang checkout theo địa chỉ nhận hàng.",
-        total: "Thành tiền",
-        checkout: "Thanh toán",
-      }
-    : locale === "ja-JP"
-      ? {
-          loadCartError: "カートを読み込めません",
-          cartErrorTitle: "カートエラー",
-          removeError: "商品を削除できません",
-          errorTitle: "エラー",
-          title: "ショッピングカート",
-          subtitle: "CardVerseで安全に支払う前にカードを確認してください。",
-          continueShopping: "買い物を続ける",
-          emptyTitle: "カートは空です",
-          emptyHint: "Buyページまたはカードページからカードを追加してください。",
-          goShopping: "カードを探す",
-          selectAll: "すべて選択",
-          selectForPayment: "支払う商品を選択",
-          unavailable: "在庫なし",
-          checkoutable: "購入可能",
-          missingCard: "商品が存在しません",
-          sellerFallback: "CardVerseの販売者",
-          cardVerseSeller: "CardVerse販売者",
-          ship: "配送",
-          ghnReady: "GHN対応",
-          payment: "支払い",
-          walletPayos: "ウォレット / PayOS",
-          protection: "保護",
-          protected: "CardVerseが代金を保持",
-          itemPrice: "商品価格",
-          shippingAtCheckout: "送料はチェックアウトで計算",
-          viewDetail: "詳細を見る",
-          removeFromCart: "カートから削除",
-          orderSummary: "注文概要",
-          selectedForPayment: "支払い対象",
-          unavailableCount: "在庫なし",
-          subtotal: "小計",
-          shippingNote: "GHN送料はチェックアウトページで配送先住所に基づいて計算されます。",
-          total: "合計",
-          checkout: "支払う",
-        }
-      : {
-          loadCartError: "Unable to load cart",
-          cartErrorTitle: "Cart error",
-          removeError: "Unable to remove item",
-          errorTitle: "Error",
-          title: "Shopping cart",
-          subtitle: "Review your cards before paying safely on CardVerse.",
-          continueShopping: "Continue shopping",
-          emptyTitle: "Your cart is empty",
-          emptyHint: "Add cards from the Buy page or a card detail page to get started.",
-          goShopping: "Browse cards",
-          selectAll: "Select all",
-          selectForPayment: "Select item for checkout",
-          unavailable: "No longer available",
-          checkoutable: "Ready to checkout",
-          missingCard: "Item no longer exists",
-          sellerFallback: "Seller on CardVerse",
-          cardVerseSeller: "CardVerse seller",
-          ship: "Ship",
-          ghnReady: "GHN ready",
-          payment: "Payment",
-          walletPayos: "Wallet / PayOS",
-          protection: "Protection",
-          protected: "CardVerse held",
-          itemPrice: "Item price",
-          shippingAtCheckout: "Shipping calculated at checkout",
-          viewDetail: "View detail",
-          removeFromCart: "Remove from cart",
-          orderSummary: "Order summary",
-          selectedForPayment: "Selected for checkout",
-          unavailableCount: "Unavailable",
-          subtotal: "Subtotal",
-          shippingNote: "GHN shipping is calculated at checkout based on your delivery address.",
-          total: "Total",
-          checkout: "Checkout",
-        };
+        payment: "Payment",
+        walletPayos: "Wallet / PayOS",
+        protection: "Protection",
+        protected: "CardVerse held",
+        itemPrice: "Item price",
+        shippingAtCheckout: "Shipping calculated at checkout",
+        viewDetail: "View detail",
+        removeFromCart: "Remove from cart",
+        orderSummary: "Order summary",
+        selectedForPayment: "Selected for checkout",
+        unavailableCount: "Unavailable",
+        subtotal: "Subtotal",
+        shippingNote: "GHN shipping is calculated at checkout based on your delivery address.",
+        total: "Total",
+        checkout: "Checkout",
+      };
   const [items, setItems] = useState<CartItem[]>([]);
   const [isLoadingCart, setIsLoadingCart] = useState(true);
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -294,7 +295,7 @@ export default function CartPage() {
                         ) : null}
                       </div>
                       <span className="absolute left-4 top-4 rounded-md border border-orange-400/50 bg-orange-500/90 px-2 py-1 text-[11px] font-bold text-white shadow-lg">
-                        {card?.category || "CARD"}
+                        {getCategoryCode(card?.category)}
                       </span>
                     </div>
 
@@ -336,26 +337,26 @@ export default function CartPage() {
                       </div>
 
                       <div className="mt-5 grid gap-2 text-sm sm:grid-cols-3">
-                        <div className="rounded-lg border border-white/10 bg-background/55 p-3">
-                          <div className="mb-1 flex items-center gap-1.5 text-muted-foreground">
-                            <Truck className="h-4 w-4 text-orange-300" />
-                            {copy.ship}
+                        <div className="rounded-lg border border-white/10 bg-background/55 p-2.5">
+                          <div className="mb-1.5 flex items-center gap-1.5 text-muted-foreground">
+                            <Truck className="h-4 w-4 shrink-0 text-orange-300" />
+                            <span className="whitespace-nowrap leading-tight">{copy.ship}</span>
                           </div>
-                          <p className="font-semibold">{copy.ghnReady}</p>
+                          <p className="font-semibold leading-tight">{copy.ghnReady}</p>
                         </div>
-                        <div className="rounded-lg border border-white/10 bg-background/55 p-3">
-                          <div className="mb-1 flex items-center gap-1.5 text-muted-foreground">
-                            <CreditCard className="h-4 w-4 text-orange-300" />
-                            {copy.payment}
+                        <div className="rounded-lg border border-white/10 bg-background/55 p-2.5">
+                          <div className="mb-1.5 flex items-center gap-1.5 text-muted-foreground">
+                            <CreditCard className="h-4 w-4 shrink-0 text-orange-300" />
+                            <span className="whitespace-nowrap leading-tight">{copy.payment}</span>
                           </div>
-                          <p className="font-semibold">{copy.walletPayos}</p>
+                          <p className="font-semibold leading-tight">{copy.walletPayos}</p>
                         </div>
-                        <div className="rounded-lg border border-white/10 bg-background/55 p-3">
-                          <div className="mb-1 flex items-center gap-1.5 text-muted-foreground">
-                            <PackageCheck className="h-4 w-4 text-orange-300" />
-                            {copy.protection}
+                        <div className="rounded-lg border border-white/10 bg-background/55 p-2.5">
+                          <div className="mb-1.5 flex items-center gap-1.5 text-muted-foreground">
+                            <PackageCheck className="h-4 w-4 shrink-0 text-orange-300" />
+                            <span className="whitespace-nowrap leading-tight">{copy.protection}</span>
                           </div>
-                          <p className="font-semibold">{copy.protected}</p>
+                          <p className="font-semibold leading-tight">{copy.protected}</p>
                         </div>
                       </div>
                     </div>

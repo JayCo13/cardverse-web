@@ -51,6 +51,7 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
         reviewWithChat: '販売者が{price}を確認します。会話が作成されました。',
         reviewNoChat: '販売者があなたの{price}を確認します。',
         sendError: '提案を送信できませんでした。もう一度お試しください。',
+        errorTitle: 'エラー',
         title: '価格交渉',
         desc: 'あなたの希望価格を送ってください。販売者が承認または拒否できます。',
         historyTitle: '提案履歴',
@@ -82,6 +83,7 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
           reviewWithChat: 'Người bán sẽ xem xét mức giá {price}. Hội thoại đã được tạo.',
           reviewNoChat: 'Người bán sẽ xem xét mức giá {price} của bạn.',
           sendError: 'Không thể gửi đề nghị. Vui lòng thử lại.',
+          errorTitle: 'Lỗi',
           title: 'Trả giá',
           desc: 'Đề xuất mức giá của bạn. Người bán có thể chấp nhận hoặc từ chối.',
           historyTitle: 'Lịch sử offer',
@@ -112,6 +114,7 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
           reviewWithChat: 'The seller will review {price}. A conversation has been created.',
           reviewNoChat: 'The seller will review your {price} offer.',
           sendError: 'Could not send the offer. Please try again.',
+          errorTitle: 'Error',
           title: 'Make an offer',
           desc: 'Suggest your price. The seller can accept or decline it.',
           historyTitle: 'Offer history',
@@ -160,7 +163,7 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
       setMinimumNextOffer(payload.minimumNextOffer || null);
     } catch (error) {
       const description = error instanceof Error ? error.message : copy.sendError;
-      toast({ variant: 'destructive', title: 'Error', description });
+      toast({ variant: 'destructive', title: copy.errorTitle, description });
       setOfferHistory([]);
       setCanOfferAgain(true);
       setMinimumNextOffer(null);
@@ -240,7 +243,7 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
       onSuccess?.(conversationId);
     } catch (err: unknown) {
       const description = err instanceof Error ? err.message : copy.sendError;
-      toast({ variant: 'destructive', title: 'Error', description });
+      toast({ variant: 'destructive', title: copy.errorTitle, description });
       await loadOfferHistory();
     } finally {
       setIsSubmitting(false);

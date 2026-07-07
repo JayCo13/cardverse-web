@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
 const SAFETY_TERMS = [
     'facebook',
@@ -88,6 +89,22 @@ const ocrImage = async (imageUrl: string): Promise<string> => {
 
 const preview = (body: string) => body.trim().replace(/\s+/g, ' ').slice(0, 160);
 
+const isOwnedCloudinaryImage = (value: string) => {
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    if (!cloudName) return false;
+    try {
+        const url = new URL(value);
+        const parts = url.pathname.split('/').filter(Boolean);
+        return url.protocol === 'https:'
+            && url.hostname === 'res.cloudinary.com'
+            && parts[0] === cloudName
+            && parts[1] === 'image'
+            && parts[2] === 'upload';
+    } catch {
+        return false;
+    }
+};
+
 export async function GET(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -98,24 +115,41 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const conversationId = searchParams.get('conversationId');
+    // Cursor for loading older history: pass the created_at of the oldest
+    // message currently displayed.
+    const before = searchParams.get('before');
 
     if (!conversationId) {
         return NextResponse.json({ error: 'conversationId is required' }, { status: 400 });
     }
 
-    const { data, error } = await supabase
+    const PAGE_SIZE = 80;
+
+    // Newest-first + reverse: ascending+limit returned the OLDEST 80, so a
+    // long conversation opened without its most recent messages.
+    let query = supabase
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
         .is('deleted_at', null)
-        .order('created_at', { ascending: true })
-        .limit(80);
+        .order('created_at', { ascending: false })
+        .limit(PAGE_SIZE);
+
+    if (before) {
+        query = query.lt('created_at', before);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    return NextResponse.json({ messages: data || [] });
+    const page = data || [];
+    return NextResponse.json({
+        messages: [...page].reverse(),
+        hasMore: page.length === PAGE_SIZE,
+    });
 }
 
 export async function POST(request: NextRequest) {
@@ -145,7 +179,7 @@ export async function POST(request: NextRequest) {
     }
     if (messageType === 'image') {
         // Only accept images we just uploaded to our own Cloudinary account.
-        if (!imageUrl || !/^https:\/\/res\.cloudinary\.com\//.test(imageUrl)) {
+        if (!imageUrl || !isOwnedCloudinaryImage(imageUrl)) {
             return NextResponse.json({ error: 'A valid image is required' }, { status: 400 });
         }
     } else if (!messageBody) {
@@ -258,7 +292,7 @@ export async function POST(request: NextRequest) {
     }
 
     const recipientId = conversationRow.buyer_id === user.id ? conversationRow.seller_id : conversationRow.buyer_id;
-    await supabase.from('notifications').insert({
+    await createServiceSupabaseClient().from('notifications').insert({
         user_id: recipientId,
         type: 'message_received',
         title: 'Tin nhắn mới',

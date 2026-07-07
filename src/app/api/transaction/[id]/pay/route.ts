@@ -222,7 +222,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                 .eq('id', transactionId)
                 .eq('status', 'active');
 
-            await supabase.from('notifications').insert({
+            await createServiceSupabaseClient().from('notifications').insert({
                 user_id: transaction.seller_id,
                 type: 'order_new',
                 title: 'Đơn hàng mới!',

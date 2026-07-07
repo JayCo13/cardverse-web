@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
 const formatVND = (amount: number) =>
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
@@ -115,7 +116,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
             .eq('id', conversationId);
     }
 
-    await supabase.from('notifications').insert({
+    await createServiceSupabaseClient().from('notifications').insert({
         user_id: offerRow.buyer_id,
         type: 'offer_rejected',
         title: 'Offer bị từ chối',

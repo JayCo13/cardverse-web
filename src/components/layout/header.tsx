@@ -26,8 +26,19 @@ import { Skeleton } from "../ui/skeleton"
 import { useAuth } from "@/lib/supabase"
 import { useAuthModal } from "@/components/auth-modal"
 import { useToast } from "@/hooks/use-toast"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { useSubscription } from "@/hooks/useSubscription"
+
+const VND_ONLY_MARKETPLACE_PATHS = [
+  "/buy",
+  "/sell",
+  "/cards",
+  "/cart",
+  "/checkout",
+  "/orders",
+  "/wallet",
+  "/transaction",
+];
 
 export function Header() {
   const { t, locale } = useLocalization();
@@ -35,6 +46,7 @@ export function Header() {
   const { setOpen } = useAuthModal();
   const { toast } = useToast();
   const router = useRouter();
+  const pathname = usePathname();
   const { isVipPro, isDayPass, hasCredits, subscription } = useSubscription();
   const [cartCount, setCartCount] = useState(0);
   const copy = locale === "vi-VN"
@@ -66,6 +78,9 @@ export function Header() {
 
   // Admin-created tester accounts get full access to gated marketplace features.
   const isTester = !!profile?.is_tester;
+  const isVndOnlyMarketplace = VND_ONLY_MARKETPLACE_PATHS.some(
+    path => pathname === path || pathname.startsWith(`${path}/`),
+  );
 
   const fetchCartCount = useCallback(async () => {
     if (!user) {
@@ -271,7 +286,7 @@ export function Header() {
 
           <div className="flex-1 flex items-center justify-end gap-1 lg:gap-2 text-sm font-medium">
             <div className="hidden lg:flex items-center gap-2">
-              <CurrencySelector />
+              {!isVndOnlyMarketplace && <CurrencySelector />}
               <LanguageSelector />
               <div className="mx-2 h-6 w-px bg-white/50" />
             </div>
@@ -362,7 +377,7 @@ export function Header() {
                 <span>{t('scan_short')}</span>
               </Button>
               <div className="flex gap-1 shrink-0">
-                <CurrencySelector />
+                {!isVndOnlyMarketplace && <CurrencySelector />}
                 <LanguageSelector />
               </div>
             </div>

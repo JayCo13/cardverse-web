@@ -583,6 +583,9 @@ export const en = {
   privacy_section_7_desc: 'If you have any questions about this Privacy Policy, please contact us at support@cardversehub.com or visit our Contact Us page.',
 
   // KYC Overlay
+  cart_add_success: 'Added to cart successfully',
+  cart_add_failed: 'Unable to add this card to your cart',
+  cart_error_title: 'Cart error',
   kyc_verifying_title: 'Card Verse Hub Verifying...',
   kyc_verifying_subtitle: 'Card Verse Hub automated system is cross-checking ID & Bank',
 };

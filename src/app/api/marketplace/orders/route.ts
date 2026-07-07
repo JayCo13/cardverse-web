@@ -81,6 +81,11 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'Order not found' }, { status: 404 });
         }
 
+        // Cross-user writes (wallet credits, notifications to the other party)
+        // go through the service client — both tables are RLS-locked for
+        // client sessions.
+        const service = createServiceSupabaseClient();
+
         switch (action) {
             case 'ship': {
                 // Seller ships the order — auto-create GHN shipping order
@@ -111,6 +116,33 @@ export async function PATCH(request: NextRequest) {
                         error: 'Đơn hàng thiếu thông tin địa chỉ người nhận.',
                     }, { status: 400 });
                 }
+
+                // Atomically claim the order (paid → shipping) BEFORE calling
+                // GHN. A concurrent 'cancel' can no longer refund an order
+                // whose shipment is being created — only one of the two
+                // guarded updates wins.
+                const { data: claimedOrder } = await supabase
+                    .from('orders')
+                    .update({ status: 'shipping', updated_at: new Date().toISOString() } as never)
+                    .eq('id', order_id)
+                    .eq('status', 'paid')
+                    .select('id')
+                    .maybeSingle();
+
+                if (!claimedOrder) {
+                    return NextResponse.json({
+                        error: 'Đơn hàng vừa thay đổi trạng thái (có thể đã bị hủy hoặc đã ship).',
+                        code: 'order_state_changed',
+                    }, { status: 409 });
+                }
+
+                const revertShipClaim = async () => {
+                    await supabase
+                        .from('orders')
+                        .update({ status: 'paid', updated_at: new Date().toISOString() } as never)
+                        .eq('id', order_id)
+                        .eq('status', 'shipping');
+                };
 
                 let ghnOrderCode: string | null = null;
                 let ghnExpectedDelivery: string | null = null;
@@ -144,6 +176,7 @@ export async function PATCH(request: NextRequest) {
                     console.error('GHN create order failed:', ghnError);
                     // Fallback: still allow shipping with manual tracking
                     if (!tracking_number) {
+                        await revertShipClaim();
                         return NextResponse.json({
                             error: `Không thể tạo đơn GHN: ${ghnError.message}. Vui lòng thử lại hoặc nhập mã vận đơn thủ công.`,
                             code: 'GHN_ERROR',
@@ -169,7 +202,7 @@ export async function PATCH(request: NextRequest) {
                 if (updateError) throw updateError;
 
                 // Notify buyer
-                await supabase.from('notifications').insert({
+                await service.from('notifications').insert({
                     user_id: order.buyer_id,
                     type: 'order_shipped',
                     title: 'Đơn hàng đã được gửi!',
@@ -196,64 +229,55 @@ export async function PATCH(request: NextRequest) {
                     return NextResponse.json({ error: 'Order must be shipping/delivered to confirm' }, { status: 400 });
                 }
 
-                // Update order to completed
-                await supabase
+                // Atomically claim the completion: only the request that wins
+                // this CAS pays the seller. A double-click, a retry, or the
+                // 72h auto-release RPC (which guards on status='delivered')
+                // can no longer produce a second payout.
+                const { data: completedOrder } = await supabase
                     .from('orders')
                     .update({
                         status: 'completed',
                         buyer_confirmed_at: new Date().toISOString(),
                         updated_at: new Date().toISOString(),
                     } as never)
-                    .eq('id', order_id);
+                    .eq('id', order_id)
+                    .in('status', ['shipping', 'delivered'])
+                    .select('id')
+                    .maybeSingle();
+
+                if (!completedOrder) {
+                    return NextResponse.json({
+                        error: 'Đơn hàng vừa thay đổi trạng thái, không thể xác nhận lại.',
+                        code: 'order_state_changed',
+                    }, { status: 409 });
+                }
 
                 // Release funds to seller. Fee model: seller gets the FULL
                 // amount — the 5% platform fee is charged once, at withdrawal.
+                // credit_wallet is an atomic SECURITY DEFINER RPC (balance
+                // increment + ledger row in one transaction), service-role only.
                 const sellerPayout = order.amount;
+                const { error: payoutError } = await service.rpc('credit_wallet' as never, {
+                    p_user_id: order.seller_id,
+                    p_amount: sellerPayout,
+                    p_type: 'marketplace_sale',
+                    p_description: `Bán thẻ - Đơn #${order_id.substring(0, 8)}`,
+                    p_reference_id: order_id,
+                } as never);
 
-                // Cross-user wallet write (buyer's session crediting the
-                // seller's wallet) — must go through the service client since
-                // wallet writes are RLS-locked.
-                const walletService = createServiceSupabaseClient();
-
-                // Get or create seller wallet
-                let { data: sellerWallet } = await walletService
-                    .from('wallets')
-                    .select('*')
-                    .eq('user_id', order.seller_id)
-                    .single();
-
-                if (!sellerWallet) {
-                    const { data: newWallet } = await walletService
-                        .from('wallets')
-                        .insert({ user_id: order.seller_id } as never)
-                        .select()
-                        .single();
-                    sellerWallet = newWallet;
-                }
-
-                if (sellerWallet) {
-                    const newBalance = sellerWallet.available_balance + sellerPayout;
-                    await walletService
-                        .from('wallets')
-                        .update({
-                            available_balance: newBalance,
-                            updated_at: new Date().toISOString(),
-                        } as never)
-                        .eq('user_id', order.seller_id);
-
-                    await walletService.from('wallet_transactions').insert({
-                        wallet_id: sellerWallet.id,
-                        user_id: order.seller_id,
-                        type: 'marketplace_sale',
-                        amount: sellerPayout,
-                        balance_after: newBalance,
-                        description: `Bán thẻ - Đơn #${order_id.substring(0, 8)}`,
-                        reference_id: order_id,
-                    } as never);
+                if (payoutError) {
+                    // Put the order back so the payout can be retried (buyer
+                    // re-confirms, or the 72h auto-release picks it up).
+                    await supabase
+                        .from('orders')
+                        .update({ status: 'delivered', buyer_confirmed_at: null, updated_at: new Date().toISOString() } as never)
+                        .eq('id', order_id)
+                        .eq('status', 'completed');
+                    throw payoutError;
                 }
 
                 // Notify seller
-                await supabase.from('notifications').insert({
+                await service.from('notifications').insert({
                     user_id: order.seller_id,
                     type: 'order_completed',
                     title: 'Đơn hàng hoàn tất!',
@@ -284,7 +308,7 @@ export async function PATCH(request: NextRequest) {
 
                         // Service role: vn_card_sales is read-only for clients
                         // (RLS), only the server records sales.
-                        await createServiceSupabaseClient().from('vn_card_sales').insert({
+                        await service.from('vn_card_sales').insert({
                             catalog_product_id: sc.catalog_product_id,
                             catalog_soccer_id: sc.catalog_soccer_id,
                             card_id: sc.id,
@@ -301,19 +325,15 @@ export async function PATCH(request: NextRequest) {
                     console.error('Could not record vn_card_sales:', salesError);
                 }
 
-                // Update seller stats
-                await supabase.rpc('increment_seller_stats' as never, {
+                // Update seller stats — never block the confirmation on it.
+                // (The old fallback wrote the literal 1 over the counters via
+                // a nonexistent supabase.raw() API; removed.)
+                const { error: statsError } = await supabase.rpc('increment_seller_stats' as never, {
                     p_seller_id: order.seller_id,
-                } as never).catch(() => {
-                    // If RPC doesn't exist yet, manual update
-                    supabase
-                        .from('profiles')
-                        .update({
-                            total_transactions: (supabase as any).raw?.('total_transactions + 1') || 1,
-                            completed_transactions: (supabase as any).raw?.('completed_transactions + 1') || 1,
-                        } as never)
-                        .eq('id', order.seller_id);
-                });
+                } as never);
+                if (statsError) {
+                    console.error('increment_seller_stats failed:', statsError);
+                }
 
                 return NextResponse.json({ success: true, status: 'completed' });
             }
@@ -337,7 +357,7 @@ export async function PATCH(request: NextRequest) {
                     .eq('id', order_id);
 
                 // Notify seller
-                await supabase.from('notifications').insert({
+                await service.from('notifications').insert({
                     user_id: order.seller_id,
                     type: 'order_disputed',
                     title: 'Đơn hàng bị khiếu nại!',
@@ -358,51 +378,75 @@ export async function PATCH(request: NextRequest) {
                     return NextResponse.json({ error: 'Cannot cancel at this stage' }, { status: 400 });
                 }
 
-                await supabase
+                // Atomically claim the cancellation per prior status. Only the
+                // request that wins a CAS refunds — two concurrent cancels, or
+                // a cancel racing the seller's 'ship' claim, can't both act.
+                const { data: cancelledPaid } = await supabase
                     .from('orders')
-                    .update({
-                        status: 'cancelled',
-                        updated_at: new Date().toISOString(),
-                    } as never)
-                    .eq('id', order_id);
+                    .update({ status: 'cancelled', updated_at: new Date().toISOString() } as never)
+                    .eq('id', order_id)
+                    .eq('status', 'paid')
+                    .select('id')
+                    .maybeSingle();
 
-                // Refund buyer if paid by wallet. Cross-user write (a seller
-                // cancelling refunds the buyer's wallet) — service client.
-                if (order.status === 'paid' && order.payment_method === 'wallet') {
-                    const walletService = createServiceSupabaseClient();
-                    const { data: buyerWallet } = await walletService
-                        .from('wallets')
-                        .select('*')
-                        .eq('user_id', order.buyer_id)
-                        .single();
+                if (!cancelledPaid) {
+                    const { data: cancelledPending } = await supabase
+                        .from('orders')
+                        .update({ status: 'cancelled', updated_at: new Date().toISOString() } as never)
+                        .eq('id', order_id)
+                        .eq('status', 'pending_payment')
+                        .select('id')
+                        .maybeSingle();
 
-                    if (buyerWallet) {
-                        const newBalance = buyerWallet.available_balance + order.total_paid;
-                        await walletService
-                            .from('wallets')
-                            .update({
-                                available_balance: newBalance,
-                                updated_at: new Date().toISOString(),
-                            } as never)
-                            .eq('user_id', order.buyer_id);
-
-                        await walletService.from('wallet_transactions').insert({
-                            wallet_id: buyerWallet.id,
-                            user_id: order.buyer_id,
-                            type: 'escrow_release',
-                            amount: order.total_paid,
-                            balance_after: newBalance,
-                            description: `Hoàn tiền - Đơn #${order_id.substring(0, 8)} đã hủy`,
-                            reference_id: order_id,
-                        } as never);
+                    if (!cancelledPending) {
+                        return NextResponse.json({
+                            error: 'Đơn hàng vừa thay đổi trạng thái, không thể hủy.',
+                            code: 'order_state_changed',
+                        }, { status: 409 });
                     }
                 }
 
-                // Restore card to active
+                // Refund a paid order to the buyer's CardVerse wallet — for
+                // BOTH payment methods. A direct_payos payment already landed
+                // in the platform account, so it is refunded as wallet balance
+                // the buyer can spend or withdraw (previously it was silently
+                // kept). credit_wallet is atomic, so a lost race above can't
+                // double-refund.
+                if (cancelledPaid) {
+                    const { error: refundError } = await service.rpc('credit_wallet' as never, {
+                        p_user_id: order.buyer_id,
+                        p_amount: order.total_paid,
+                        p_type: 'refund',
+                        p_description: `Hoàn tiền - Đơn #${order_id.substring(0, 8)} đã hủy`,
+                        p_reference_id: order_id,
+                    } as never);
+
+                    if (refundError) {
+                        // Put the order back so the refund can be retried.
+                        await supabase
+                            .from('orders')
+                            .update({ status: 'paid', updated_at: new Date().toISOString() } as never)
+                            .eq('id', order_id)
+                            .eq('status', 'cancelled');
+                        throw refundError;
+                    }
+
+                    await service.from('notifications').insert({
+                        user_id: order.buyer_id,
+                        type: 'order_refunded',
+                        title: 'Đơn hàng đã hủy - tiền đã hoàn',
+                        message: `${Number(order.total_paid).toLocaleString()}đ đã được hoàn vào ví CardVerse của bạn.`,
+                        card_id: order.card_id,
+                    } as never);
+                }
+
+                // Restore card to active (guarded: don't clobber a card that
+                // was independently re-listed or re-sold in the meantime).
                 await supabase
                     .from('cards')
-                    .update({ status: 'active', updated_at: new Date().toISOString() } as never)
-                    .eq('id', order.card_id);
+                    .update({ status: 'active', reserved_until: null, updated_at: new Date().toISOString() } as never)
+                    .eq('id', order.card_id)
+                    .in('status', ['sold', 'in_transaction']);
 
                 return NextResponse.json({ success: true, status: 'cancelled' });
             }
