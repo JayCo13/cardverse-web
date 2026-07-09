@@ -119,6 +119,43 @@ export async function sendKYCSubmittedToUser(userEmail: string, fullName: string
     }
 }
 
+export async function sendOrderShippedEmail(
+    buyerEmail: string,
+    params: { cardName: string; carrierName: string; trackingNumber: string; trackingUrl: string | null },
+) {
+    try {
+        const transporter = createMailTransporter();
+        const from = getFromAddress();
+        const appUrl = getAppUrl();
+        const { cardName, carrierName, trackingNumber, trackingUrl } = params;
+
+        const trackingBlock = trackingUrl
+            ? `<a href="${trackingUrl}" target="_blank" style="display:inline-block; margin-top:10px; background:#f97316; color:#fff; text-decoration:none; font-weight:700; padding:12px 22px; border-radius:10px; font-size:14px;">Theo dõi đơn: ${trackingNumber}</a>`
+            : `<p style="margin:8px 0 0; color:#e4e4e7; font-weight:700; font-size:16px;">${trackingNumber}</p>`;
+
+        await transporter.sendMail({
+            from,
+            to: buyerEmail,
+            subject: '📦 Đơn hàng của bạn đã được gửi — CardVerse',
+            html: buildTemplate(
+                '📦 Đơn hàng đã được gửi',
+                `<p style="color:#e4e4e7;">Người bán đã gửi thẻ <strong style="color:#f97316;">${cardName}</strong> cho bạn.</p>
+                <div style="background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.2); border-radius: 8px; padding: 16px; margin: 20px 0;">
+                    <p style="margin:0; color:#a1a1aa; font-size:13px;">Đơn vị vận chuyển</p>
+                    <p style="margin:2px 0 12px; color:#fff; font-weight:700;">${carrierName}</p>
+                    <p style="margin:0; color:#a1a1aa; font-size:13px;">Mã vận đơn</p>
+                    ${trackingBlock}
+                </div>
+                <p>Bạn có thể nhấn nút trên để theo dõi hành trình đơn hàng, hoặc xem chi tiết tại <a href="${appUrl}/orders" style="color:#f97316; text-decoration:none;">Đơn hàng của tôi</a>.</p>
+                <p style="color:#71717a; font-size:13px; margin-top:24px;">Khi nhận được thẻ, đừng quên bấm "Đã nhận hàng" để hoàn tất giao dịch nhé!</p>`
+            ),
+        });
+        console.log(`[Mail] Order shipped notification sent to ${buyerEmail}`);
+    } catch (error) {
+        console.error('[Mail] Failed to send order shipped email:', error);
+    }
+}
+
 export async function sendKYCSubmittedToAdmin(fullName: string, userEmail: string, adminEmails: string[]) {
     try {
         if (!adminEmails || adminEmails.length === 0) return;

@@ -45,6 +45,8 @@ export interface Database {
                     default_shipping_ward_code: string | null
                     default_shipping_ward_name: string | null
                     default_shipping_detail: string | null
+                    shipping_carriers: string[]
+                    shipping_fees: Json
                     created_at: string
                     updated_at: string
                 }
@@ -83,6 +85,8 @@ export interface Database {
                     default_shipping_ward_code?: string | null
                     default_shipping_ward_name?: string | null
                     default_shipping_detail?: string | null
+                    shipping_carriers?: string[]
+                    shipping_fees?: Json
                     created_at?: string
                     updated_at?: string
                 }
@@ -121,6 +125,8 @@ export interface Database {
                     default_shipping_ward_code?: string | null
                     default_shipping_ward_name?: string | null
                     default_shipping_detail?: string | null
+                    shipping_carriers?: string[]
+                    shipping_fees?: Json
                     created_at?: string
                     updated_at?: string
                 }
@@ -664,6 +670,7 @@ export interface Database {
                     payment_method: string
                     payment_order_id: string | null
                     status: string
+                    metadata: Json
                     tracking_number: string | null
                     shipping_provider: string | null
                     shipping_address: string | null

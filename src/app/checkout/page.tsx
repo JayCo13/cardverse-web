@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { AddressBook, type SavedAddress } from "@/components/address-book";
+import { resolveShippingTier, cheapestTierFee } from "@/lib/shipping-fee";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -325,53 +326,39 @@ export default function CheckoutPage() {
     void load();
   }, [copy.openCheckoutError, isLoading, isOfferCheckout, loadCart, loadOffer, loadWallet, setAuthOpen, toast, user]);
 
+  // Seller-declared shipping (no more GHN auto-calc): the buyer is charged each
+  // shop's shipping_fee_max, once per seller (grouped). The first item from a
+  // seller carries the fee; the rest are 0.
   const calculateFees = useCallback(async (address: SavedAddress | null, currentItems: CheckoutItem[]) => {
     if (!address) return;
     setIsLoadingFee(true);
     try {
-      const nextItems = currentItems.map(item => ({ ...item, shippingFee: item.card.sellerPickup ? 0 : null }));
-      const groups = new Map<string, { indexes: number[]; districtId: number; wardCode: string; insuranceValue: number }>();
+      const sellerIds = [...new Set(currentItems.map(item => item.card.sellerId))];
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, shipping_carriers, shipping_fees, address_province_id, address_province_name')
+        .in('id', sellerIds);
+      if (error) throw error;
 
-      currentItems.forEach((item, index) => {
-        const pickup = item.card.sellerPickup;
-        if (!pickup) return;
-
-        const key = `${item.card.sellerId}:${pickup.districtId}:${pickup.wardCode}`;
-        const current = groups.get(key);
-        if (current) {
-          current.indexes.push(index);
-          current.insuranceValue += item.amount;
-          return;
-        }
-
-        groups.set(key, {
-          indexes: [index],
-          districtId: pickup.districtId,
-          wardCode: pickup.wardCode,
-          insuranceValue: item.amount,
-        });
+      // Resolve the tier from seller vs buyer province, then charge the cheapest
+      // carrier's fee for that tier ('self' / hand delivery is excluded).
+      const feeBySeller = new Map<string, number>();
+      (data || []).forEach((p: any) => {
+        const tier = resolveShippingTier(
+          { provinceId: p.address_province_id, provinceName: p.address_province_name },
+          { provinceId: address.province_id, provinceName: address.province_name },
+        );
+        const carriers = (p.shipping_carriers || []).filter((c: string) => c !== 'self');
+        feeBySeller.set(p.id, cheapestTierFee(p.shipping_fees, carriers, tier) ?? 0);
       });
 
-      await Promise.all(Array.from(groups.values()).map(async group => {
-        const params = new URLSearchParams({
-          from_district_id: group.districtId.toString(),
-          from_ward_code: group.wardCode,
-          to_district_id: address.district_id.toString(),
-          to_ward_code: address.ward_code,
-          insurance_value: Math.min(group.insuranceValue, 500000).toString(), // GHN insurance cap; CardVerse escrow covers the rest
-        });
-        const response = await fetch(`/api/shipping/fee?${params}`);
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || copy.shippingFeeError);
-        const fee = Number(payload.shipping_fee || 0);
-        group.indexes.forEach((itemIndex, groupIndex) => {
-          nextItems[itemIndex] = {
-            ...nextItems[itemIndex],
-            shippingFee: groupIndex === 0 ? fee : 0,
-          };
-        });
-      }));
-
+      const seenSeller = new Set<string>();
+      const nextItems = currentItems.map(item => {
+        const sid = item.card.sellerId;
+        if (seenSeller.has(sid)) return { ...item, shippingFee: 0 };
+        seenSeller.add(sid);
+        return { ...item, shippingFee: feeBySeller.get(sid) ?? 0 };
+      });
       setItems(nextItems);
     } catch (error: any) {
       toast({ variant: "destructive", title: copy.shippingFeeTitle, description: error.message });
@@ -379,7 +366,7 @@ export default function CheckoutPage() {
     } finally {
       setIsLoadingFee(false);
     }
-  }, [copy.shippingFeeError, copy.shippingFeeTitle, toast]);
+  }, [copy.shippingFeeTitle, toast]);
 
   const handleSelectAddress = (address: SavedAddress | null) => {
     setSelectedAddress(address);
@@ -390,9 +377,8 @@ export default function CheckoutPage() {
   const shippingTotal = useMemo(() => items.reduce((sum, item) => sum + (item.shippingFee || 0), 0), [items]);
   const total = subtotal + shippingTotal;
   const hasMissingFee = items.some(item => item.shippingFee === null);
-  const hasMissingPickup = items.some(item => !item.card.sellerPickup);
   const insufficient = paymentMethod === "wallet" && walletBalance < total;
-  const canPay = !!selectedAddress && items.length > 0 && !hasMissingFee && !hasMissingPickup && !isLoadingFee && !isPaying && !insufficient;
+  const canPay = !!selectedAddress && items.length > 0 && !hasMissingFee && !isLoadingFee && !isPaying && !insufficient;
 
   const handlePay = async () => {
     if (!selectedAddress || !canPay) return;
@@ -428,12 +414,14 @@ export default function CheckoutPage() {
 
       window.dispatchEvent(new Event("cardverse:cart-updated"));
       if (payload.payment_method === "direct_payos" && payload.checkoutUrl) {
-        window.open(payload.checkoutUrl, "_blank");
+        // Same-tab redirect: window.open('_blank') after an await is blocked by
+        // the popup blocker, stranding the buyer on a pending order.
         toast({ title: copy.payosTitle, description: copy.payosDescription });
-      } else {
-        toast({ title: copy.paymentSuccess });
-        router.push("/orders");
+        window.location.href = payload.checkoutUrl;
+        return;
       }
+      toast({ title: copy.paymentSuccess });
+      router.push("/orders");
     } catch (error: any) {
       toast({ variant: "destructive", title: copy.payError, description: error.message });
     } finally {
@@ -469,11 +457,6 @@ export default function CheckoutPage() {
                   {copy.shippingAddress}
                 </Label>
                 <AddressBook selectable selectedId={selectedAddress?.id ?? null} onSelect={handleSelectAddress} />
-                {hasMissingPickup && (
-                  <p className="mt-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-300">
-                    {copy.missingPickup}
-                  </p>
-                )}
               </div>
 
               <div className="rounded-xl border bg-card p-5">
@@ -482,57 +465,51 @@ export default function CheckoutPage() {
                   {items.map(item => (
                     <div
                       key={item.cartItemId || item.offerId || item.card.id}
-                      className="overflow-hidden rounded-xl border bg-background/50 transition hover:border-orange-500/35 sm:grid sm:grid-cols-[132px_minmax(0,1fr)_190px]"
+                      className="group flex flex-col overflow-hidden rounded-2xl border bg-background/50 transition hover:border-orange-500/40 sm:flex-row"
                     >
-                      <div className="relative min-h-[184px] bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-3">
-                        <div className="relative mx-auto aspect-[3/4] h-full max-h-[174px] w-[112px] overflow-hidden rounded-lg border border-white/10 bg-muted shadow-[0_18px_45px_rgba(0,0,0,0.4)]">
+                      {/* Image */}
+                      <div className="relative flex shrink-0 items-center justify-center bg-gradient-to-br from-zinc-900 to-black p-4 sm:w-40">
+                        <div className="relative aspect-[3/4] w-28 overflow-hidden rounded-lg border border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.45)] sm:w-full">
                           {item.card.imageUrl ? (
                             <Image src={optimizeCloudinaryUrl(item.card.imageUrl, 320)} alt={item.card.name} fill className="object-cover" />
                           ) : null}
                         </div>
-                        <span className="absolute left-3 top-3 rounded-md border border-orange-400/50 bg-orange-500/90 px-2 py-0.5 text-[10px] font-bold text-white shadow">
+                        <span className="absolute right-3 top-3 rounded-md bg-orange-500 px-2 py-0.5 text-[11px] font-bold text-white shadow">
                           {getCategoryCode(item.card.category)}
                         </span>
                       </div>
 
-                      <div className="min-w-0 p-4">
-                        <div className="mb-2 flex flex-wrap gap-2">
-                          <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs font-medium text-muted-foreground">
-                            Qty 1
-                          </span>
+                      {/* Info */}
+                      <div className="flex min-w-0 flex-1 flex-col p-4 sm:p-5">
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-medium text-muted-foreground">Qty 1</span>
+                          {item.card.condition && (
+                            <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-medium text-muted-foreground">{item.card.condition}</span>
+                          )}
                         </div>
-                        <p className="line-clamp-2 text-xl font-bold tracking-normal">{item.card.name}</p>
+                        <h2 className="line-clamp-2 text-lg font-bold tracking-normal sm:text-xl">{item.card.name}</h2>
                         <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-                          <Store className="h-4 w-4 text-orange-300" />
+                          <Store className="h-4 w-4 shrink-0 text-orange-300" />
                           <span className="truncate">{item.card.sellerName || copy.seller}</span>
-                          <span className="text-muted-foreground/60">·</span>
-                          <span>{copy.cardVerseSeller}</span>
                         </div>
-                        <div className="mt-4 grid gap-2 text-sm sm:grid-cols-3">
-                          <div className="rounded-lg border border-white/10 bg-card/60 p-2.5">
-                            <p className="mb-1 text-xs text-muted-foreground whitespace-nowrap leading-tight">{copy.ship}</p>
-                            <p className="font-semibold leading-tight">{copy.ghnReady}</p>
-                          </div>
-                          <div className="rounded-lg border border-white/10 bg-card/60 p-2.5">
-                            <p className="mb-1 text-xs text-muted-foreground whitespace-nowrap leading-tight">{copy.payment}</p>
-                            <p className="font-semibold leading-tight">{copy.walletPayos}</p>
-                          </div>
-                          <div className="rounded-lg border border-white/10 bg-card/60 p-2.5">
-                            <p className="mb-1 text-xs text-muted-foreground whitespace-nowrap leading-tight">{copy.protection}</p>
-                            <p className="font-semibold leading-tight">{copy.protected}</p>
-                          </div>
+                        <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-4 text-xs text-muted-foreground">
+                          <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />{copy.protected}</span>
+                          <span className="inline-flex items-center gap-1.5"><CreditCard className="h-3.5 w-3.5 text-orange-300" />{copy.walletPayos}</span>
                         </div>
                       </div>
 
-                      <div className="flex flex-col justify-between gap-3 border-t p-4 sm:border-l sm:border-t-0">
-                        <div className="sm:text-right">
-                          <p className="text-sm text-muted-foreground">{copy.itemPrice}</p>
-                          <p className="text-2xl font-bold tracking-normal text-orange-400">{formatVND(item.amount)}</p>
-                        </div>
-                        <div className="rounded-lg border border-orange-500/20 bg-orange-500/10 px-3 py-2 text-sm">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-muted-foreground">{copy.shipping}</span>
-                            <span className="font-semibold text-orange-100 text-right">
+                      {/* Price + shipping */}
+                      <div className="flex flex-col justify-between gap-3 border-t bg-background/30 p-4 sm:w-52 sm:border-l sm:border-t-0 sm:p-5">
+                        <div className="space-y-2.5">
+                          <div>
+                            <p className="text-xs text-muted-foreground">{copy.itemPrice}</p>
+                            <p className="whitespace-nowrap text-2xl font-bold tracking-normal text-orange-400">{formatVND(item.amount)}</p>
+                          </div>
+                          <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 px-3 py-2">
+                            <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                              <Truck className="h-3.5 w-3.5 text-orange-300" />{copy.shipping}
+                            </p>
+                            <p className="mt-0.5 whitespace-nowrap text-sm font-semibold text-foreground">
                               {isLoadingFee
                                 ? copy.calculating
                                 : item.shippingFee !== null
@@ -540,9 +517,8 @@ export default function CheckoutPage() {
                                     ? `${formatVND(0)} · ${copy.combinedShipping}`
                                     : formatVND(item.shippingFee)
                                   : copy.chooseAddressForFee}
-                            </span>
+                            </p>
                           </div>
-                          <p className="mt-1 text-xs text-muted-foreground">{copy.shippingAtCheckout}</p>
                         </div>
                       </div>
                     </div>
@@ -580,18 +556,18 @@ export default function CheckoutPage() {
                   <h2 className="text-xl font-semibold">{copy.orderSummary}</h2>
                 </div>
                 <div className="space-y-3 text-sm">
-                  <div className="flex justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="text-muted-foreground">{copy.subtotal}</span>
-                    <span>{formatVND(subtotal)}</span>
+                    <span className="whitespace-nowrap font-semibold">{formatVND(subtotal)}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{copy.shipping}</span>
-                    <span>{hasMissingFee ? "--" : formatVND(shippingTotal)}</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="shrink-0 text-muted-foreground">{copy.shipping}</span>
+                    <span className="whitespace-nowrap font-semibold">{hasMissingFee ? "--" : formatVND(shippingTotal)}</span>
                   </div>
                   <div className="border-t pt-3">
-                    <div className="flex justify-between text-lg font-bold">
-                      <span>{copy.total}</span>
-                      <span className="text-orange-400">{hasMissingFee ? "--" : formatVND(total)}</span>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm font-medium text-muted-foreground">{copy.total}</span>
+                      <span className="overflow-x-auto whitespace-nowrap text-lg font-bold text-orange-400 sm:text-xl">{hasMissingFee ? "--" : formatVND(total)}</span>
                     </div>
                   </div>
                   {insufficient && (

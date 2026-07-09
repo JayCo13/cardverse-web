@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { getPayOS, MARKETPLACE_ORDER_PAYMENT_TYPE } from '@/lib/payos';
+import { matchBundleSelection, type BundleSelection } from '@/lib/bundle';
 import { randomInt } from 'crypto';
 
 // Fee model: the 5% platform fee is charged once, at withdrawal — orders carry
@@ -13,7 +14,10 @@ type MarketplaceCard = {
     seller_id: string;
     name: string;
     price: number | null;
+    is_bundle: boolean | null;
+    bundle_items: Array<{ title?: string; price?: number }> | null;
 };
+
 
 type WalletRow = {
     id: string;
@@ -37,6 +41,7 @@ export async function POST(request: NextRequest) {
         const {
             card_id, payment_method, shipping_address,
             shipping_fee: clientShippingFee,
+            shipping_carrier: clientCarrier,
             to_name, to_phone,
             to_district_id, to_district_name,
             to_province_id, to_province_name,
@@ -110,9 +115,34 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Cannot buy your own card' }, { status: 400 });
         }
 
-        const amount = Number(card.price);
+        // ── Bundle: buyer picks specific cards; the rest stays listed ──
+        const isBundle = !!card.is_bundle;
+        const selection: BundleSelection[] = Array.isArray(body.bundle_selection)
+            ? body.bundle_selection.map((s: any) => ({ title: String(s?.title ?? ''), price: Number(s?.price) || 0 }))
+            : [];
+
+        let amount: number;
+        let bundleRemaining: Array<{ title?: string; price?: number }> | null = null;
+
+        if (isBundle) {
+            if (selection.length === 0) {
+                return NextResponse.json({ error: 'Vui lòng chọn ít nhất 1 thẻ trong bộ.', code: 'no_bundle_selection' }, { status: 400 });
+            }
+            const items = Array.isArray(card.bundle_items) ? card.bundle_items : [];
+            const matched = matchBundleSelection(items, selection);
+            if (!matched) {
+                return NextResponse.json({ error: 'Một số thẻ bạn chọn không còn khả dụng. Vui lòng tải lại trang.', code: 'bundle_item_unavailable' }, { status: 409 });
+            }
+            amount = matched.matchedTotal;
+            bundleRemaining = matched.remaining;
+            // Partial purchase is finalized on payment: wallet immediately (below),
+            // PayOS in the webhook — both remove the bought cards from the bundle.
+        } else {
+            amount = Number(card.price);
+        }
+
         const platformFee = 0; // fee is charged at withdrawal, not at sale
-        const totalPaid = amount + shippingFee; // Buyer pays listed price + shipping fee
+        let totalPaid = amount + shippingFee; // Buyer pays selected price + shipping fee
 
         // Address persistence now lives in the shipping_addresses book (managed
         // straight from checkout), so the buy route no longer writes any
@@ -169,6 +199,34 @@ export async function POST(request: NextRequest) {
         const service = createServiceSupabaseClient();
         let walletDebited = false;
 
+        const revertClaim = async () => {
+            await service
+                .from('cards')
+                .update({ status: 'active', reserved_until: null, updated_at: new Date().toISOString() } as never)
+                .eq('id', card_id)
+                .eq('status', 'in_transaction');
+        };
+
+        // Re-validate the bundle selection against the FRESH item list now that we
+        // hold the claim — another buyer may have removed some items between our
+        // read and this claim. Recompute the amount from the live data.
+        if (isBundle) {
+            const { data: fresh } = await service
+                .from('cards')
+                .select('bundle_items')
+                .eq('id', card_id)
+                .single();
+            const freshItems = Array.isArray((fresh as any)?.bundle_items) ? (fresh as any).bundle_items : [];
+            const matched = matchBundleSelection(freshItems, selection);
+            if (!matched) {
+                await revertClaim();
+                return NextResponse.json({ error: 'Một số thẻ vừa được người khác mua. Vui lòng chọn lại.', code: 'bundle_item_unavailable' }, { status: 409 });
+            }
+            amount = matched.matchedTotal;
+            bundleRemaining = matched.remaining;
+            totalPaid = amount + shippingFee;
+        }
+
         try {
         if (payment_method === 'wallet') {
             // ── WALLET PAYMENT ──
@@ -220,6 +278,11 @@ export async function POST(request: NextRequest) {
                     shipping_fee: shippingFee,
                     payment_method: 'wallet',
                     status: 'paid',
+                    ship_deadline: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                    metadata: {
+                        ...(isBundle ? { bundle_selection: selection } : {}),
+                        ...(clientCarrier ? { shipping_carrier: String(clientCarrier) } : {}),
+                    },
                     shipping_address: shipping_address || null,
                     to_name: to_name || null,
                     to_phone: to_phone || null,
@@ -236,19 +299,29 @@ export async function POST(request: NextRequest) {
 
             if (orderError) throw orderError;
 
-            // Mark card as sold and clear the reservation hold
-            await supabase
-                .from('cards')
-                .update({ status: 'sold', reserved_until: null, updated_at: new Date().toISOString() } as never)
-                .eq('id', card_id);
+            // Inventory: for a partial bundle purchase, remove the bought cards and
+            // keep the listing active; otherwise mark the whole listing sold.
+            if (isBundle && bundleRemaining && bundleRemaining.length > 0) {
+                await service
+                    .from('cards')
+                    .update({ bundle_items: bundleRemaining as never, status: 'active', reserved_until: null, updated_at: new Date().toISOString() } as never)
+                    .eq('id', card_id);
+            } else {
+                await service
+                    .from('cards')
+                    .update({ status: 'sold', reserved_until: null, updated_at: new Date().toISOString() } as never)
+                    .eq('id', card_id);
+            }
 
             // Notify seller
-            await createServiceSupabaseClient().from('notifications').insert({
+            const soldLabel = isBundle ? `${selection.length} thẻ trong bộ "${card.name}"` : `Thẻ "${card.name}"`;
+            await service.from('notifications').insert({
                 user_id: card.seller_id,
                 type: 'order_new',
                 title: 'Đơn hàng mới!',
-                message: `Thẻ "${card.name}" đã được mua. Vui lòng giao hàng.`,
+                message: `${soldLabel} đã được mua. Vui lòng giao hàng.`,
                 card_id,
+                order_id: (order as any).id,
             } as never);
 
             return NextResponse.json({ success: true, order, payment_method: 'wallet' });
@@ -286,6 +359,10 @@ export async function POST(request: NextRequest) {
                     payment_method: 'direct_payos',
                     payment_order_id: paymentOrder.id,
                     status: 'pending_payment',
+                    metadata: {
+                        ...(isBundle ? { bundle_selection: selection } : {}),
+                        ...(clientCarrier ? { shipping_carrier: String(clientCarrier) } : {}),
+                    },
                     shipping_address: shipping_address || null,
                     to_name: to_name || null,
                     to_phone: to_phone || null,
@@ -309,7 +386,8 @@ export async function POST(request: NextRequest) {
             const paymentLink = await getPayOS().paymentRequests.create({
                 orderCode,
                 amount: totalPaid,
-                description: `Mua the ${card.name.substring(0, 20)}`,
+                // PayOS caps the description at 25 characters.
+                description: `Mua the ${card.name}`.slice(0, 25),
                 // Expire the link with the reservation so PayOS also fires a
                 // cancel webhook (which releases the card) when time runs out.
                 expiredAt: Math.floor(reservedUntil.getTime() / 1000),
@@ -321,6 +399,14 @@ export async function POST(request: NextRequest) {
                     price: totalPaid,
                 }],
             });
+
+            // PayOS occasionally returns no checkout URL — treat it as a failure
+            // (the catch below rolls back the card claim) and drop the pending
+            // order so the buyer doesn't see an unpayable ghost order.
+            if (!paymentLink?.checkoutUrl) {
+                await service.from('orders').update({ status: 'cancelled', updated_at: new Date().toISOString() } as never).eq('id', (order as any).id);
+                throw new Error('PayOS không tạo được link thanh toán. Vui lòng thử lại.');
+            }
 
             // Update payment order with PayOS info
             await supabase
@@ -386,7 +472,9 @@ export async function POST(request: NextRequest) {
         }
     } catch (error: any) {
         console.error('Marketplace buy error:', error);
-        const status = typeof error?.status === 'number' ? error.status : 500;
+        // Only trust a proper 4xx/5xx error status; some SDK errors (e.g. PayOS)
+        // carry status 200, which must NOT be sent back as a "successful" response.
+        const status = typeof error?.status === 'number' && error.status >= 400 ? error.status : 500;
         return NextResponse.json(
             { error: error.message || 'Internal server error', ...(error?.code ? { code: error.code } : {}) },
             { status },

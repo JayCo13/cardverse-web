@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
-import { createShippingOrder, cancelOrder as cancelGHNOrder } from '@/lib/ghn';
+import { cancelOrder as cancelGHNOrder } from '@/lib/ghn';
+import { getCarrier, getTrackingUrl, getDeliveryDays } from '@/lib/shipping-carriers';
+import { sendOrderShippedEmail } from '@/lib/mail';
 
 // GET: Fetch orders for current user
 export async function GET(request: NextRequest) {
@@ -88,7 +90,8 @@ export async function PATCH(request: NextRequest) {
 
         switch (action) {
             case 'ship': {
-                // Seller ships the order — auto-create GHN shipping order
+                // Manual fulfillment: the seller creates the order with their own
+                // carrier and uploads the tracking number (no auto GHN order).
                 if (order.seller_id !== user.id) {
                     return NextResponse.json({ error: 'Only seller can ship' }, { status: 403 });
                 }
@@ -96,31 +99,19 @@ export async function PATCH(request: NextRequest) {
                     return NextResponse.json({ error: 'Order must be paid to ship' }, { status: 400 });
                 }
 
-                // Get seller's address from profile
-                const { data: sellerProfile } = await supabase
-                    .from('profiles')
-                    .select('address_district_id, address_ward_code, address_ward_name, address_detail, address_district_name, address_province_name, display_name, phone_number')
-                    .eq('id', user.id)
-                    .single();
-
-                if (!sellerProfile?.address_district_id || !sellerProfile?.address_ward_code) {
-                    return NextResponse.json({
-                        error: 'Vui lòng cập nhật địa chỉ gửi hàng trong hồ sơ trước khi giao hàng.',
-                        code: 'MISSING_SELLER_ADDRESS',
-                    }, { status: 400 });
+                const carrierCode = typeof shipping_provider === 'string' ? shipping_provider.trim() : '';
+                const trackingNo = typeof tracking_number === 'string' ? tracking_number.trim() : '';
+                const carrier = getCarrier(carrierCode);
+                if (!carrier) {
+                    return NextResponse.json({ error: 'Vui lòng chọn đơn vị vận chuyển hợp lệ.', code: 'invalid_carrier' }, { status: 400 });
+                }
+                // Hand delivery ('self') may skip the tracking number; carriers require it.
+                if (carrierCode !== 'self' && !trackingNo) {
+                    return NextResponse.json({ error: 'Vui lòng nhập mã vận đơn.', code: 'missing_tracking' }, { status: 400 });
                 }
 
-                // Buyer address from order
-                if (!order.to_district_id || !order.to_ward_code) {
-                    return NextResponse.json({
-                        error: 'Đơn hàng thiếu thông tin địa chỉ người nhận.',
-                    }, { status: 400 });
-                }
-
-                // Atomically claim the order (paid → shipping) BEFORE calling
-                // GHN. A concurrent 'cancel' can no longer refund an order
-                // whose shipment is being created — only one of the two
-                // guarded updates wins.
+                // Atomically claim the order (paid → shipping); a concurrent
+                // 'cancel' can no longer refund an order that is being shipped.
                 const { data: claimedOrder } = await supabase
                     .from('orders')
                     .update({ status: 'shipping', updated_at: new Date().toISOString() } as never)
@@ -136,64 +127,12 @@ export async function PATCH(request: NextRequest) {
                     }, { status: 409 });
                 }
 
-                const revertShipClaim = async () => {
-                    await supabase
-                        .from('orders')
-                        .update({ status: 'paid', updated_at: new Date().toISOString() } as never)
-                        .eq('id', order_id)
-                        .eq('status', 'shipping');
-                };
-
-                let ghnOrderCode: string | null = null;
-                let ghnExpectedDelivery: string | null = null;
-                let ghnFee: number | null = null;
-                let finalTrackingNumber: string | null = tracking_number || null;
-
-                try {
-                    // Create GHN shipping order
-                    const ghnResult = await createShippingOrder({
-                        to_name: order.to_name || 'Người nhận',
-                        to_phone: order.to_phone || '',
-                        to_address: `${order.to_address_detail || ''}, ${order.to_ward_name || ''}, ${order.to_district_name || ''}`,
-                        to_ward_code: order.to_ward_code,
-                        to_district_id: order.to_district_id,
-                        from_name: sellerProfile.display_name || 'Người gửi',
-                        from_phone: sellerProfile.phone_number || '',
-                        from_address: `${sellerProfile.address_detail || ''}, ${sellerProfile.address_ward_name || ''}, ${sellerProfile.address_district_name || ''}`,
-                        from_ward_name: sellerProfile.address_ward_name || '',
-                        from_district_id: sellerProfile.address_district_id,
-                        client_order_code: order_id.substring(0, 20),
-                        insurance_value: Math.min(order.amount || 0, 500000), // cap matches checkout quote; CardVerse escrow covers the rest
-                        note: 'Thẻ bài - Xử lý cẩn thận',
-                        required_note: 'CHOTHUHANG',
-                    });
-
-                    ghnOrderCode = ghnResult.order_code;
-                    ghnExpectedDelivery = ghnResult.expected_delivery_time;
-                    ghnFee = ghnResult.total_fee;
-                    finalTrackingNumber = ghnResult.order_code; // GHN order code IS the tracking number
-                } catch (ghnError: any) {
-                    console.error('GHN create order failed:', ghnError);
-                    // Fallback: still allow shipping with manual tracking
-                    if (!tracking_number) {
-                        await revertShipClaim();
-                        return NextResponse.json({
-                            error: `Không thể tạo đơn GHN: ${ghnError.message}. Vui lòng thử lại hoặc nhập mã vận đơn thủ công.`,
-                            code: 'GHN_ERROR',
-                        }, { status: 500 });
-                    }
-                }
-
                 const { error: updateError } = await supabase
                     .from('orders')
                     .update({
                         status: 'shipping',
-                        tracking_number: finalTrackingNumber,
-                        shipping_provider: ghnOrderCode ? 'GHN' : (shipping_provider || 'Manual'),
-                        ghn_order_code: ghnOrderCode,
-                        ghn_expected_delivery: ghnExpectedDelivery,
-                        ghn_shipping_fee: ghnFee,
-                        ghn_status: ghnOrderCode ? 'ready_to_pick' : null,
+                        tracking_number: trackingNo || null,
+                        shipping_provider: carrierCode,
                         auto_complete_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
                         updated_at: new Date().toISOString(),
                     } as never)
@@ -201,29 +140,71 @@ export async function PATCH(request: NextRequest) {
 
                 if (updateError) throw updateError;
 
-                // Notify buyer
+                const trackingUrl = getTrackingUrl(carrierCode, trackingNo);
+
+                // Notify buyer in-app
                 await service.from('notifications').insert({
                     user_id: order.buyer_id,
                     type: 'order_shipped',
                     title: 'Đơn hàng đã được gửi!',
-                    message: ghnOrderCode
-                        ? `Đơn hàng đang được GHN vận chuyển. Mã theo dõi: ${ghnOrderCode}`
-                        : `Đơn hàng đang được vận chuyển${finalTrackingNumber ? `. Mã theo dõi: ${finalTrackingNumber}` : ''}.`,
+                    message: trackingNo
+                        ? `Đơn đang được ${carrier.name} vận chuyển. Mã vận đơn: ${trackingNo}`
+                        : 'Người bán đang giao trực tiếp đơn hàng của bạn.',
                     card_id: order.card_id,
+                    order_id,
                 } as never);
+
+                // Catch-up email to the buyer (best-effort — never block shipping).
+                if (trackingNo) {
+                    try {
+                        const [{ data: buyer }, { data: card }] = await Promise.all([
+                            service.from('profiles').select('email').eq('id', order.buyer_id).single(),
+                            order.card_id
+                                ? service.from('cards').select('name').eq('id', order.card_id).single()
+                                : Promise.resolve({ data: null } as any),
+                        ]);
+                        const buyerEmail = (buyer as any)?.email;
+                        if (buyerEmail) {
+                            await sendOrderShippedEmail(buyerEmail, {
+                                cardName: (card as any)?.name || 'thẻ',
+                                carrierName: carrier.name,
+                                trackingNumber: trackingNo,
+                                trackingUrl,
+                            });
+                        }
+                    } catch (mailErr) {
+                        console.error('Order shipped email failed:', mailErr);
+                    }
+                }
 
                 return NextResponse.json({
                     success: true,
                     status: 'shipping',
-                    ghn_order_code: ghnOrderCode,
-                    tracking_number: finalTrackingNumber,
+                    tracking_number: trackingNo,
+                    shipping_provider: carrierCode,
                 });
             }
 
             case 'confirm_received': {
-                // Buyer confirms receipt
                 if (order.buyer_id !== user.id) {
-                    return NextResponse.json({ error: 'Only buyer can confirm' }, { status: 403 });
+                    // The seller may confirm on a lazy buyer's behalf, but only
+                    // after enough time for delivery has passed (est. max delivery
+                    // + 3-day buffer from ship time) so they can't mark it early.
+                    if (order.seller_id === user.id) {
+                        const maxDays = getDeliveryDays(order.shipping_provider)?.max ?? 5;
+                        const shippedAt = order.auto_complete_at
+                            ? new Date(order.auto_complete_at).getTime() - 72 * 60 * 60 * 1000
+                            : new Date(order.updated_at).getTime();
+                        const allowedAt = shippedAt + (maxDays + 3) * 24 * 60 * 60 * 1000;
+                        if (Date.now() < allowedAt) {
+                            return NextResponse.json({
+                                error: 'Chưa đủ thời gian để người bán xác nhận đã giao. Vui lòng chờ hết thời gian giao dự kiến.',
+                                code: 'too_early',
+                            }, { status: 400 });
+                        }
+                    } else {
+                        return NextResponse.json({ error: 'Only buyer or seller can confirm' }, { status: 403 });
+                    }
                 }
                 if (!['shipping', 'delivered'].includes(order.status)) {
                     return NextResponse.json({ error: 'Order must be shipping/delivered to confirm' }, { status: 400 });
@@ -283,6 +264,7 @@ export async function PATCH(request: NextRequest) {
                     title: 'Đơn hàng hoàn tất!',
                     message: `Người mua đã xác nhận nhận hàng. ${sellerPayout.toLocaleString()}đ đã được cộng vào ví.`,
                     card_id: order.card_id,
+                    order_id,
                 } as never);
 
                 // Record the completed sale for VN market pricing — only
@@ -325,14 +307,15 @@ export async function PATCH(request: NextRequest) {
                     console.error('Could not record vn_card_sales:', salesError);
                 }
 
-                // Update seller stats — never block the confirmation on it.
-                // (The old fallback wrote the literal 1 over the counters via
-                // a nonexistent supabase.raw() API; removed.)
-                const { error: statsError } = await supabase.rpc('increment_seller_stats' as never, {
+                // Reputation: a confirmed order counts as one successful sale.
+                // Never block the confirmation on it.
+                const { error: statsError } = await service.rpc('update_seller_reputation' as never, {
                     p_seller_id: order.seller_id,
+                    p_success: 1,
+                    p_fault: 0,
                 } as never);
                 if (statsError) {
-                    console.error('increment_seller_stats failed:', statsError);
+                    console.error('update_seller_reputation failed:', statsError);
                 }
 
                 return NextResponse.json({ success: true, status: 'completed' });
@@ -363,6 +346,7 @@ export async function PATCH(request: NextRequest) {
                     title: 'Đơn hàng bị khiếu nại!',
                     message: `Người mua đã mở khiếu nại cho đơn hàng. Lý do: ${dispute_reason || 'Không rõ'}`,
                     card_id: order.card_id,
+                    order_id,
                 } as never);
 
                 return NextResponse.json({ success: true, status: 'disputed' });
@@ -437,6 +421,7 @@ export async function PATCH(request: NextRequest) {
                         title: 'Đơn hàng đã hủy - tiền đã hoàn',
                         message: `${Number(order.total_paid).toLocaleString()}đ đã được hoàn vào ví CardVerse của bạn.`,
                         card_id: order.card_id,
+                        order_id,
                     } as never);
                 }
 

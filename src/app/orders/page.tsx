@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useLocalization } from '@/context/localization-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { SHIPPING_CARRIERS, getTrackingUrl, getCarrier, getDeliveryDays } from '@/lib/shipping-carriers';
 import Image from 'next/image';
 
 type Order = {
@@ -31,6 +33,8 @@ type Order = {
   status: string;
   tracking_number: string | null;
   shipping_provider: string | null;
+  metadata: { shipping_carrier?: string; bundle_selection?: { title: string; price: number }[] } | null;
+  ship_deadline: string | null;
   shipping_address: string | null;
   ghn_order_code: string | null;
   ghn_status: string | null;
@@ -83,6 +87,7 @@ export default function OrdersPage() {
   const { setOpen } = useAuthModal();
   const { toast } = useToast();
   const { locale } = useLocalization();
+  const router = useRouter();
   const copy = locale === 'ja-JP'
     ? {
         title: '注文管理',
@@ -102,7 +107,13 @@ export default function OrdersPage() {
         cancel: 'Cancel',
         submitDispute: 'Submit dispute',
         cancelOrder: 'Cancel order',
-        shipOrder: 'Create GHN order & ship',
+        shipOrder: '発送する',
+        confirm: '確認',
+        shipCountdownSeller: '追跡番号を入力する残り時間:',
+        shipCountdownBuyer: '販売者の発送期限まで:',
+        shipCountdownNoteBuyer: '期限超過で自動キャンセル・あなたのウォレットへ返金・販売者の評価減点。',
+        shipCountdownNoteSeller: '期限超過で自動キャンセル・購入者へ返金・あなたの評価が減点されます。',
+        shipExpired: '発送期限切れ — 自動キャンセル・返金されます。',
         trackGHN: 'Track GHN',
         received: 'Received item',
         dispute: 'Dispute',
@@ -160,7 +171,13 @@ export default function OrdersPage() {
           cancel: 'Hủy',
           submitDispute: 'Gửi khiếu nại',
           cancelOrder: 'Hủy đơn',
-          shipOrder: 'Tạo đơn GHN & Gửi hàng',
+          shipOrder: 'Giao hàng',
+          confirm: 'Xác nhận',
+          shipCountdownSeller: 'Bạn cần cập nhật mã vận đơn trong',
+          shipCountdownBuyer: 'Người bán cần giao hàng trong',
+          shipCountdownNoteBuyer: 'Quá hạn: đơn tự huỷ, tiền hoàn về ví bạn, người bán bị trừ uy tín.',
+          shipCountdownNoteSeller: 'Quá hạn: đơn tự huỷ, tiền hoàn cho người mua, bạn bị trừ điểm uy tín.',
+          shipExpired: 'Quá hạn giao hàng — đơn sẽ tự huỷ & hoàn tiền.',
           trackGHN: 'Theo dõi GHN',
           received: 'Đã nhận hàng',
           dispute: 'Khiếu nại',
@@ -217,7 +234,13 @@ export default function OrdersPage() {
           cancel: 'Cancel',
           submitDispute: 'Submit dispute',
           cancelOrder: 'Cancel order',
-          shipOrder: 'Create GHN order & ship',
+          shipOrder: 'Ship order',
+          confirm: 'Confirm',
+          shipCountdownSeller: 'You must upload tracking within',
+          shipCountdownBuyer: 'The seller must ship within',
+          shipCountdownNoteBuyer: 'If overdue: the order auto-cancels, is refunded to your wallet, and the seller loses reputation.',
+          shipCountdownNoteSeller: 'If overdue: the order auto-cancels, the buyer is refunded, and you lose reputation.',
+          shipExpired: 'Overdue — the order will auto-cancel and refund.',
           trackGHN: 'Track GHN',
           received: 'Item received',
           dispute: 'Dispute',
@@ -265,6 +288,19 @@ export default function OrdersPage() {
   // Dispute dialog
   const [disputeDialog, setDisputeDialog] = useState<{ open: boolean; orderId: string }>({ open: false, orderId: '' });
   const [disputeReason, setDisputeReason] = useState('');
+  // Ship dialog — seller picks carrier + uploads tracking number
+  const [shipDialog, setShipDialog] = useState<{ open: boolean; orderId: string }>({ open: false, orderId: '' });
+  const [shipCarrier, setShipCarrier] = useState('');
+  const [shipTracking, setShipTracking] = useState('');
+  // Generic confirm dialog for lifecycle actions (confirm received / cancel).
+  const [confirmAction, setConfirmAction] = useState<{ orderId: string; action: string; title: string; message: string } | null>(null);
+
+  // Live clock for the 24h ship-deadline countdown.
+  const [nowTs, setNowTs] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   // Tracking dialog
   const [trackingDialog, setTrackingDialog] = useState<{ open: boolean; order: Order | null }>({ open: false, order: null });
@@ -319,6 +355,7 @@ export default function OrdersPage() {
       }
 
       toast({ title: copy.success, description: copy.updated });
+      setShipDialog({ open: false, orderId: '' });
       fetchOrders(activeTab);
     } catch (err: any) {
       toast({ variant: 'destructive', title: copy.errorTitle, description: err.message });
@@ -370,7 +407,11 @@ export default function OrdersPage() {
     const isBuyer = activeTab === 'buyer';
 
     return (
-      <Card key={order.id} className="overflow-hidden">
+      <Card
+        key={order.id}
+        onClick={() => router.push(`/orders/${order.id}`)}
+        className="cursor-pointer overflow-hidden transition-colors hover:border-orange-500/50"
+      >
         <div className={`h-1 ${order.status === 'completed' ? 'bg-green-500' : order.status === 'disputed' ? 'bg-red-500' : 'bg-orange-500'}`} />
         <CardContent className="p-4">
           <div className="flex flex-col md:flex-row gap-4">
@@ -407,11 +448,24 @@ export default function OrdersPage() {
                     GHN: {order.ghn_order_code}
                   </span>
                 )}
-                {!order.ghn_order_code && order.tracking_number && (
-                  <span className="text-xs text-muted-foreground">
-                    Tracking: <span className="text-foreground">{order.tracking_number}</span>
-                  </span>
-                )}
+                {!order.ghn_order_code && order.tracking_number && (() => {
+                  const url = getTrackingUrl(order.shipping_provider, order.tracking_number);
+                  return url ? (
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      className="text-xs font-medium text-orange-400 underline underline-offset-2 hover:text-orange-300"
+                    >
+                      {order.shipping_provider?.toUpperCase()}: {order.tracking_number} ↗
+                    </a>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      Tracking: <span className="text-foreground">{order.tracking_number}</span>
+                    </span>
+                  );
+                })()}
               </div>
 
               {/* Shipping address (for seller view) */}
@@ -429,23 +483,78 @@ export default function OrdersPage() {
                 {isBuyer ? `${copy.seller}: ${order.seller?.display_name || order.seller?.email || '—'}` : `${copy.buyer}: ${order.buyer?.display_name || order.buyer?.email || '—'}`}
               </p>
 
+              {/* 24h ship-deadline countdown (paid, not yet shipped) */}
+              {order.status === 'paid' && (() => {
+                // Older orders (created before the ship_deadline column) fall back
+                // to created_at + 24h so the countdown still shows.
+                const deadlineTs = order.ship_deadline
+                  ? new Date(order.ship_deadline).getTime()
+                  : new Date(order.created_at).getTime() + 24 * 60 * 60 * 1000;
+                const remaining = deadlineTs - nowTs;
+                if (remaining <= 0) {
+                  return (
+                    <div className="mt-2 flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                      <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>{copy.shipExpired}</span>
+                    </div>
+                  );
+                }
+                const h = Math.floor(remaining / 3600000);
+                const m = Math.floor((remaining % 3600000) / 60000);
+                const s = Math.floor((remaining % 60000) / 1000);
+                return (
+                  <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                    <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      {isBuyer ? copy.shipCountdownBuyer : copy.shipCountdownSeller}{' '}
+                      <b className="tabular-nums">{h}h {String(m).padStart(2, '0')}m {String(s).padStart(2, '0')}s</b>. {isBuyer ? copy.shipCountdownNoteBuyer : copy.shipCountdownNoteSeller}
+                    </span>
+                  </div>
+                );
+              })()}
+
               {/* GHN Tracking Stepper */}
               {(order.status === 'shipping' || order.status === 'delivered') && renderTrackingStepper(order)}
 
               {/* Actions */}
-              <div className="flex gap-2 mt-3 flex-wrap">
-                {/* Seller: Ship with GHN (1-click) */}
+              <div className="flex gap-2 mt-3 flex-wrap" onClick={e => e.stopPropagation()}>
+                {/* Seller: create shipment + upload tracking */}
                 {!isBuyer && order.status === 'paid' && (
                   <Button
                     size="sm"
-                    onClick={() => handleAction(order.id, 'ship')}
+                    onClick={() => { setShipCarrier(order.metadata?.shipping_carrier || ''); setShipTracking(''); setShipDialog({ open: true, orderId: order.id }); }}
                     disabled={actionLoading === order.id}
-                    className="bg-blue-600 hover:bg-blue-700"
+                    className="bg-orange-500 hover:bg-orange-600"
                   >
-                    {actionLoading === order.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Truck className="h-3 w-3 mr-1" />}
+                    <Truck className="h-3 w-3 mr-1" />
                     {copy.shipOrder}
                   </Button>
                 )}
+
+                {/* Seller: confirm delivered on a lazy buyer's behalf, only after
+                    est. delivery + 3 days from ship time (part 4) */}
+                {!isBuyer && ['shipping', 'delivered'].includes(order.status) && (() => {
+                  const maxDays = getDeliveryDays(order.metadata?.shipping_carrier || order.shipping_provider)?.max ?? 5;
+                  const shippedAt = order.auto_complete_at ? new Date(order.auto_complete_at).getTime() - 72 * 3600 * 1000 : new Date(order.updated_at).getTime();
+                  const canConfirm = nowTs >= shippedAt + (maxDays + 3) * 24 * 3600 * 1000;
+                  if (!canConfirm) return null;
+                  return (
+                    <Button
+                      size="sm"
+                      className="bg-green-600 hover:bg-green-700"
+                      disabled={actionLoading === order.id}
+                      onClick={() => setConfirmAction({
+                        orderId: order.id,
+                        action: 'confirm_received',
+                        title: locale === 'ja-JP' ? '配達完了を確認しますか？' : locale === 'en-US' ? 'Confirm delivered?' : 'Xác nhận đã giao thành công?',
+                        message: locale === 'ja-JP' ? '購入者が受け取ったことを確認できる場合のみ実行してください。' : locale === 'en-US' ? 'Only confirm if you are sure the buyer received the item.' : 'Chỉ xác nhận khi bạn chắc chắn người mua đã nhận hàng.',
+                      })}
+                    >
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      {locale === 'ja-JP' ? '配達完了' : locale === 'en-US' ? 'Delivered' : 'Đã giao thành công'}
+                    </Button>
+                  );
+                })()}
 
                 {/* Track on GHN */}
                 {order.ghn_order_code && ['shipping', 'delivered'].includes(order.status) && (
@@ -464,7 +573,12 @@ export default function OrdersPage() {
                   <>
                     <Button
                       size="sm"
-                      onClick={() => handleAction(order.id, 'confirm_received')}
+                      onClick={() => setConfirmAction({
+                        orderId: order.id,
+                        action: 'confirm_received',
+                        title: locale === 'ja-JP' ? '受け取りを確認しますか？' : locale === 'en-US' ? 'Confirm receipt?' : 'Xác nhận đã nhận hàng?',
+                        message: locale === 'ja-JP' ? '代金が販売者に支払われます。商品を受け取ってから確認してください。' : locale === 'en-US' ? 'Funds will be released to the seller. Only confirm once you have received the item.' : 'Tiền sẽ được chuyển cho người bán. Chỉ xác nhận khi bạn đã nhận đúng hàng.',
+                      })}
                       disabled={actionLoading === order.id}
                       className="bg-green-600 hover:bg-green-700"
                     >
@@ -488,7 +602,14 @@ export default function OrdersPage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => handleAction(order.id, 'cancel')}
+                    onClick={() => setConfirmAction({
+                      orderId: order.id,
+                      action: 'cancel',
+                      title: locale === 'ja-JP' ? '注文をキャンセルしますか？' : locale === 'en-US' ? 'Cancel this order?' : 'Huỷ đơn hàng này?',
+                      message: order.status === 'paid'
+                        ? (locale === 'ja-JP' ? '注文がキャンセルされ、代金はウォレットに返金されます。' : locale === 'en-US' ? 'The order will be cancelled and refunded to the wallet.' : 'Đơn sẽ bị huỷ và tiền hoàn về ví.')
+                        : (locale === 'ja-JP' ? '注文がキャンセルされます。' : locale === 'en-US' ? 'The order will be cancelled.' : 'Đơn hàng sẽ bị huỷ.'),
+                    })}
                     disabled={actionLoading === order.id}
                   >
                     {copy.cancelOrder}
@@ -567,7 +688,118 @@ export default function OrdersPage() {
       </main>
       <Footer />
 
-      {/* Dispute Dialog */}
+      {/* Generic confirm dialog (confirm received / cancel) */}
+      <Dialog open={!!confirmAction} onOpenChange={o => !o && setConfirmAction(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{confirmAction?.title}</DialogTitle>
+            <DialogDescription>{confirmAction?.message}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmAction(null)} disabled={actionLoading === confirmAction?.orderId}>{copy.cancel}</Button>
+            <Button
+              className="bg-orange-500 hover:bg-orange-600"
+              disabled={actionLoading === confirmAction?.orderId}
+              onClick={() => {
+                if (!confirmAction) return;
+                const { orderId, action } = confirmAction;
+                setConfirmAction(null);
+                void handleAction(orderId, action);
+              }}
+            >
+              {actionLoading === confirmAction?.orderId ? <Loader2 className="h-4 w-4 animate-spin" /> : copy.confirm}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Ship Dialog */}
+      <Dialog open={shipDialog.open} onOpenChange={open => setShipDialog({ ...shipDialog, open })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {locale === 'ja-JP' ? '追跡番号を入力' : locale === 'en-US' ? 'Enter tracking number' : 'Nhập mã vận đơn'}
+            </DialogTitle>
+            <DialogDescription>
+              {locale === 'ja-JP'
+                ? '追跡番号を入力すると、購入者にメールで通知されます。'
+                : locale === 'en-US'
+                  ? 'Enter the tracking number — the buyer will be notified by email.'
+                  : 'Nhập mã vận đơn để giao hàng. Người mua sẽ nhận email thông báo.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {shipCarrier ? (
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium">
+                  {locale === 'ja-JP' ? '配送業者（購入者が選択）' : locale === 'en-US' ? 'Carrier (chosen by buyer)' : 'Đơn vị vận chuyển (người mua đã chọn)'}
+                </p>
+                {(() => {
+                  const c = getCarrier(shipCarrier);
+                  return (
+                    <div className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                      {c?.logo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={c.logo} alt="" className="h-5 w-5 rounded" />
+                      ) : (
+                        <Truck className="h-4 w-4" />
+                      )}
+                      {c?.name || shipCarrier}
+                    </div>
+                  );
+                })()}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">
+                  {locale === 'ja-JP' ? '配送業者' : locale === 'en-US' ? 'Carrier' : 'Đơn vị vận chuyển'}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {SHIPPING_CARRIERS.map(c => (
+                    <button
+                      key={c.code}
+                      type="button"
+                      onClick={() => setShipCarrier(c.code)}
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors ${shipCarrier === c.code ? 'border-orange-500 bg-orange-500/15 text-orange-300' : 'border-border/60 text-muted-foreground hover:border-orange-500/40'}`}
+                    >
+                      {c.logo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={c.logo} alt="" className="h-5 w-5 rounded" />
+                      ) : (
+                        <Truck className="h-4 w-4" />
+                      )}
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {shipCarrier && shipCarrier !== 'self' && (
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium">
+                  {locale === 'ja-JP' ? '追跡番号' : locale === 'en-US' ? 'Tracking number' : 'Mã vận đơn'}
+                </p>
+                <Input
+                  value={shipTracking}
+                  onChange={e => setShipTracking(e.target.value)}
+                  placeholder={locale === 'ja-JP' ? '例: LWtxxxxxxx' : locale === 'en-US' ? 'e.g. LWtxxxxxxx' : 'VD: LWtxxxxxxx'}
+                />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShipDialog({ open: false, orderId: '' })}>{copy.cancel}</Button>
+            <Button
+              className="bg-orange-500 hover:bg-orange-600"
+              onClick={() => handleAction(shipDialog.orderId, 'ship', { shipping_provider: shipCarrier, tracking_number: shipTracking.trim() })}
+              disabled={!shipCarrier || (shipCarrier !== 'self' && !shipTracking.trim()) || actionLoading === shipDialog.orderId}
+            >
+              {actionLoading === shipDialog.orderId ? <Loader2 className="h-4 w-4 animate-spin" /> : copy.shipOrder}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={disputeDialog.open} onOpenChange={open => setDisputeDialog({ ...disputeDialog, open })}>
         <DialogContent>
           <DialogHeader>

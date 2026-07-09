@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
         const paymentLink = await getPayOS().paymentRequests.create({
             orderCode,
             amount: amount,
-            description: `Nap vi CV ${amount.toLocaleString()}d`,
+            description: `Nap vi CV ${amount.toLocaleString()}d`.slice(0, 25), // PayOS caps at 25 chars
             cancelUrl: `${origin}/wallet?status=cancelled`,
             returnUrl: `${origin}/wallet?status=success`,
             items: [

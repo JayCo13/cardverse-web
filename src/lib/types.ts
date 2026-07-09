@@ -52,6 +52,9 @@ export interface Card {
   createdAt?: string;
   /** If true, price is already in VND (marketplace listings). If false/undefined, price is in USD. */
   priceIsVnd?: boolean;
+  /** Seller's shop shipping (from profiles): carriers offered + per-carrier tiered fees. */
+  shippingCarriers?: string[];
+  shippingFees?: Record<string, { intra?: number; inter?: number; region?: number }>;
 }
 
 export interface Offer {
@@ -119,11 +122,14 @@ export interface ForumPost {
 export interface Notification {
   id: string;
   userId: string;
-  type: 'offer_received' | 'offer_accepted' | 'offer_rejected' | 'card_sold' | 'message_received';
+  type:
+    | 'offer_received' | 'offer_accepted' | 'offer_rejected' | 'card_sold' | 'message_received'
+    | 'order_new' | 'order_shipped' | 'order_completed' | 'order_refunded' | 'order_cancelled' | 'order_disputed';
   title: string;
   message: string;
   cardId?: string;
   offerId?: string;
+  orderId?: string | null;
   conversationId?: string | null;
   transactionId?: string | null;
   read: boolean;

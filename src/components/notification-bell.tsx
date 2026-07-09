@@ -178,6 +178,7 @@ export function NotificationBell() {
                 message: n.message,
                 cardId: n.card_id,
                 offerId: n.offer_id,
+                orderId: n.order_id,
                 conversationId: n.conversation_id,
                 transactionId: n.transaction_id,
                 read: n.read,
@@ -211,6 +212,7 @@ export function NotificationBell() {
                         message: payload.new.message,
                         cardId: payload.new.card_id,
                         offerId: payload.new.offer_id,
+                        orderId: payload.new.order_id,
                         conversationId: payload.new.conversation_id,
                         transactionId: payload.new.transaction_id,
                         read: payload.new.read,
@@ -266,6 +268,8 @@ export function NotificationBell() {
                                     window.location.assign(`/checkout?offerId=${newNotification.offerId}`);
                                 } else if (newNotification.type === 'offer_accepted' && newNotification.transactionId) {
                                     window.location.assign(`/transaction/${newNotification.transactionId}`);
+                                } else if (newNotification.type.startsWith('order_')) {
+                                    window.location.assign(newNotification.orderId ? `/orders/${newNotification.orderId}` : '/orders');
                                 } else if (newNotification.conversationId) {
                                     window.dispatchEvent(new CustomEvent('cardverse:open-chat', {
                                         detail: { conversationId: newNotification.conversationId },
@@ -339,6 +343,13 @@ export function NotificationBell() {
                     detail: { conversationId: notification.conversationId },
                 }),
             );
+            return;
+        }
+
+        // Order-related notifications → the order details page (or the orders
+        // list if an older notification has no order_id). Never fall to the card.
+        if (notification.type.startsWith('order_')) {
+            router.push(notification.orderId ? `/orders/${notification.orderId}` : '/orders');
             return;
         }
 

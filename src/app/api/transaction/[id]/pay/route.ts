@@ -196,6 +196,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                     shipping_fee: shippingFee,
                     payment_method: 'wallet',
                     status: 'paid',
+                    ship_deadline: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
                     ...orderShipping,
                 } as never)
                 .select()
@@ -281,7 +282,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const paymentLink = await getPayOS().paymentRequests.create({
             orderCode,
             amount: totalPaid,
-            description: `Mua the ${card.name.substring(0, 20)}`,
+            description: `Mua the ${card.name}`.slice(0, 25), // PayOS caps at 25 chars
             expiredAt: Math.floor(reservedUntil.getTime() / 1000),
             cancelUrl: `${origin}/orders?status=cancelled`,
             returnUrl: `${origin}/orders?status=success`,

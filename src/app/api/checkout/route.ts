@@ -345,6 +345,7 @@ export async function POST(request: NextRequest) {
               shipping_fee: item.shippingFee,
               payment_method: 'wallet',
               status: 'paid',
+              ship_deadline: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
               ...shipping,
             } as never)
             .select()

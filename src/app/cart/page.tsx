@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowRight, CreditCard, Eye, PackageCheck, ShieldCheck, ShoppingCart, Store, Trash2, Truck } from "lucide-react";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { getCategoryCode } from "@/lib/category-code";
+import { shopShippingRange, type ShopShippingFees } from "@/lib/shipping-fee";
 import { useLocalization } from "@/context/localization-context";
 
 type CartItem = {
@@ -32,6 +33,8 @@ type CartItem = {
     profiles?: {
       display_name?: string | null;
       profile_image_url?: string | null;
+      shipping_carriers?: string[] | null;
+      shipping_fees?: ShopShippingFees | null;
     } | null;
   } | null;
 };
@@ -77,7 +80,7 @@ export default function CartPage() {
       selectedForPayment: "Đã chọn thanh toán",
       unavailableCount: "Không khả dụng",
       subtotal: "Tạm tính",
-      shippingNote: "Phí ship GHN sẽ được tính ở trang checkout theo địa chỉ nhận hàng.",
+      shippingNote: "Phí ship tạm tính theo bảng giá của shop. Số chính xác được tính ở checkout theo địa chỉ nhận hàng.",
       total: "Thành tiền",
       checkout: "Thanh toán",
     }
@@ -114,7 +117,7 @@ export default function CartPage() {
         selectedForPayment: "支払い対象",
         unavailableCount: "在庫なし",
         subtotal: "小計",
-        shippingNote: "GHN送料はチェックアウトページで配送先住所に基づいて計算されます。",
+        shippingNote: "送料はショップの料金表に基づく目安です。正確な金額はチェックアウトで配送先住所に基づき計算されます。",
         total: "合計",
         checkout: "支払う",
       }
@@ -150,7 +153,7 @@ export default function CartPage() {
         selectedForPayment: "Selected for checkout",
         unavailableCount: "Unavailable",
         subtotal: "Subtotal",
-        shippingNote: "GHN shipping is calculated at checkout based on your delivery address.",
+        shippingNote: "Shipping is an estimate from the shop's rate table. The exact fee is calculated at checkout based on your delivery address.",
         total: "Total",
         checkout: "Checkout",
       };
@@ -200,6 +203,16 @@ export default function CartPage() {
     () => selectedItems.reduce((sum, item) => sum + Number(item.cards?.price || 0) * (item.quantity || 1), 0),
     [selectedItems],
   );
+  // Estimated shipping across selected items (seller-declared range; the exact
+  // tier fee is resolved from the buyer's address at checkout).
+  const shipEstimate = useMemo(() => {
+    let min = 0, max = 0, hasAny = false;
+    selectedItems.forEach(item => {
+      const r = shopShippingRange(item.cards?.profiles?.shipping_fees, item.cards?.profiles?.shipping_carriers);
+      if (r) { min += r.min; max += r.max; hasAny = true; }
+    });
+    return hasAny ? { min, max } : null;
+  }, [selectedItems]);
 
   const toggleItem = (id: string) => {
     setSelectedIds(prev => {
@@ -233,6 +246,11 @@ export default function CartPage() {
       setRemovingId(null);
     }
   };
+
+  const estShippingLabel = locale === "vi-VN" ? "Phí ship tạm tính" : locale === "ja-JP" ? "送料（目安）" : "Est. shipping";
+  const shippingTBD = locale === "vi-VN" ? "Tính khi nhập địa chỉ" : locale === "ja-JP" ? "住所入力時に計算" : "At checkout";
+  const shipText = (range: { min: number; max: number } | null) =>
+    !range ? shippingTBD : range.min === range.max ? formatVND(range.min) : `${formatVND(range.min)} – ${formatVND(range.max)}`;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -275,119 +293,112 @@ export default function CartPage() {
                 const card = item.cards;
                 const unavailable = !card || card.status !== "active" || card.listing_type !== "sale";
                 const selected = selectedIds.has(item.id);
+                const shipRange = shopShippingRange(card?.profiles?.shipping_fees, card?.profiles?.shipping_carriers);
                 return (
                   <article
                     key={item.id}
-                    className={`group overflow-hidden rounded-xl border bg-card/70 shadow-[0_18px_70px_rgba(0,0,0,0.22)] transition hover:border-orange-500/40 hover:bg-card md:grid md:grid-cols-[44px_168px_minmax(0,1fr)_230px] ${unavailable ? "opacity-60" : ""} ${selected ? "border-orange-500/50" : ""}`}
+                    className={`group relative flex flex-col overflow-hidden rounded-2xl border bg-card/60 transition hover:border-orange-500/40 hover:bg-card sm:flex-row ${unavailable ? "opacity-60" : ""} ${selected ? "border-orange-500/60 ring-1 ring-orange-500/30" : ""}`}
                   >
-                    <div className="flex items-start justify-center border-b p-3 pt-5 md:border-b-0 md:border-r md:pt-6">
+                    {/* Checkbox overlay */}
+                    <div className="absolute left-3 top-3 z-10">
                       <Checkbox
                         checked={selected}
                         disabled={unavailable}
                         onCheckedChange={() => toggleItem(item.id)}
                         aria-label={copy.selectForPayment}
+                        className="h-5 w-5 border-white/40 bg-background/80 backdrop-blur"
                       />
                     </div>
-                    <div className="relative min-h-[220px] bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-4 md:min-h-full">
-                      <div className="relative mx-auto aspect-[3/4] h-full max-h-[230px] w-[150px] overflow-hidden rounded-lg border border-white/10 bg-muted shadow-[0_20px_55px_rgba(0,0,0,0.45)]">
+
+                    {/* Image */}
+                    <div className="relative flex shrink-0 items-center justify-center bg-gradient-to-br from-zinc-900 to-black p-4 sm:w-40">
+                      <div className="relative aspect-[3/4] w-28 overflow-hidden rounded-lg border border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.45)] sm:w-full">
                         {card?.image_url ? (
                           <Image src={optimizeCloudinaryUrl(card.image_url, 420)} alt={card.name} fill className="object-cover" />
                         ) : null}
                       </div>
-                      <span className="absolute left-4 top-4 rounded-md border border-orange-400/50 bg-orange-500/90 px-2 py-1 text-[11px] font-bold text-white shadow-lg">
+                      <span className="absolute right-3 top-3 rounded-md bg-orange-500 px-2 py-0.5 text-[11px] font-bold text-white shadow">
                         {getCategoryCode(card?.category)}
                       </span>
                     </div>
 
-                    <div className="min-w-0 p-5">
-                      <div className="mb-3 flex flex-wrap items-center gap-2">
-                        <span className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                          Qty {item.quantity || 1}
-                        </span>
+                    {/* Info */}
+                    <div className="flex min-w-0 flex-1 flex-col p-4 sm:p-5">
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
                         {unavailable ? (
-                          <span className="rounded-md border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-300">
-                            {copy.unavailable}
-                          </span>
+                          <span className="rounded-md border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-xs font-semibold text-red-300">{copy.unavailable}</span>
                         ) : (
-                          <span className="rounded-md border border-emerald-500/35 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-300">
-                            {copy.checkoutable}
-                          </span>
+                          <span className="rounded-md border border-emerald-500/35 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-300">{copy.checkoutable}</span>
+                        )}
+                        <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-medium text-muted-foreground">Qty {item.quantity || 1}</span>
+                        {card?.condition && (
+                          <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-medium text-muted-foreground">{card.condition}</span>
                         )}
                       </div>
 
-                      <h2 className="line-clamp-2 text-2xl font-bold tracking-normal text-foreground">
+                      <h2 className="line-clamp-2 text-lg font-bold tracking-normal text-foreground sm:text-xl">
                         {card?.name || copy.missingCard}
                       </h2>
 
-                      <div className="mt-4 flex items-center gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-orange-500/15 text-sm font-bold text-orange-300">
+                      <div className="mt-3 flex items-center gap-2.5">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-orange-500/15 text-sm font-bold text-orange-300">
                           {card?.profiles?.profile_image_url ? (
-                            <Image src={card.profiles.profile_image_url} alt="" width={40} height={40} className="h-full w-full object-cover" />
+                            <Image src={card.profiles.profile_image_url} alt="" width={36} height={36} className="h-full w-full object-cover" />
                           ) : (
                             (card?.profiles?.display_name || "S").charAt(0).toUpperCase()
                           )}
                         </div>
                         <div className="min-w-0">
-                          <p className="truncate font-semibold">{card?.profiles?.display_name || copy.sellerFallback}</p>
-                          <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                            <Store className="h-3.5 w-3.5" />
-                            {copy.cardVerseSeller}
+                          <p className="truncate text-sm font-semibold">{card?.profiles?.display_name || copy.sellerFallback}</p>
+                          <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Store className="h-3 w-3" />{copy.cardVerseSeller}
                           </p>
                         </div>
                       </div>
 
-                      <div className="mt-5 grid gap-2 text-sm sm:grid-cols-3">
-                        <div className="rounded-lg border border-white/10 bg-background/55 p-2.5">
-                          <div className="mb-1.5 flex items-center gap-1.5 text-muted-foreground">
-                            <Truck className="h-4 w-4 shrink-0 text-orange-300" />
-                            <span className="whitespace-nowrap leading-tight">{copy.ship}</span>
-                          </div>
-                          <p className="font-semibold leading-tight">{copy.ghnReady}</p>
-                        </div>
-                        <div className="rounded-lg border border-white/10 bg-background/55 p-2.5">
-                          <div className="mb-1.5 flex items-center gap-1.5 text-muted-foreground">
-                            <CreditCard className="h-4 w-4 shrink-0 text-orange-300" />
-                            <span className="whitespace-nowrap leading-tight">{copy.payment}</span>
-                          </div>
-                          <p className="font-semibold leading-tight">{copy.walletPayos}</p>
-                        </div>
-                        <div className="rounded-lg border border-white/10 bg-background/55 p-2.5">
-                          <div className="mb-1.5 flex items-center gap-1.5 text-muted-foreground">
-                            <PackageCheck className="h-4 w-4 shrink-0 text-orange-300" />
-                            <span className="whitespace-nowrap leading-tight">{copy.protection}</span>
-                          </div>
-                          <p className="font-semibold leading-tight">{copy.protected}</p>
-                        </div>
+                      <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-4 text-xs text-muted-foreground">
+                        <span className="inline-flex items-center gap-1.5">
+                          <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />{copy.protected}
+                        </span>
+                        <span className="inline-flex items-center gap-1.5">
+                          <CreditCard className="h-3.5 w-3.5 text-orange-300" />{copy.walletPayos}
+                        </span>
                       </div>
                     </div>
 
-                    <div className="flex flex-col justify-between gap-4 border-t p-5 md:border-l md:border-t-0">
-                      <div className="space-y-1 md:text-right">
-                        <p className="text-sm text-muted-foreground">{copy.itemPrice}</p>
-                        <p className="text-3xl font-bold tracking-normal text-orange-400 md:text-2xl">
-                          {formatVND(Number(card?.price || 0))}
-                        </p>
-                        <p className="text-sm font-medium text-amber-300">{copy.shippingAtCheckout}</p>
+                    {/* Price + shipping + actions */}
+                    <div className="flex flex-col justify-between gap-3 border-t bg-background/30 p-4 sm:w-52 sm:border-l sm:border-t-0 sm:p-5">
+                      <div className="space-y-2.5">
+                        <div>
+                          <p className="text-xs text-muted-foreground">{copy.itemPrice}</p>
+                          <p className="text-2xl font-bold tracking-normal text-orange-400">{formatVND(Number(card?.price || 0))}</p>
+                        </div>
+                        <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 px-3 py-2">
+                          <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                            <Truck className="h-3.5 w-3.5 text-orange-300" />{estShippingLabel}
+                          </p>
+                          <p className="mt-0.5 text-sm font-semibold text-foreground">{shipText(shipRange)}</p>
+                        </div>
                       </div>
                       <div className="grid gap-2">
                         {card && (
                           <Button
                             variant="outline"
-                            className="h-11 justify-center gap-2 border-orange-500/35 bg-orange-500/10 text-orange-200 hover:bg-orange-500/20"
+                            size="sm"
+                            className="justify-center gap-2 border-orange-500/35 bg-orange-500/10 text-orange-200 hover:bg-orange-500/20"
                             onClick={() => router.push(`/cards/${card.id}`)}
                           >
-                            <Eye className="h-4 w-4" />
-                            {copy.viewDetail}
+                            <Eye className="h-4 w-4" />{copy.viewDetail}
                           </Button>
                         )}
                         <Button
                           variant="ghost"
-                          className="h-11 justify-center gap-2 text-muted-foreground hover:text-red-300"
+                          size="sm"
+                          className="justify-center gap-2 text-muted-foreground hover:text-red-300"
                           disabled={removingId === item.id}
                           onClick={() => removeItem(item.id)}
                         >
-                          <Trash2 className="h-4 w-4" />
-                          {copy.removeFromCart}
+                          <Trash2 className="h-4 w-4" />{copy.removeFromCart}
                         </Button>
                       </div>
                     </div>
@@ -413,17 +424,25 @@ export default function CartPage() {
                       <span>{unavailableItems.length}</span>
                     </div>
                   )}
-                  <div className="flex justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="text-muted-foreground">{copy.subtotal}</span>
-                    <span className="font-semibold">{formatVND(subtotal)}</span>
+                    <span className="whitespace-nowrap font-semibold">{formatVND(subtotal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="shrink-0 text-muted-foreground">{estShippingLabel}</span>
+                    <span className="whitespace-nowrap font-semibold">{shipText(shipEstimate)}</span>
                   </div>
                   <div className="rounded-lg border border-orange-500/20 bg-orange-500/10 p-3 text-xs text-orange-200">
                     {copy.shippingNote}
                   </div>
                   <div className="border-t pt-3">
-                    <div className="flex justify-between text-lg font-bold">
-                      <span>{copy.total}</span>
-                      <span className="text-orange-400">{formatVND(subtotal)}</span>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm font-medium text-muted-foreground">{copy.total}</span>
+                      <span className="overflow-x-auto whitespace-nowrap text-lg font-bold text-orange-400 sm:text-xl">
+                        {shipEstimate
+                          ? `${formatVND(subtotal + shipEstimate.min)}${shipEstimate.min === shipEstimate.max ? "" : ` – ${formatVND(subtotal + shipEstimate.max)}`}`
+                          : formatVND(subtotal)}
+                      </span>
                     </div>
                   </div>
                 </div>

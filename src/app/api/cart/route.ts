@@ -26,7 +26,9 @@ export async function GET() {
           display_name,
           profile_image_url,
           address_district_id,
-          address_ward_code
+          address_ward_code,
+          shipping_carriers,
+          shipping_fees
         )
       )
     `)

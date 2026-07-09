@@ -18,6 +18,8 @@ import { useAuthModal } from "@/components/auth-modal";
 import { useRouter } from "next/navigation";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { getCategoryCode } from "@/lib/category-code";
+import { getCarrier } from "@/lib/shipping-carriers";
+import { shopShippingRange } from "@/lib/shipping-fee";
 
 // Category badge styles with colors and gradients (no icons for cleaner look)
 const getCategoryStyle = (category: string) => {
@@ -105,6 +107,21 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
     if (card.priceIsVnd) return formatVnd(price);
     return formatPrice(price ?? 0);
   };
+
+  // For bundle listings, price is a range across the individual card prices
+  // (lowest → highest) instead of a single figure.
+  const bundlePrices = (card.isBundle ? card.bundleItems || [] : [])
+    .map(i => i.price)
+    .filter((p): p is number => typeof p === 'number' && p > 0);
+  const bundleRange = bundlePrices.length
+    ? { min: Math.min(...bundlePrices), max: Math.max(...bundlePrices) }
+    : null;
+  /** Sale price shown on the card — a range for bundles, otherwise the single price. */
+  const salePriceText = bundleRange
+    ? (bundleRange.min === bundleRange.max
+        ? displayPrice(bundleRange.min)
+        : `${displayPrice(bundleRange.min)} – ${displayPrice(bundleRange.max)}`)
+    : (card.price ? displayPrice(card.price) : 'N/A');
 
   // Check if current user is the owner of this card
   const isOwner = user?.id === card.sellerId;
@@ -552,12 +569,32 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                 <HandCoins className="h-3.5 w-3.5 shrink-0" />
                 PayOS / Wallet
               </span>
-              {showGhnReadiness && (
-                <span className="inline-flex items-center gap-1.5">
-                  <Zap className="h-3.5 w-3.5 shrink-0" />
-                  {copy.ghnReady}
-                </span>
-              )}
+              {(() => {
+                const carriers = (card.shippingCarriers || []).filter(c => c !== 'self');
+                const range = shopShippingRange(card.shippingFees, carriers);
+                if (!card.shippingCarriers || card.shippingCarriers.length === 0) return null;
+                return (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span>{copy.shipping}:</span>
+                    {range && (
+                      <span className="font-medium text-foreground">
+                        {range.min === range.max
+                          ? `${range.min.toLocaleString('vi-VN')}đ`
+                          : `${range.min.toLocaleString('vi-VN')}–${range.max.toLocaleString('vi-VN')}đ`}
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1">
+                      {card.shippingCarriers.map(code => {
+                        const c = getCarrier(code);
+                        return c?.logo ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img key={code} src={c.logo} alt={c.short} title={c.name} className="h-4 w-4 rounded-sm" />
+                        ) : null;
+                      })}
+                    </span>
+                  </span>
+                );
+              })()}
             </div>
           </div>
 
@@ -591,7 +628,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                 )}
               </div>
               <p className="mt-1.5 text-lg font-bold leading-none text-amber-500 md:text-xl">
-                {card.listingType === 'sale' && card.price ? displayPrice(card.price) : 'N/A'}
+                {card.listingType === 'sale' ? salePriceText : 'N/A'}
               </p>
             </div>
 

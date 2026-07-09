@@ -9,6 +9,7 @@ import {
     type PaymentOrderType,
     SUBSCRIPTION_PACKAGE_TYPES,
 } from '@/lib/payos';
+import { matchBundleSelection, selectionFromMetadata } from '@/lib/bundle';
 
 function getServiceClient() {
     return createClient(
@@ -123,7 +124,7 @@ async function completeMarketplaceOrderPayment(
 ) {
     const { data: marketplaceOrders } = await supabase
         .from('orders')
-        .select('id, card_id, seller_id, buyer_id, status')
+        .select('id, card_id, seller_id, buyer_id, status, metadata')
         .eq('payment_order_id', paymentOrderId);
 
     if (!marketplaceOrders || marketplaceOrders.length === 0) {
@@ -136,15 +137,41 @@ async function completeMarketplaceOrderPayment(
     if (pendingOrders.length > 0) {
         await supabase
             .from('orders')
-            .update({ status: 'paid', updated_at: now } as never)
+            .update({
+                status: 'paid',
+                ship_deadline: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                updated_at: now,
+            } as never)
             .in('id', pendingOrders.map(order => order.id))
             .eq('status', 'pending_payment');
 
-        // Lock the card as sold and clear the reservation hold.
-        await supabase
-            .from('cards')
-            .update({ status: 'sold', reserved_until: null, updated_at: now } as never)
-            .in('id', pendingOrders.map(order => order.card_id));
+        // Finalize inventory per order: a bundle order that bought only some of
+        // the cards keeps the listing active with the remaining items; anything
+        // else marks the whole card sold.
+        for (const order of pendingOrders) {
+            const selection = selectionFromMetadata((order as any).metadata);
+            if (selection.length > 0) {
+                const { data: cardRow } = await supabase
+                    .from('cards')
+                    .select('bundle_items')
+                    .eq('id', order.card_id)
+                    .single();
+                const items = Array.isArray((cardRow as any)?.bundle_items) ? (cardRow as any).bundle_items : [];
+                const matched = matchBundleSelection(items, selection);
+                const remaining = matched ? matched.remaining : [];
+                if (matched && remaining.length > 0) {
+                    await supabase
+                        .from('cards')
+                        .update({ bundle_items: remaining as never, status: 'active', reserved_until: null, updated_at: now } as never)
+                        .eq('id', order.card_id);
+                    continue;
+                }
+            }
+            await supabase
+                .from('cards')
+                .update({ status: 'sold', reserved_until: null, updated_at: now } as never)
+                .eq('id', order.card_id);
+        }
 
         // If this order came from an accepted offer, close out its transaction
         // (offer-based transactions are the only active ones on this card).

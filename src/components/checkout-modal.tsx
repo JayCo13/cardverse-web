@@ -1,19 +1,23 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Wallet, CreditCard, Loader2, CheckCircle, ShieldCheck, ExternalLink, Truck } from 'lucide-react';
-import { useAuth } from '@/lib/supabase';
+import { useAuth, useSupabase } from '@/lib/supabase';
+import { resolveShippingTier } from '@/lib/shipping-fee';
+import { getCarrier } from '@/lib/shipping-carriers';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
 import { AddressBook, type SavedAddress } from '@/components/address-book';
 import { useLocalization } from '@/context/localization-context';
 import { getCategoryCode } from '@/lib/category-code';
 import Image from 'next/image';
+
+type BundleItem = { title: string; price: number; condition?: string; setName?: string; publisher?: string; season?: string };
 
 type Card = {
   id: string;
@@ -23,6 +27,8 @@ type Card = {
   category: string;
   condition: string;
   seller_id: string;
+  isBundle?: boolean;
+  bundleItems?: BundleItem[];
 };
 
 type CheckoutModalProps = {
@@ -34,10 +40,13 @@ type CheckoutModalProps = {
     districtId: number;
     wardCode: string;
   } | null;
+  /** For bundles: indices of the cards the buyer picked in the pre-checkout dialog. */
+  preselectedBundle?: number[];
 };
 
-export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddress }: CheckoutModalProps) {
+export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddress, preselectedBundle }: CheckoutModalProps) {
   const { user } = useAuth();
+  const supabase = useSupabase();
   const { setOpen: setAuthOpen } = useAuthModal();
   const { toast } = useToast();
   const { locale } = useLocalization();
@@ -55,7 +64,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
         shippingAddress: '配送先住所',
         paymentDetails: '支払い詳細',
         cardAmount: 'カード代金',
-        shippingFee: '送料 (GHN)',
+        shippingFee: '送料',
         chooseAddressFee: '住所を選択して計算',
         total: '合計支払い',
         paymentMethod: '支払い方法',
@@ -88,7 +97,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
           shippingAddress: 'Địa chỉ nhận hàng',
           paymentDetails: 'Chi tiết thanh toán',
           cardAmount: 'Tiền thẻ',
-          shippingFee: 'Tiền ship (GHN)',
+          shippingFee: 'Phí vận chuyển',
           chooseAddressFee: 'Chọn địa chỉ để tính',
           total: 'Tổng thanh toán',
           paymentMethod: 'Phương thức thanh toán',
@@ -120,7 +129,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
           shippingAddress: 'Shipping address',
           paymentDetails: 'Payment details',
           cardAmount: 'Card price',
-          shippingFee: 'Shipping fee (GHN)',
+          shippingFee: 'Shipping fee',
           chooseAddressFee: 'Choose an address to calculate',
           total: 'Total payment',
           paymentMethod: 'Payment method',
@@ -140,6 +149,8 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
           payAmount: 'Pay {amount}',
         };
   const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'direct_payos'>('wallet');
+  // Bundle: indices of the cards the buyer wants to buy (default = all).
+  const [selectedBundle, setSelectedBundle] = useState<number[]>([]);
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [isLoadingWallet, setIsLoadingWallet] = useState(true);
   const [isPurchasing, setIsPurchasing] = useState(false);
@@ -148,6 +159,10 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
   const [selectedAddress, setSelectedAddress] = useState<SavedAddress | null>(null);
   const [shippingFee, setShippingFee] = useState<number | null>(null);
   const [loadingFee, setLoadingFee] = useState(false);
+  // Carrier options for the current tier; buyer picks one when there is > 1.
+  const [shipOptions, setShipOptions] = useState<{ code: string; fee: number }[]>([]);
+  const [selectedCarrier, setSelectedCarrier] = useState('');
+  const selectedCarrierRef = useRef('');
   const [feeError, setFeeError] = useState('');
   const userId = user?.id ?? null;
 
@@ -157,12 +172,21 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
     }
   }, [open, userId]);
 
+  const bundleItems = card?.isBundle ? card.bundleItems || [] : [];
+  const isBundle = bundleItems.length > 0;
+
   useEffect(() => {
     if (!open) return;
     setSelectedAddress(null);
     setShippingFee(null);
     setFeeError('');
-  }, [open, card?.id]);
+    // Cards chosen in the pre-checkout dialog; fall back to all if none passed.
+    setSelectedBundle(
+      preselectedBundle && preselectedBundle.length
+        ? preselectedBundle
+        : (card?.isBundle ? (card.bundleItems || []).map((_, i) => i) : []),
+    );
+  }, [open, card?.id, preselectedBundle]);
 
   const fetchWalletBalance = async () => {
     setIsLoadingWallet(true);
@@ -183,58 +207,76 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
     }
   };
 
-  // Calculate the GHN shipping fee for the chosen address.
+  // Seller-declared shipping: pick the tier from the seller's province vs the
+  // buyer's delivery province, then the cheapest carrier's fee for that tier.
   const calculateFee = useCallback(async (address: SavedAddress | null) => {
     setShippingFee(null);
     setFeeError('');
 
-    if (!address || !sellerAddress) {
+    if (!address || !card) {
       return;
     }
 
     setLoadingFee(true);
     try {
-      const params = new URLSearchParams({
-        from_district_id: sellerAddress.districtId.toString(),
-        from_ward_code: sellerAddress.wardCode,
-        to_district_id: address.district_id.toString(),
-        to_ward_code: address.ward_code,
-        // Cap declared insurance so GHN's 0.5% insurance fee doesn't inflate
-        // shipping on high-value cards. Must match orders/route.ts (INSURANCE_CAP).
-        insurance_value: card ? Math.min(card.price, 500000).toString() : '0',
-      });
-
-      const res = await fetch(`/api/shipping/fee?${params}`);
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data.error);
-
-      setShippingFee(data.shipping_fee);
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('shipping_carriers, shipping_fees, address_province_id, address_province_name')
+        .eq('id', card.seller_id)
+        .single();
+      if (error) throw error;
+      const p = data as any;
+      const tier = resolveShippingTier(
+        { provinceId: p?.address_province_id, provinceName: p?.address_province_name },
+        { provinceId: address.province_id, provinceName: address.province_name },
+      );
+      const carriers = (p?.shipping_carriers || []).filter((c: string) => c !== 'self');
+      const options = carriers.map((code: string) => ({ code, fee: Number(p?.shipping_fees?.[code]?.[tier] ?? 0) }));
+      setShipOptions(options);
+      // Keep the buyer's carrier if still valid; otherwise default to the first
+      // (single carrier → automatic default, multiple → buyer can change it).
+      const preferred = options.find((o: { code: string }) => o.code === selectedCarrierRef.current) || options[0] || null;
+      selectedCarrierRef.current = preferred?.code || '';
+      setSelectedCarrier(preferred?.code || '');
+      setShippingFee(preferred ? preferred.fee : 0);
     } catch (err: any) {
       console.error('Fee calculation error:', err);
       setFeeError(copy.feeError);
     } finally {
       setLoadingFee(false);
     }
-  }, [sellerAddress, card]);
+  }, [card, supabase, copy.feeError]);
 
   const handleSelectAddress = useCallback((address: SavedAddress | null) => {
     setSelectedAddress(address);
     void calculateFee(address);
   }, [calculateFee]);
 
-  // Recalculate once the seller address loads in (it may arrive after selection).
+  const handleSelectCarrier = (code: string) => {
+    const opt = shipOptions.find(o => o.code === code);
+    if (!opt) return;
+    selectedCarrierRef.current = code;
+    setSelectedCarrier(code);
+    setShippingFee(opt.fee);
+  };
+
+  // Recalculate whenever the buyer's address / card changes.
   useEffect(() => {
-    if (!open || !sellerAddress || !selectedAddress) return;
+    if (!open || !selectedAddress) return;
     void calculateFee(selectedAddress);
-  }, [open, sellerAddress, selectedAddress, card?.id, calculateFee]);
+  }, [open, selectedAddress, card?.id, calculateFee]);
 
   const formatVND = (amount: number) => new Intl.NumberFormat('vi-VN').format(amount) + 'đ';
 
-  const totalAmount = (card?.price || 0) + (shippingFee || 0);
+  const selectedSubtotal = isBundle
+    ? selectedBundle.reduce((sum, i) => sum + (bundleItems[i]?.price || 0), 0)
+    : (card?.price || 0);
+  const totalAmount = selectedSubtotal + (shippingFee || 0);
   const insufficientBalance = walletBalance < totalAmount;
 
-  const canPurchase = !!selectedAddress && shippingFee !== null && !loadingFee;
+  const canPurchase =
+    !!selectedAddress && shippingFee !== null && !loadingFee &&
+    (!isBundle || selectedBundle.length > 0);
 
   const handlePurchase = async () => {
     if (!user) {
@@ -252,6 +294,10 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
           card_id: card.id,
           payment_method: paymentMethod,
           shipping_fee: shippingFee,
+          shipping_carrier: selectedCarrier || undefined,
+          bundle_selection: isBundle
+            ? selectedBundle.map(i => ({ title: bundleItems[i]?.title || '', price: bundleItems[i]?.price || 0 }))
+            : undefined,
           to_name: selectedAddress.recipient_name,
           to_phone: selectedAddress.phone,
           to_district_id: selectedAddress.district_id,
@@ -281,18 +327,24 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
 
       if (!res.ok) throw new Error(data.error);
 
-      if (data.payment_method === 'direct_payos' && data.checkoutUrl) {
-        window.open(data.checkoutUrl, '_blank');
-        toast({
-          title: copy.redirecting,
-          description: copy.redirectingDesc,
-        });
-      } else {
-        toast({
-          title: copy.purchaseSuccess,
-          description: copy.purchaseSuccessDesc.replace('{name}', card.name),
-        });
+      if (data.payment_method === 'direct_payos') {
+        if (!data.checkoutUrl) {
+          // PayOS didn't return a payment link — surface it instead of silently
+          // "succeeding" and closing the dialog with an orphaned pending order.
+          toast({ variant: 'destructive', title: copy.errorTitle, description: data.error || 'PayOS chưa tạo được link thanh toán. Vui lòng thử lại hoặc thanh toán bằng ví.' });
+          return;
+        }
+        // Same-tab redirect — window.open('_blank') after an await is blocked by
+        // the popup blocker (not a direct user gesture).
+        toast({ title: copy.redirecting, description: copy.redirectingDesc });
+        window.location.href = data.checkoutUrl;
+        return;
       }
+
+      toast({
+        title: copy.purchaseSuccess,
+        description: copy.purchaseSuccessDesc.replace('{name}', card.name),
+      });
 
       onOpenChange(false);
       onSuccess?.();
@@ -327,9 +379,27 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
             <div className="flex-1 min-w-0">
               <p className="font-semibold line-clamp-2 text-sm">{card.name}</p>
               <p className="text-xs text-muted-foreground">{getCategoryCode(card.category)} • {card.condition}</p>
-              <p className="text-lg font-bold text-orange-500 mt-1">{formatVND(card.price)}</p>
+              <p className="text-lg font-bold text-orange-500 mt-1">{formatVND(isBundle ? selectedSubtotal : card.price)}</p>
             </div>
           </div>
+
+          {/* Bundle: cards chosen in the pre-checkout dialog (read-only here) */}
+          {isBundle && (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">
+                {locale === 'ja-JP' ? '購入するカード' : locale === 'en-US' ? 'Cards to buy' : 'Thẻ sẽ mua'}
+                <span className="ml-1 text-muted-foreground">({selectedBundle.length}/{bundleItems.length})</span>
+              </Label>
+              <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border p-2">
+                {selectedBundle.map(i => bundleItems[i]).filter(Boolean).map((it, k) => (
+                  <div key={k} className="flex items-center gap-2 px-2 py-1 text-sm">
+                    <span className="min-w-0 flex-1 truncate">{it.title || `Thẻ ${k + 1}`}</span>
+                    <span className="shrink-0 font-semibold text-orange-500">{formatVND(it.price)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Shipping Address — pick/add/manage straight from checkout */}
           <div className="space-y-2">
@@ -344,11 +414,63 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
             />
           </div>
 
+          {/* Carrier: single = default, multiple = buyer chooses */}
+          {selectedAddress && shipOptions.length > 0 && (
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5 text-sm font-medium">
+                <Truck className="h-4 w-4" />
+                {locale === 'ja-JP' ? '配送業者' : locale === 'en-US' ? 'Carrier' : 'Đơn vị vận chuyển'}
+              </Label>
+              {shipOptions.length === 1 ? (
+                (() => {
+                  const c = getCarrier(shipOptions[0].code);
+                  return (
+                    <div className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                      {c?.logo && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={c.logo} alt="" className="h-5 w-5 rounded" />
+                      )}
+                      <span>{c?.name || shipOptions[0].code}</span>
+                      <span className="ml-auto font-semibold text-orange-500">{formatVND(shipOptions[0].fee)}</span>
+                    </div>
+                  );
+                })()
+              ) : (
+                <div className="space-y-1.5">
+                  {shipOptions.map(o => {
+                    const c = getCarrier(o.code);
+                    const active = selectedCarrier === o.code;
+                    return (
+                      <label
+                        key={o.code}
+                        className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 transition-colors ${active ? 'border-orange-500 bg-orange-500/5' : 'hover:bg-accent/50'}`}
+                      >
+                        <input
+                          type="radio"
+                          name="ship-carrier"
+                          checked={active}
+                          onChange={() => handleSelectCarrier(o.code)}
+                          className="h-4 w-4 accent-orange-500"
+                        />
+                        {c?.logo && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={c.logo} alt="" className="h-5 w-5 rounded" />
+                        )}
+                        <span className="text-sm">{c?.name || o.code}</span>
+                        <span className="ml-auto text-sm font-semibold text-orange-500">{formatVND(o.fee)}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="rounded-xl border border-orange-500/20 bg-gradient-to-b from-accent/40 to-orange-500/5 p-4 space-y-3">
             <p className="text-sm font-semibold">{copy.paymentDetails}</p>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">{copy.cardAmount}</span>
-              <span className="font-semibold">{formatVND(card.price)}</span>
+              <span className="text-muted-foreground">{copy.cardAmount}{isBundle ? ` (${selectedBundle.length})` : ''}</span>
+              <span className="font-semibold">{formatVND(selectedSubtotal)}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-2 text-muted-foreground">
@@ -413,12 +535,6 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
             </div>
           )}
 
-          {/* Missing seller address warning */}
-          {!sellerAddress && (
-            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 text-xs text-yellow-400">
-              {copy.sellerAddressMissing}
-            </div>
-          )}
         </div>
 
         <DialogFooter className="flex-col sm:flex-row gap-2">

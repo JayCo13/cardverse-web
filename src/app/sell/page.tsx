@@ -9,7 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckCircle, XCircle, Phone, FileCheck, ChevronRight, ChevronLeft, Sparkles, AlertTriangle, MapPin } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckCircle, XCircle, Phone, FileCheck, ChevronRight, ChevronLeft, Sparkles, AlertTriangle, MapPin, Truck } from 'lucide-react';
+import { SHIPPING_CARRIERS } from '@/lib/shipping-carriers';
 import { useAuth, useSupabase } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
@@ -113,6 +114,11 @@ export default function SellPage() {
   const [pickupAddress, setPickupAddress] = useState<{ line: string } | null>(null);
   const [isLoadingAddress, setIsLoadingAddress] = useState(false);
   const [editingAddress, setEditingAddress] = useState(false);
+  // Shop-level shipping options: selected carriers + per-carrier tiered fees
+  // (formatted strings like "15.000") keyed by carrier code.
+  const [shipCarriers, setShipCarriers] = useState<string[]>([]);
+  const [shipFees, setShipFees] = useState<Record<string, { intra: string; inter: string; region: string }>>({});
+  const [savingShipping, setSavingShipping] = useState(false);
 
   // Wizard step
   const [currentStep, setCurrentStep] = useState(1);
@@ -440,11 +446,19 @@ export default function SellPage() {
       const { data } = await supabase
         .from('profiles')
         .select(
-          'address_province_name, address_district_name, address_ward_name, address_detail, address_district_id, address_ward_code'
+          'address_province_name, address_district_name, address_ward_name, address_detail, address_district_id, address_ward_code, shipping_carriers, shipping_fees'
         )
         .eq('id', user.id)
         .single();
       const p = data as Record<string, any> | null;
+      setShipCarriers(p?.shipping_carriers || []);
+      const savedFees = (p?.shipping_fees || {}) as Record<string, any>;
+      const formatted: Record<string, { intra: string; inter: string; region: string }> = {};
+      for (const [code, f] of Object.entries(savedFees)) {
+        const fmt = (n: any) => (n ? Number(n).toLocaleString('vi-VN') : '');
+        formatted[code] = { intra: fmt(f?.intra), inter: fmt(f?.inter), region: fmt(f?.region) };
+      }
+      setShipFees(formatted);
       if (p?.address_district_id && p?.address_ward_code) {
         setPickupAddress({
           line: [p.address_detail, p.address_ward_name, p.address_district_name, p.address_province_name]
@@ -458,6 +472,63 @@ export default function SellPage() {
       console.error('Failed to fetch pickup address:', err);
     } finally {
       setIsLoadingAddress(false);
+    }
+  };
+
+  // Format a raw money string with thousand separators, e.g. "15000" → "15.000".
+  const formatVndInput = (v: string) => {
+    const d = (v || '').replace(/[^\d]/g, '');
+    return d ? Number(d).toLocaleString('vi-VN') : '';
+  };
+
+  const toggleShipCarrier = (code: string) => {
+    setShipCarriers(prev => (prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]));
+    // Seed an empty fee form when a fee-bearing carrier is first selected.
+    if (code !== 'self') {
+      setShipFees(prev => (prev[code] ? prev : { ...prev, [code]: { intra: '', inter: '', region: '' } }));
+    }
+  };
+
+  const setShipFee = (code: string, tier: 'intra' | 'inter' | 'region', raw: string) => {
+    setShipFees(prev => {
+      const cur = prev[code] || { intra: '', inter: '', region: '' };
+      return { ...prev, [code]: { ...cur, [tier]: formatVndInput(raw) } };
+    });
+  };
+
+  const saveShippingOptions = async () => {
+    if (!user) return;
+    if (shipCarriers.length === 0) {
+      toast({ variant: 'destructive', title: tx('Thiếu đơn vị vận chuyển', 'Missing carrier', '配送業者が未選択'), description: tx('Chọn ít nhất 1 đơn vị vận chuyển.', 'Pick at least one carrier.', '配送業者を1つ以上選んでください。') });
+      return;
+    }
+    // Every non-self carrier must have all three tier fees filled.
+    const feesObj: Record<string, { intra: number; inter: number; region: number }> = {};
+    for (const code of shipCarriers) {
+      if (code === 'self') continue;
+      const f = shipFees[code] || { intra: '', inter: '', region: '' };
+      const intra = parseInt(f.intra.replace(/[^\d]/g, '')) || 0;
+      const inter = parseInt(f.inter.replace(/[^\d]/g, '')) || 0;
+      const region = parseInt(f.region.replace(/[^\d]/g, '')) || 0;
+      if (!intra || !inter || !region) {
+        const name = SHIPPING_CARRIERS.find(c => c.code === code)?.name || code;
+        toast({ variant: 'destructive', title: tx('Thiếu phí ship', 'Missing shipping fee', '送料が未入力'), description: tx(`Điền đủ 3 mức phí cho ${name}.`, `Fill all three fees for ${name}.`, `${name} の3つの料金をすべて入力してください。`) });
+        return;
+      }
+      feesObj[code] = { intra, inter, region };
+    }
+    setSavingShipping(true);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ shipping_carriers: shipCarriers, shipping_fees: feesObj } as never)
+        .eq('id', user.id);
+      if (error) throw error;
+      toast({ title: tx('Đã lưu vận chuyển', 'Shipping saved', '配送を保存しました') });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: tx('Lỗi', 'Error', 'エラー'), description: err.message || 'Failed' });
+    } finally {
+      setSavingShipping(false);
     }
   };
 
@@ -933,6 +1004,84 @@ export default function SellPage() {
                     )}
                   </>
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Shop shipping options */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Truck className="h-5 w-5 text-orange-400" />
+                  {tx('Vận chuyển của shop', 'Shop shipping', 'ショップ配送')}
+                </CardTitle>
+                <CardDescription>
+                  {tx('Chọn đơn vị vận chuyển và khoảng phí ship. Thông tin này hiển thị trên mọi bài đăng; người mua trả mức phí tối đa khi thanh toán.', 'Pick your carriers and a fee range. It shows on all your listings; buyers are charged the maximum at checkout.', '配送業者と料金範囲を選択します。全出品に表示され、購入者は上限額を支払います。')}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>{tx('Đơn vị vận chuyển', 'Carriers', '配送業者')}</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {SHIPPING_CARRIERS.map(c => (
+                      <button
+                        key={c.code}
+                        type="button"
+                        onClick={() => toggleShipCarrier(c.code)}
+                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors ${shipCarriers.includes(c.code) ? 'border-orange-500 bg-orange-500/15 text-orange-300' : 'border-border/60 text-muted-foreground hover:border-orange-500/40'}`}
+                      >
+                        {c.logo ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={c.logo} alt="" className="h-5 w-5 rounded" />
+                        ) : (
+                          <Truck className="h-4 w-4" />
+                        )}
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {shipCarriers.some(c => c !== 'self') && (
+                  <div className="space-y-3">
+                    <p className="text-xs text-muted-foreground">
+                      {tx('Nội tỉnh = cùng tỉnh · Ngoại tỉnh = khác tỉnh, cùng miền · Liên miền = khác miền (Bắc/Trung/Nam). Điền phí riêng cho từng đơn vị (bắt buộc).',
+                          'Same province · same region (different province) · cross-region (North/Central/South). Fill fees per carrier (required).',
+                          '同一省内 · 同一地域（別の省）· 地域間（北/中/南）。配送業者ごとに料金を入力（必須）。')}
+                    </p>
+                    {shipCarriers.filter(c => c !== 'self').map(code => {
+                      const carrier = SHIPPING_CARRIERS.find(c => c.code === code);
+                      const f = shipFees[code] || { intra: '', inter: '', region: '' };
+                      return (
+                        <div key={code} className="space-y-3 rounded-lg border border-border/60 bg-background/40 p-3">
+                          <div className="flex items-center gap-2 text-sm font-semibold">
+                            {carrier?.logo && (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={carrier.logo} alt="" className="h-5 w-5 rounded" />
+                            )}
+                            {carrier?.name}
+                          </div>
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            <div className="space-y-1.5">
+                              <Label>{tx('Nội tỉnh (đ)', 'Same province (đ)', '同一省内 (đ)')}</Label>
+                              <Input inputMode="numeric" value={f.intra} onChange={e => setShipFee(code, 'intra', e.target.value)} placeholder="15.000" />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label>{tx('Ngoại tỉnh (đ)', 'Same region (đ)', '同一地域 (đ)')}</Label>
+                              <Input inputMode="numeric" value={f.inter} onChange={e => setShipFee(code, 'inter', e.target.value)} placeholder="25.000" />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label>{tx('Liên miền (đ)', 'Cross-region (đ)', '地域間 (đ)')}</Label>
+                              <Input inputMode="numeric" value={f.region} onChange={e => setShipFee(code, 'region', e.target.value)} placeholder="40.000" />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <Button onClick={() => void saveShippingOptions()} disabled={savingShipping} className="bg-orange-500 hover:bg-orange-600">
+                  {savingShipping ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Truck className="mr-2 h-4 w-4" />}
+                  {tx('Lưu vận chuyển', 'Save shipping', '配送を保存')}
+                </Button>
               </CardContent>
             </Card>
 

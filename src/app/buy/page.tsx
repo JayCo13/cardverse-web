@@ -10,6 +10,7 @@ import { useLocalization } from '@/context/localization-context';
 import { FilterSidebar } from '@/components/filter-sidebar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { ListFilter } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -73,6 +74,47 @@ export default function BuyPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [checkoutCard, setCheckoutCard] = useState<Card | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [checkoutPreselected, setCheckoutPreselected] = useState<number[]>([]);
+  // Pre-checkout dialog for bundles: buyer picks which cards to buy first.
+  const [bundlePickCard, setBundlePickCard] = useState<Card | null>(null);
+  const [bundlePickOpen, setBundlePickOpen] = useState(false);
+  const [bundlePickSelected, setBundlePickSelected] = useState<number[]>([]);
+
+  const proceedToCheckout = async (c: Card, preselected: number[]) => {
+    setCheckoutCard({
+      ...c,
+      id: c.id,
+      name: c.name,
+      imageUrl: c.imageUrl,
+      image_url: c.imageUrl,
+      price: c.price ?? 0,
+      category: c.category,
+      condition: c.condition,
+      sellerId: c.sellerId,
+      isBundle: c.isBundle,
+      bundleItems: c.bundleItems,
+    } as any);
+    setCheckoutPreselected(preselected);
+
+    // Fetch seller address for shipping fee calculation
+    try {
+      const { data: sellerProfile } = await supabase
+        .from('profiles')
+        .select('address_district_id, address_ward_code')
+        .eq('id', c.sellerId)
+        .single();
+      const sp = sellerProfile as any;
+      if (sp?.address_district_id && sp?.address_ward_code) {
+        setSellerAddress({ districtId: sp.address_district_id, wardCode: sp.address_ward_code });
+      } else {
+        setSellerAddress(null);
+      }
+    } catch {
+      setSellerAddress(null);
+    }
+
+    setCheckoutOpen(true);
+  };
   const [sellerAddress, setSellerAddress] = useState<{ districtId: number; wardCode: string } | null>(null);
   const [offerCard, setOfferCard] = useState<Card | null>(null);
   const [offerOpen, setOfferOpen] = useState(false);
@@ -85,7 +127,7 @@ export default function BuyPage() {
 
       const { data, error } = await supabase
         .from('cards')
-        .select('*, profiles:seller_id(display_name, profile_image_url, seller_verified, seller_rating, seller_review_count)')
+        .select('*, profiles:seller_id(display_name, profile_image_url, seller_verified, seller_rating, seller_review_count, shipping_carriers, shipping_fees)')
         .eq('listing_type', 'sale')
         .eq('status', 'active');
 
@@ -129,6 +171,8 @@ export default function BuyPage() {
           grade: c.grade,
           createdAt: c.created_at,
           priceIsVnd: true, // Marketplace listings are entered in VND
+          shippingCarriers: c.profiles?.shipping_carriers || [],
+          shippingFees: (c.profiles?.shipping_fees || {}) as Record<string, { intra?: number; inter?: number; region?: number }>,
         }));
         if (user && cards.length > 0) {
           const cardIds = cards.map(card => card.id);
@@ -270,38 +314,15 @@ export default function BuyPage() {
                 toast({ variant: 'destructive', title: t('cart_error_title'), description: error.message });
               }
             }} onBuyClick={async (c) => {
-              setCheckoutCard({
-                ...c,
-                id: c.id,
-                name: c.name,
-                imageUrl: c.imageUrl,
-                price: c.price ?? 0,
-                category: c.category,
-                condition: c.condition,
-                sellerId: c.sellerId,
-              } as any);
-
-              // Fetch seller address for shipping fee calculation
-              try {
-                const { data: sellerProfile } = await supabase
-                  .from('profiles')
-                  .select('address_district_id, address_ward_code')
-                  .eq('id', c.sellerId)
-                  .single();
-
-                if (sellerProfile?.address_district_id && sellerProfile?.address_ward_code) {
-                  setSellerAddress({
-                    districtId: sellerProfile.address_district_id,
-                    wardCode: sellerProfile.address_ward_code,
-                  });
-                } else {
-                  setSellerAddress(null);
-                }
-              } catch {
-                setSellerAddress(null);
+              // Bundle → let the buyer pick which cards first, then checkout.
+              const items = c.isBundle ? c.bundleItems || [] : [];
+              if (items.length > 0) {
+                setBundlePickCard(c);
+                setBundlePickSelected(items.map((_, i) => i));
+                setBundlePickOpen(true);
+                return;
               }
-
-              setCheckoutOpen(true);
+              await proceedToCheckout(c, []);
             }}
             onOfferClick={(c) => {
               setOfferCard(c);
@@ -380,13 +401,74 @@ export default function BuyPage() {
           category: checkoutCard.category,
           condition: checkoutCard.condition || '',
           seller_id: checkoutCard.sellerId,
+          isBundle: checkoutCard.isBundle,
+          bundleItems: checkoutCard.bundleItems as any,
         } : null}
+        preselectedBundle={checkoutPreselected}
         sellerAddress={sellerAddress}
         onSuccess={() => {
           window.location.reload();
         }}
       />
       )}
+
+      {/* Bundle: pick which cards to buy before secure checkout */}
+      <Dialog open={bundlePickOpen} onOpenChange={setBundlePickOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Chọn thẻ muốn mua</DialogTitle>
+            <DialogDescription>
+              Bài đăng này gồm nhiều thẻ. Chọn (các) thẻ bạn muốn mua rồi bấm Tiếp tục.
+            </DialogDescription>
+          </DialogHeader>
+          {(() => {
+            const items = (bundlePickCard?.bundleItems || []) as { title?: string; price?: number }[];
+            const total = bundlePickSelected.reduce((s, i) => s + (items[i]?.price || 0), 0);
+            const fmt = (n: number) => new Intl.NumberFormat('vi-VN').format(n) + 'đ';
+            const toggle = (i: number) =>
+              setBundlePickSelected(prev => (prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i]));
+            return (
+              <>
+                <div className="max-h-72 space-y-1 overflow-y-auto rounded-lg border p-2">
+                  {items.map((it, i) => (
+                    <label
+                      key={i}
+                      className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors ${bundlePickSelected.includes(i) ? 'bg-orange-500/10' : 'hover:bg-accent/50'}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={bundlePickSelected.includes(i)}
+                        onChange={() => toggle(i)}
+                        className="h-4 w-4 accent-orange-500"
+                      />
+                      <span className="min-w-0 flex-1 truncate text-sm">{it.title || `Thẻ ${i + 1}`}</span>
+                      <span className="shrink-0 text-sm font-semibold text-orange-500">{fmt(it.price || 0)}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Đã chọn {bundlePickSelected.length}/{items.length}</span>
+                  <span className="font-bold text-orange-500">{fmt(total)}</span>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setBundlePickOpen(false)}>Huỷ</Button>
+                  <Button
+                    className="bg-orange-500 hover:bg-orange-600"
+                    disabled={bundlePickSelected.length === 0 || !bundlePickCard}
+                    onClick={async () => {
+                      if (!bundlePickCard) return;
+                      setBundlePickOpen(false);
+                      await proceedToCheckout(bundlePickCard, [...bundlePickSelected].sort((a, b) => a - b));
+                    }}
+                  >
+                    Tiếp tục
+                  </Button>
+                </DialogFooter>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
       {offerCard && (
         <OfferModal
           open={offerOpen}
