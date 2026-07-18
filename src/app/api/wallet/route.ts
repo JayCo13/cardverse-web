@@ -39,15 +39,29 @@ export async function GET() {
             throw error;
         }
 
-        // Get recent transactions
-        const { data: transactions } = await supabase
-            .from('wallet_transactions')
-            .select('*')
-            .eq('user_id', user.id)
-            .order('created_at', { ascending: false })
-            .limit(20);
+        // Withdrawal requests are returned alongside the ledger so the wallet
+        // can show pending/rejected lifecycle entries without pretending money
+        // has already left the account.
+        const [{ data: transactions }, { data: withdrawals }] = await Promise.all([
+            supabase
+                .from('wallet_transactions')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false })
+                .limit(40),
+            supabase
+                .from('wallet_withdrawals')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false })
+                .limit(20),
+        ]);
 
-        return NextResponse.json({ wallet, transactions: transactions || [] });
+        return NextResponse.json({
+            wallet,
+            transactions: transactions || [],
+            withdrawals: withdrawals || [],
+        });
     } catch (error: any) {
         console.error('Get wallet error:', error);
         return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });

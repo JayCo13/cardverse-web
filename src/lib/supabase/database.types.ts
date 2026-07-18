@@ -533,6 +533,7 @@ export interface Database {
                     id: string
                     user_id: string
                     available_balance: number
+                    held_balance: number
                     total_deposited: number
                     total_withdrawn: number
                     created_at: string
@@ -542,6 +543,7 @@ export interface Database {
                     id?: string
                     user_id: string
                     available_balance?: number
+                    held_balance?: number
                     total_deposited?: number
                     total_withdrawn?: number
                     created_at?: string
@@ -551,6 +553,7 @@ export interface Database {
                     id?: string
                     user_id?: string
                     available_balance?: number
+                    held_balance?: number
                     total_deposited?: number
                     total_withdrawn?: number
                     created_at?: string
@@ -590,6 +593,56 @@ export interface Database {
                     description?: string | null
                     reference_id?: string | null
                     created_at?: string
+                }
+            }
+            wallet_withdrawals: {
+                Row: {
+                    id: string
+                    user_id: string
+                    amount_requested: number
+                    fee: number
+                    amount_net: number
+                    bank_name: string
+                    bank_account_number: string
+                    bank_account_name: string
+                    status: 'pending' | 'processing' | 'completed' | 'rejected'
+                    rejection_reason: string | null
+                    reservation_model: 'legacy_debited' | 'held'
+                    ledger_recorded: boolean
+                    created_at: string
+                    processed_at: string | null
+                }
+                Insert: {
+                    id?: string
+                    user_id: string
+                    amount_requested: number
+                    fee: number
+                    amount_net: number
+                    bank_name: string
+                    bank_account_number: string
+                    bank_account_name: string
+                    status?: 'pending' | 'processing' | 'completed' | 'rejected'
+                    rejection_reason?: string | null
+                    reservation_model?: 'legacy_debited' | 'held'
+                    ledger_recorded?: boolean
+                    created_at?: string
+                    processed_at?: string | null
+                }
+                Update: {
+                    id?: string
+                    user_id?: string
+                    amount_requested?: number
+                    fee?: number
+                    amount_net?: number
+                    bank_name?: string
+                    bank_account_number?: string
+                    bank_account_name?: string
+                    status?: 'pending' | 'processing' | 'completed' | 'rejected'
+                    rejection_reason?: string | null
+                    reservation_model?: 'legacy_debited' | 'held'
+                    ledger_recorded?: boolean
+                    created_at?: string
+                    processed_at?: string | null
                 }
             }
             notifications: {
@@ -1083,6 +1136,18 @@ export interface Database {
             [_ in never]: never
         }
         Functions: {
+            request_wallet_withdrawal: {
+                Args: { p_user_id: string; p_amount: number }
+                Returns: Json
+            }
+            complete_wallet_withdrawal: {
+                Args: { p_withdrawal_id: string }
+                Returns: Json
+            }
+            reject_wallet_withdrawal: {
+                Args: { p_withdrawal_id: string; p_reason: string }
+                Returns: Json
+            }
             match_soccer_card: {
                 Args: {
                     p_query: string

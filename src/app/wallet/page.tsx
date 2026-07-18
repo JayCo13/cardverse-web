@@ -42,6 +42,19 @@ type WalletTransaction = {
   created_at: string;
 };
 
+type WalletWithdrawal = {
+  id: string;
+  amount_requested: number;
+  fee: number;
+  amount_net: number;
+  bank_name: string;
+  bank_account_number: string;
+  status: 'pending' | 'processing' | 'completed' | 'rejected';
+  rejection_reason: string | null;
+  created_at: string;
+  processed_at: string | null;
+};
+
 const PRESET_AMOUNTS = [50000, 100000, 200000, 500000, 1000000, 2000000];
 const WITHDRAW_FEE_RATE = 0.05;
 const MIN_WITHDRAW = 50000;
@@ -105,10 +118,14 @@ export default function WalletPage() {
       noTransactions: 'Chưa có giao dịch nào',
       submitWithdrawFailed: 'Không thể tạo yêu cầu rút tiền',
       withdrawRequested: '✅ Đã gửi yêu cầu rút tiền',
-      withdrawRequestedDesc: 'Bạn sẽ nhận {net} (sau phí {fee}). Admin sẽ chuyển khoản và xác nhận.',
+      withdrawRequestedDesc: '{gross} đang được tạm giữ. Bạn sẽ nhận {net} sau phí {fee} khi admin xác nhận chuyển khoản.',
+      withdrawalPending: 'Đang chờ duyệt',
+      withdrawalProcessing: 'Đang xử lý',
+      withdrawalCompleted: 'Đã chuyển khoản',
+      withdrawalRejected: 'Đã từ chối',
       noDescription: '—',
       confirmWithdrawTitle: 'Xác nhận yêu cầu rút tiền',
-      confirmWithdrawDesc: 'Sau khi gửi, ví của bạn sẽ bị trừ ngay số tiền rút. Admin sẽ chuyển khoản và xác nhận.',
+      confirmWithdrawDesc: 'Sau khi gửi, số tiền rút sẽ chuyển sang trạng thái tạm giữ. Tiền chỉ được ghi nhận đã rút khi admin xác nhận chuyển khoản.',
       transferTo: 'Về',
       cancel: 'Hủy',
       confirmWithdraw: 'Xác nhận rút',
@@ -161,10 +178,14 @@ export default function WalletPage() {
         noTransactions: '取引はまだありません',
         submitWithdrawFailed: '出金申請を作成できません',
         withdrawRequested: '✅ 出金申請を送信しました',
-        withdrawRequestedDesc: '{fee}の手数料控除後、{net}を受け取ります。管理者が振込を確認します。',
+        withdrawRequestedDesc: '{gross}は保留中です。管理者の振込確認後、手数料{fee}を差し引いた{net}を受け取ります。',
+        withdrawalPending: '承認待ち',
+        withdrawalProcessing: '処理中',
+        withdrawalCompleted: '振込済み',
+        withdrawalRejected: '却下済み',
         noDescription: '—',
         confirmWithdrawTitle: '出金申請を確認',
-        confirmWithdrawDesc: '送信後、出金額はすぐにウォレットから差し引かれます。管理者が振込して確認します。',
+        confirmWithdrawDesc: '送信後、出金額は保留残高へ移動します。管理者が振込を確認した時点で出金として記録されます。',
         transferTo: '送金先',
         cancel: 'キャンセル',
         confirmWithdraw: '出金を確定',
@@ -216,10 +237,14 @@ export default function WalletPage() {
         noTransactions: 'No transactions yet',
         submitWithdrawFailed: 'Unable to create withdrawal request',
         withdrawRequested: '✅ Withdrawal request submitted',
-        withdrawRequestedDesc: 'You will receive {net} after a {fee} fee. An admin will transfer and confirm it.',
+        withdrawRequestedDesc: '{gross} is now held. You will receive {net} after the {fee} fee when an admin confirms the transfer.',
+        withdrawalPending: 'Awaiting approval',
+        withdrawalProcessing: 'Processing',
+        withdrawalCompleted: 'Transferred',
+        withdrawalRejected: 'Rejected',
         noDescription: '—',
         confirmWithdrawTitle: 'Confirm withdrawal request',
-        confirmWithdrawDesc: 'After submitting, the withdrawal amount will be deducted from your wallet immediately. An admin will transfer and confirm it.',
+        confirmWithdrawDesc: 'After submitting, the amount moves to held balance. It is recorded as withdrawn only after an admin confirms the transfer.',
         transferTo: 'To',
         cancel: 'Cancel',
         confirmWithdraw: 'Confirm withdrawal',
@@ -238,6 +263,7 @@ export default function WalletPage() {
   };
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
+  const [withdrawals, setWithdrawals] = useState<WalletWithdrawal[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [walletLoadError, setWalletLoadError] = useState('');
   const [depositAmount, setDepositAmount] = useState<number>(100000);
@@ -261,6 +287,7 @@ export default function WalletPage() {
       if (data.wallet) {
         setWallet(data.wallet);
         setTransactions(data.transactions || []);
+        setWithdrawals(data.withdrawals || []);
       }
     } catch (err: unknown) {
       console.error('Failed to fetch wallet:', err);
@@ -356,6 +383,7 @@ export default function WalletPage() {
       toast({
         title: copy.withdrawRequested,
         description: copy.withdrawRequestedDesc
+          .replace('{gross}', formatVND(data.amount_requested))
           .replace('{net}', formatVND(data.amount_net))
           .replace('{fee}', formatVND(data.fee)),
       });
@@ -369,6 +397,31 @@ export default function WalletPage() {
   };
 
   const maskAccount = (acc: string) => (acc.length > 4 ? `****${acc.slice(-4)}` : acc);
+
+  // Withdrawal rows are the source of truth for payout lifecycle. Suppress the
+  // legacy split withdrawal/fee/refund ledger rows and render one activity item
+  // per request instead.
+  const visibleTransactions = transactions.filter((tx) => {
+    if (tx.type === 'withdrawal' || tx.type === 'platform_fee') return false;
+    if (tx.type === 'refund' && tx.description?.startsWith('Hoàn tiền do yêu cầu rút')) return false;
+    return true;
+  });
+  const walletActivities = [
+    ...visibleTransactions.map((transaction) => ({
+      kind: 'transaction' as const,
+      id: `transaction-${transaction.id}`,
+      createdAt: transaction.created_at,
+      transaction,
+    })),
+    ...withdrawals.map((withdrawal) => ({
+      kind: 'withdrawal' as const,
+      id: `withdrawal-${withdrawal.id}`,
+      createdAt: withdrawal.processed_at || withdrawal.created_at,
+      withdrawal,
+    })),
+  ]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 20);
 
   if (authLoading || isLoading) {
     return (
@@ -608,15 +661,58 @@ export default function WalletPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {transactions.length === 0 ? (
+              {walletActivities.length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">{copy.noTransactions}</p>
               ) : (
                 <div className="space-y-3">
-                  {transactions.map((tx) => {
+                  {walletActivities.map((activity) => {
+                    if (activity.kind === 'withdrawal') {
+                      const withdrawal = activity.withdrawal;
+                      const statusInfo = {
+                        pending: { label: copy.withdrawalPending, color: 'text-yellow-400' },
+                        processing: { label: copy.withdrawalProcessing, color: 'text-blue-400' },
+                        completed: { label: copy.withdrawalCompleted, color: 'text-red-400' },
+                        rejected: { label: copy.withdrawalRejected, color: 'text-muted-foreground' },
+                      }[withdrawal.status];
+                      const isCompleted = withdrawal.status === 'completed';
+                      const isRejected = withdrawal.status === 'rejected';
+                      return (
+                        <div key={activity.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+                          <div className="flex items-center gap-3 min-w-0">
+                            {isCompleted ? (
+                              <ArrowDownCircle className="h-5 w-5 text-red-500 shrink-0" />
+                            ) : isRejected ? (
+                              <AlertTriangle className="h-5 w-5 text-zinc-500 shrink-0" />
+                            ) : (
+                              <Clock className="h-5 w-5 text-yellow-500 shrink-0" />
+                            )}
+                            <div className="min-w-0">
+                              <p className={`font-medium text-sm ${statusInfo.color}`}>{statusInfo.label}</p>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {copy.withdrawAmount}: {formatVND(withdrawal.amount_requested)} · {copy.fee5}: {formatVND(withdrawal.fee)} · {copy.netAmount}: {formatVND(withdrawal.amount_net)}
+                              </p>
+                              {isRejected && withdrawal.rejection_reason && (
+                                <p className="text-xs text-red-400 truncate">{withdrawal.rejection_reason}</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0 pl-3">
+                            <p className={`font-semibold text-sm ${isCompleted ? 'text-red-500' : isRejected ? 'text-muted-foreground' : 'text-yellow-500'}`}>
+                              {isCompleted ? '-' : ''}{formatVND(withdrawal.amount_requested)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(activity.createdAt).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    const tx = activity.transaction;
                     const typeInfo = txTypeLabels[tx.type] || { label: tx.type, color: 'text-muted-foreground' };
                     const isPositive = tx.amount > 0;
                     return (
-                      <div key={tx.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+                      <div key={activity.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
                         <div className="flex items-center gap-3">
                           {isPositive ? (
                             <ArrowUpCircle className="h-5 w-5 text-green-500" />

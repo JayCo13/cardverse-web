@@ -187,6 +187,54 @@ export async function sendKYCSubmittedToAdmin(fullName: string, userEmail: strin
     }
 }
 
+export async function sendWithdrawalSubmittedToAdmin(input: {
+    sellerName: string;
+    sellerEmail: string;
+    amountRequested: number;
+    fee: number;
+    amountNet: number;
+    bankName: string;
+    bankAccountNumber: string;
+    adminEmails: string[];
+}) {
+    try {
+        if (input.adminEmails.length === 0) {
+            console.warn('[Mail] No admin recipients configured for withdrawal notification');
+            return;
+        }
+
+        const transporter = createMailTransporter();
+        const from = getFromAddress();
+        const formatVND = (amount: number) => `${new Intl.NumberFormat('vi-VN').format(amount)}đ`;
+        const adminUrl = process.env.NEXT_PUBLIC_ADMIN_URL || 'http://localhost:3001';
+
+        await transporter.sendMail({
+            from,
+            to: from,
+            bcc: input.adminEmails,
+            subject: `💸 Yêu cầu rút tiền mới: ${formatVND(input.amountRequested)} — ${input.sellerName}`,
+            html: buildTemplate(
+                '💸 Yêu cầu rút tiền mới cần xử lý',
+                `<p style="color:#e4e4e7;">Seller vừa gửi một yêu cầu rút tiền đang chờ admin chuyển khoản:</p>
+                <div style="background:rgba(249,115,22,0.1); border:1px solid rgba(249,115,22,0.2); border-radius:8px; padding:16px; margin:20px 0;">
+                    <p style="margin:0 0 8px; color:#fb923c;"><strong>Seller:</strong> ${input.sellerName} (${input.sellerEmail})</p>
+                    <p style="margin:0 0 8px; color:#e4e4e7;"><strong>Yêu cầu:</strong> ${formatVND(input.amountRequested)}</p>
+                    <p style="margin:0 0 8px; color:#a1a1aa;"><strong>Phí 5%:</strong> ${formatVND(input.fee)}</p>
+                    <p style="margin:0 0 8px; color:#4ade80;"><strong>Thực chuyển:</strong> ${formatVND(input.amountNet)}</p>
+                    <p style="margin:0; color:#a1a1aa;"><strong>Tài khoản:</strong> ${input.bankName} ••••${input.bankAccountNumber.slice(-4)}</p>
+                </div>
+                <p>Số tiền hiện đang được tạm giữ và chưa được ghi nhận là đã rút.</p>
+                <div style="text-align:center; margin:24px 0;">
+                    <a href="${adminUrl}/withdrawals" style="display:inline-block; background:#f97316; color:#fff; padding:12px 32px; border-radius:8px; text-decoration:none; font-weight:600; font-size:14px;">Xử lý yêu cầu →</a>
+                </div>`,
+            ),
+        });
+        console.log(`[Mail] Withdrawal notification sent to ${input.adminEmails.length} admin(s)`);
+    } catch (error) {
+        console.error('[Mail] Failed to send withdrawal admin email:', error);
+    }
+}
+
 export async function sendKYCApproved(userEmail: string, fullName: string) {
     try {
         const transporter = createMailTransporter();

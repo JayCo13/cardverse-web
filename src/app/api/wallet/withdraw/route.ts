@@ -1,14 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
+import { getAdminNotificationEmails } from '@/lib/admin-recipients';
+import { sendWithdrawalSubmittedToAdmin } from '@/lib/mail';
 
-const WITHDRAW_FEE_RATE = 0.05; // 5% platform fee, deducted from the amount.
-const MIN_WITHDRAW = 50000;     // 50,000đ minimum per withdrawal.
+const MIN_WITHDRAW = 50000;
 
-// POST: seller requests a withdrawal. The wallet is debited immediately and a
-// pending wallet_withdrawals row is created for an admin to pay out manually.
-// The destination bank account is taken from the seller's KYC record, never the
-// client — a withdrawal can only go to the KYC-registered account.
+type WithdrawalResult = {
+    ok?: boolean;
+    error?: string;
+    available?: number;
+    withdrawal_id?: string;
+    status?: string;
+    amount_requested?: number;
+    fee?: number;
+    amount_net?: number;
+    available_balance?: number;
+    held_balance?: number;
+};
+
+const ERROR_MESSAGES: Record<string, string> = {
+    amount_too_low: `Số tiền rút tối thiểu là ${MIN_WITHDRAW.toLocaleString('vi-VN')}đ.`,
+    not_a_seller: 'Chỉ người bán đã được duyệt KYC mới có thể rút tiền.',
+    missing_bank: 'Thiếu thông tin tài khoản ngân hàng KYC. Vui lòng cập nhật hồ sơ KYC.',
+    insufficient_balance: 'Số dư khả dụng không đủ để rút.',
+    wallet_not_found: 'Không tìm thấy ví.',
+};
+
+// Reserve a seller's funds while an admin reviews the payout. The atomic RPC
+// moves available -> held and snapshots the approved KYC bank account; no
+// negative wallet transaction is recorded until the admin confirms transfer.
 export async function POST(request: NextRequest) {
     try {
         const supabase = await createServerSupabaseClient();
@@ -18,149 +39,72 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Must be an approved seller (KYC) to withdraw.
-        const { data: verification } = await supabase
-            .from('seller_verifications')
-            .select('status, bank_name, bank_account_number, bank_account_name')
-            .eq('user_id', user.id)
-            .single();
-
-        const kyc = verification as {
-            status: string;
-            bank_name: string;
-            bank_account_number: string;
-            bank_account_name: string;
-        } | null;
-
-        if (!kyc || kyc.status !== 'approved') {
-            return NextResponse.json(
-                { error: 'Chỉ người bán đã được duyệt KYC mới có thể rút tiền.', code: 'not_a_seller' },
-                { status: 403 },
-            );
-        }
-
-        if (!kyc.bank_name || !kyc.bank_account_number || !kyc.bank_account_name) {
-            return NextResponse.json(
-                { error: 'Thiếu thông tin tài khoản ngân hàng KYC. Vui lòng cập nhật hồ sơ KYC.', code: 'missing_bank' },
-                { status: 400 },
-            );
-        }
-
         const amount = Math.floor(Number((await request.json()).amount));
         if (!Number.isFinite(amount) || amount < MIN_WITHDRAW) {
             return NextResponse.json(
-                { error: `Số tiền rút tối thiểu là ${MIN_WITHDRAW.toLocaleString('vi-VN')}đ.`, code: 'amount_too_low' },
+                { error: ERROR_MESSAGES.amount_too_low, code: 'amount_too_low' },
                 { status: 400 },
             );
         }
 
-        // Use the service-role client for all money mutations so the debit and
-        // the request row are server-trusted (not bypassable via PostgREST).
         const service = createServiceSupabaseClient();
+        const { data, error } = await service.rpc('request_wallet_withdrawal' as never, {
+            p_user_id: user.id,
+            p_amount: amount,
+        } as never);
 
-        const { data: wallet, error: walletError } = await service
-            .from('wallets')
-            .select('id, available_balance, total_withdrawn')
-            .eq('user_id', user.id)
-            .single();
+        if (error) throw error;
 
-        const walletRow = wallet as { id: string; available_balance: number; total_withdrawn: number } | null;
-
-        if (walletError || !walletRow) {
-            return NextResponse.json({ error: 'Không tìm thấy ví.' }, { status: 400 });
+        const result = data as WithdrawalResult | null;
+        if (!result?.ok) {
+            const code = result?.error || 'withdrawal_failed';
+            const status = code === 'not_a_seller' ? 403 : code === 'insufficient_balance' ? 409 : 400;
+            return NextResponse.json({
+                error: ERROR_MESSAGES[code] || 'Không thể tạo yêu cầu rút tiền.',
+                code,
+                ...(typeof result?.available === 'number' ? { available: result.available } : {}),
+            }, { status });
         }
 
-        if (walletRow.available_balance < amount) {
-            return NextResponse.json(
-                { error: 'Số dư khả dụng không đủ để rút.', code: 'insufficient_balance', available: walletRow.available_balance },
-                { status: 400 },
-            );
-        }
+        // The withdrawal table itself drives realtime admin badges. Email is
+        // awaited as best-effort so a serverless response cannot terminate the
+        // SMTP delivery early.
+        if (result.withdrawal_id) {
+            const [{ data: profile }, { data: withdrawal }, adminEmails] = await Promise.all([
+                service.from('profiles').select('display_name, email').eq('id', user.id).maybeSingle(),
+                service
+                    .from('wallet_withdrawals')
+                    .select('bank_name, bank_account_number')
+                    .eq('id', result.withdrawal_id)
+                    .single(),
+                getAdminNotificationEmails(),
+            ]);
 
-        const fee = Math.round(amount * WITHDRAW_FEE_RATE);
-        const amountNet = amount - fee;
-        const newBalance = walletRow.available_balance - amount;
-
-        // Debit the wallet (guard on the balance we just read to avoid a race).
-        const { data: debited, error: debitError } = await service
-            .from('wallets')
-            .update({
-                available_balance: newBalance,
-                total_withdrawn: (walletRow.total_withdrawn || 0) + amount,
-                updated_at: new Date().toISOString(),
-            } as never)
-            .eq('user_id', user.id)
-            .eq('available_balance', walletRow.available_balance)
-            .select('id')
-            .maybeSingle();
-
-        if (debitError || !debited) {
-            return NextResponse.json(
-                { error: 'Số dư vừa thay đổi, vui lòng thử lại.', code: 'balance_changed' },
-                { status: 409 },
-            );
-        }
-
-        // Record the ledger entries: net withdrawal + the platform fee.
-        await service.from('wallet_transactions').insert([
-            {
-                wallet_id: walletRow.id,
-                user_id: user.id,
-                type: 'withdrawal',
-                amount: -amountNet,
-                // Ledger rows describe the running balance: deduct the net
-                // transfer first, then the platform fee in the next row.
-                balance_after: newBalance + fee,
-                description: `Rút tiền về ${kyc.bank_name} ****${kyc.bank_account_number.slice(-4)}`,
-            },
-            {
-                wallet_id: walletRow.id,
-                user_id: user.id,
-                type: 'platform_fee',
-                amount: -fee,
-                balance_after: newBalance,
-                description: 'Phí rút tiền 5%',
-            },
-        ] as never);
-
-        // Create the withdrawal request with the KYC bank snapshot.
-        const { data: withdrawal, error: withdrawalError } = await service
-            .from('wallet_withdrawals')
-            .insert({
-                user_id: user.id,
-                amount_requested: amount,
-                fee,
-                amount_net: amountNet,
-                bank_name: kyc.bank_name,
-                bank_account_number: kyc.bank_account_number,
-                bank_account_name: kyc.bank_account_name,
-                status: 'pending',
-            } as never)
-            .select('id')
-            .single();
-
-        if (withdrawalError || !withdrawal) {
-            // Roll the wallet back if we couldn't record the request.
-            await service
-                .from('wallets')
-                .update({
-                    available_balance: walletRow.available_balance,
-                    total_withdrawn: walletRow.total_withdrawn || 0,
-                    updated_at: new Date().toISOString(),
-                } as never)
-                .eq('user_id', user.id);
-            throw (withdrawalError || new Error('Could not create withdrawal request'));
+            await sendWithdrawalSubmittedToAdmin({
+                sellerName: profile?.display_name || profile?.email || user.email || 'Seller CardVerse',
+                sellerEmail: profile?.email || user.email || '',
+                amountRequested: result.amount_requested || amount,
+                fee: result.fee || 0,
+                amountNet: result.amount_net || amount,
+                bankName: withdrawal?.bank_name || 'Ngân hàng KYC',
+                bankAccountNumber: withdrawal?.bank_account_number || '',
+                adminEmails,
+            });
         }
 
         return NextResponse.json({
             success: true,
-            withdrawal_id: (withdrawal as { id: string }).id,
-            amount_requested: amount,
-            fee,
-            amount_net: amountNet,
+            withdrawal_id: result.withdrawal_id,
+            status: result.status,
+            amount_requested: result.amount_requested,
+            fee: result.fee,
+            amount_net: result.amount_net,
+            available_balance: result.available_balance,
+            held_balance: result.held_balance,
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Internal server error';
         console.error('Wallet withdraw error:', error);
-        return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }

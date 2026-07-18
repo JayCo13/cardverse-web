@@ -4,21 +4,13 @@ import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { sendKYCSubmittedToUser, sendKYCSubmittedToAdmin } from '@/lib/mail';
 import { normalizeVietnameseName } from '@/lib/kyc-verification';
 import { findKycDuplicates } from '@/lib/kyc-duplicate';
+import { getAdminNotificationEmails } from '@/lib/admin-recipients';
 
-// Admins are flagged via profiles.is_tester = true. Uses the service-role client
-// so RLS doesn't hide other users' emails.
-async function getAdminEmails(): Promise<string[]> {
-    try {
-        const service = createServiceSupabaseClient();
-        const { data } = await service
-            .from('profiles')
-            .select('email')
-            .eq('is_tester', true) as { data: { email: string | null }[] | null };
-        return (data ?? []).map(a => a.email).filter((e): e is string => !!e);
-    } catch (err) {
-        console.error('[KYC] Failed to load admin emails:', err);
-        return [];
-    }
+async function sendSubmissionNotifications(userEmail: string, fullName: string) {
+    const adminEmails = await getAdminNotificationEmails();
+    const deliveries: Promise<void>[] = [sendKYCSubmittedToAdmin(fullName, userEmail, adminEmails)];
+    if (userEmail) deliveries.push(sendKYCSubmittedToUser(userEmail, fullName));
+    await Promise.allSettled(deliveries);
 }
 
 // POST: Submit KYC verification request
@@ -149,11 +141,11 @@ export async function POST(request: NextRequest) {
                 .update({ used_at: new Date().toISOString() } as never)
                 .eq('id', scan.id);
 
-            // Send email notifications (async, don't block response)
+            // Await best-effort delivery so serverless execution is not torn
+            // down before Nodemailer finishes. Mail helpers log and swallow
+            // delivery failures, so KYC persistence remains successful.
             const userEmail = user.email || '';
-            const adminEmails = await getAdminEmails();
-            sendKYCSubmittedToUser(userEmail, full_name);
-            sendKYCSubmittedToAdmin(full_name, userEmail, adminEmails);
+            await sendSubmissionNotifications(userEmail, full_name);
 
             return NextResponse.json({ success: true, message: 'Verification resubmitted' });
         }
@@ -185,11 +177,9 @@ export async function POST(request: NextRequest) {
             .update({ used_at: new Date().toISOString() } as never)
             .eq('id', scan.id);
 
-        // Send email notifications (async, don't block response)
+        // Send and await best-effort email notifications.
         const userEmail = user.email || '';
-        const adminEmails = await getAdminEmails();
-        sendKYCSubmittedToUser(userEmail, full_name);
-        sendKYCSubmittedToAdmin(full_name, userEmail, adminEmails);
+        await sendSubmissionNotifications(userEmail, full_name);
 
         return NextResponse.json({ success: true, message: 'Verification submitted' });
     } catch (error: any) {
