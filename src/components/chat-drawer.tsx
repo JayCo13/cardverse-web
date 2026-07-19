@@ -126,6 +126,10 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             offerPriceLabel: "Giá đề nghị",
             offerRejectedMsg: "Đề nghị {price} đã bị từ chối. Người mua có thể gửi offer mới với mức giá cao hơn.",
             offerAcceptedMsg: "Đề nghị {price} đã được chấp nhận. Vào checkout để thanh toán trực tiếp trên CardVerse.",
+            offerAcceptedMsgSeller: "Bạn đã chấp nhận đề nghị {price}. Đang chờ người mua vào checkout thanh toán.",
+            offerAcceptedToast: "Đã chấp nhận đề nghị",
+            offerAcceptedToastDesc: "Người mua sẽ được thông báo để thanh toán.",
+            goCheckout: "Vào checkout",
             safetyWarningMsg: "⚠️ CardVerse phát hiện nội dung có thể đưa giao dịch ra ngoài nền tảng. Để tránh scam, hãy trao đổi và thanh toán trực tiếp trên CardVerse.",
             payNow: "Thanh toán ngay",
             loadingMessages: "Đang tải tin nhắn...",
@@ -184,6 +188,10 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 offerPriceLabel: "提案価格",
                 offerRejectedMsg: "{price} のオファーは拒否されました。購入者はより高い金額で再提案できます。",
                 offerAcceptedMsg: "{price} のオファーが承認されました。チェックアウトでCardVerse上の支払いを完了してください。",
+                offerAcceptedMsgSeller: "{price} のオファーを承認しました。購入者の支払いをお待ちください。",
+                offerAcceptedToast: "オファーを承認しました",
+                offerAcceptedToastDesc: "購入者に支払いの通知が送られます。",
+                goCheckout: "チェックアウトへ",
                 safetyWarningMsg: "⚠️ 取引を外部に移す可能性のある内容を検出しました。詐欺防止のため、やり取りと支払いはCardVerse上で行ってください。",
                 payNow: "今すぐ支払う",
                 loadingMessages: "メッセージを読み込み中...",
@@ -241,6 +249,10 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 offerPriceLabel: "Offer price",
                 offerRejectedMsg: "The {price} offer was declined. The buyer can send a new, higher offer.",
                 offerAcceptedMsg: "The {price} offer was accepted. Go to checkout to pay directly on CardVerse.",
+                offerAcceptedMsgSeller: "You accepted the {price} offer. Waiting for the buyer to check out.",
+                offerAcceptedToast: "Offer accepted",
+                offerAcceptedToastDesc: "The buyer will be notified to pay.",
+                goCheckout: "Go to checkout",
                 safetyWarningMsg: "⚠️ CardVerse detected content that may move the deal off-platform. Keep communication and payment on CardVerse to avoid scams.",
                 payNow: "Pay now",
                 loadingMessages: "Loading messages...",
@@ -388,9 +400,10 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 return;
             }
             await fetchOffer();
-            if (payload.checkoutUrl) {
-                router.push(payload.checkoutUrl);
-            }
+            // The seller accepts; checkout is the BUYER's step. Never redirect the
+            // seller to /checkout (they'd hit "offer forbidden"). Just confirm —
+            // the buyer is notified + gets a checkout button on the system message.
+            toast({ title: copy.offerAcceptedToast, description: copy.offerAcceptedToastDesc });
         } catch {
             toast({ variant: "destructive", title: copy.error, description: copy.acceptOfferFailed });
         } finally {
@@ -933,15 +946,28 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                         // Render server-generated system messages in the viewer's language
                                                         // (neutral wording works for both buyer and seller); fall back to
                                                         // the stored body for older messages without a `kind`.
-                                                        const meta = (message.metadata || {}) as { kind?: string; price?: number };
+                                                        const meta = (message.metadata || {}) as { kind?: string; price?: number; checkoutUrl?: string };
+                                                        // Role-aware wording: `mine` = the viewer sent it. An offer_accepted
+                                                        // message is sent by the SELLER, so `mine` here means "I'm the seller".
                                                         const systemBody = meta.kind === "offer_rejected" && typeof meta.price === "number"
                                                             ? copy.offerRejectedMsg.replace("{price}", formatVND(meta.price))
                                                             : meta.kind === "offer_accepted" && typeof meta.price === "number"
-                                                                ? copy.offerAcceptedMsg.replace("{price}", formatVND(meta.price))
+                                                                ? (mine ? copy.offerAcceptedMsgSeller : copy.offerAcceptedMsg).replace("{price}", formatVND(meta.price))
                                                                 : message.body;
+                                                        // Checkout is the BUYER's action only.
+                                                        const showCheckout = meta.kind === "offer_accepted" && !mine && typeof meta.checkoutUrl === "string";
                                                         return (
                                                             <div key={message.id} className="mx-auto max-w-xl rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-100">
                                                                 {systemBody}
+                                                                {showCheckout && (
+                                                                    <Button
+                                                                        size="sm"
+                                                                        className="mt-2 h-8 w-full bg-orange-500 text-white hover:bg-orange-600"
+                                                                        onClick={() => router.push(meta.checkoutUrl as string)}
+                                                                    >
+                                                                        {copy.goCheckout}
+                                                                    </Button>
+                                                                )}
                                                                 <p className="mt-1 text-[10px] text-muted-foreground">
                                                                     {formatDistanceToNow(new Date(message.created_at), { addSuffix: true, locale: dateLocale })}
                                                                 </p>
