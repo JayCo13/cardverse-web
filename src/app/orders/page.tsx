@@ -17,7 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useLocalization } from '@/context/localization-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { SHIPPING_CARRIERS, getTrackingUrl, getCarrier, getDeliveryDays } from '@/lib/shipping-carriers';
+import { SHIPPING_CARRIERS, getTrackingUrl, getCarrier } from '@/lib/shipping-carriers';
 import Image from 'next/image';
 
 type Order = {
@@ -116,7 +116,7 @@ export default function OrdersPage() {
         shipExpired: '発送期限切れ — 自動キャンセル・返金されます。',
         trackGHN: 'Track GHN',
         received: 'Received item',
-        dispute: 'Dispute',
+        dispute: '管理者に報告',
         seller: 'Seller',
         buyer: 'Buyer',
         noCard: 'Unknown card',
@@ -180,7 +180,7 @@ export default function OrdersPage() {
           shipExpired: 'Quá hạn giao hàng — đơn sẽ tự huỷ & hoàn tiền.',
           trackGHN: 'Theo dõi GHN',
           received: 'Đã nhận hàng',
-          dispute: 'Khiếu nại',
+          dispute: 'Báo cáo admin',
           seller: 'Người bán',
           buyer: 'Người mua',
           noCard: 'Thẻ không xác định',
@@ -243,7 +243,7 @@ export default function OrdersPage() {
           shipExpired: 'Overdue — the order will auto-cancel and refund.',
           trackGHN: 'Track GHN',
           received: 'Item received',
-          dispute: 'Dispute',
+          dispute: 'Report to admin',
           seller: 'Seller',
           buyer: 'Buyer',
           noCard: 'Unknown card',
@@ -530,31 +530,6 @@ export default function OrdersPage() {
                     {copy.shipOrder}
                   </Button>
                 )}
-
-                {/* Seller: confirm delivered on a lazy buyer's behalf, only after
-                    est. delivery + 3 days from ship time (part 4) */}
-                {!isBuyer && ['shipping', 'delivered'].includes(order.status) && (() => {
-                  const maxDays = getDeliveryDays(order.metadata?.shipping_carrier || order.shipping_provider)?.max ?? 5;
-                  const shippedAt = order.auto_complete_at ? new Date(order.auto_complete_at).getTime() - 72 * 3600 * 1000 : new Date(order.updated_at).getTime();
-                  const canConfirm = nowTs >= shippedAt + (maxDays + 3) * 24 * 3600 * 1000;
-                  if (!canConfirm) return null;
-                  return (
-                    <Button
-                      size="sm"
-                      className="bg-green-600 hover:bg-green-700"
-                      disabled={actionLoading === order.id}
-                      onClick={() => setConfirmAction({
-                        orderId: order.id,
-                        action: 'confirm_received',
-                        title: locale === 'ja-JP' ? '配達完了を確認しますか？' : locale === 'en-US' ? 'Confirm delivered?' : 'Xác nhận đã giao thành công?',
-                        message: locale === 'ja-JP' ? '購入者が受け取ったことを確認できる場合のみ実行してください。' : locale === 'en-US' ? 'Only confirm if you are sure the buyer received the item.' : 'Chỉ xác nhận khi bạn chắc chắn người mua đã nhận hàng.',
-                      })}
-                    >
-                      <CheckCircle className="h-3 w-3 mr-1" />
-                      {locale === 'ja-JP' ? '配達完了' : locale === 'en-US' ? 'Delivered' : 'Đã giao thành công'}
-                    </Button>
-                  );
-                })()}
 
                 {/* Track on GHN */}
                 {order.ghn_order_code && ['shipping', 'delivered'].includes(order.status) && (

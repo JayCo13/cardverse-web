@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useLocalization } from '@/context/localization-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Upload, ShieldAlert, X, Loader2, Info, HandCoins, Plus, Trash2, Layers, MapPin } from 'lucide-react';
+import { Upload, ShieldAlert, X, Loader2, Info, HandCoins, Plus, Trash2, Layers, MapPin, Sparkles } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useSupabase, useUser } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
@@ -699,6 +699,49 @@ export default function CreateListingPage() {
   const acceptOffers = form.watch('acceptOffers');
   const watchedPrice = form.watch('price');
   const isBundle = form.watch('isBundle');
+
+  // AI description generator: build an English description from the fields the
+  // seller has already filled in.
+  const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
+  const handleGenerateDescription = async () => {
+    const v = form.getValues();
+    setIsGeneratingDesc(true);
+    try {
+      const res = await fetch('/api/ai/generate-description', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: v.name,
+          category: v.category,
+          publisher: v.publisher || v.freePublisher,
+          setName: v.setName || v.freeSetName,
+          season: v.season || v.freeSeason,
+          condition: v.condition,
+          cardNumber: v.cardNumber,
+          language: v.language,
+          gradingCompany: v.gradingCompany,
+          grade: v.grade,
+          finish: v.finish,
+          isBundle: v.isBundle,
+          quantity: v.quantity,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || data.error || 'AI failed');
+      form.setValue('description', data.description, { shouldValidate: true, shouldDirty: true });
+      toast({ title: locale === 'vi-VN' ? 'Đã tạo mô tả bằng AI' : locale === 'ja-JP' ? 'AIが説明を生成しました' : 'AI description generated' });
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: locale === 'vi-VN' ? 'Không tạo được mô tả' : locale === 'ja-JP' ? '説明を生成できません' : 'Could not generate description',
+        description: err?.message === 'no_facts'
+          ? (locale === 'vi-VN' ? 'Vui lòng điền thông tin thẻ trước.' : locale === 'ja-JP' ? '先にカード情報を入力してください。' : 'Fill in the card details first.')
+          : (locale === 'vi-VN' ? 'Vui lòng thử lại.' : locale === 'ja-JP' ? 'もう一度お試しください。' : 'Please try again.'),
+      });
+    } finally {
+      setIsGeneratingDesc(false);
+    }
+  };
 
   // Bundle items state (managed outside react-hook-form for flexibility)
   const [bundleItems, setBundleItems] = useState<BundleItem[]>([
@@ -2303,10 +2346,30 @@ export default function CreateListingPage() {
             name="description"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className='text-lg font-semibold'>{t('description_label')}</FormLabel>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <FormLabel className='text-lg font-semibold'>{t('description_label')}</FormLabel>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleGenerateDescription}
+                    disabled={isGeneratingDesc}
+                    className="gap-1.5 border-orange-500/40 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20"
+                  >
+                    {isGeneratingDesc ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                    {locale === 'vi-VN' ? 'Tạo bằng AI' : locale === 'ja-JP' ? 'AIで生成' : 'Generate with AI'}
+                  </Button>
+                </div>
                 <FormControl>
                   <Textarea placeholder={t('description_placeholder')} rows={6} {...field} />
                 </FormControl>
+                <p className="text-xs text-muted-foreground">
+                  {locale === 'vi-VN'
+                    ? 'AI sẽ tạo mô tả tiếng Anh dựa trên thông tin thẻ bạn đã nhập.'
+                    : locale === 'ja-JP'
+                      ? 'AIが入力済みのカード情報から英語の説明を生成します。'
+                      : 'AI writes an English description from the card details above.'}
+                </p>
                 <div className="flex items-center justify-between">
                   <FormMessage />
                   <span className={`ml-auto text-xs ${(field.value?.length || 0) < 300 ? 'text-muted-foreground' : 'text-green-500'}`}>

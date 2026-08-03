@@ -623,18 +623,22 @@ export default function CardDetailsPage() {
             .from("cards")
             .select("*, profiles:seller_id(display_name, profile_image_url, seller_verified, seller_rating, seller_review_count)")
             .eq("listing_type", "sale")
+            .eq("status", "active")
             .neq("id", baseCard.id)
-            .limit(12);
+            .limit(24);
 
         if (!data) return;
 
         const mapped = (data as any[]).map(mapCard);
-        const closest = mapped.filter(item =>
+        const isClosest = (item: Card) =>
             item.category === baseCard.category ||
             item.publisher === baseCard.publisher ||
-            item.setName === baseCard.setName
-        );
-        setRelatedCards(closest.length > 0 ? closest : mapped);
+            item.setName === baseCard.setName;
+        // Show the most relevant first, then backfill with any other active
+        // listings so the rail always renders 5 cards (when 5 exist at all).
+        const closest = mapped.filter(isClosest);
+        const rest = mapped.filter(item => !isClosest(item));
+        setRelatedCards([...closest, ...rest].slice(0, 15));
     }, [supabase]);
 
     const fetchCard = useCallback(async () => {
@@ -661,6 +665,12 @@ export default function CardDetailsPage() {
 
             if (data && !error) {
                 const mapped = mapCard(data);
+                // Sold cards are no longer shown individually — send viewers to the
+                // aggregated sold-cards page (sale price + accepted-offer price).
+                if (mapped.status === "sold") {
+                    router.replace("/sold");
+                    return;
+                }
                 setCard(mapped);
                 setSeller((data as any).profiles || null);
                 setActiveImage(mapped.imageUrl || mapped.imageUrls?.[0] || "");
@@ -676,7 +686,7 @@ export default function CardDetailsPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [cardId, fetchRelatedCards, supabase]);
+    }, [cardId, fetchRelatedCards, supabase, router]);
 
     const fetchOffers = useCallback(async () => {
         const { data } = await supabase

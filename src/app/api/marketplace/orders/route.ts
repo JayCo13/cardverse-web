@@ -4,6 +4,7 @@ import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { cancelOrder as cancelGHNOrder } from '@/lib/ghn';
 import { getCarrier, getTrackingUrl, getDeliveryDays } from '@/lib/shipping-carriers';
 import { sendOrderShippedEmail } from '@/lib/mail';
+import { expireUnshippedPaidOrders } from '@/lib/expire-orders';
 
 // GET: Fetch orders for current user
 export async function GET(request: NextRequest) {
@@ -19,6 +20,15 @@ export async function GET(request: NextRequest) {
         // confirmation window lapsed. A seller checking their orders triggers
         // their own payout (same pattern as release_expired_card_reservations).
         await supabase.rpc('complete_delivered_orders' as never);
+
+        // Self-healing: auto-cancel PAID orders the seller never shipped in time
+        // (relist the card + refund the buyer), so overdue orders resolve even
+        // without an external scheduler. Best-effort — never block the listing.
+        try {
+            await expireUnshippedPaidOrders(createServiceSupabaseClient());
+        } catch (e) {
+            console.error('expireUnshippedPaidOrders failed:', e);
+        }
 
         const { searchParams } = new URL(request.url);
         const role = searchParams.get('role') || 'buyer'; // 'buyer' | 'seller'
@@ -127,13 +137,17 @@ export async function PATCH(request: NextRequest) {
                     }, { status: 409 });
                 }
 
+                // Escalation deadline = est. max delivery + 3-day buffer from now.
+                // If the buyer hasn't confirmed by then, the order escalates to
+                // admin review (it is NOT auto-paid to the seller).
+                const estMaxDays = getDeliveryDays(carrierCode)?.max ?? 5;
                 const { error: updateError } = await supabase
                     .from('orders')
                     .update({
                         status: 'shipping',
                         tracking_number: trackingNo || null,
                         shipping_provider: carrierCode,
-                        auto_complete_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+                        auto_complete_at: new Date(Date.now() + (estMaxDays + 3) * 24 * 60 * 60 * 1000).toISOString(),
                         updated_at: new Date().toISOString(),
                     } as never)
                     .eq('id', order_id);
@@ -186,25 +200,10 @@ export async function PATCH(request: NextRequest) {
             }
 
             case 'confirm_received': {
+                // Only the buyer can confirm receipt. If the buyer stays silent,
+                // the order escalates to admin review (never auto-pays the seller).
                 if (order.buyer_id !== user.id) {
-                    // The seller may confirm on a lazy buyer's behalf, but only
-                    // after enough time for delivery has passed (est. max delivery
-                    // + 3-day buffer from ship time) so they can't mark it early.
-                    if (order.seller_id === user.id) {
-                        const maxDays = getDeliveryDays(order.shipping_provider)?.max ?? 5;
-                        const shippedAt = order.auto_complete_at
-                            ? new Date(order.auto_complete_at).getTime() - 72 * 60 * 60 * 1000
-                            : new Date(order.updated_at).getTime();
-                        const allowedAt = shippedAt + (maxDays + 3) * 24 * 60 * 60 * 1000;
-                        if (Date.now() < allowedAt) {
-                            return NextResponse.json({
-                                error: 'Chưa đủ thời gian để người bán xác nhận đã giao. Vui lòng chờ hết thời gian giao dự kiến.',
-                                code: 'too_early',
-                            }, { status: 400 });
-                        }
-                    } else {
-                        return NextResponse.json({ error: 'Only buyer or seller can confirm' }, { status: 403 });
-                    }
+                    return NextResponse.json({ error: 'Only buyer can confirm' }, { status: 403 });
                 }
                 if (!['shipping', 'delivered'].includes(order.status)) {
                     return NextResponse.json({ error: 'Order must be shipping/delivered to confirm' }, { status: 400 });

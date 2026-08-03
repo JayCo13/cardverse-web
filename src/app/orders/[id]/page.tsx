@@ -81,17 +81,11 @@ export default function OrderDetailsPage() {
 
   // Shipping timing (from carrier pickup → delivery estimate).
   const estDays = order ? getDeliveryDays(order.metadata?.shipping_carrier || order.shipping_provider) : null;
-  const shippedAt = order?.auto_complete_at
-    ? new Date(order.auto_complete_at).getTime() - 72 * 60 * 60 * 1000
-    : order?.status === 'shipping' || order?.status === 'delivered'
-      ? new Date(order.updated_at).getTime()
-      : null;
-  const estMax = estDays?.max ?? 5;
-  // Seller may confirm-received only after est. max delivery + 3-day buffer.
-  const sellerConfirmAt = shippedAt != null ? shippedAt + (estMax + 3) * 24 * 60 * 60 * 1000 : null;
-  const sellerCanConfirm = sellerConfirmAt != null && nowTs >= sellerConfirmAt;
-  // Buyer nudge: past est. max delivery + 2 days and still not confirmed.
-  const buyerShouldConfirm = shippedAt != null && nowTs >= shippedAt + (estMax + 2) * 24 * 60 * 60 * 1000;
+  // The order escalates to admin review at auto_complete_at if the buyer never
+  // confirms (money is held, not paid to the seller). Nudge the buyer as that
+  // deadline approaches (within the last 2 days).
+  const escalateAt = order?.auto_complete_at ? new Date(order.auto_complete_at).getTime() : null;
+  const buyerShouldConfirm = escalateAt != null && nowTs >= escalateAt - 2 * 24 * 60 * 60 * 1000;
 
   // Actions + confirm dialog.
   const [acting, setActing] = useState(false);
@@ -274,9 +268,9 @@ export default function OrderDetailsPage() {
               <div className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>{tx(
-                  'Đã quá thời gian giao dự kiến. Vui lòng xác nhận đã nhận hàng — nếu không cập nhật, bạn có thể bị trừ điểm uy tín.',
-                  'Past the estimated delivery time. Please confirm receipt — failing to update may cost you reputation.',
-                  '配達予定を過ぎています。受け取りを確認してください — 未更新は評価減点の対象になる場合があります。',
+                  'Đã quá thời gian giao dự kiến. Nếu đã nhận, hãy bấm "Đã nhận hàng". Nếu chưa nhận hoặc có vấn đề, hãy "Báo cáo admin". Nếu bạn không cập nhật, đơn sẽ tự động chuyển cho quản trị viên kiểm tra (tiền vẫn được giữ an toàn).',
+                  'Past the estimated delivery time. If it arrived, tap "Received". If not, "Report to admin". If you do nothing, the order is automatically escalated to an admin for review (your money stays safe).',
+                  '配達予定を過ぎています。届いた場合は「受け取り済み」、問題がある場合は「管理者に報告」を押してください。未対応の場合は自動的に管理者の確認に回されます（代金は安全に保持されます）。',
                 )}</span>
               </div>
             )}
@@ -292,7 +286,7 @@ export default function OrderDetailsPage() {
                   </Button>,
                 );
               }
-              // Buyer: confirm receipt.
+              // Buyer: confirm receipt, or report a problem to admin.
               if (isBuyer && (order.status === 'shipping' || order.status === 'delivered')) {
                 btns.push(
                   <Button key="confirm" className="flex-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => setConfirm({
@@ -302,23 +296,13 @@ export default function OrderDetailsPage() {
                   })}>
                     <CheckCircle className="mr-2 h-4 w-4" />{tx('Đã nhận hàng', 'Received', '受け取り済み')}
                   </Button>,
-                );
-              }
-              // Seller: confirm on buyer's behalf, only after est. delivery + 3 days.
-              if (!isBuyer && (order.status === 'shipping' || order.status === 'delivered')) {
-                btns.push(
-                  <Button
-                    key="seller-confirm"
-                    disabled={!sellerCanConfirm}
-                    variant={sellerCanConfirm ? 'default' : 'outline'}
-                    className={`flex-1 ${sellerCanConfirm ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
-                    onClick={() => setConfirm({
-                      action: 'confirm_received',
-                      title: tx('Xác nhận đã giao thành công?', 'Confirm delivered?', '配達完了を確認しますか？'),
-                      message: tx('Chỉ xác nhận khi bạn chắc chắn người mua đã nhận hàng. Tiền sẽ được ghi nhận hoàn tất.', 'Only confirm if you are sure the buyer received the item. The order will be completed.', '購入者が受け取ったことを確認できる場合のみ実行してください。'),
-                    })}
-                  >
-                    <CheckCircle className="mr-2 h-4 w-4" />{tx('Đã giao thành công', 'Delivered', '配達完了')}
+                  <Button key="report" variant="outline" className="flex-1 border-red-500/40 text-red-300 hover:bg-red-500/10" onClick={() => setConfirm({
+                    action: 'dispute',
+                    title: tx('Báo cáo cho quản trị viên?', 'Report to admin?', '管理者に報告しますか？'),
+                    message: tx('Dùng khi chưa nhận được hàng / hàng lỗi / giao trễ. Đơn sẽ được giữ và chuyển cho admin kiểm tra. Tiền của bạn vẫn được giữ an toàn.', 'Use this if the item has not arrived / is faulty / is late. The order is held and sent to an admin to review. Your money stays safe.', '未着・不良・遅延の場合に使用します。注文は保留され管理者が確認します。'),
+                    extra: { dispute_reason: tx('Người mua báo cáo (chưa nhận / lỗi / trễ)', 'Buyer reported (not received / faulty / late)', '購入者の報告（未着・不良・遅延）') },
+                  })}>
+                    <AlertTriangle className="mr-2 h-4 w-4" />{tx('Báo cáo admin', 'Report to admin', '管理者に報告')}
                   </Button>,
                 );
               }
@@ -326,11 +310,6 @@ export default function OrderDetailsPage() {
               return (
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-2">{btns}</div>
-                  {!isBuyer && (order.status === 'shipping' || order.status === 'delivered') && !sellerCanConfirm && sellerConfirmAt != null && (
-                    <p className="text-xs text-muted-foreground">
-                      {tx('Bạn có thể xác nhận đã giao sau', 'You can confirm delivery after', '配達確認が可能になるのは')} {dt(new Date(sellerConfirmAt).toISOString())}.
-                    </p>
-                  )}
                 </div>
               );
             })()}
