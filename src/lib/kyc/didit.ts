@@ -198,15 +198,32 @@ function normaliseIdentity(payload: Record<string, unknown>): KycIdentity {
 
 // ─── Provider ────────────────────────────────────────────────────────────────
 
+/**
+ * Must stay below the platform's function timeout (10s on Netlify by default).
+ * Otherwise a slow provider takes the whole function down and the caller gets
+ * an HTML 502 from the edge instead of a JSON error it can act on.
+ */
+const REQUEST_TIMEOUT_MS = 7_000;
+
 async function diditFetch(path: string, init: RequestInit) {
-    const response = await fetch(`${baseUrl()}${path}`, {
-        ...init,
-        headers: {
-            'x-api-key': apiKey(),
-            'Content-Type': 'application/json',
-            ...(init.headers || {}),
-        },
-    });
+    let response: Response;
+    try {
+        response = await fetch(`${baseUrl()}${path}`, {
+            ...init,
+            headers: {
+                'x-api-key': apiKey(),
+                'Content-Type': 'application/json',
+                ...(init.headers || {}),
+            },
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+    } catch (error) {
+        const name = (error as Error)?.name;
+        if (name === 'TimeoutError' || name === 'AbortError') {
+            throw new Error(`Didit ${path} timed out after ${REQUEST_TIMEOUT_MS}ms`);
+        }
+        throw new Error(`Didit ${path} unreachable: ${(error as Error)?.message || 'network error'}`);
+    }
 
     const text = await response.text();
     let body: unknown = null;
