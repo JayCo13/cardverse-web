@@ -6,6 +6,9 @@ import { getKycProvider } from '@/lib/kyc';
 /** Sessions a user may open per hour. Each one costs a provider credit. */
 const MAX_SESSIONS_PER_HOUR = 5;
 
+/** Marks a failure that happened after the provider session was already created. */
+class PersistenceError extends Error {}
+
 type KycSessionRow = {
     id: string;
     provider: string;
@@ -97,15 +100,33 @@ export async function POST(request: NextRequest) {
             .single() as { data: KycSessionRow | null; error: { message?: string } | null };
 
         if (insertError || !row) {
-            throw new Error(insertError?.message || 'Failed to persist KYC session');
+            // The provider session already exists at this point, so a failure
+            // here costs a verification credit. Almost always a missing table
+            // (migration not applied) or a bad service-role key.
+            throw new PersistenceError(insertError?.message || 'Failed to persist KYC session');
         }
 
         return NextResponse.json({ session: toClientShape(row), url: session.url });
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Internal server error';
-        console.error('[KYC] Create session failed:', message);
+
+        // Classify without leaking specifics. The operator needs to know which
+        // of the three things to go fix; the browser must not learn key names,
+        // provider responses, or database schema.
+        const code =
+            error instanceof PersistenceError ? 'persistence_error'
+                : /is not configured/.test(message) ? 'config_error'
+                    : 'provider_error';
+
+        const hint = {
+            config_error: 'Thiếu biến môi trường Didit trên server.',
+            provider_error: 'Nhà cung cấp xác minh từ chối yêu cầu.',
+            persistence_error: 'Không ghi được phiên vào cơ sở dữ liệu.',
+        }[code];
+
+        console.error(`[KYC] Create session failed (${code}):`, message);
         return NextResponse.json(
-            { error: 'Không thể khởi tạo phiên xác minh. Vui lòng thử lại sau.' },
+            { error: `Không thể khởi tạo phiên xác minh. ${hint}`, code },
             { status: 502 }
         );
     }

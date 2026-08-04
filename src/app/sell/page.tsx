@@ -80,6 +80,28 @@ type UploadedKycAssets = {
   bankJpgUrl: string | null;
 };
 
+/**
+ * Read a JSON API response without assuming the body is JSON.
+ *
+ * A 404, a proxy error page, or a redirect to HTML all arrive here as
+ * `<!DOCTYPE ...`, and calling res.json() on that throws a parse error that
+ * tells the user nothing. Surface the status instead, which is what actually
+ * identifies the problem.
+ */
+async function readJson(res: Response): Promise<Record<string, any>> {
+    const text = await res.text();
+    try {
+        return JSON.parse(text) as Record<string, any>;
+    } catch {
+        const isHtml = text.trimStart().startsWith('<');
+        throw new Error(
+            isHtml
+                ? `Máy chủ trả về trang lỗi (HTTP ${res.status}) thay vì dữ liệu. Endpoint có thể chưa được deploy.`
+                : `Phản hồi không hợp lệ từ máy chủ (HTTP ${res.status}).`
+        );
+    }
+}
+
 /** Bank as served by /api/banks (VietQR directory, lookup-capable only). */
 type Bank = {
   code: string;
@@ -532,7 +554,7 @@ export default function SellPage() {
     try {
       const res = await fetch('/api/seller/kyc/session');
       if (!res.ok) return null;
-      const data = await res.json();
+      const data = await readJson(res);
       const session = (data.session ?? null) as KycSession | null;
       setKycSession(session);
 
@@ -583,7 +605,7 @@ export default function SellPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bin: bankBin, account_number: editableBankAccountNumber }),
       });
-      const data = await res.json();
+      const data = await readJson(res);
 
       if (!res.ok) {
         setIsBankVerified(false);
@@ -623,7 +645,7 @@ export default function SellPage() {
         }),
       });
 
-      const data = await res.json();
+      const data = await readJson(res);
       if (!res.ok) {
         setKycError(data.error || tx('Không thể khởi tạo phiên xác minh.', 'Could not start the verification session.', '確認セッションを開始できませんでした。'));
         return;
@@ -706,7 +728,7 @@ export default function SellPage() {
         }),
       });
 
-      const data = await res.json();
+      const data = await readJson(res);
       if (!res.ok) throw new Error(data.error);
 
       if (data.auto_approved) {
