@@ -825,8 +825,8 @@ export interface Database {
                     id: string
                     user_id: string
                     full_name: string
-                    id_card_front_url: string
-                    id_card_back_url: string
+                    id_card_front_url: string | null
+                    id_card_back_url: string | null
                     bank_name: string
                     bank_account_number: string
                     bank_account_name: string
@@ -839,6 +839,14 @@ export interface Database {
                     ai_name_match: boolean | null
                     ai_scan_id: string | null
                     phone_verified_at: string | null
+                    cccd_id_number: string | null
+                    is_duplicate: boolean
+                    duplicate_notes: string | null
+                    kyc_session_id: string | null
+                    kyc_provider: string | null
+                    document_number_hash: string | null
+                    auto_approved: boolean
+                    review_flags: Json | null
                     status: string
                     reviewed_by: string | null
                     reviewed_at: string | null
@@ -850,8 +858,8 @@ export interface Database {
                     id?: string
                     user_id: string
                     full_name: string
-                    id_card_front_url: string
-                    id_card_back_url: string
+                    id_card_front_url?: string | null
+                    id_card_back_url?: string | null
                     bank_name: string
                     bank_account_number: string
                     bank_account_name: string
@@ -864,6 +872,14 @@ export interface Database {
                     ai_name_match?: boolean | null
                     ai_scan_id?: string | null
                     phone_verified_at?: string | null
+                    cccd_id_number?: string | null
+                    is_duplicate?: boolean
+                    duplicate_notes?: string | null
+                    kyc_session_id?: string | null
+                    kyc_provider?: string | null
+                    document_number_hash?: string | null
+                    auto_approved?: boolean
+                    review_flags?: Json | null
                     status?: string
                     reviewed_by?: string | null
                     reviewed_at?: string | null
@@ -875,8 +891,8 @@ export interface Database {
                     id?: string
                     user_id?: string
                     full_name?: string
-                    id_card_front_url?: string
-                    id_card_back_url?: string
+                    id_card_front_url?: string | null
+                    id_card_back_url?: string | null
                     bank_name?: string
                     bank_account_number?: string
                     bank_account_name?: string
@@ -889,12 +905,215 @@ export interface Database {
                     ai_name_match?: boolean | null
                     ai_scan_id?: string | null
                     phone_verified_at?: string | null
+                    cccd_id_number?: string | null
+                    is_duplicate?: boolean
+                    duplicate_notes?: string | null
+                    kyc_session_id?: string | null
+                    kyc_provider?: string | null
+                    document_number_hash?: string | null
+                    auto_approved?: boolean
+                    review_flags?: Json | null
                     status?: string
                     reviewed_by?: string | null
                     reviewed_at?: string | null
                     rejection_reason?: string | null
                     created_at?: string | null
                     updated_at?: string | null
+                }
+            }
+            kyc_sessions: {
+                Row: {
+                    id: string
+                    user_id: string
+                    provider: string
+                    provider_session_id: string
+                    workflow_id: string | null
+                    status: string
+                    verified_full_name: string | null
+                    verified_dob: string | null
+                    verified_document_type: string | null
+                    verified_issuing_state: string | null
+                    document_number_hash: string | null
+                    liveness_score: number | null
+                    face_match_score: number | null
+                    nfc_verified: boolean
+                    warnings: Json | null
+                    decision: Json | null
+                    consumed_at: string | null
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    user_id: string
+                    provider?: string
+                    provider_session_id: string
+                    workflow_id?: string | null
+                    status?: string
+                    verified_full_name?: string | null
+                    verified_dob?: string | null
+                    verified_document_type?: string | null
+                    verified_issuing_state?: string | null
+                    document_number_hash?: string | null
+                    liveness_score?: number | null
+                    face_match_score?: number | null
+                    nfc_verified?: boolean
+                    warnings?: Json | null
+                    decision?: Json | null
+                    consumed_at?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    user_id?: string
+                    provider?: string
+                    provider_session_id?: string
+                    workflow_id?: string | null
+                    status?: string
+                    verified_full_name?: string | null
+                    verified_dob?: string | null
+                    verified_document_type?: string | null
+                    verified_issuing_state?: string | null
+                    document_number_hash?: string | null
+                    liveness_score?: number | null
+                    face_match_score?: number | null
+                    nfc_verified?: boolean
+                    warnings?: Json | null
+                    decision?: Json | null
+                    consumed_at?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+            }
+                    id_card_front_url?: string | null
+                    id_card_back_url?: string | null
+                    bank_name?: string
+                    bank_account_number?: string
+                    bank_account_name?: string
+                    bank_screenshot_url?: string | null
+                    phone_number?: string | null
+                    ai_cccd_name?: string | null
+                    ai_bank_name?: string | null
+                    ai_bank_number?: string | null
+                    ai_confidence?: number | null
+                    ai_name_match?: boolean | null
+                    ai_scan_id?: string | null
+                    phone_verified_at?: string | null
+                    cccd_id_number?: string | null
+                    is_duplicate?: boolean
+                    duplicate_notes?: string | null
+                    kyc_session_id?: string | null
+                    kyc_provider?: string | null
+                    document_number_hash?: string | null
+                    bank_bin?: string | null
+                    bank_account_name_verified?: string | null
+                    bank_verified_at?: string | null
+                    auto_approved?: boolean
+                    review_flags?: Json | null
+                    status?: string
+                    reviewed_by?: string | null
+                    reviewed_at?: string | null
+                    rejection_reason?: string | null
+                    created_at?: string | null
+                    updated_at?: string | null
+                }
+            }
+            bank_account_lookups: {
+                Row: {
+                    id: string
+                    user_id: string
+                    bin: string
+                    account_number: string
+                    status: string
+                    account_name: string | null
+                    provider_code: string | null
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    user_id: string
+                    bin: string
+                    account_number: string
+                    status: string
+                    account_name?: string | null
+                    provider_code?: string | null
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    user_id?: string
+                    bin?: string
+                    account_number?: string
+                    status?: string
+                    account_name?: string | null
+                    provider_code?: string | null
+                    created_at?: string
+                }
+            }
+            kyc_sessions: {
+                Row: {
+                    id: string
+                    user_id: string
+                    provider: string
+                    provider_session_id: string
+                    workflow_id: string | null
+                    status: string
+                    verified_full_name: string | null
+                    verified_dob: string | null
+                    verified_document_type: string | null
+                    verified_issuing_state: string | null
+                    document_number_hash: string | null
+                    liveness_score: number | null
+                    face_match_score: number | null
+                    nfc_verified: boolean
+                    warnings: Json | null
+                    decision: Json | null
+                    consumed_at: string | null
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    user_id: string
+                    provider?: string
+                    provider_session_id: string
+                    workflow_id?: string | null
+                    status?: string
+                    verified_full_name?: string | null
+                    verified_dob?: string | null
+                    verified_document_type?: string | null
+                    verified_issuing_state?: string | null
+                    document_number_hash?: string | null
+                    liveness_score?: number | null
+                    face_match_score?: number | null
+                    nfc_verified?: boolean
+                    warnings?: Json | null
+                    decision?: Json | null
+                    consumed_at?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    user_id?: string
+                    provider?: string
+                    provider_session_id?: string
+                    workflow_id?: string | null
+                    status?: string
+                    verified_full_name?: string | null
+                    verified_dob?: string | null
+                    verified_document_type?: string | null
+                    verified_issuing_state?: string | null
+                    document_number_hash?: string | null
+                    liveness_score?: number | null
+                    face_match_score?: number | null
+                    nfc_verified?: boolean
+                    warnings?: Json | null
+                    decision?: Json | null
+                    consumed_at?: string | null
+                    created_at?: string
+                    updated_at?: string
                 }
             }
             kyc_verification_scans: {

@@ -17,7 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useLocalization } from '@/context/localization-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getCloudinarySignature, uploadImageDirectToCloudinary, type CloudinarySignaturePayload } from '@/lib/cloudinary-direct';
-import { getCloudinaryKycBackScanUrl, getCloudinaryKycScanUrl, toDisplaySafeUrl, optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
+import { getCloudinaryKycScanUrl, toDisplaySafeUrl, optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
 import { isHeicFile, convertHeicToJpeg } from '@/lib/heic';
 import { SellerAddressForm } from '@/components/seller-address-form';
 import Link from 'next/link';
@@ -51,51 +51,43 @@ type MyListing = {
   created_at: string;
 };
 
-type AIResult = {
-  scan_id: string;
-  cccd_name: string;
-  cccd_id_number: string | null;
-  cccd_dob: string | null;
-  is_valid_cccd: boolean;
-  is_valid_cccd_back: boolean;
-  bank_account_name: string;
-  bank_account_number: string;
-  bank_name_detected: string | null;
-  is_valid_bank: boolean;
-  is_name_match: boolean;
-  is_cccd_bank_match: boolean;
-  is_cccd_user_match: boolean;
-  confidence: number;
-  issues: string[] | null;
-  duplicate?: {
-    cccdDuplicate: boolean;
-    bankDuplicate: boolean;
-    matchedCount: number;
-    notes: string | null;
-  } | null;
-  failure_type?: 'unreadable' | 'wrong_side' | 'low_confidence' | 'network' | null;
-  debug_front_image_url?: string | null;
-  debug_back_image_url?: string | null;
-  debug_bank_image_url?: string | null;
-  debug_front_result?: unknown;
-  debug_back_result?: unknown;
-  debug_bank_result?: unknown;
+/**
+ * Identity session handled by the external provider (Didit). The browser only
+ * ever sees these fields — the document images, MRZ and biometric scores stay
+ * server-side.
+ */
+type KycSession = {
+  id: string;
+  provider: string;
+  status:
+    | 'Not Started'
+    | 'In Progress'
+    | 'Awaiting User'
+    | 'Approved'
+    | 'Declined'
+    | 'In Review'
+    | 'Resubmitted'
+    | 'Abandoned'
+    | 'Expired'
+    | 'Kyc Expired';
+  verified_full_name: string | null;
+  consumed: boolean;
+  created_at: string;
 };
 
 type UploadedKycAssets = {
-  frontOriginalUrl: string | null;
-  frontJpgUrl: string | null;
-  backOriginalUrl: string | null;
-  backJpgUrl: string | null;
   bankOriginalUrl: string | null;
   bankJpgUrl: string | null;
 };
 
-const BANKS = [
-  'Vietcombank', 'Techcombank', 'MB Bank', 'BIDV', 'Agribank',
-  'VPBank', 'ACB', 'Sacombank', 'TPBank', 'VIB',
-  'SHB', 'HDBank', 'OCB', 'MSB', 'SeABank', 'Khác',
-];
+/** Bank as served by /api/banks (VietQR directory, lookup-capable only). */
+type Bank = {
+  code: string;
+  bin: string;
+  name: string;
+  shortName: string;
+  logo: string;
+};
 
 export default function SellPage() {
   const { t, locale } = useLocalization();
@@ -123,34 +115,31 @@ export default function SellPage() {
   // Wizard step
   const [currentStep, setCurrentStep] = useState(1);
 
-  // Step 1: AI Verification
+  // Step 1: identity verification (external provider) + payout details
   const [fullName, setFullName] = useState('');
   const [bankName, setBankName] = useState('');
-  const [idFrontFile, setIdFrontFile] = useState<File | null>(null);
-  const [idBackFile, setIdBackFile] = useState<File | null>(null);
+  const [kycSession, setKycSession] = useState<KycSession | null>(null);
+  const [isStartingKyc, setIsStartingKyc] = useState(false);
+  const [isRefreshingKyc, setIsRefreshingKyc] = useState(false);
+  const [kycError, setKycError] = useState<string | null>(null);
 
   const [bankScreenshotFile, setBankScreenshotFile] = useState<File | null>(null);
-  const [processingType, setProcessingType] = useState<'front' | 'back' | 'bank' | null>(null);
-  const [isAIChecking, setIsAIChecking] = useState(false);
-  const [aiResult, setAIResult] = useState<AIResult | null>(null);
-  const [aiError, setAIError] = useState<string | null>(null);
-  const [aiScanCooldown, setAiScanCooldown] = useState(0);
-  const [aiScanAttempts, setAiScanAttempts] = useState(0);
-  const [pendingReplacements, setPendingReplacements] = useState({ front: false, back: false, bank: false });
+  const [processingType, setProcessingType] = useState<'bank' | null>(null);
   const [editableBankAccountName, setEditableBankAccountName] = useState('');
   const [editableBankAccountNumber, setEditableBankAccountNumber] = useState('');
-  const [aiCheckStage, setAiCheckStage] = useState<string | null>(null);
-  const [slowStageHint, setSlowStageHint] = useState<string | null>(null);
+
+  // Bank account verification (VietQR → NAPAS)
+  const [banks, setBanks] = useState<Bank[]>([]);
+  const [bankBin, setBankBin] = useState('');
+  const [isLookingUpBank, setIsLookingUpBank] = useState(false);
+  const [bankLookupError, setBankLookupError] = useState<string | null>(null);
+  // True once the banking network confirmed the holder AND it matches the ID.
+  const [isBankVerified, setIsBankVerified] = useState(false);
   const [uploadedKycAssets, setUploadedKycAssets] = useState<UploadedKycAssets>({
-    frontOriginalUrl: null,
-    frontJpgUrl: null,
-    backOriginalUrl: null,
-    backJpgUrl: null,
     bankOriginalUrl: null,
     bankJpgUrl: null,
   });
   const [kycUploadSignature, setKycUploadSignature] = useState<CloudinarySignaturePayload | null>(null);
-  const AI_MAX_ATTEMPTS = 5;
   const copy = locale === 'ja-JP'
     ? {
         signInToSell: 'カードを売るにはログインしてください',
@@ -272,7 +261,7 @@ export default function SellPage() {
         };
   const tx = (vi: string, en: string, ja: string) => (locale === 'ja-JP' ? ja : locale === 'vi-VN' ? vi : en);
 
-  const handleFileChange = async (type: 'front' | 'back' | 'bank', file: File | null) => {
+  const handleFileChange = async (type: 'bank', file: File | null) => {
     let processed = file;
 
     // Convert HEIC/HEIF to JPEG immediately on selection so nothing downstream
@@ -295,25 +284,8 @@ export default function SellPage() {
       }
     }
 
-    if (type === 'front') setIdFrontFile(processed);
-    if (type === 'back') setIdBackFile(processed);
-    if (type === 'bank') setBankScreenshotFile(processed);
-
-    setUploadedKycAssets(prev => ({
-      ...prev,
-      ...(type === 'front' ? { frontOriginalUrl: null, frontJpgUrl: null } : {}),
-      ...(type === 'back' ? { backOriginalUrl: null, backJpgUrl: null } : {}),
-      ...(type === 'bank' ? { bankOriginalUrl: null, bankJpgUrl: null } : {}),
-    }));
-
-    setPendingReplacements(prev => {
-      const next = { ...prev, [type]: false };
-      // Clear AI result to trigger rescan ONLY if all invalid files have been replaced
-      if (!next.front && !next.back && !next.bank) {
-        setAIResult(null);
-      }
-      return next;
-    });
+    setBankScreenshotFile(processed);
+    setUploadedKycAssets({ bankOriginalUrl: null, bankJpgUrl: null });
   };
 
   const getOrCreateKycSignature = async () => {
@@ -328,23 +300,7 @@ export default function SellPage() {
     return signature;
   };
 
-  const buildKycFriendlyError = (data: Partial<AIResult> & { error?: string; failure_type?: string; step?: string }) => {
-    if (data.failure_type === 'wrong_side') {
-      return data.error || tx('Hệ thống nhận diện sai mặt giấy tờ. Vui lòng thử lại với ảnh rõ hơn hoặc đổi góc chụp.', 'The system detected the wrong document side. Please try again with a clearer image or angle.', '書類の面が正しく認識されませんでした。より鮮明な画像または角度で再試行してください。');
-    }
-    if (data.failure_type === 'low_confidence') {
-      return data.error || tx('Hệ thống đọc được ảnh nhưng độ chắc chắn còn thấp. Vui lòng thử lại với ảnh rõ hơn.', 'The image was read but confidence is low. Please try again with a clearer image.', '画像は読み取れましたが信頼度が低いです。より鮮明な画像で再試行してください。');
-    }
-    if (data.failure_type === 'network') {
-      return data.error || tx('Kết nối đến dịch vụ kiểm tra đang chậm. Vui lòng thử lại sau.', 'The verification service is slow right now. Please try again later.', '認証サービスへの接続が遅れています。後でもう一度お試しください。');
-    }
-    if (data.failure_type === 'unreadable') {
-      return data.error || tx('Không thể đọc được ảnh. Vui lòng chụp lại rõ hơn.', 'The image could not be read. Please retake it more clearly.', '画像を読み取れませんでした。より鮮明に撮り直してください。');
-    }
-    return data.error || tx('Hệ thống kiểm tra thất bại. Vui lòng thử lại.', 'Verification failed. Please try again.', '確認に失敗しました。もう一度お試しください。');
-  };
-
-  // Step 2: Phone + OTP
+  // Step 2: contact phone
   const [phoneNumber, setPhoneNumber] = useState('');
 
   const normalizeVietnameseName = (value: string) => value
@@ -355,10 +311,24 @@ export default function SellPage() {
     .replace(/\s+/g, ' ')
     .trim();
 
-  const isSubmittedNameMatch = !!aiResult?.cccd_name
-    && normalizeVietnameseName(fullName) === normalizeVietnameseName(aiResult.cccd_name)
-    && normalizeVietnameseName(editableBankAccountName) === normalizeVietnameseName(aiResult.cccd_name);
-  const canStartSystemScan = !!fullName.trim() && !!idFrontFile && !!idBackFile && !!bankScreenshotFile && !!bankName && !isAIChecking && aiScanCooldown <= 0 && aiScanAttempts < AI_MAX_ATTEMPTS;
+  const isKycApproved = kycSession?.status === 'Approved' && !kycSession.consumed;
+  const isKycInFlight = kycSession?.status === 'In Progress'
+    || kycSession?.status === 'Not Started'
+    || kycSession?.status === 'Awaiting User'
+    || kycSession?.status === 'In Review'
+    || kycSession?.status === 'Resubmitted';
+  const isKycFailed = kycSession?.status === 'Declined'
+    || kycSession?.status === 'Abandoned'
+    || kycSession?.status === 'Expired'
+    || kycSession?.status === 'Kyc Expired';
+
+  // The name the provider actually read off the document. The server re-checks
+  // every condition below before approving; this only keeps the user from
+  // walking into a submission that is certain to bounce.
+  const verifiedName = kycSession?.verified_full_name || '';
+  const isSubmittedNameMatch = !!verifiedName
+    && normalizeVietnameseName(fullName) === normalizeVietnameseName(verifiedName)
+    && normalizeVietnameseName(editableBankAccountName) === normalizeVietnameseName(verifiedName);
 
   useEffect(() => {
     if (!authLoading && !user) setOpen(true);
@@ -368,9 +338,12 @@ export default function SellPage() {
     if (authLoading) return;
     if (user) {
       fetchVerification();
+      // Pick up a session the user finished in another tab or before a reload.
+      refreshKycSession({ silent: true });
     } else {
       setIsLoadingVerification(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading]);
 
   const fetchVerification = async (attempt = 0) => {
@@ -532,204 +505,150 @@ export default function SellPage() {
     }
   };
 
-  const uploadKycFiles = async (frontFile: File, backFile: File, bankFile: File) => {
-    if (
-      uploadedKycAssets.frontOriginalUrl &&
-      uploadedKycAssets.frontJpgUrl &&
-      uploadedKycAssets.backOriginalUrl &&
-      uploadedKycAssets.backJpgUrl &&
-      uploadedKycAssets.bankOriginalUrl &&
-      uploadedKycAssets.bankJpgUrl
-    ) {
+  const uploadBankScreenshot = async (bankFile: File) => {
+    if (uploadedKycAssets.bankOriginalUrl && uploadedKycAssets.bankJpgUrl) {
       return uploadedKycAssets;
     }
 
-    const uploadStart = performance.now();
-      setAiCheckStage(tx('Đang tải ảnh lên Cloudinary...', 'Uploading images to Cloudinary...', '画像をCloudinaryにアップロード中...'));
-    console.log('[KYC Flow] Starting Cloudinary upload batch');
-
     const signature = await getOrCreateKycSignature();
-    const nextAssets: UploadedKycAssets = { ...uploadedKycAssets };
+    const upload = await uploadImageDirectToCloudinary(bankFile, signature);
+    const next: UploadedKycAssets = {
+      bankOriginalUrl: toDisplaySafeUrl(bankFile.name, upload.secureUrl),
+      bankJpgUrl: getCloudinaryKycScanUrl(upload.secureUrl),
+    };
 
-    const uploadTasks: Promise<void>[] = [];
-
-    if (!nextAssets.frontOriginalUrl || !nextAssets.frontJpgUrl) {
-      uploadTasks.push(
-        uploadImageDirectToCloudinary(frontFile, signature).then(upload => {
-          nextAssets.frontOriginalUrl = toDisplaySafeUrl(frontFile.name, upload.secureUrl);
-          nextAssets.frontJpgUrl = getCloudinaryKycScanUrl(upload.secureUrl);
-        })
-      );
-    }
-
-    if (!nextAssets.backOriginalUrl || !nextAssets.backJpgUrl) {
-      uploadTasks.push(
-        uploadImageDirectToCloudinary(backFile, signature).then(upload => {
-          nextAssets.backOriginalUrl = toDisplaySafeUrl(backFile.name, upload.secureUrl);
-          nextAssets.backJpgUrl = getCloudinaryKycBackScanUrl(upload.secureUrl);
-        })
-      );
-    }
-
-    if (!nextAssets.bankOriginalUrl || !nextAssets.bankJpgUrl) {
-      uploadTasks.push(
-        uploadImageDirectToCloudinary(bankFile, signature).then(upload => {
-          nextAssets.bankOriginalUrl = toDisplaySafeUrl(bankFile.name, upload.secureUrl);
-          nextAssets.bankJpgUrl = getCloudinaryKycScanUrl(upload.secureUrl);
-        })
-      );
-    }
-
-    await Promise.all(uploadTasks);
-
-    console.log(
-      `[KYC Flow] Cloudinary upload batch completed in ${(performance.now() - uploadStart).toFixed(0)}ms`
-    );
-
-    setUploadedKycAssets(nextAssets);
-    return nextAssets;
+    setUploadedKycAssets(next);
+    return next;
   };
 
-  // Step 1: Run system verification (all 3 images + user name)
-  const handleAICheck = async (frontFile: File, backFile: File, bankFile: File, userName: string) => {
-    if (aiScanAttempts >= AI_MAX_ATTEMPTS) {
-      setAIError(tx('Bạn đã sử dụng hết số lần kiểm tra. Vui lòng tải lại trang và thử lại sau.', 'You have used all scan attempts. Reload the page and try again later.', '確認回数の上限に達しました。ページを再読み込みして後でもう一度お試しください。'));
-      return;
-    }
-    setIsAIChecking(true);
-    setAIError(null);
-    setAIResult(null);
-    setAiCheckStage(tx('Đang chuẩn bị quét...', 'Preparing scan...', 'スキャンを準備中...'));
-    setSlowStageHint(null);
-    setAiScanAttempts(prev => prev + 1);
-    const requestId = `kyc-${Date.now()}`;
-    const scanStart = performance.now();
-    console.log(`[KYC Flow][${requestId}] Scan started`);
+  // ── Identity verification via the external provider ──
+  //
+  // We never touch the ID document ourselves: the provider hosts the capture
+  // flow (document + liveness + face match), and its verdict reaches us through
+  // a signed webhook. The browser only learns the resulting status.
 
+  const refreshKycSession = async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setIsRefreshingKyc(true);
     try {
-      const uploadedAssets = await uploadKycFiles(frontFile, backFile, bankFile);
-      setAiCheckStage(tx('Đang đối chiếu CCCD và tài khoản...', 'Matching ID and bank account...', '身分証と銀行口座を照合中...'));
-      console.log(
-        `[KYC Flow][${requestId}] Upload phase done in ${(performance.now() - scanStart).toFixed(0)}ms`
-      );
+      const res = await fetch('/api/seller/kyc/session');
+      if (!res.ok) return null;
+      const data = await res.json();
+      const session = (data.session ?? null) as KycSession | null;
+      setKycSession(session);
 
-      const aiRequestStart = performance.now();
-      const response = await fetch('/api/seller/ai-check', {
+      // Pre-fill the name the provider actually read, so the user is not left
+      // guessing which spelling the document carries.
+      if (session?.status === 'Approved' && session.verified_full_name) {
+        setFullName(prev => prev || session.verified_full_name || '');
+        setEditableBankAccountName(prev => prev || session.verified_full_name || '');
+      }
+      return session;
+    } catch (err) {
+      console.error('[KYC] Failed to refresh session:', err);
+      return null;
+    } finally {
+      if (!options?.silent) setIsRefreshingKyc(false);
+    }
+  };
+
+  // Bank directory. Cached server-side for a day, so this is cheap.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/banks');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setBanks((data.banks || []) as Bank[]);
+      } catch (err) {
+        console.error('[Bank] Failed to load bank list:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Any change to the account invalidates a previous confirmation.
+  const resetBankVerification = () => {
+    setIsBankVerified(false);
+    setBankLookupError(null);
+    setEditableBankAccountName('');
+  };
+
+  const lookupBankAccount = async () => {
+    setIsLookingUpBank(true);
+    setBankLookupError(null);
+    try {
+      const res = await fetch('/api/seller/bank-lookup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          request_id: requestId,
-          cccd_front_image_url: uploadedAssets.frontJpgUrl,
-          cccd_back_image_url: uploadedAssets.backJpgUrl,
-          bank_image_url: uploadedAssets.bankJpgUrl,
-          user_full_name: userName,
-        }),
+        body: JSON.stringify({ bin: bankBin, account_number: editableBankAccountNumber }),
       });
-      console.log(
-        `[KYC Flow][${requestId}] /api/seller/ai-check responded in ${(performance.now() - aiRequestStart).toFixed(0)}ms`
-      );
+      const data = await res.json();
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        if (data.debug_front_image_url || data.debug_back_image_url || data.debug_bank_image_url) {
-          console.log(`[KYC Flow][${requestId}] Debug image URLs`, {
-            front: data.debug_front_image_url,
-            back: data.debug_back_image_url,
-            bank: data.debug_bank_image_url,
-          });
-        }
-        setAIError(buildKycFriendlyError(data));
+      if (!res.ok) {
+        setIsBankVerified(false);
+        setEditableBankAccountName('');
+        setBankLookupError(data.error || tx('Không tra cứu được tài khoản.', 'Could not look up the account.', '口座を照会できませんでした。'));
         return;
       }
 
-      const result = data as AIResult;
-      if (result.debug_front_image_url || result.debug_back_image_url || result.debug_bank_image_url) {
-        console.log(`[KYC Flow][${requestId}] Debug image URLs`, {
-          front: result.debug_front_image_url,
-          back: result.debug_back_image_url,
-          bank: result.debug_bank_image_url,
-        });
-      }
-      setAIResult(result);
-      setEditableBankAccountName(result.bank_account_name || '');
-      setEditableBankAccountNumber(result.bank_account_number || '');
+      setEditableBankAccountName(data.account_name || '');
+      setIsBankVerified(!!data.matches_identity);
 
-      // Require user to replace ALL invalid images if there are multiple errors
-      const errorCount = (!result.is_valid_cccd ? 1 : 0) + (!result.is_valid_cccd_back ? 1 : 0) + (!result.is_valid_bank ? 1 : 0);
-      if (errorCount > 1) {
-        setPendingReplacements({
-          front: !result.is_valid_cccd,
-          back: !result.is_valid_cccd_back,
-          bank: !result.is_valid_bank,
-        });
-      } else {
-        setPendingReplacements({ front: false, back: false, bank: false });
+      if (!data.matches_identity) {
+        setBankLookupError(tx(
+          'Tên chủ tài khoản không khớp với giấy tờ đã xác minh. Vui lòng dùng tài khoản đứng tên bạn.',
+          'The account holder does not match your verified document. Use an account in your own name.',
+          '口座名義が確認済みの書類と一致しません。ご本人名義の口座をご利用ください。'
+        ));
       }
-
-      // Auto-fill bank name from AI detection
-      if (result.bank_name_detected) {
-        const detected = result.bank_name_detected;
-        const matchedBank = BANKS.find(b => b.toLowerCase() === detected.toLowerCase());
-        if (matchedBank) {
-          setBankName(matchedBank);
-        }
-      }
-
-      if (result.issues && result.issues.length > 0) {
-        toast({ variant: 'destructive', title: tx('⚠️ Phát hiện vấn đề', '⚠️ Issue detected', '⚠️ 問題が検出されました'), description: result.issues[0] });
-      } else if (result.is_name_match && result.confidence >= 0.7) {
-        toast({ title: tx('✅ Xác minh thành công!', '✅ Verification successful!', '✅ 確認が完了しました'), description: tx('Tất cả thông tin trùng khớp.', 'All information matches.', 'すべての情報が一致しています。') });
-      } else {
-        toast({ variant: 'destructive', title: tx('⚠️ Cần kiểm tra lại', '⚠️ Review required', '⚠️ 再確認が必要です'), description: tx('Ảnh hợp lệ nhưng bạn nên kiểm tra và chỉnh sửa lại thông tin ngân hàng nếu hệ thống đọc sai.', 'The images are valid, but review and correct the bank details if they were read incorrectly.', '画像は有効ですが、読み取りが間違っている場合は銀行情報を確認・修正してください。') });
-      }
-
-      // Cross-account duplicate warning (CCCD / bank already used elsewhere).
-      if (result.duplicate && (result.duplicate.cccdDuplicate || result.duplicate.bankDuplicate)) {
-        toast({
-          variant: 'destructive',
-          title: tx('Thông tin đã được sử dụng', 'Information already used', 'この情報は既に使用されています'),
-          description: result.duplicate.notes || tx('CCCD hoặc số tài khoản này đã đăng ký ở tài khoản khác.', 'This ID or bank account number is already registered on another account.', 'この身分証または口座番号は別のアカウントに登録されています。'),
-        });
-      }
-      console.log(
-        `[KYC Flow][${requestId}] Total scan completed in ${(performance.now() - scanStart).toFixed(0)}ms`
-      );
     } catch (err: any) {
-      console.error(`[KYC Flow][${requestId}] Failed after ${(performance.now() - scanStart).toFixed(0)}ms`, err);
-      setAIError(err.message || tx('Lỗi kết nối hệ thống', 'System connection error', 'システム接続エラー'));
+      setIsBankVerified(false);
+      setBankLookupError(err?.message || tx('Lỗi kết nối.', 'Connection error.', '接続エラーです。'));
     } finally {
-      setIsAIChecking(false);
-      setAiCheckStage(null);
-      setAiScanCooldown(15); // 15s cooldown
+      setIsLookingUpBank(false);
     }
   };
 
-  // AI scan cooldown timer
+  const startKycVerification = async () => {
+    setIsStartingKyc(true);
+    setKycError(null);
+    try {
+      const res = await fetch('/api/seller/kyc/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          language: locale === 'ja-JP' ? 'ja' : locale === 'vi-VN' ? 'vi' : 'en',
+          full_name: fullName.trim() || undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setKycError(data.error || tx('Không thể khởi tạo phiên xác minh.', 'Could not start the verification session.', '確認セッションを開始できませんでした。'));
+        return;
+      }
+
+      setKycSession(data.session as KycSession);
+      // Same tab: the provider redirects back to /sell/kyc/callback when done.
+      window.location.href = data.url as string;
+    } catch (err: any) {
+      setKycError(err?.message || tx('Lỗi kết nối. Vui lòng thử lại.', 'Connection error. Please try again.', '接続エラーです。もう一度お試しください。'));
+    } finally {
+      setIsStartingKyc(false);
+    }
+  };
+
+  // Poll while a session is open. The webhook is the source of truth, but it
+  // can arrive late, and the user is sitting on this screen waiting.
   useEffect(() => {
-    if (aiScanCooldown <= 0) return;
-    const timer = setInterval(() => setAiScanCooldown(c => c - 1), 1000);
+    if (!user) return;
+    if (!isKycInFlight) return;
+
+    const timer = setInterval(() => { refreshKycSession({ silent: true }); }, 5000);
     return () => clearInterval(timer);
-  }, [aiScanCooldown]);
-
-  useEffect(() => {
-    if (!isAIChecking || !aiCheckStage) {
-      setSlowStageHint(null);
-      return;
-    }
-
-    if (aiCheckStage.includes('Cloudinary')) {
-      const timer = setTimeout(() => {
-        setSlowStageHint(tx('Ảnh đang được tải lên. Với HEIC lớn, bước này có thể mất thêm vài giây.', 'Images are uploading. Large HEIC files may take a few extra seconds.', '画像をアップロード中です。大きなHEICファイルでは数秒余分にかかることがあります。'));
-      }, 8000);
-      return () => clearTimeout(timer);
-    }
-
-    const timer = setTimeout(() => {
-      setSlowStageHint(tx('Hệ thống đang đọc chi tiết CCCD. Vui lòng đợi thêm một chút.', 'The system is reading ID details. Please wait a bit longer.', '本人確認書類の詳細を読み取り中です。もう少しお待ちください。'));
-    }, 20000);
-    return () => clearTimeout(timer);
-  }, [isAIChecking, aiCheckStage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, isKycInFlight]);
 
   const handlePhoneChange = (value: string) => {
     const cleaned = value.replace(/[^0-9]/g, '');
@@ -738,23 +657,23 @@ export default function SellPage() {
 
   // Final submit
   const handleKYCSubmit = async () => {
-    if (!fullName || !bankName || !idFrontFile || !idBackFile || !bankScreenshotFile || !phoneNumber) {
+    if (!fullName || !bankBin || !phoneNumber || !editableBankAccountName || !editableBankAccountNumber) {
       toast({ variant: 'destructive', title: tx('Vui lòng điền đầy đủ thông tin ở tất cả các bước', 'Complete all required information in every step', '各ステップの必須情報をすべて入力してください') });
       return;
     }
 
-    if (!aiResult) {
-      toast({ variant: 'destructive', title: tx('Vui lòng chạy kiểm tra ở Bước 1 trước', 'Run the verification in Step 1 first', '先にステップ1の確認を実行してください') });
+    if (!isBankVerified) {
+      toast({ variant: 'destructive', title: tx('Chưa xác minh tài khoản ngân hàng', 'Bank account not verified', '銀行口座が未確認です'), description: tx('Nhấn "Kiểm tra tài khoản" ở Bước 1 và đảm bảo tên chủ tài khoản khớp với giấy tờ.', 'Use "Check account" in Step 1 and make sure the holder matches your document.', 'ステップ1の「口座を確認」を実行し、名義が書類と一致することを確認してください。') });
       return;
     }
 
-    if (!aiResult.scan_id || aiResult.confidence < 0.7 || !aiResult.is_valid_cccd || !aiResult.is_valid_cccd_back || !aiResult.is_valid_bank) {
-      toast({ variant: 'destructive', title: tx('Kết quả xác minh chưa đạt', 'Verification did not pass', '確認結果が基準に達していません'), description: tx('Vui lòng quay lại Bước 1 và kiểm tra lại ảnh tải lên.', 'Please return to Step 1 and review the uploaded images.', 'ステップ1に戻ってアップロード画像を確認してください。') });
+    if (!isKycApproved || !kycSession) {
+      toast({ variant: 'destructive', title: tx('Chưa hoàn tất xác minh danh tính', 'Identity verification not complete', '本人確認が完了していません'), description: tx('Vui lòng quay lại Bước 1 và hoàn tất xác minh.', 'Return to Step 1 and finish verification.', 'ステップ1に戻って本人確認を完了してください。') });
       return;
     }
 
-    if (!editableBankAccountName || !editableBankAccountNumber || !isSubmittedNameMatch) {
-      toast({ variant: 'destructive', title: tx('Thông tin ngân hàng chưa khớp', 'Bank information does not match', '銀行情報が一致しません'), description: tx('Tên chủ tài khoản phải trùng với CCCD và họ tên đăng ký.', 'Account holder name must match the ID and registered full name.', '口座名義は身分証と登録氏名に一致する必要があります。') });
+    if (!isSubmittedNameMatch) {
+      toast({ variant: 'destructive', title: tx('Thông tin không khớp', 'Information does not match', '情報が一致しません'), description: tx('Họ tên và tên chủ tài khoản phải trùng với giấy tờ đã xác minh.', 'Full name and account holder must match the verified document.', '氏名と口座名義は確認済みの書類と一致する必要があります。') });
       return;
     }
 
@@ -765,28 +684,42 @@ export default function SellPage() {
 
     setIsSubmitting(true);
     try {
-      const uploadedAssets = await uploadKycFiles(idFrontFile!, idBackFile!, bankScreenshotFile!);
+      // Optional evidence for the admin; identity no longer depends on it.
+      let bankScreenshotUrl: string | null = null;
+      if (bankScreenshotFile) {
+        const assets = await uploadBankScreenshot(bankScreenshotFile);
+        bankScreenshotUrl = assets.bankOriginalUrl;
+      }
 
       const res = await fetch('/api/seller/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           full_name: fullName,
-          id_card_front_url: uploadedAssets.frontOriginalUrl,
-          id_card_back_url: uploadedAssets.backOriginalUrl,
-          bank_screenshot_url: uploadedAssets.bankOriginalUrl,
           bank_name: bankName,
+          bank_bin: bankBin,
           bank_account_number: editableBankAccountNumber,
           bank_account_name: editableBankAccountName,
+          bank_screenshot_url: bankScreenshotUrl,
           phone_number: phoneNumber,
-          scan_id: aiResult.scan_id,
+          kyc_session_id: kycSession.id,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      toast({ title: tx('Đã gửi yêu cầu xác minh', 'Verification request submitted', '確認申請を送信しました'), description: tx('Hệ thống đã tiền duyệt hồ sơ. Admin sẽ xác nhận lần cuối trong vài giờ.', 'The system pre-approved your profile. Admin will do the final check within a few hours.', 'システムがプロフィールを事前承認しました。管理者が数時間以内に最終確認します。') });
+      if (data.auto_approved) {
+        toast({
+          title: tx('Đã xác minh xong!', 'Verification complete!', '確認が完了しました！'),
+          description: tx('Tài khoản của bạn đã được duyệt tự động. Bạn có thể bắt đầu đăng bán ngay.', 'Your account was approved automatically. You can start listing right away.', 'アカウントが自動承認されました。すぐに出品を開始できます。'),
+        });
+      } else {
+        toast({
+          title: tx('Đã gửi yêu cầu xác minh', 'Verification request submitted', '確認申請を送信しました'),
+          description: tx('Hồ sơ cần admin soát lại. Chúng tôi sẽ phản hồi trong thời gian sớm nhất.', 'Your profile needs an admin review. We will get back to you shortly.', 'プロフィールは管理者の確認が必要です。折り返しご連絡します。'),
+        });
+      }
       fetchVerification();
     } catch (err: any) {
       toast({ variant: 'destructive', title: tx('Lỗi', 'Error', 'エラー'), description: err.message });
@@ -1242,35 +1175,6 @@ export default function SellPage() {
             </p>
           </div>
 
-          {/* Full-screen AI Verification Overlay */}
-          {isAIChecking && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-              <div className="bg-zinc-950 border border-orange-500/30 rounded-2xl p-8 flex flex-col items-center max-w-sm w-[90%] text-center shadow-2xl shadow-orange-500/10 animate-in zoom-in-95 duration-200">
-                <div className="relative mb-6">
-                  <div className="absolute inset-0 bg-orange-500 blur-xl opacity-20 rounded-full animate-pulse"></div>
-                  <Sparkles className="h-12 w-12 text-orange-500 relative z-10 animate-pulse" />
-                </div>
-                <h3 className="text-xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent mb-2" style={{ fontFamily: "'Orbitron', sans-serif" }}>
-                  {t('kyc_verifying_title')}
-                </h3>
-                <div className="flex items-start justify-center gap-2 mt-4 text-sm text-muted-foreground max-w-[280px]">
-                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-orange-500 mt-0.5" />
-                  <span className="text-left leading-snug">{t('kyc_verifying_subtitle')}</span>
-                </div>
-                {aiCheckStage && (
-                  <p className="mt-3 text-xs text-orange-300/90">
-                    {aiCheckStage}
-                  </p>
-                )}
-                {slowStageHint && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {slowStageHint}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
           {/* Step Indicator */}
           <div className="flex items-center justify-center gap-2 py-4">
             {steps.map((step, idx) => (
@@ -1302,277 +1206,227 @@ export default function SellPage() {
             ))}
           </div>
 
-          {/* ═══ STEP 1: AI IDENTITY CHECK ═══ */}
+          {/* ═══ STEP 1: IDENTITY (external provider) + PAYOUT DETAILS ═══ */}
           {currentStep === 1 && (
             <Card className="border-orange-500/20">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-orange-500" />
-                  {tx('Bước 1: Xác minh danh tính tự động', 'Step 1: Automatic identity verification', 'ステップ1: 本人確認の自動検証')}
+                  <ShieldCheck className="h-5 w-5 text-orange-500" />
+                  {tx('Bước 1: Xác minh danh tính', 'Step 1: Identity verification', 'ステップ1: 本人確認')}
                 </CardTitle>
                 <CardDescription>
-                  {tx('Tải lên ảnh CCCD và ảnh App Ngân hàng. Hệ thống sẽ tự động so sánh tên và trích xuất số tài khoản.', 'Upload your ID card and banking app screenshot. The system will compare names and extract the account number automatically.', '本人確認書類と銀行アプリの画像をアップロードしてください。システムが氏名照合と口座番号抽出を自動で行います。')}
+                  {tx(
+                    'Bạn sẽ được chuyển sang trang xác minh của đối tác để chụp CCCD và quét khuôn mặt. Ảnh giấy tờ do đối tác lưu giữ, CardVerse không giữ bản sao.',
+                    'You will be taken to our verification partner to capture your ID and a face scan. The partner stores the document images — CardVerse keeps no copy.',
+                    'パートナーの確認ページで身分証と顔スキャンを行います。画像はパートナーが保管し、CardVerseは保存しません。'
+                  )}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                
-                {/* AI Error */}
-                {aiError && (
+
+                {kycError && (
                   <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-sm text-red-400 flex items-start gap-2">
                     <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
-                    <div>{aiError}</div>
+                    <div>{kycError}</div>
                   </div>
                 )}
 
-                {/* Scan status */}
-                {aiScanAttempts > 0 && (
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{tx('Số lần quét', 'Scan attempts', 'スキャン回数')}: {aiScanAttempts}/{AI_MAX_ATTEMPTS}</span>
-                    {aiScanCooldown > 0 && (
-                      <span className="text-orange-400 flex items-center gap-1">
-                        <Clock className="h-3 w-3" /> {tx('Quét lại sau', 'Scan again in', '再スキャンまで')} {aiScanCooldown}s
-                      </span>
-                    )}
+                {/* Identity status panel */}
+                <div className={`border rounded-xl p-5 space-y-4 ${
+                  isKycApproved
+                    ? 'bg-green-500/5 border-green-500/30'
+                    : isKycFailed
+                    ? 'bg-red-500/5 border-red-500/30'
+                    : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'
+                }`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <h4 className="font-semibold flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4 text-orange-500" />
+                      {tx('Trạng thái xác minh', 'Verification status', '確認ステータス')}
+                    </h4>
+                    {isRefreshingKyc && <Loader2 className="h-4 w-4 animate-spin text-orange-500" />}
                   </div>
-                )}
 
-                {/* AI Results */}
-                {aiResult && (
-                  <div className={`border rounded-xl p-5 space-y-4 ${
-                    aiResult.is_valid_cccd && aiResult.is_valid_cccd_back && aiResult.is_valid_bank && aiResult.confidence >= 0.7
-                      ? 'bg-green-500/5 border-green-500/30'
-                      : aiResult.issues && aiResult.issues.length > 0
-                      ? 'bg-red-500/5 border-red-500/30'
-                      : 'bg-yellow-500/5 border-yellow-500/30'
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-semibold flex items-center gap-2">
-                        <Sparkles className="h-4 w-4 text-orange-500" />
-                        {tx('Kết quả xác minh', 'Verification results', '確認結果')}
-                      </h4>
-                      <span className={`text-xs font-bold px-3 py-1 rounded-full ${
-                        aiResult.confidence >= 0.7
-                          ? 'bg-green-500/20 text-green-500'
-                          : aiResult.confidence >= 0.5
-                          ? 'bg-yellow-500/20 text-yellow-500'
-                          : 'bg-red-500/20 text-red-500'
-                      }`}>
-                        {tx('Độ tin cậy', 'Confidence', '信頼度')}: {Math.round(aiResult.confidence * 100)}%
-                      </span>
-                    </div>
-
-                    {/* Cross-account duplicate warning */}
-                    {aiResult.duplicate && (aiResult.duplicate.cccdDuplicate || aiResult.duplicate.bankDuplicate) && (
-                      <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm text-red-400 flex items-start gap-2">
-                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                        <div>
-                          <strong>{tx('Cảnh báo trùng thông tin.', 'Duplicate information warning.', '情報重複の警告。')}</strong> {aiResult.duplicate.notes || tx('CCCD hoặc số tài khoản này đã được đăng ký ở một tài khoản khác.', 'This ID or bank account has already been registered to another account.', 'この身分証または口座番号は別のアカウントに登録されています。')}
-                          <div className="text-xs text-red-400/80 mt-1">{tx('Bạn vẫn có thể gửi hồ sơ, nhưng quản trị viên sẽ xem xét kỹ và có thể từ chối nếu phát hiện dùng chung giấy tờ.', 'You can still submit, but admins will review carefully and may reject shared documents.', '送信は可能ですが、管理者が慎重に確認し、共有書類と判断した場合は拒否されることがあります。')}</div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Pending Replacements Notice */}
-                    {Object.values(pendingReplacements).some(Boolean) && (
-                      <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3 text-sm text-orange-400 flex items-start gap-2">
-                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                        <div>{tx('Vui lòng tải lên lại', 'Please re-upload', '再アップロードしてください')} <strong>{tx('tất cả', 'all', 'すべての')}</strong> {tx('các ảnh không hợp lệ để hệ thống tự động quét lại.', 'invalid images so the system can scan again automatically.', '無効な画像を再アップロードしてください。システムが自動で再スキャンします。')}</div>
-                      </div>
-                    )}
-
-                    {/* Issues */}
-                    {aiResult.issues && aiResult.issues.length > 0 && (
-                      <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 space-y-1">
-                        {aiResult.issues.map((issue, i) => (
-                          <p key={i} className="text-sm text-red-400 flex items-start gap-2">
-                            <XCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                            {issue}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-4 text-sm">
+                  {isKycApproved ? (
+                    <div className="space-y-2 text-sm">
+                      <p className="text-green-500 font-medium flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4" />
+                        {tx('Danh tính đã được xác minh', 'Identity verified', '本人確認完了')}
+                      </p>
                       <div>
-                        <p className="text-muted-foreground text-xs mb-1">{tx('CCCD mặt trước', 'ID front', '身分証の表面')}</p>
-                        <p className={`font-medium ${aiResult.is_valid_cccd ? 'text-green-500' : 'text-red-500'}`}>
-                          {aiResult.is_valid_cccd ? tx('✅ Hợp lệ', '✅ Valid', '✅ 有効') : tx('❌ Cần tải lại', '❌ Re-upload required', '❌ 再アップロードが必要')}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground text-xs mb-1">{tx('CCCD mặt sau', 'ID back', '身分証の裏面')}</p>
-                        <p className={`font-medium ${aiResult.is_valid_cccd_back ? 'text-green-500' : 'text-red-500'}`}>
-                          {aiResult.is_valid_cccd_back ? tx('✅ Hợp lệ', '✅ Valid', '✅ 有効') : tx('❌ Cần tải lại', '❌ Re-upload required', '❌ 再アップロードが必要')}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground text-xs mb-1">{tx('Tên trên CCCD', 'Name on ID', '身分証の氏名')}</p>
-                        <p className="font-medium">{aiResult.cccd_name || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground text-xs mb-1">{tx('Tên ngân hàng', 'Bank account name', '銀行口座名義')}</p>
-                        <p className="font-medium">{aiResult.bank_account_name || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground text-xs mb-1">{tx('Số TK', 'Account number', '口座番号')}</p>
-                        <p className="font-mono font-medium">{aiResult.bank_account_number || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground text-xs mb-1">{tx('Khớp tên đăng ký', 'Registered name match', '登録名一致')}</p>
-                        <p className={`font-semibold ${isSubmittedNameMatch ? 'text-green-500' : 'text-red-500'}`}>
-                          {isSubmittedNameMatch ? tx('✅ Khớp sau chỉnh sửa', '✅ Match after edit', '✅ 編集後に一致') : tx('❌ Chưa khớp', '❌ Not matched yet', '❌ まだ一致していません')}
-                        </p>
+                        <p className="text-muted-foreground text-xs">{tx('Tên trên giấy tờ', 'Name on document', '書類上の氏名')}</p>
+                        <p className="font-medium">{verifiedName || '—'}</p>
                       </div>
                     </div>
-                  </div>
-                )}
-
-                {/* Full Name */}
-                <div>
-                  <Label htmlFor="fullName">{tx('Họ và tên (đúng với CCCD) *', 'Full name (must match ID) *', '氏名（身分証と一致）*')}</Label>
-                  <Input id="fullName" value={fullName} onChange={e => setFullName(e.target.value)} placeholder={tx('Nguyễn Văn A', 'John Doe', '山田 太郎')} required />
+                  ) : isKycInFlight ? (
+                    <div className="space-y-3 text-sm">
+                      <p className="text-orange-400 flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {tx('Đang chờ kết quả từ đối tác xác minh...', 'Waiting for the verification partner...', 'パートナーの結果を待機中...')}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {tx('Nếu bạn chưa hoàn tất, hãy mở lại phiên xác minh. Kết quả thường có trong vòng một phút.', 'If you have not finished, open the session again. Results usually arrive within a minute.', '完了していない場合は再度セッションを開いてください。結果は通常1分以内に届きます。')}
+                      </p>
+                      <Button type="button" variant="outline" size="sm" onClick={() => refreshKycSession()} disabled={isRefreshingKyc}>
+                        {tx('Kiểm tra lại', 'Check again', '再確認')}
+                      </Button>
+                    </div>
+                  ) : isKycFailed ? (
+                    <p className="text-sm text-red-400 flex items-start gap-2">
+                      <XCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      {tx('Phiên xác minh không thành công hoặc đã hết hạn. Vui lòng thử lại.', 'The verification session failed or expired. Please try again.', '確認セッションが失敗または期限切れです。もう一度お試しください。')}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      {tx('Chưa xác minh. Nhấn nút bên dưới để bắt đầu.', 'Not verified yet. Use the button below to start.', '未確認です。下のボタンから開始してください。')}
+                    </p>
+                  )}
                 </div>
 
-                {/* CCCD Front + Bank Screenshot (side by side - AI reads these two) */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label>{tx('Ảnh CCCD mặt trước *', 'Front ID photo *', '身分証表面の写真 *')}</Label>
-                    <div className={`mt-1 border-2 rounded-lg p-4 text-center transition-colors ${processingType === 'front' ? 'cursor-wait border-orange-500/50 bg-orange-500/5' : 'cursor-pointer'} ${aiResult ? (aiResult.is_valid_cccd ? 'border-green-500/50' : 'border-red-500/50 bg-red-500/5') : 'border-dashed hover:border-orange-500/50'}`}
-                      onClick={() => { if (processingType !== 'front') document.getElementById('id-front')?.click(); }}>
-                      {processingType === 'front' ? (
-                        <div className="flex items-center justify-center gap-2 py-1">
-                          <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
-                          <p className="text-sm text-orange-400">{tx('Đang xử lý ảnh...', 'Processing image...', '画像を処理中...')}</p>
-                        </div>
-                      ) : idFrontFile ? (
-                        <p className={`text-sm truncate ${aiResult && !aiResult.is_valid_cccd ? 'text-red-500' : 'text-green-400'}`}>{idFrontFile.name}</p>
-                      ) : (
-                        <>
-                          <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
-                          <p className="text-xs text-muted-foreground mt-1">{tx('Nhấn để tải ảnh', 'Tap to upload image', 'タップして画像をアップロード')}</p>
-                        </>
-                      )}
-                      <input type="file" id="id-front" className="hidden" accept="image/*"
-                        onChange={e => handleFileChange('front', e.target.files?.[0] || null)} />
-                    </div>
-                  </div>
-                  <div>
-                    <Label>{tx('Ảnh CCCD mặt sau *', 'Back ID photo *', '身分証裏面の写真 *')}</Label>
-                    <div className={`mt-1 border-2 rounded-lg p-4 text-center transition-colors ${processingType === 'back' ? 'cursor-wait border-orange-500/50 bg-orange-500/5' : 'cursor-pointer'} ${aiResult ? (aiResult.is_valid_cccd_back ? 'border-green-500/50' : 'border-red-500/50 bg-red-500/5') : 'border-dashed hover:border-orange-500/50'}`}
-                      onClick={() => { if (processingType !== 'back') document.getElementById('id-back')?.click(); }}>
-                      {processingType === 'back' ? (
-                        <div className="flex items-center justify-center gap-2 py-1">
-                          <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
-                          <p className="text-sm text-orange-400">{tx('Đang xử lý ảnh...', 'Processing image...', '画像を処理中...')}</p>
-                        </div>
-                      ) : idBackFile ? (
-                        <p className={`text-sm truncate ${aiResult && !aiResult.is_valid_cccd_back ? 'text-red-500' : 'text-green-400'}`}>{idBackFile.name}</p>
-                      ) : (
-                        <>
-                          <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
-                          <p className="text-xs text-muted-foreground mt-1">{tx('Nhấn để tải ảnh', 'Tap to upload image', 'タップして画像をアップロード')}</p>
-                        </>
-                      )}
-                      <input type="file" id="id-back" className="hidden" accept="image/*"
-                        onChange={e => handleFileChange('back', e.target.files?.[0] || null)} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Bank Screenshot */}
-                <div>
-                  <Label>{tx('Ảnh chụp mục "QR của tôi" trên App Ngân hàng *', 'Screenshot of "My QR" in banking app *', '銀行アプリの「My QR」画面のスクリーンショット *')}</Label>
-                  <div className={`mt-1 border-2 rounded-lg p-4 text-center transition-colors ${processingType === 'bank' ? 'cursor-wait border-orange-500/50 bg-orange-500/5' : 'cursor-pointer'} ${aiResult ? (aiResult.is_valid_bank ? 'border-green-500/50' : 'border-red-500/50 bg-red-500/5') : 'border-dashed hover:border-orange-500/50'}`}
-                    onClick={() => { if (processingType !== 'bank') document.getElementById('bank-screenshot')?.click(); }}>
-                    {processingType === 'bank' ? (
-                      <div className="flex items-center justify-center gap-2 py-1">
-                        <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
-                        <p className="text-sm text-orange-400">{tx('Đang xử lý ảnh...', 'Processing image...', '画像を処理中...')}</p>
-                      </div>
-                    ) : bankScreenshotFile ? (
-                      <p className={`text-sm truncate ${aiResult && !aiResult.is_valid_bank ? 'text-red-500' : 'text-green-400'}`}>{bankScreenshotFile.name}</p>
+                {!isKycApproved && (
+                  <Button
+                    type="button"
+                    onClick={startKycVerification}
+                    disabled={isStartingKyc}
+                    className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold"
+                    size="lg"
+                  >
+                    {isStartingKyc ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        {tx('Đang mở phiên xác minh...', 'Opening verification...', '確認を開いています...')}
+                      </>
                     ) : (
                       <>
-                        <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
-                        <p className="text-xs text-muted-foreground mt-1">{tx('Screenshot phần Tên & Số TK', 'Screenshot showing name and account number', '氏名と口座番号が見えるスクリーンショット')}</p>
+                        <ShieldCheck className="h-4 w-4 mr-2" />
+                        {isKycInFlight || isKycFailed
+                          ? tx('Mở lại phiên xác minh', 'Reopen verification', '確認を再度開く')
+                          : tx('Bắt đầu xác minh danh tính', 'Start identity verification', '本人確認を開始')}
                       </>
                     )}
-                    <input type="file" id="bank-screenshot" className="hidden" accept="image/*"
-                      onChange={e => handleFileChange('bank', e.target.files?.[0] || null)} />
-                  </div>
-                </div>
+                  </Button>
+                )}
 
-                {/* Bank Name */}
-                <div>
-                  <Label>{tx('Ngân hàng *', 'Bank *', '銀行 *')}</Label>
-                  <Select value={bankName} onValueChange={setBankName}>
-                    <SelectTrigger><SelectValue placeholder={tx('Chọn ngân hàng...', 'Select bank...', '銀行を選択...')} /></SelectTrigger>
-                    <SelectContent>
-                      {BANKS.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <Button
-                  type="button"
-                  onClick={() => {
-                    if (idFrontFile && idBackFile && bankScreenshotFile) {
-                      handleAICheck(idFrontFile, idBackFile, bankScreenshotFile, fullName.trim());
-                    }
-                  }}
-                  disabled={!canStartSystemScan}
-                  variant="outline"
-                  className="w-full border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
-                >
-                  {isAIChecking ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      {tx('Hệ thống đang quét', 'System is scanning', 'システムがスキャン中')}
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-4 w-4 mr-2" />
-                      {tx('Bắt đầu quét bằng hệ thống', 'Start system scan', 'システムスキャンを開始')}
-                    </>
-                  )}
-                </Button>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Payout details — only meaningful once identity is settled */}
+                <div className={isKycApproved ? 'space-y-6' : 'space-y-6 opacity-50 pointer-events-none'}>
                   <div>
-                    <Label htmlFor="editableBankAccountName">{tx('Tên chủ tài khoản *', 'Account holder name *', '口座名義 *')}</Label>
-                    <Input
-                      id="editableBankAccountName"
-                      value={editableBankAccountName}
-                      onChange={e => setEditableBankAccountName(e.target.value)}
-                      placeholder={tx('Tên chủ tài khoản sau khi kiểm tra', 'Account holder after verification', '確認後の口座名義')}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {tx('Hệ thống của chúng tôi gợi ý', 'System suggestion', 'システムの提案')}: {aiResult?.bank_account_name || tx('Chưa có', 'Not available', '未取得')}
-                    </p>
+                    <Label htmlFor="fullName">{tx('Họ và tên (đúng với giấy tờ) *', 'Full name (must match ID) *', '氏名（身分証と一致）*')}</Label>
+                    <Input id="fullName" value={fullName} onChange={e => setFullName(e.target.value)} placeholder={tx('Nguyễn Văn A', 'John Doe', '山田 太郎')} required />
+                    {!!verifiedName && !isSubmittedNameMatch && (
+                      <p className="text-xs text-red-400 mt-1">
+                        {tx('Phải trùng với tên trên giấy tờ', 'Must match the name on the document', '書類上の氏名と一致させてください')}: <strong>{verifiedName}</strong>
+                      </p>
+                    )}
                   </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label>{tx('Ngân hàng *', 'Bank *', '銀行 *')}</Label>
+                      <Select
+                        value={bankBin}
+                        onValueChange={value => {
+                          setBankBin(value);
+                          setBankName(banks.find(b => b.bin === value)?.shortName || '');
+                          resetBankVerification();
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={banks.length === 0
+                            ? tx('Đang tải danh sách...', 'Loading banks...', '銀行リストを読み込み中...')
+                            : tx('Chọn ngân hàng...', 'Select bank...', '銀行を選択...')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {banks.map(b => (
+                            <SelectItem key={b.bin} value={b.bin}>
+                              {b.shortName} — {b.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="editableBankAccountNumber">{tx('Số tài khoản *', 'Account number *', '口座番号 *')}</Label>
+                      <Input
+                        id="editableBankAccountNumber"
+                        value={editableBankAccountNumber}
+                        onChange={e => {
+                          setEditableBankAccountNumber(e.target.value.replace(/[^\d]/g, ''));
+                          resetBankVerification();
+                        }}
+                        placeholder={tx('Số tài khoản nhận tiền', 'Payout account number', '入金口座番号')}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Account holder comes from the banking network, not the user.
+                      That is the whole point — a typed name proves nothing. */}
+                  <div className="space-y-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={lookupBankAccount}
+                      disabled={!bankBin || editableBankAccountNumber.length < 6 || isLookingUpBank || isBankVerified}
+                      className="w-full border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
+                    >
+                      {isLookingUpBank ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          {tx('Đang tra cứu tài khoản...', 'Looking up account...', '口座を照会中...')}
+                        </>
+                      ) : isBankVerified ? (
+                        <>
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          {tx('Tài khoản đã xác minh', 'Account verified', '口座を確認済み')}
+                        </>
+                      ) : (
+                        tx('Kiểm tra tài khoản', 'Check account', '口座を確認')
+                      )}
+                    </Button>
+
+                    {bankLookupError && (
+                      <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-400 flex items-start gap-2">
+                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                        <div>{bankLookupError}</div>
+                      </div>
+                    )}
+
+                    {editableBankAccountName && (
+                      <div className={`rounded-lg p-3 border ${isBankVerified ? 'bg-green-500/5 border-green-500/30' : 'bg-yellow-500/5 border-yellow-500/30'}`}>
+                        <p className="text-xs text-muted-foreground">{tx('Tên chủ tài khoản (do ngân hàng trả về)', 'Account holder (returned by the bank)', '口座名義（銀行が返した情報）')}</p>
+                        <p className="font-semibold">{editableBankAccountName}</p>
+                      </div>
+                    )}
+                  </div>
+
                   <div>
-                    <Label htmlFor="editableBankAccountNumber">{tx('Số tài khoản *', 'Account number *', '口座番号 *')}</Label>
-                    <Input
-                      id="editableBankAccountNumber"
-                      value={editableBankAccountNumber}
-                      onChange={e => setEditableBankAccountNumber(e.target.value.replace(/[^\d]/g, ''))}
-                      placeholder={tx('Số tài khoản sau khi kiểm tra', 'Account number after verification', '確認後の口座番号')}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                   {tx('Hệ thống gợi ý', 'System suggestion', 'システムの提案')}: {aiResult?.bank_account_number || tx('Chưa có', 'Not available', '未取得')}
-                    </p>
+                    <Label>{tx('Ảnh chụp màn hình tài khoản ngân hàng (tùy chọn)', 'Bank account screenshot (optional)', '銀行口座のスクリーンショット（任意）')}</Label>
+                    <div className={`mt-1 border-2 rounded-lg p-4 text-center transition-colors ${processingType === 'bank' ? 'cursor-wait border-orange-500/50 bg-orange-500/5' : 'cursor-pointer border-dashed hover:border-orange-500/50'}`}
+                      onClick={() => { if (processingType !== 'bank') document.getElementById('bank-screenshot')?.click(); }}>
+                      {processingType === 'bank' ? (
+                        <div className="flex items-center justify-center gap-2 py-1">
+                          <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
+                          <p className="text-sm text-orange-400">{tx('Đang xử lý ảnh...', 'Processing image...', '画像を処理中...')}</p>
+                        </div>
+                      ) : bankScreenshotFile ? (
+                        <p className="text-sm truncate text-green-400">{bankScreenshotFile.name}</p>
+                      ) : (
+                        <>
+                          <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
+                          <p className="text-xs text-muted-foreground mt-1">{tx('Giúp admin đối chiếu nhanh hơn khi cần soát thủ công', 'Helps an admin cross-check faster if manual review is needed', '手動確認が必要な場合に管理者の照合を早めます')}</p>
+                        </>
+                      )}
+                      <input type="file" id="bank-screenshot" className="hidden" accept="image/*"
+                        onChange={e => handleFileChange('bank', e.target.files?.[0] || null)} />
+                    </div>
                   </div>
                 </div>
 
-                {/* Next */}
                 <Button
                   type="button"
                   onClick={() => setCurrentStep(2)}
                   disabled={
-                    !aiResult || !fullName || !idFrontFile || !idBackFile || !bankScreenshotFile || !bankName ||
-                    !editableBankAccountName || !editableBankAccountNumber ||
-                    !aiResult.is_valid_cccd || !aiResult.is_valid_cccd_back || !aiResult.is_valid_bank ||
-                    !isSubmittedNameMatch || aiResult.confidence < 0.7
+                    !isKycApproved || !fullName || !bankBin ||
+                    !editableBankAccountNumber || !isBankVerified || !isSubmittedNameMatch
                   }
                   className="w-full"
                   size="lg"
@@ -1663,9 +1517,11 @@ export default function SellPage() {
                         <p className="font-medium">{fullName}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground text-xs">{tx('Độ tin cậy', 'Confidence', '信頼度')}</p>
-                        <p className={`font-semibold ${(aiResult?.confidence || 0) >= 0.7 ? 'text-green-500' : 'text-yellow-500'}`}>
-                          {Math.round((aiResult?.confidence || 0) * 100)}%
+                        <p className="text-muted-foreground text-xs">{tx('Danh tính', 'Identity', '本人確認')}</p>
+                        <p className={`font-semibold ${isKycApproved ? 'text-green-500' : 'text-yellow-500'}`}>
+                          {isKycApproved
+                            ? tx('✅ Đã xác minh', '✅ Verified', '✅ 確認済み')
+                            : tx('⏳ Chưa xong', '⏳ Incomplete', '⏳ 未完了')}
                         </p>
                       </div>
                       <div>
@@ -1681,9 +1537,11 @@ export default function SellPage() {
                         <p className="font-medium">{editableBankAccountName || '—'}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground text-xs">{tx('Tên trùng khớp', 'Name match', '氏名一致')}</p>
-                        <p className={`font-semibold ${isSubmittedNameMatch ? 'text-green-500' : 'text-red-500'}`}>
-                          {isSubmittedNameMatch ? tx('✅ Khớp', '✅ Match', '✅ 一致') : tx('❌ Không khớp', '❌ Not matched', '❌ 不一致')}
+                        <p className="text-muted-foreground text-xs">{tx('Tài khoản ngân hàng', 'Bank account', '銀行口座')}</p>
+                        <p className={`font-semibold ${isBankVerified ? 'text-green-500' : 'text-red-500'}`}>
+                          {isBankVerified
+                            ? tx('✅ Đã đối chiếu với ngân hàng', '✅ Verified with the bank', '✅ 銀行と照合済み')
+                            : tx('❌ Chưa đối chiếu', '❌ Not verified', '❌ 未照合')}
                         </p>
                       </div>
                     </div>
@@ -1700,17 +1558,20 @@ export default function SellPage() {
                   </div>
 
                   <div className="bg-zinc-50 dark:bg-zinc-900 rounded-lg p-4 space-y-3">
-                    <h4 className="font-semibold text-sm">{tx('Ảnh đã tải lên', 'Uploaded images', 'アップロード済み画像')}</h4>
+                    <h4 className="font-semibold text-sm">{tx('Giấy tờ', 'Documents', '書類')}</h4>
                     <div className="flex flex-wrap gap-2 text-xs text-green-400">
-                      <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3" /> {tx('CCCD trước', 'ID front', '身分証表面')}</span>
-                      <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3" /> {tx('CCCD sau', 'ID back', '身分証裏面')}</span>
-                      <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3" /> {tx('App Ngân hàng', 'Bank app', '銀行アプリ')}</span>
+                      <span className="flex items-center gap-1">
+                        <CheckCircle className="h-3 w-3" /> {tx('CCCD + khuôn mặt do đối tác xác minh', 'ID + face verified by our partner', '身分証・顔認証はパートナーが実施')}
+                      </span>
+                      {bankScreenshotFile && (
+                        <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3" /> {tx('Ảnh ngân hàng', 'Bank screenshot', '銀行スクリーンショット')}</span>
+                      )}
                     </div>
                   </div>
                 </div>
 
                 <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 text-xs text-yellow-400">
-                  ⚠️ {tx('Sau khi gửi, hệ thống sẽ tiền duyệt hồ sơ ngay lập tức. Admin sẽ xác nhận lần cuối trong thời gian sớm nhất để bạn bắt đầu bán hàng.', 'After submission, the system will pre-review your profile immediately. An admin will do the final approval as soon as possible so you can start selling.', '送信後、システムが即時に事前審査を行います。販売開始できるよう、管理者ができるだけ早く最終承認を行います。')}
+                  ⚠️ {tx('Nếu danh tính đã xác minh và mọi thông tin khớp, hồ sơ được duyệt ngay. Trường hợp có dấu hiệu bất thường, admin sẽ soát lại trước khi duyệt.', 'If your identity is verified and everything matches, approval is immediate. Anything unusual is reviewed by an admin first.', '本人確認済みで情報が一致すれば即時承認されます。不審な点がある場合は管理者が先に確認します。')}
                 </div>
 
                 <div className="flex gap-3">
@@ -1720,7 +1581,7 @@ export default function SellPage() {
                   <Button
                     type="button"
                     onClick={handleKYCSubmit}
-                    disabled={isSubmitting || !isSubmittedNameMatch || !isPhoneValid || (aiResult?.confidence || 0) < 0.7}
+                    disabled={isSubmitting || !isSubmittedNameMatch || !isPhoneValid || !isKycApproved || !isBankVerified}
                     className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold"
                     size="lg"
                   >

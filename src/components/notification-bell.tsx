@@ -269,7 +269,12 @@ export function NotificationBell() {
                                 } else if (newNotification.type === 'offer_accepted' && newNotification.transactionId) {
                                     window.location.assign(`/transaction/${newNotification.transactionId}`);
                                 } else if (newNotification.type.startsWith('order_')) {
-                                    window.location.assign(newNotification.orderId ? `/orders/${newNotification.orderId}` : '/orders');
+                                    if (newNotification.orderId) {
+                                        window.location.assign(`/orders/${newNotification.orderId}`);
+                                    } else {
+                                        const tab = newNotification.type === 'order_new' || newNotification.type === 'order_cancelled' ? 'seller' : 'buyer';
+                                        window.location.assign(`/orders?tab=${tab}`);
+                                    }
                                 } else if (newNotification.conversationId) {
                                     window.dispatchEvent(new CustomEvent('cardverse:open-chat', {
                                         detail: { conversationId: newNotification.conversationId },
@@ -346,10 +351,16 @@ export function NotificationBell() {
             return;
         }
 
-        // Order-related notifications → the order details page (or the orders
-        // list if an older notification has no order_id). Never fall to the card.
+        // Order-related notifications → the order details page. Without an
+        // order_id (older notifications) fall back to the orders list on the
+        // right tab — "new order"/"cancelled" are seller-side events.
         if (notification.type.startsWith('order_')) {
-            router.push(notification.orderId ? `/orders/${notification.orderId}` : '/orders');
+            if (notification.orderId) {
+                router.push(`/orders/${notification.orderId}`);
+            } else {
+                const tab = notification.type === 'order_new' || notification.type === 'order_cancelled' ? 'seller' : 'buyer';
+                router.push(`/orders?tab=${tab}`);
+            }
             return;
         }
 

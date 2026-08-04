@@ -352,13 +352,18 @@ export async function PATCH(request: NextRequest) {
             }
 
             case 'cancel': {
-                // Buyer or seller can cancel if status is pending_payment or paid
+                // Once an order is PAID, neither the buyer nor the seller may
+                // cancel it — problems are handled by admin ("Report to admin").
+                // Only an unpaid (pending_payment) order can still be dropped.
                 const isOwner = order.buyer_id === user.id || order.seller_id === user.id;
                 if (!isOwner) {
                     return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
                 }
-                if (!['pending_payment', 'paid'].includes(order.status)) {
-                    return NextResponse.json({ error: 'Cannot cancel at this stage' }, { status: 400 });
+                if (order.status !== 'pending_payment') {
+                    return NextResponse.json({
+                        error: 'Không thể huỷ đơn đã thanh toán. Vui lòng dùng "Báo cáo admin" nếu có vấn đề.',
+                        code: 'cancel_not_allowed',
+                    }, { status: 400 });
                 }
 
                 // Atomically claim the cancellation per prior status. Only the

@@ -4,7 +4,7 @@ import { calculateShippingFee } from '@/lib/ghn';
 
 // GHN's fee API is a paid third-party quota — this endpoint used to be an
 // unauthenticated open proxy to it. Now: login required + per-user rate limit
-// + sane numeric bounds (same in-memory pattern as /api/seller/ai-check).
+// + sane numeric bounds (in-memory, per-instance).
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = 30; // checkout recalculates on address change; 30/min is generous
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();

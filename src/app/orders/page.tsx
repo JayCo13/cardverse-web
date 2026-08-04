@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
@@ -279,7 +279,10 @@ export default function OrdersPage() {
           } as Record<string, string>,
           trackingSteps: ['Created', 'Picked up', 'In transit', 'Delivering', 'Delivered'],
         };
-  const [activeTab, setActiveTab] = useState('buyer');
+  // Open the tab requested via ?tab=seller|buyer (e.g. from a "new order"
+  // notification, which is a seller-side event). Defaults to the buyer tab.
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') === 'seller' ? 'seller' : 'buyer');
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -572,24 +575,8 @@ export default function OrdersPage() {
                   </>
                 )}
 
-                {/* Cancel */}
-                {['pending_payment', 'paid'].includes(order.status) && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setConfirmAction({
-                      orderId: order.id,
-                      action: 'cancel',
-                      title: locale === 'ja-JP' ? '注文をキャンセルしますか？' : locale === 'en-US' ? 'Cancel this order?' : 'Huỷ đơn hàng này?',
-                      message: order.status === 'paid'
-                        ? (locale === 'ja-JP' ? '注文がキャンセルされ、代金はウォレットに返金されます。' : locale === 'en-US' ? 'The order will be cancelled and refunded to the wallet.' : 'Đơn sẽ bị huỷ và tiền hoàn về ví.')
-                        : (locale === 'ja-JP' ? '注文がキャンセルされます。' : locale === 'en-US' ? 'The order will be cancelled.' : 'Đơn hàng sẽ bị huỷ.'),
-                    })}
-                    disabled={actionLoading === order.id}
-                  >
-                    {copy.cancelOrder}
-                  </Button>
-                )}
+                {/* Orders can no longer be cancelled by the buyer or seller once
+                    placed — problems after payment go through "Report to admin". */}
               </div>
             </div>
           </div>
