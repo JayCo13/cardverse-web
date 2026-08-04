@@ -41,14 +41,29 @@ export async function POST(request: NextRequest) {
         }
 
         const service = createServiceSupabaseClient();
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+        // Both pre-checks are independent, so pay for one round trip rather
+        // than two. This handler already spends its latency budget on auth,
+        // the provider call and the insert; on a cold start the serial version
+        // can push the whole function past the platform timeout.
+        const [existingResult, rateResult] = await Promise.all([
+            service
+                .from('seller_verifications')
+                .select('status')
+                .eq('user_id', user.id)
+                .maybeSingle(),
+            service
+                .from('kyc_sessions')
+                .select('id', { count: 'exact', head: true })
+                .eq('user_id', user.id)
+                .gte('created_at', oneHourAgo),
+        ]);
+
+        const existing = existingResult.data as { status: string } | null;
+        const count = rateResult.count;
 
         // Already an approved seller — nothing to verify.
-        const { data: existing } = await service
-            .from('seller_verifications')
-            .select('status')
-            .eq('user_id', user.id)
-            .maybeSingle() as { data: { status: string } | null };
-
         if (existing?.status === 'approved') {
             return NextResponse.json({ error: 'Tài khoản đã được xác minh.' }, { status: 400 });
         }
@@ -58,13 +73,6 @@ export async function POST(request: NextRequest) {
 
         // Rate limit in the database, not in memory: this runs on serverless
         // where each instance would otherwise keep its own counter.
-        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-        const { count } = await service
-            .from('kyc_sessions')
-            .select('id', { count: 'exact', head: true })
-            .eq('user_id', user.id)
-            .gte('created_at', oneHourAgo);
-
         if ((count ?? 0) >= MAX_SESSIONS_PER_HOUR) {
             return NextResponse.json(
                 { error: 'Bạn đã mở quá nhiều phiên xác minh. Vui lòng thử lại sau 1 giờ.' },
