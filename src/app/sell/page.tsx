@@ -157,6 +157,10 @@ export default function SellPage() {
   const [bankLookupError, setBankLookupError] = useState<string | null>(null);
   // True once the banking network confirmed the holder AND it matches the ID.
   const [isBankVerified, setIsBankVerified] = useState(false);
+  // Lookup could not run at all (provider outage, quota, plan). Not the
+  // seller's fault, so they fall back to typing the holder name and the
+  // submission goes to manual review rather than being blocked.
+  const [isBankLookupUnavailable, setIsBankLookupUnavailable] = useState(false);
   const [uploadedKycAssets, setUploadedKycAssets] = useState<UploadedKycAssets>({
     bankOriginalUrl: null,
     bankJpgUrl: null,
@@ -347,10 +351,17 @@ export default function SellPage() {
   // The name the provider actually read off the document. The server re-checks
   // every condition below before approving; this only keeps the user from
   // walking into a submission that is certain to bounce.
+  // Word order is not stable across a CCCD, a bank record and an MRZ, so
+  // compare the words as a set. Mirrors namesMatch() on the server, which is
+  // what actually decides.
+  const nameKey = (value: string) => {
+    const words = normalizeVietnameseName(value).split(' ').filter(Boolean);
+    return words.length ? words.sort().join(' ') : '';
+  };
   const verifiedName = kycSession?.verified_full_name || '';
-  const isSubmittedNameMatch = !!verifiedName
-    && normalizeVietnameseName(fullName) === normalizeVietnameseName(verifiedName)
-    && normalizeVietnameseName(editableBankAccountName) === normalizeVietnameseName(verifiedName);
+  const isSubmittedNameMatch = !!nameKey(verifiedName)
+    && nameKey(fullName) === nameKey(verifiedName)
+    && nameKey(editableBankAccountName) === nameKey(verifiedName);
 
   useEffect(() => {
     if (!authLoading && !user) setOpen(true);
@@ -592,6 +603,7 @@ export default function SellPage() {
   // Any change to the account invalidates a previous confirmation.
   const resetBankVerification = () => {
     setIsBankVerified(false);
+    setIsBankLookupUnavailable(false);
     setBankLookupError(null);
     setEditableBankAccountName('');
   };
@@ -610,9 +622,14 @@ export default function SellPage() {
       if (!res.ok) {
         setIsBankVerified(false);
         setEditableBankAccountName('');
+        // 'unavailable' means the check could not run — never the seller's
+        // fault, so let them continue by hand instead of dead-ending.
+        setIsBankLookupUnavailable(data.status === 'unavailable');
         setBankLookupError(data.error || tx('Không tra cứu được tài khoản.', 'Could not look up the account.', '口座を照会できませんでした。'));
         return;
       }
+
+      setIsBankLookupUnavailable(false);
 
       setEditableBankAccountName(data.account_name || '');
       setIsBankVerified(!!data.matches_identity);
@@ -691,7 +708,7 @@ export default function SellPage() {
       return;
     }
 
-    if (!isBankVerified) {
+    if (!isBankVerified && !isBankLookupUnavailable) {
       toast({ variant: 'destructive', title: tx('Chưa xác minh tài khoản ngân hàng', 'Bank account not verified', '銀行口座が未確認です'), description: tx('Nhấn "Kiểm tra tài khoản" ở Bước 1 và đảm bảo tên chủ tài khoản khớp với giấy tờ.', 'Use "Check account" in Step 1 and make sure the holder matches your document.', 'ステップ1の「口座を確認」を実行し、名義が書類と一致することを確認してください。') });
       return;
     }
@@ -1419,10 +1436,33 @@ export default function SellPage() {
                       </div>
                     )}
 
-                    {editableBankAccountName && (
+                    {editableBankAccountName && !isBankLookupUnavailable && (
                       <div className={`rounded-lg p-3 border ${isBankVerified ? 'bg-green-500/5 border-green-500/30' : 'bg-yellow-500/5 border-yellow-500/30'}`}>
                         <p className="text-xs text-muted-foreground">{tx('Tên chủ tài khoản (do ngân hàng trả về)', 'Account holder (returned by the bank)', '口座名義（銀行が返した情報）')}</p>
                         <p className="font-semibold">{editableBankAccountName}</p>
+                      </div>
+                    )}
+
+                    {/* Lookup unavailable: accept a typed holder name and let an
+                        admin confirm it, rather than blocking a valid seller. */}
+                    {isBankLookupUnavailable && (
+                      <div>
+                        <Label htmlFor="manualBankAccountName">
+                          {tx('Tên chủ tài khoản *', 'Account holder name *', '口座名義 *')}
+                        </Label>
+                        <Input
+                          id="manualBankAccountName"
+                          value={editableBankAccountName}
+                          onChange={e => setEditableBankAccountName(e.target.value)}
+                          placeholder={verifiedName || tx('Nhập đúng tên chủ tài khoản', 'Enter the account holder name', '口座名義を入力')}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {tx(
+                            'Không tra cứu tự động được nên admin sẽ kiểm tra thủ công. Tên phải trùng với giấy tờ đã xác minh.',
+                            'Automatic lookup is unavailable, so an admin will check manually. The name must match your verified document.',
+                            '自動照会が利用できないため管理者が手動で確認します。氏名は確認済みの書類と一致する必要があります。'
+                          )}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -1454,8 +1494,8 @@ export default function SellPage() {
                   type="button"
                   onClick={() => setCurrentStep(2)}
                   disabled={
-                    !isKycApproved || !fullName || !bankBin ||
-                    !editableBankAccountNumber || !isBankVerified || !isSubmittedNameMatch
+                    !isKycApproved || !fullName || !bankBin || !editableBankAccountNumber ||
+                    !(isBankVerified || isBankLookupUnavailable) || !isSubmittedNameMatch
                   }
                   className="w-full"
                   size="lg"
@@ -1567,10 +1607,12 @@ export default function SellPage() {
                       </div>
                       <div>
                         <p className="text-muted-foreground text-xs">{tx('Tài khoản ngân hàng', 'Bank account', '銀行口座')}</p>
-                        <p className={`font-semibold ${isBankVerified ? 'text-green-500' : 'text-red-500'}`}>
+                        <p className={`font-semibold ${isBankVerified ? 'text-green-500' : isBankLookupUnavailable ? 'text-yellow-500' : 'text-red-500'}`}>
                           {isBankVerified
                             ? tx('✅ Đã đối chiếu với ngân hàng', '✅ Verified with the bank', '✅ 銀行と照合済み')
-                            : tx('❌ Chưa đối chiếu', '❌ Not verified', '❌ 未照合')}
+                            : isBankLookupUnavailable
+                              ? tx('⚠️ Admin sẽ kiểm tra thủ công', '⚠️ Admin will check manually', '⚠️ 管理者が手動で確認')
+                              : tx('❌ Chưa đối chiếu', '❌ Not verified', '❌ 未照合')}
                         </p>
                       </div>
                     </div>
@@ -1610,7 +1652,7 @@ export default function SellPage() {
                   <Button
                     type="button"
                     onClick={handleKYCSubmit}
-                    disabled={isSubmitting || !isSubmittedNameMatch || !isPhoneValid || !isKycApproved || !isBankVerified}
+                    disabled={isSubmitting || !isSubmittedNameMatch || !isPhoneValid || !isKycApproved || !(isBankVerified || isBankLookupUnavailable)}
                     className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold"
                     size="lg"
                   >

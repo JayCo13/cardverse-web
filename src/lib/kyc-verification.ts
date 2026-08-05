@@ -73,3 +73,21 @@ export function normalizeVietnameseName(name: string) {
         .replace(/\s+/g, ' ')
         .trim();
 }
+
+/**
+ * Compare two names for the same person, ignoring word order.
+ *
+ * Vietnamese names are family-name-first, but banks, ID documents and MRZ
+ * fields do not agree on that: the same person can be "CO TRINH HIEN TAI" on a
+ * CCCD and "TAI CO TRINH HIEN" in a bank record. Comparing the words as a
+ * multiset accepts those orderings while still rejecting a different name, a
+ * missing word, or a duplicated one.
+ */
+export function namesMatch(a: string, b: string) {
+    const tokens = (value: string) => {
+        const words = normalizeVietnameseName(value).split(' ').filter(Boolean);
+        return words.length ? words.sort().join(' ') : '';
+    };
+    const left = tokens(a);
+    return !!left && left === tokens(b);
+}

@@ -163,12 +163,29 @@ function normaliseIdentity(payload: Record<string, unknown>): KycIdentity {
         ? (nfc.chip_data as Record<string, unknown>)
         : null);
 
-    // Prefer the chip: NFC data is cryptographically signed by the issuer,
-    // whereas OCR is a best-effort read of a photograph.
+    const issuingState = str(id?.issuing_state) || str(id?.issuing_state_name) || str(chip?.issuing_state);
+
+    /**
+     * Join split name parts in the order the issuing country prints them.
+     * Vietnamese documents are family-name-first ("Cổ Trịnh Hiền Tài"), so the
+     * Western first+last join reverses them into a different name — which then
+     * fails every downstream comparison against the bank account holder.
+     */
+    const joinParts = (first: string | null, last: string | null) => {
+        const parts = /^VN|^VNM/i.test(issuingState || '') ? [last, first] : [first, last];
+        return str(parts.filter(Boolean).join(' '));
+    };
+
+    // The printed full name is authoritative: it preserves the document's own
+    // ordering, which no reassembly from split parts can be trusted to do.
+    // Chip and MRZ fields are only a fallback for when OCR read no full name.
     const fullName =
-        str(chip ? [str(chip.first_name), str(chip.last_name)].filter(Boolean).join(' ') : null) ||
         str(id?.full_name) ||
-        str([str(id?.first_name), str(id?.last_name)].filter(Boolean).join(' '));
+        str(chip?.full_name) ||
+        str(mrz?.full_name) ||
+        joinParts(str(chip?.first_name), str(chip?.last_name)) ||
+        joinParts(str(id?.first_name), str(id?.last_name)) ||
+        joinParts(str(mrz?.first_name), str(mrz?.last_name));
 
     const nfcSkipped = nfc?.is_nfc_skipped;
     const authenticity = (nfc?.authenticity && typeof nfc.authenticity === 'object'
@@ -184,7 +201,7 @@ function normaliseIdentity(payload: Record<string, unknown>): KycIdentity {
             str(id?.personal_number) ||
             str(mrz?.document_number),
         documentType: str(chip?.document_type) || str(id?.document_type),
-        issuingState: str(id?.issuing_state) || str(id?.issuing_state_name),
+        issuingState,
         livenessScore: num(liveness?.score),
         faceMatchScore: num(faceMatch?.score),
         nfcVerified:

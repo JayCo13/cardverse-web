@@ -107,6 +107,9 @@ export async function lookupBankAccountName(params: {
     if (response.status >= 500) {
         return { status: 'unavailable', reason: `upstream_${response.status}` };
     }
+    if (response.status === 401 || response.status === 403) {
+        return { status: 'unavailable', reason: 'unauthorized' };
+    }
 
     let body: Record<string, unknown>;
     try {
@@ -125,11 +128,22 @@ export async function lookupBankAccountName(params: {
         return { status: 'ok', accountName };
     }
 
-    // A non-"00" code is a definite answer from the network: this account
-    // number does not resolve. That is a user error, not an outage.
+    const desc = String(body?.desc ?? '');
+
+    // Plan, quota and entitlement failures are OUR problem, not the seller's.
+    // Reporting them as "account not found" blames the user for a billing
+    // issue and blocks a legitimate submission; they belong in the
+    // manual-review path instead. VietQR signals this in prose rather than a
+    // distinct code, e.g. "The Free Plan will no longer support from ...".
+    if (/\bplan\b|subscription|no longer support|not support|quota|expired|upgrade/i.test(desc)) {
+        console.error(`[VietQR] Lookup unavailable — entitlement issue: ${desc}`);
+        return { status: 'unavailable', reason: 'plan_required' };
+    }
+
+    // Anything left is a definite answer about this account number.
     return {
         status: 'not_found',
         code: code || 'unknown',
-        message: String(body?.desc ?? 'Không tra cứu được tài khoản này.'),
+        message: desc || 'Không tra cứu được tài khoản này.',
     };
 }

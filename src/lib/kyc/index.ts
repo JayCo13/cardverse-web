@@ -1,7 +1,7 @@
 import { createHmac } from 'crypto';
 import { diditProvider } from './didit';
 import type { KycIdentity, KycProvider } from './types';
-import { normalizeVietnameseName } from '@/lib/kyc-verification';
+import { namesMatch, normalizeVietnameseName } from '@/lib/kyc-verification';
 
 export * from './types';
 
@@ -93,18 +93,16 @@ export function checkNameConsistency(params: {
     submittedName: string;
     bankAccountName: string;
 }): { matches: boolean; flags: string[] } {
-    const verified = normalizeVietnameseName(params.verifiedName || '');
-    const submitted = normalizeVietnameseName(params.submittedName);
-    const bank = normalizeVietnameseName(params.bankAccountName);
+    const verified = params.verifiedName || '';
     const flags: string[] = [];
 
-    if (!verified) {
+    if (!normalizeVietnameseName(verified)) {
         return { matches: false, flags: ['Không có tên đã xác minh để đối chiếu.'] };
     }
-    if (submitted !== verified) {
+    if (!namesMatch(params.submittedName, verified)) {
         flags.push('Họ tên đăng ký không khớp với giấy tờ đã xác minh.');
     }
-    if (bank !== verified) {
+    if (!namesMatch(params.bankAccountName, verified)) {
         flags.push('Tên chủ tài khoản ngân hàng không khớp với giấy tờ đã xác minh.');
     }
 

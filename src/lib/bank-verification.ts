@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { lookupBankAccountName, type BankLookupResult } from './vietqr';
-import { normalizeVietnameseName } from './kyc-verification';
+import { namesMatch, normalizeVietnameseName } from './kyc-verification';
 
 /** Lookups a single user may trigger per hour. Each one costs VietQR quota. */
 const MAX_LOOKUPS_PER_HOUR = 15;
@@ -110,7 +110,6 @@ export function checkBankAccountHolder(params: {
         };
     }
 
-    const holder = normalizeVietnameseName(params.lookup.accountName);
     if (!identity) {
         return {
             matches: false,
@@ -119,7 +118,7 @@ export function checkBankAccountHolder(params: {
         };
     }
 
-    if (holder !== identity) {
+    if (!namesMatch(params.lookup.accountName, params.identityName || '')) {
         return {
             matches: false,
             verifiedAccountName: params.lookup.accountName,
