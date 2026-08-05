@@ -33,11 +33,18 @@ export async function POST(request: NextRequest) {
         const lookup = await verifyBankAccount(service, { userId: user.id, bin, accountNumber });
 
         if (lookup.status === 'unavailable') {
-            const message = lookup.reason === 'rate_limited'
-                ? 'Bạn đã tra cứu quá nhiều lần. Vui lòng thử lại sau 1 giờ.'
-                : 'Dịch vụ tra cứu ngân hàng đang gián đoạn. Bạn vẫn có thể gửi hồ sơ, admin sẽ kiểm tra thủ công.';
+            // Say which it is. "Temporarily disrupted" is wrong — and unhelpful —
+            // when the lookup is simply not on our plan, because then waiting
+            // and retrying will never work.
+            const message =
+                lookup.reason === 'rate_limited'
+                    ? 'Bạn đã tra cứu quá nhiều lần. Vui lòng thử lại sau 1 giờ.'
+                    : lookup.reason === 'not_configured' || lookup.reason === 'plan_required' || lookup.reason === 'unauthorized'
+                        ? 'Tra cứu tự động chưa được bật. Vui lòng nhập tên chủ tài khoản đúng như trên giấy tờ — admin sẽ đối chiếu khi duyệt.'
+                        : 'Dịch vụ tra cứu ngân hàng đang gián đoạn. Bạn vẫn có thể gửi hồ sơ, admin sẽ kiểm tra thủ công.';
+
             return NextResponse.json(
-                { status: 'unavailable', error: message },
+                { status: 'unavailable', error: message, reason: lookup.reason },
                 { status: lookup.reason === 'rate_limited' ? 429 : 503 }
             );
         }
