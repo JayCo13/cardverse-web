@@ -13,11 +13,25 @@ type KycSessionRow = {
     id: string;
     provider: string;
     provider_session_id: string;
+    session_url: string | null;
     status: string;
     verified_full_name: string | null;
     consumed_at: string | null;
     created_at: string;
 };
+
+const SESSION_COLUMNS =
+    'id, provider, provider_session_id, session_url, status, verified_full_name, consumed_at, created_at';
+
+/**
+ * Statuses where the user still has work to do at the provider, so the same
+ * hosted session can simply be resumed. Terminal statuses (Declined, Expired,
+ * Abandoned, Kyc Expired) must start a fresh one.
+ */
+const RESUMABLE_STATUSES = ['Not Started', 'In Progress', 'Awaiting User'];
+
+/** Provider sessions do not live forever; past this we start a new one. */
+const RESUME_WINDOW_MS = 12 * 60 * 60 * 1000;
 
 /** Fields safe to hand back to a browser — never the decision payload. */
 function toClientShape(row: KycSessionRow) {
@@ -47,7 +61,7 @@ export async function POST(request: NextRequest) {
         // than two. This handler already spends its latency budget on auth,
         // the provider call and the insert; on a cold start the serial version
         // can push the whole function past the platform timeout.
-        const [existingResult, rateResult] = await Promise.all([
+        const [existingResult, rateResult, latestResult] = await Promise.all([
             service
                 .from('seller_verifications')
                 .select('status')
@@ -58,10 +72,19 @@ export async function POST(request: NextRequest) {
                 .select('id', { count: 'exact', head: true })
                 .eq('user_id', user.id)
                 .gte('created_at', oneHourAgo),
+            service
+                .from('kyc_sessions')
+                .select(SESSION_COLUMNS)
+                .eq('user_id', user.id)
+                .is('consumed_at', null)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle(),
         ]);
 
         const existing = existingResult.data as { status: string } | null;
         const count = rateResult.count;
+        const latest = latestResult.data as KycSessionRow | null;
 
         // Already an approved seller — nothing to verify.
         if (existing?.status === 'approved') {
@@ -69,6 +92,23 @@ export async function POST(request: NextRequest) {
         }
         if (existing?.status === 'pending') {
             return NextResponse.json({ error: 'Hồ sơ đang chờ duyệt.' }, { status: 400 });
+        }
+
+        // Resume an unfinished session rather than opening another one. The
+        // user backing out of the provider's page and clicking again is the
+        // normal case, and creating a second session there costs a credit and
+        // can collide with this one: the provider deduplicates by vendor_data,
+        // so it may hand back the session we already hold.
+        if (
+            latest?.session_url &&
+            RESUMABLE_STATUSES.includes(latest.status) &&
+            Date.now() - new Date(latest.created_at).getTime() < RESUME_WINDOW_MS
+        ) {
+            return NextResponse.json({
+                session: toClientShape(latest),
+                url: latest.session_url,
+                resumed: true,
+            });
         }
 
         // Rate limit in the database, not in memory: this runs on serverless
@@ -95,23 +135,27 @@ export async function POST(request: NextRequest) {
             expectedFullName,
         });
 
-        const { data: row, error: insertError } = await service
+        // Upsert, not insert: the provider deduplicates by vendor_data, so it
+        // can legitimately return a session id we already store. Treat that as
+        // the same session rather than a conflict.
+        const { data: row, error: upsertError } = await service
             .from('kyc_sessions')
-            .insert({
+            .upsert({
                 user_id: user.id,
                 provider: provider.name,
                 provider_session_id: session.providerSessionId,
+                session_url: session.url,
                 workflow_id: session.workflowId,
                 status: session.status,
-            } as never)
-            .select('id, provider, provider_session_id, status, verified_full_name, consumed_at, created_at')
+            } as never, { onConflict: 'provider,provider_session_id' })
+            .select(SESSION_COLUMNS)
             .single() as { data: KycSessionRow | null; error: { message?: string } | null };
 
-        if (insertError || !row) {
+        if (upsertError || !row) {
             // The provider session already exists at this point, so a failure
             // here costs a verification credit. Almost always a missing table
             // (migration not applied) or a bad service-role key.
-            throw new PersistenceError(insertError?.message || 'Failed to persist KYC session');
+            throw new PersistenceError(upsertError?.message || 'Failed to persist KYC session');
         }
 
         return NextResponse.json({ session: toClientShape(row), url: session.url });
@@ -158,7 +202,7 @@ export async function GET() {
         const service = createServiceSupabaseClient();
         const { data: row } = await service
             .from('kyc_sessions')
-            .select('id, provider, provider_session_id, status, verified_full_name, consumed_at, created_at')
+            .select(SESSION_COLUMNS)
             .eq('user_id', user.id)
             .order('created_at', { ascending: false })
             .limit(1)
@@ -178,7 +222,7 @@ export async function GET() {
                         .from('kyc_sessions')
                         .update({ status: decision.status } as never)
                         .eq('id', row.id)
-                        .select('id, provider, provider_session_id, status, verified_full_name, consumed_at, created_at')
+                        .select(SESSION_COLUMNS)
                         .single() as { data: KycSessionRow | null };
                     if (updated) return NextResponse.json({ session: toClientShape(updated) });
                 }

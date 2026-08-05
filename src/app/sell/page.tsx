@@ -667,7 +667,14 @@ export default function SellPage() {
     if (!user) return;
     if (!isKycInFlight) return;
 
-    const timer = setInterval(() => { refreshKycSession({ silent: true }); }, 5000);
+    // Each tick can cost a provider API call server-side, so stop after ~5
+    // minutes. The webhook is the real delivery path; someone who has not
+    // finished by then will reopen the session anyway.
+    let ticks = 0;
+    const timer = setInterval(() => {
+      if (++ticks > 60) { clearInterval(timer); return; }
+      refreshKycSession({ silent: true });
+    }, 5000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, isKycInFlight]);
