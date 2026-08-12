@@ -279,3 +279,117 @@ export async function sendKYCRejected(userEmail: string, fullName: string, reaso
         console.error('[Mail] Failed to send KYC rejected email:', error);
     }
 }
+
+// ─── Order placed ────────────────────────────────────────────────────────────
+//
+// Sent the moment payment is confirmed: immediately for wallet checkouts, and
+// from the PayOS webhook for bank transfers — never when the payment link is
+// merely created, or a buyer who abandoned the QR would get a receipt for an
+// order they never paid for.
+
+const formatVnd = (amount: number) => `${new Intl.NumberFormat('vi-VN').format(Math.round(amount))}đ`;
+
+/** Short, human-quotable order reference. Matches what the orders page shows. */
+const shortOrderId = (orderId: string) => orderId.slice(0, 8).toUpperCase();
+
+export async function sendOrderPlacedToBuyer(
+    buyerEmail: string,
+    params: {
+        orderId: string;
+        cardName: string;
+        amount: number;
+        shippingFee: number;
+        totalPaid: number;
+        carrierName?: string | null;
+        shippingAddress?: string | null;
+    },
+) {
+    try {
+        if (!buyerEmail) return;
+        const transporter = createMailTransporter();
+        const from = getFromAddress();
+        const appUrl = getAppUrl();
+
+        await transporter.sendMail({
+            from,
+            to: buyerEmail,
+            subject: `✅ Đặt hàng thành công #${shortOrderId(params.orderId)} — CardVerse`,
+            html: buildTemplate(
+                '✅ Đặt hàng thành công',
+                `<p style="color:#e4e4e7;">Cảm ơn bạn đã mua hàng trên CardVerse. Đơn hàng của bạn đã được thanh toán và đang chờ người bán gửi đi.</p>
+                <div style="background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.2); border-radius: 8px; padding: 16px; margin: 20px 0;">
+                    <p style="margin:0; color:#a1a1aa; font-size:13px;">Mã đơn hàng</p>
+                    <p style="margin:2px 0 12px; color:#fff; font-weight:700;">#${shortOrderId(params.orderId)}</p>
+                    <p style="margin:0; color:#a1a1aa; font-size:13px;">Sản phẩm</p>
+                    <p style="margin:2px 0 12px; color:#fff; font-weight:700;">${params.cardName}</p>
+                    <table style="width:100%; border-collapse:collapse; font-size:14px;">
+                        <tr><td style="color:#a1a1aa; padding:2px 0;">Giá thẻ</td><td align="right" style="color:#e4e4e7;">${formatVnd(params.amount)}</td></tr>
+                        <tr><td style="color:#a1a1aa; padding:2px 0;">Phí vận chuyển</td><td align="right" style="color:#e4e4e7;">${formatVnd(params.shippingFee)}</td></tr>
+                        <tr><td style="color:#fff; font-weight:700; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1);">Tổng thanh toán</td><td align="right" style="color:#f97316; font-weight:700; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1);">${formatVnd(params.totalPaid)}</td></tr>
+                    </table>
+                </div>
+                ${params.carrierName ? `<p style="color:#a1a1aa; font-size:13px; margin:0;">Đơn vị vận chuyển: <strong style="color:#e4e4e7;">${params.carrierName}</strong></p>` : ''}
+                ${params.shippingAddress ? `<p style="color:#a1a1aa; font-size:13px; margin:4px 0 0;">Giao đến: <strong style="color:#e4e4e7;">${params.shippingAddress}</strong></p>` : ''}
+                <p style="margin-top:20px;">Chúng tôi sẽ báo bạn ngay khi người bán gửi hàng. Xem chi tiết tại <a href="${appUrl}/orders" style="color:#f97316; text-decoration:none;">Đơn hàng của tôi</a>.</p>
+                <p style="color:#71717a; font-size:13px; margin-top:24px;">Tiền của bạn được CardVerse giữ cho đến khi bạn xác nhận đã nhận thẻ.</p>`,
+            ),
+        });
+        console.log(`[Mail] Order placed notification sent to buyer ${buyerEmail}`);
+    } catch (error) {
+        console.error('[Mail] Failed to send order placed email to buyer:', error);
+    }
+}
+
+export async function sendOrderPlacedToSeller(
+    sellerEmail: string,
+    params: {
+        orderId: string;
+        cardName: string;
+        amount: number;
+        platformFee?: number | null;
+        buyerName?: string | null;
+        shippingAddress?: string | null;
+    },
+) {
+    try {
+        if (!sellerEmail) return;
+        const transporter = createMailTransporter();
+        const from = getFromAddress();
+        const appUrl = getAppUrl();
+
+        // Only show a net figure when the platform fee is actually known, so a
+        // seller is never quoted a payout that later turns out to be different.
+        const netRow =
+            typeof params.platformFee === 'number'
+                ? `<tr><td style="color:#a1a1aa; padding:2px 0;">Phí nền tảng</td><td align="right" style="color:#e4e4e7;">-${formatVnd(params.platformFee)}</td></tr>
+                   <tr><td style="color:#fff; font-weight:700; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1);">Bạn nhận được</td><td align="right" style="color:#f97316; font-weight:700; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1);">${formatVnd(params.amount - params.platformFee)}</td></tr>`
+                : '';
+
+        await transporter.sendMail({
+            from,
+            to: sellerEmail,
+            subject: `🛒 Bạn có đơn hàng mới #${shortOrderId(params.orderId)} — CardVerse`,
+            html: buildTemplate(
+                '🛒 Bạn có đơn hàng mới',
+                `<p style="color:#e4e4e7;">Người mua đã thanh toán. Vui lòng chuẩn bị và gửi hàng sớm nhất có thể.</p>
+                <div style="background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.2); border-radius: 8px; padding: 16px; margin: 20px 0;">
+                    <p style="margin:0; color:#a1a1aa; font-size:13px;">Mã đơn hàng</p>
+                    <p style="margin:2px 0 12px; color:#fff; font-weight:700;">#${shortOrderId(params.orderId)}</p>
+                    <p style="margin:0; color:#a1a1aa; font-size:13px;">Sản phẩm</p>
+                    <p style="margin:2px 0 12px; color:#fff; font-weight:700;">${params.cardName}</p>
+                    <table style="width:100%; border-collapse:collapse; font-size:14px;">
+                        <tr><td style="color:#a1a1aa; padding:2px 0;">Giá bán</td><td align="right" style="color:#e4e4e7;">${formatVnd(params.amount)}</td></tr>
+                        ${netRow}
+                    </table>
+                </div>
+                ${params.buyerName ? `<p style="color:#a1a1aa; font-size:13px; margin:0;">Người mua: <strong style="color:#e4e4e7;">${params.buyerName}</strong></p>` : ''}
+                ${params.shippingAddress ? `<p style="color:#a1a1aa; font-size:13px; margin:4px 0 0;">Giao đến: <strong style="color:#e4e4e7;">${params.shippingAddress}</strong></p>` : ''}
+                <p style="margin-top:20px;">Vào <a href="${appUrl}/orders?tab=seller" style="color:#f97316; text-decoration:none;">Đơn bán của tôi</a> để nhập mã vận đơn sau khi gửi.</p>
+                <p style="color:#71717a; font-size:13px; margin-top:24px;">Tiền sẽ về ví của bạn sau khi người mua xác nhận đã nhận thẻ.</p>`,
+            ),
+        });
+        console.log(`[Mail] Order placed notification sent to seller ${sellerEmail}`);
+    } catch (error) {
+        console.error('[Mail] Failed to send order placed email to seller:', error);
+    }
+}

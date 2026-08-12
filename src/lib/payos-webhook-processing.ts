@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { sendOrderPlacedToBuyer, sendOrderPlacedToSeller } from './mail';
 
 type WebhookFinancialResult = {
   ok?: boolean;
@@ -21,7 +22,7 @@ type PostProcessingClaim = {
 async function finalizeMarketplaceOrders(supabase: SupabaseClient, paymentOrderId: string) {
   const { data: orders, error } = await supabase
     .from('orders')
-    .select('id, card_id, seller_id, status')
+    .select('id, card_id, seller_id, buyer_id, status, amount, shipping_fee, platform_fee, total_paid, shipping_address')
     .eq('payment_order_id', paymentOrderId);
   if (error) throw error;
 
@@ -48,7 +49,67 @@ async function finalizeMarketplaceOrders(supabase: SupabaseClient, paymentOrderI
         order_id: order.id,
       });
       if (notificationError) throw notificationError;
+
+      // Receipts ride on the same first-time branch as the notification, so a
+      // webhook retry cannot mail the same order twice. Failures here must not
+      // abort post-processing — the payment is already committed — so they are
+      // swallowed by the mail helpers and never rethrown.
+      await sendOrderPlacedEmails(supabase, order);
     }
+  }
+}
+
+type PaidOrder = {
+  id: string;
+  card_id: string;
+  seller_id: string;
+  buyer_id: string;
+  amount: number;
+  shipping_fee: number | null;
+  platform_fee: number | null;
+  total_paid: number | null;
+  shipping_address: string | null;
+};
+
+async function sendOrderPlacedEmails(supabase: SupabaseClient, order: PaidOrder) {
+  try {
+    const [{ data: card }, { data: people }] = await Promise.all([
+      supabase.from('cards').select('name').eq('id', order.card_id).maybeSingle(),
+      supabase
+        .from('profiles')
+        .select('id, email, display_name')
+        .in('id', [order.buyer_id, order.seller_id]),
+    ]);
+
+    const byId = new Map(
+      ((people || []) as Array<{ id: string; email: string | null; display_name: string | null }>)
+        .map((person) => [person.id, person]),
+    );
+    const buyer = byId.get(order.buyer_id);
+    const seller = byId.get(order.seller_id);
+    const cardName = (card as { name?: string } | null)?.name || 'Thẻ CardVerse';
+    const shippingFee = order.shipping_fee ?? 0;
+
+    await Promise.allSettled([
+      sendOrderPlacedToBuyer(buyer?.email || '', {
+        orderId: order.id,
+        cardName,
+        amount: order.amount,
+        shippingFee,
+        totalPaid: order.total_paid ?? order.amount + shippingFee,
+        shippingAddress: order.shipping_address,
+      }),
+      sendOrderPlacedToSeller(seller?.email || '', {
+        orderId: order.id,
+        cardName,
+        amount: order.amount,
+        platformFee: order.platform_fee,
+        buyerName: buyer?.display_name || null,
+        shippingAddress: order.shipping_address,
+      }),
+    ]);
+  } catch (mailError) {
+    console.error('[PayOS] Order placed emails failed:', mailError);
   }
 }
 

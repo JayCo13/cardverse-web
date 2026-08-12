@@ -8,6 +8,7 @@ import { hashFinancialRequest, stableFinancialUuid } from '@/lib/financial-idemp
 import { quoteVerifiedShipping } from '@/lib/verified-shipping';
 import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link-claim';
 import { translateRequest } from '@/lib/request-localization';
+import { sendOrderPlacedToBuyer, sendOrderPlacedToSeller } from '@/lib/mail';
 
 // Fee model: the 5% platform fee is charged once, at withdrawal — orders carry
 // platform_fee = 0 and the seller is credited the full amount on completion.
@@ -295,6 +296,50 @@ export async function POST(request: NextRequest) {
             if (notificationError) {
                 console.error('Wallet order notification failed:', notificationError);
             }
+
+            // Wallet checkouts are paid the moment the RPC commits, so the
+            // receipt goes out here. PayOS orders are emailed from the webhook
+            // instead — see finalizeMarketplaceOrders.
+            //
+            // Awaited so the serverless function is not frozen mid-send, and
+            // settled so a mail failure can never fail a paid order. Both
+            // helpers swallow their own errors.
+            const { data: sellerProfile } = await service
+                .from('profiles')
+                .select('email, display_name')
+                .eq('id', card.seller_id)
+                .maybeSingle() as { data: { email: string | null; display_name: string | null } | null };
+
+            const { data: buyerProfile } = await service
+                .from('profiles')
+                .select('display_name')
+                .eq('id', user.id)
+                .maybeSingle() as { data: { display_name: string | null } | null };
+
+            const orderRow = order as Record<string, unknown>;
+            const destination = [to_address_detail, to_ward_name, to_district_name, to_province_name]
+                .filter(Boolean)
+                .join(', ');
+
+            await Promise.allSettled([
+                sendOrderPlacedToBuyer(user.email || '', {
+                    orderId: String(orderRow.id),
+                    cardName: card.name,
+                    amount,
+                    shippingFee,
+                    totalPaid,
+                    carrierName: clientCarrier ? String(clientCarrier) : null,
+                    shippingAddress: destination || null,
+                }),
+                sendOrderPlacedToSeller(sellerProfile?.email || '', {
+                    orderId: String(orderRow.id),
+                    cardName: card.name,
+                    amount,
+                    platformFee: typeof orderRow.platform_fee === 'number' ? orderRow.platform_fee : null,
+                    buyerName: buyerProfile?.display_name || null,
+                    shippingAddress: destination || null,
+                }),
+            ]);
 
             return NextResponse.json({ success: true, order, payment_method: 'wallet' });
 
