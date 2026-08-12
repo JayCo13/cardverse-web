@@ -1,21 +1,7 @@
-import nodemailer from 'nodemailer';
-
-// SMTP Configuration — uses same env vars as admin project
-export function createMailTransporter() {
-    return nodemailer.createTransport({
-        host: process.env.SMTP_HOST || 'smtp.gmail.com',
-        port: parseInt(process.env.SMTP_PORT || '587', 10),
-        secure: parseInt(process.env.SMTP_PORT || '587', 10) === 465,
-        auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASSWORD,
-        },
-    });
-}
-
-export function getFromAddress() {
-    return process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || 'noreply@cardverse.com';
-}
+// Transport lives in mail-transport.ts: Resend when RESEND_API_KEY is set,
+// SMTP otherwise. Re-exported so existing importers keep working.
+export { createMailTransporter, getFromAddress } from './mail-transport';
+import { createMailTransporter, getFromAddress } from './mail-transport';
 
 function getAppUrl() {
     return process.env.NEXT_PUBLIC_APP_URL || 'https://cardversehub.com';
