@@ -1,7 +1,8 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import Link from 'next/link';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import { useAuth } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
 import { useLocalization } from '@/context/localization-context';
+import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -33,6 +35,18 @@ type WalletData = {
   total_withdrawn: number;
 };
 
+type WalletFundBalances = {
+  stored_available: number;
+  stored_held: number;
+  stored_total: number;
+  verified_available: number;
+  verified_held: number;
+  verified_total: number;
+  unverified_available: number;
+  unverified_held: number;
+  unverified_total: number;
+};
+
 type WalletTransaction = {
   id: string;
   type: string;
@@ -48,7 +62,7 @@ type WalletWithdrawal = {
   fee: number;
   amount_net: number;
   bank_name: string;
-  bank_account_number: string;
+  bank_account_masked: string;
   status: 'pending' | 'processing' | 'completed' | 'rejected';
   rejection_reason: string | null;
   created_at: string;
@@ -61,7 +75,7 @@ const MIN_WITHDRAW = 50000;
 
 type SellerBank = {
   bank_name: string;
-  bank_account_number: string;
+  bank_account_masked: string;
   bank_account_name: string;
 };
 
@@ -100,6 +114,7 @@ export default function WalletPage() {
       feeWarning: 'Mỗi lần rút bị trừ 5% phí nền tảng (trừ thẳng vào số tiền rút). Số tối thiểu mỗi lần rút là {amount}.',
       bankAccount: 'Tài khoản nhận (theo KYC — không thể thay đổi)',
       bankAccountHint: 'Tiền chỉ được rút về đúng tài khoản ngân hàng bạn đã đăng ký KYC.',
+      bankVerificationRequired: 'Tài khoản ngân hàng chưa được xác minh nên chưa thể rút tiền.',
       withdrawableBalance: 'Số dư có thể rút',
       withdrawPlaceholder: 'Nhập số tiền muốn rút (VND)...',
       withdraw: 'Rút tiền',
@@ -107,6 +122,7 @@ export default function WalletPage() {
       fee5: 'Phí 5%',
       netAmount: 'Thực nhận',
       exceededBalance: 'Vượt quá số dư khả dụng.',
+      insufficientVerifiedBalance: 'Số tiền này chưa được xác minh nguồn nên chưa thể rút.',
       minWithdraw: 'Tối thiểu {amount}.',
       walletTitle: 'Ví CardVerse',
       availableBalance: 'Số dư khả dụng',
@@ -160,6 +176,7 @@ export default function WalletPage() {
         feeWarning: '出金ごとに5%のプラットフォーム手数料が差し引かれます。最低出金額は{amount}です。',
         bankAccount: '受取口座（KYC登録口座・変更不可）',
         bankAccountHint: '出金先はKYCで登録した銀行口座に限定されます。',
+        bankVerificationRequired: '銀行口座が未確認のため、まだ出金できません。',
         withdrawableBalance: '出金可能残高',
         withdrawPlaceholder: '出金金額を入力 (VND)...',
         withdraw: '出金する',
@@ -167,6 +184,7 @@ export default function WalletPage() {
         fee5: '5%手数料',
         netAmount: '受取額',
         exceededBalance: '利用可能残高を超えています。',
+        insufficientVerifiedBalance: '資金源が未確認のため、この金額はまだ出金できません。',
         minWithdraw: '最低 {amount}。',
         walletTitle: 'CardVerseウォレット',
         availableBalance: '利用可能残高',
@@ -219,6 +237,7 @@ export default function WalletPage() {
         feeWarning: 'Each withdrawal is charged a 5% platform fee. The minimum withdrawal per request is {amount}.',
         bankAccount: 'Receiving account (from KYC — cannot be changed)',
         bankAccountHint: 'Funds can only be withdrawn to the bank account you registered during KYC.',
+        bankVerificationRequired: 'Your bank account must be verified before you can withdraw.',
         withdrawableBalance: 'Withdrawable balance',
         withdrawPlaceholder: 'Enter withdrawal amount (VND)...',
         withdraw: 'Withdraw',
@@ -226,6 +245,7 @@ export default function WalletPage() {
         fee5: '5% fee',
         netAmount: 'Net received',
         exceededBalance: 'Exceeds available balance.',
+        insufficientVerifiedBalance: 'This amount cannot be withdrawn until its funding source is verified.',
         minWithdraw: 'Minimum {amount}.',
         walletTitle: 'CardVerse Wallet',
         availableBalance: 'Available balance',
@@ -262,6 +282,7 @@ export default function WalletPage() {
     refund: { label: copy.txLabels.refund, color: 'text-green-400' },
   };
   const [wallet, setWallet] = useState<WalletData | null>(null);
+  const [fundBalances, setFundBalances] = useState<WalletFundBalances | null>(null);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [withdrawals, setWithdrawals] = useState<WalletWithdrawal[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -269,11 +290,14 @@ export default function WalletPage() {
   const [depositAmount, setDepositAmount] = useState<number>(100000);
   const [customAmount, setCustomAmount] = useState('');
   const [isDepositing, setIsDepositing] = useState(false);
+  const depositRequestRef = useRef<{ amount: number; key: string } | null>(null);
 
   // Seller / withdraw state — only approved sellers can withdraw.
   const [isApprovedSeller, setIsApprovedSeller] = useState(false);
+  const [isBankVerified, setIsBankVerified] = useState(false);
   const [sellerBank, setSellerBank] = useState<SellerBank | null>(null);
   const [withdrawAmount, setWithdrawAmount] = useState('');
+  const withdrawIdempotencyKeyRef = useRef<string | null>(null);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
 
@@ -288,6 +312,7 @@ export default function WalletPage() {
         setWallet(data.wallet);
         setTransactions(data.transactions || []);
         setWithdrawals(data.withdrawals || []);
+        setFundBalances(data.fund_statement?.balances || null);
       }
     } catch (err: unknown) {
       console.error('Failed to fetch wallet:', err);
@@ -304,17 +329,28 @@ export default function WalletPage() {
       const v = data.verification;
       if (v?.status === 'approved') {
         setIsApprovedSeller(true);
-        setSellerBank({
-          bank_name: v.bank_name,
-          bank_account_number: v.bank_account_number,
-          bank_account_name: v.bank_account_name,
-        });
+        setIsBankVerified(v.bank_verified === true);
+        if (
+          typeof v.bank_name === 'string' &&
+          typeof v.bank_account_masked === 'string' &&
+          typeof v.bank_account_name === 'string'
+        ) {
+          setSellerBank({
+            bank_name: v.bank_name,
+            bank_account_masked: v.bank_account_masked,
+            bank_account_name: v.bank_account_name,
+          });
+        } else {
+          setSellerBank(null);
+        }
       } else {
         setIsApprovedSeller(false);
+        setIsBankVerified(false);
         setSellerBank(null);
       }
     } catch (err) {
       console.error('Failed to fetch seller status:', err);
+      setIsBankVerified(false);
     }
   }, []);
 
@@ -341,16 +377,24 @@ export default function WalletPage() {
     }
     setIsDepositing(true);
     try {
+      if (!depositRequestRef.current || depositRequestRef.current.amount !== amount) {
+        depositRequestRef.current = { amount, key: crypto.randomUUID() };
+      }
       const res = await fetch('/api/wallet/deposit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': depositRequestRef.current.key,
+          'X-CardVerse-Locale': locale,
+        },
         body: JSON.stringify({ amount }),
       });
       const data = await res.json();
       if (data.checkoutUrl) {
+        depositRequestRef.current = null;
         window.open(data.checkoutUrl, '_blank');
       } else {
-        throw new Error(data.error || copy.failedDeposit);
+        throw new Error(localizeFinancialApiError(t, data.code, copy.failedDeposit));
       }
     } catch (err: any) {
       toast({ variant: 'destructive', title: copy.error, description: err.message });
@@ -360,26 +404,41 @@ export default function WalletPage() {
   };
 
   const formatVND = (amount: number) => {
-    return new Intl.NumberFormat('vi-VN').format(amount) + 'đ';
+    return new Intl.NumberFormat(locale).format(amount) + '₫';
   };
 
   const available = wallet?.available_balance || 0;
+  const verifiedAvailable = fundBalances?.verified_available ?? 0;
   const withdrawNum = parseInt(withdrawAmount.replace(/[^\d]/g, ''), 10) || 0;
   const withdrawFee = Math.round(withdrawNum * WITHDRAW_FEE_RATE);
   const withdrawNet = withdrawNum - withdrawFee;
-  const withdrawValid = withdrawNum >= MIN_WITHDRAW && withdrawNum <= available;
+  const withdrawValid = !!sellerBank && isBankVerified && withdrawNum >= MIN_WITHDRAW && withdrawNum <= available && withdrawNum <= verifiedAvailable;
 
   const submitWithdraw = async () => {
     setShowWithdrawConfirm(false);
     setIsWithdrawing(true);
     try {
+      if (!withdrawIdempotencyKeyRef.current) {
+        withdrawIdempotencyKeyRef.current = crypto.randomUUID();
+      }
       const res = await fetch('/api/wallet/withdraw', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': withdrawIdempotencyKeyRef.current,
+          'X-CardVerse-Locale': locale,
+        },
         body: JSON.stringify({ amount: withdrawNum }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || copy.submitWithdrawFailed);
+      if (!res.ok) {
+        throw new Error(localizeFinancialApiError(
+          t,
+          data.code,
+          copy.submitWithdrawFailed,
+          { amount: formatVND(MIN_WITHDRAW) },
+        ));
+      }
       toast({
         title: copy.withdrawRequested,
         description: copy.withdrawRequestedDesc
@@ -388,6 +447,7 @@ export default function WalletPage() {
           .replace('{fee}', formatVND(data.fee)),
       });
       setWithdrawAmount('');
+      withdrawIdempotencyKeyRef.current = null;
       fetchWallet();
     } catch (err: any) {
       toast({ variant: 'destructive', title: copy.error, description: err.message });
@@ -395,8 +455,6 @@ export default function WalletPage() {
       setIsWithdrawing(false);
     }
   };
-
-  const maskAccount = (acc: string) => (acc.length > 4 ? `****${acc.slice(-4)}` : acc);
 
   // Withdrawal rows are the source of truth for payout lifecycle. Suppress the
   // legacy split withdrawal/fee/refund ledger rows and render one activity item
@@ -548,10 +606,13 @@ export default function WalletPage() {
               {copy.bankAccount}
             </div>
             <p className="font-medium">{sellerBank.bank_name}</p>
-            <p className="text-sm">{maskAccount(sellerBank.bank_account_number)} · {sellerBank.bank_account_name}</p>
+            <p className="text-sm">{sellerBank.bank_account_masked} · {sellerBank.bank_account_name}</p>
             <p className="mt-1 text-xs text-muted-foreground">
               {copy.bankAccountHint}
             </p>
+            {!isBankVerified && (
+              <p className="mt-2 text-xs text-red-400">{copy.bankVerificationRequired}</p>
+            )}
           </div>
         )}
 
@@ -559,15 +620,44 @@ export default function WalletPage() {
         <div className="space-y-2">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">{copy.withdrawableBalance}</span>
-            <span className="font-semibold text-orange-500">{formatVND(available)}</span>
+            <span className="font-semibold text-orange-500">{formatVND(verifiedAvailable)}</span>
           </div>
+          {(fundBalances?.unverified_available ?? 0) > 0 && (
+            <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-4">
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-blue-400" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-blue-300">
+                    {t('wallet_funds_pending_verification_title', {
+                      amount: formatVND(fundBalances?.unverified_available ?? 0),
+                    })}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    {t('wallet_funds_pending_verification_safe')}
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    {t('wallet_funds_pending_verification_reason')}
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    {t('wallet_funds_pending_verification_action')}
+                  </p>
+                  <Button asChild variant="outline" size="sm" className="mt-3 border-blue-500/40 text-blue-300 hover:bg-blue-500/10">
+                    <Link href="/contact">{t('wallet_request_fund_verification')}</Link>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="flex gap-2">
             <Input
               type="text"
               inputMode="numeric"
               placeholder={copy.withdrawPlaceholder}
-              value={withdrawAmount ? new Intl.NumberFormat('vi-VN').format(withdrawNum) : ''}
-              onChange={(e) => setWithdrawAmount(e.target.value)}
+              value={withdrawAmount ? new Intl.NumberFormat(locale).format(withdrawNum) : ''}
+              onChange={(e) => {
+                setWithdrawAmount(e.target.value);
+                withdrawIdempotencyKeyRef.current = null;
+              }}
             />
             <Button
               onClick={() => setShowWithdrawConfirm(true)}
@@ -589,6 +679,9 @@ export default function WalletPage() {
               <div className="flex justify-between border-t border-border/50 pt-1 font-semibold"><span>{copy.netAmount}</span><span className="text-green-400">{formatVND(withdrawNet)}</span></div>
               {withdrawNum > available && (
                 <p className="text-xs text-red-400 pt-1">{copy.exceededBalance}</p>
+              )}
+              {withdrawNum <= available && withdrawNum > verifiedAvailable && (
+                <p className="text-xs text-red-400 pt-1">{copy.insufficientVerifiedBalance}</p>
               )}
               {withdrawNum > 0 && withdrawNum < MIN_WITHDRAW && (
                 <p className="text-xs text-red-400 pt-1">{copy.minWithdraw.replace('{amount}', formatVND(MIN_WITHDRAW))}</p>
@@ -758,7 +851,7 @@ export default function WalletPage() {
                   <div className="flex justify-between border-t border-border/50 pt-1 font-semibold"><span>{copy.netAmount}</span><span className="text-green-400">{formatVND(withdrawNet)}</span></div>
                   {sellerBank && (
                     <p className="pt-2 text-xs text-muted-foreground">
-                      {copy.transferTo}: {sellerBank.bank_name} · {maskAccount(sellerBank.bank_account_number)} · {sellerBank.bank_account_name}
+                      {copy.transferTo}: {sellerBank.bank_name} · {sellerBank.bank_account_masked} · {sellerBank.bank_account_name}
                     </p>
                   )}
                 </div>

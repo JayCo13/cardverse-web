@@ -188,10 +188,12 @@ export function useScanLimit(): UseScanLimitReturn {
                     try {
                         const res = await fetch('/api/scan/decrement-credit', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Idempotency-Key': crypto.randomUUID(),
+                            },
                             body: JSON.stringify({
                                 subscriptionId: subscription.id,
-                                userId: user.id,
                             }),
                         });
                         if (!res.ok) {
@@ -249,7 +251,7 @@ export function useScanLimit(): UseScanLimitReturn {
                         scan_count: newCount,
                         last_reset_date: today,
                         updated_at: new Date().toISOString(),
-                    }, {
+                    } as never, {
                         onConflict: 'device_id',
                     });
 

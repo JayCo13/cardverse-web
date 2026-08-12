@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "@/components/layout/header";
@@ -19,6 +19,7 @@ import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { getCategoryCode } from "@/lib/category-code";
 import { CreditCard, Loader2, PackageCheck, ShieldCheck, Store, Truck, Wallet } from "lucide-react";
 import { useLocalization } from "@/context/localization-context";
+import { localizeFinancialApiError } from "@/lib/financial-api-errors";
 
 type CheckoutItem = {
   cartItemId?: string;
@@ -38,8 +39,6 @@ type CheckoutItem = {
   shippingFee: number | null;
 };
 
-const formatVND = (amount: number) => new Intl.NumberFormat("vi-VN").format(amount) + "\u00A0đ";
-
 export default function CheckoutPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -51,7 +50,11 @@ export default function CheckoutPage() {
   const { user, isLoading } = useAuth();
   const { setOpen: setAuthOpen } = useAuthModal();
   const { toast } = useToast();
-  const { locale } = useLocalization();
+  const { locale, t } = useLocalization();
+  const formatVND = useCallback(
+    (amount: number) => new Intl.NumberFormat(locale).format(amount) + "\u00A0₫",
+    [locale],
+  );
   const copy = locale === "vi-VN"
     ? {
       pageTitle: "Checkout",
@@ -197,6 +200,7 @@ export default function CheckoutPage() {
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [isLoadingFee, setIsLoadingFee] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
+  const checkoutRequestRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
   const isOfferCheckout = !!offerId;
 
@@ -384,9 +388,23 @@ export default function CheckoutPage() {
     if (!selectedAddress || !canPay) return;
     setIsPaying(true);
     try {
+      const fingerprint = JSON.stringify({
+        mode: isOfferCheckout ? "offer" : "cart",
+        offerId,
+        paymentMethod,
+        addressId: selectedAddress.id,
+        items: items.map((item) => [item.card.id, item.amount, item.shippingFee]),
+      });
+      if (checkoutRequestRef.current?.fingerprint !== fingerprint) {
+        checkoutRequestRef.current = { fingerprint, key: crypto.randomUUID() };
+      }
       const response = await fetch("/api/checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": checkoutRequestRef.current.key,
+          "X-CardVerse-Locale": locale,
+        },
         body: JSON.stringify({
           mode: isOfferCheckout ? "offer" : "cart",
           offer_id: offerId,
@@ -410,7 +428,10 @@ export default function CheckoutPage() {
         }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || copy.payError);
+      if (!response.ok) {
+        throw new Error(localizeFinancialApiError(t, payload.code, copy.payError));
+      }
+      checkoutRequestRef.current = null;
 
       window.dispatchEvent(new Event("cardverse:cart-updated"));
       if (payload.payment_method === "direct_payos" && payload.checkoutUrl) {

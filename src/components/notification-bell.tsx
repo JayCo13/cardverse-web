@@ -17,12 +17,13 @@ import { formatDistanceToNow } from "date-fns";
 import { enUS, ja, vi } from "date-fns/locale";
 import { useRouter } from "next/navigation";
 import { useLocalization } from "@/context/localization-context";
+import { localizeSystemNotification } from "@/lib/localized-notifications";
 
 export function NotificationBell() {
     const supabase = useSupabase();
     const { user } = useUser();
     const router = useRouter();
-    const { locale } = useLocalization();
+    const { locale, t } = useLocalization();
     const copy = locale === 'ja-JP'
         ? {
             title: '通知',
@@ -62,6 +63,10 @@ export function NotificationBell() {
     const browserPermissionRef = useRef<NotificationPermission | 'unsupported'>('unsupported');
     const mutedConversationIdsRef = useRef<Set<string>>(new Set());
     const originalTitleRef = useRef<string | null>(null);
+    const translateRef = useRef(t);
+    useEffect(() => {
+        translateRef.current = t;
+    }, [t]);
     useEffect(() => {
         const audio = new Audio('/assets/notify.wav');
         audio.preload = 'auto';
@@ -246,8 +251,9 @@ export function NotificationBell() {
                         // A browser notification complements the in-app unread state
                         // while CardVerse is open in a background tab.
                         if (browserPermissionRef.current === 'granted' && document.hidden) {
-                            const browserNotification = new window.Notification(newNotification.title, {
-                                body: newNotification.message,
+                            const localized = localizeSystemNotification(newNotification, translateRef.current);
+                            const browserNotification = new window.Notification(localized.title, {
+                                body: localized.message,
                                 icon: '/assets/brow-logo.png',
                                 tag: newNotification.conversationId
                                     ? `cardverse-chat-${newNotification.conversationId}`
@@ -473,8 +479,9 @@ export function NotificationBell() {
                     </div>
                 ) : (
                     <div className="max-h-80 overflow-y-auto">
-                        {notifications.slice(0, 10).map((notification) => (
-                            <DropdownMenuItem
+                        {notifications.slice(0, 10).map((notification) => {
+                            const localized = localizeSystemNotification(notification, t);
+                            return <DropdownMenuItem
                                 key={notification.id}
                                 className={`flex items-start gap-3 p-3 cursor-pointer ${!notification.read ? "bg-primary/5" : ""
                                     }`}
@@ -485,10 +492,10 @@ export function NotificationBell() {
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <p className={`text-sm ${!notification.read ? "font-medium" : ""}`}>
-                                        {notification.title}
+                                        {localized.title}
                                     </p>
                                     <p className="text-xs text-muted-foreground line-clamp-2">
-                                        {notification.message}
+                                        {localized.message}
                                     </p>
                                     <p className="text-xs text-muted-foreground mt-1">
                                         {formatDistanceToNow(new Date(notification.createdAt), {
@@ -500,8 +507,8 @@ export function NotificationBell() {
                                 {!notification.read && (
                                     <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
                                 )}
-                            </DropdownMenuItem>
-                        ))}
+                            </DropdownMenuItem>;
+                        })}
                     </div>
                 )}
             </DropdownMenuContent>

@@ -46,6 +46,7 @@ export default function PricingPage() {
     const { toast } = useToast();
     const [loadingPackage, setLoadingPackage] = useState<string | null>(null);
     const hasShownCelebration = useRef(false);
+    const purchaseKeys = useRef<Record<string, string>>({});
 
     // ── Realtime celebration: when subscription activates via webhook ──
     useEffect(() => {
@@ -80,9 +81,13 @@ export default function PricingPage() {
 
         setLoadingPackage(packageType);
         try {
+            purchaseKeys.current[packageType] ||= crypto.randomUUID();
             const res = await fetch("/api/payos/create-payment", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": purchaseKeys.current[packageType],
+                },
                 body: JSON.stringify({ packageType }),
             });
 
@@ -93,6 +98,7 @@ export default function PricingPage() {
             }
 
             // Redirect to PayOS checkout
+            delete purchaseKeys.current[packageType];
             window.location.href = data.checkoutUrl;
         } catch (error) {
             console.error("Purchase error:", error);

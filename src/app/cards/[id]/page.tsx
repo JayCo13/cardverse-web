@@ -560,6 +560,7 @@ export default function CardDetailsPage() {
     const [chatConversationId, setChatConversationId] = useState<string | null>(null);
     const [startingChatOfferId, setStartingChatOfferId] = useState<string | null>(null);
     const [acceptingOfferId, setAcceptingOfferId] = useState<string | null>(null);
+    const offerActionKeys = useRef<Record<string, string>>({});
     const [rejectingOfferId, setRejectingOfferId] = useState<string | null>(null);
 
     const isOwner = user?.id === card?.sellerId;
@@ -794,7 +795,12 @@ export default function CardDetailsPage() {
 
         try {
             // All seller/offer/card validation and card locking happen server-side.
-            const response = await fetch(`/api/offers/${offer.id}/accept`, { method: "POST" });
+            const fingerprint = `${offer.id}:accept`;
+            offerActionKeys.current[fingerprint] ||= crypto.randomUUID();
+            const response = await fetch(`/api/offers/${offer.id}/accept`, {
+                method: "POST",
+                headers: { "Idempotency-Key": offerActionKeys.current[fingerprint] },
+            });
             const payload = await response.json();
 
             if (!response.ok) {
@@ -807,6 +813,7 @@ export default function CardDetailsPage() {
                 return;
             }
 
+            delete offerActionKeys.current[fingerprint];
             router.push(payload.checkoutUrl || `/checkout?offerId=${offer.id}`);
         } catch (error) {
             console.error("Error accepting offer:", error);
@@ -824,7 +831,12 @@ export default function CardDetailsPage() {
         setRejectingOfferId(offer.id);
 
         try {
-            const response = await fetch(`/api/offers/${offer.id}/reject`, { method: "POST" });
+            const fingerprint = `${offer.id}:reject`;
+            offerActionKeys.current[fingerprint] ||= crypto.randomUUID();
+            const response = await fetch(`/api/offers/${offer.id}/reject`, {
+                method: "POST",
+                headers: { "Idempotency-Key": offerActionKeys.current[fingerprint] },
+            });
             const payload = await response.json();
 
             if (!response.ok) {
@@ -836,6 +848,7 @@ export default function CardDetailsPage() {
                 return;
             }
 
+            delete offerActionKeys.current[fingerprint];
             window.dispatchEvent(new Event("cardverse:chat-updated"));
             void fetchOffers();
         } catch (error) {

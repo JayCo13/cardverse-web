@@ -17,14 +17,20 @@ type WithdrawalResult = {
     amount_net?: number;
     available_balance?: number;
     held_balance?: number;
+    replayed?: boolean;
 };
 
 const ERROR_MESSAGES: Record<string, string> = {
-    amount_too_low: `Số tiền rút tối thiểu là ${MIN_WITHDRAW.toLocaleString('vi-VN')}đ.`,
-    not_a_seller: 'Chỉ người bán đã được duyệt KYC mới có thể rút tiền.',
-    missing_bank: 'Thiếu thông tin tài khoản ngân hàng KYC. Vui lòng cập nhật hồ sơ KYC.',
-    insufficient_balance: 'Số dư khả dụng không đủ để rút.',
-    wallet_not_found: 'Không tìm thấy ví.',
+    amount_too_low: `The minimum withdrawal amount is ${MIN_WITHDRAW.toLocaleString('en-US')} VND.`,
+    not_a_seller: 'Only KYC-approved sellers can withdraw funds.',
+    missing_bank: 'Verified bank account information is incomplete. Update your KYC profile.',
+    insufficient_balance: 'Available wallet balance is insufficient.',
+    insufficient_verified_balance: 'Verified balance is insufficient. Unverified funds remain locked.',
+    kyc_or_bank_not_verified: 'KYC or the bank account has not been verified.',
+    idempotency_key_required: 'A request idempotency key is required.',
+    idempotency_conflict: 'The request key was already used with different details.',
+    financial_maintenance_active: 'The wallet is unavailable during reconciliation. Please try again later.',
+    wallet_not_found: 'Wallet not found.',
 };
 
 // Reserve a seller's funds while an admin reviews the payout. The atomic RPC
@@ -39,18 +45,27 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const amount = Math.floor(Number((await request.json()).amount));
-        if (!Number.isFinite(amount) || amount < MIN_WITHDRAW) {
+        const amount = Number((await request.json()).amount);
+        if (!Number.isSafeInteger(amount) || amount < MIN_WITHDRAW) {
             return NextResponse.json(
                 { error: ERROR_MESSAGES.amount_too_low, code: 'amount_too_low' },
                 { status: 400 },
             );
         }
 
-        const service = createServiceSupabaseClient();
-        const { data, error } = await service.rpc('request_wallet_withdrawal' as never, {
-            p_user_id: user.id,
+        const idempotencyKey = request.headers.get('idempotency-key');
+        if (!idempotencyKey || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idempotencyKey)) {
+            return NextResponse.json(
+                { error: ERROR_MESSAGES.idempotency_key_required, code: 'idempotency_key_required' },
+                { status: 400 },
+            );
+        }
+
+        // The authenticated RPC derives the user from auth.uid(); the client
+        // cannot select another wallet or submit a trusted balance/status.
+        const { data, error } = await supabase.rpc('request_wallet_withdrawal' as never, {
             p_amount: amount,
+            p_request_idempotency_key: idempotencyKey,
         } as never);
 
         if (error) throw error;
@@ -58,9 +73,13 @@ export async function POST(request: NextRequest) {
         const result = data as WithdrawalResult | null;
         if (!result?.ok) {
             const code = result?.error || 'withdrawal_failed';
-            const status = code === 'not_a_seller' ? 403 : code === 'insufficient_balance' ? 409 : 400;
+            const status = code === 'not_a_seller' || code === 'kyc_or_bank_not_verified'
+                ? 403
+                : code === 'insufficient_balance' || code === 'insufficient_verified_balance' || code === 'idempotency_conflict'
+                    ? 409
+                    : 400;
             return NextResponse.json({
-                error: ERROR_MESSAGES[code] || 'Không thể tạo yêu cầu rút tiền.',
+                error: ERROR_MESSAGES[code] || 'Unable to create the withdrawal request.',
                 code,
                 ...(typeof result?.available === 'number' ? { available: result.available } : {}),
             }, { status });
@@ -69,16 +88,19 @@ export async function POST(request: NextRequest) {
         // The withdrawal table itself drives realtime admin badges. Email is
         // awaited as best-effort so a serverless response cannot terminate the
         // SMTP delivery early.
-        if (result.withdrawal_id) {
-            const [{ data: profile }, { data: withdrawal }, adminEmails] = await Promise.all([
+        if (result.withdrawal_id && !result.replayed) {
+            const service = createServiceSupabaseClient();
+            const [{ data: profileData }, { data: withdrawalData }, adminEmails] = await Promise.all([
                 service.from('profiles').select('display_name, email').eq('id', user.id).maybeSingle(),
                 service
                     .from('wallet_withdrawals')
-                    .select('bank_name, bank_account_number')
+                    .select('bank_name, bank_account_masked')
                     .eq('id', result.withdrawal_id)
                     .single(),
                 getAdminNotificationEmails(),
             ]);
+            const profile = profileData as { display_name?: string | null; email?: string | null } | null;
+            const withdrawal = withdrawalData as { bank_name?: string | null; bank_account_masked?: string | null } | null;
 
             await sendWithdrawalSubmittedToAdmin({
                 sellerName: profile?.display_name || profile?.email || user.email || 'Seller CardVerse',
@@ -86,8 +108,8 @@ export async function POST(request: NextRequest) {
                 amountRequested: result.amount_requested || amount,
                 fee: result.fee || 0,
                 amountNet: result.amount_net || amount,
-                bankName: withdrawal?.bank_name || 'Ngân hàng KYC',
-                bankAccountNumber: withdrawal?.bank_account_number || '',
+                bankName: withdrawal?.bank_name || 'KYC bank',
+                bankAccountNumber: withdrawal?.bank_account_masked || '••••',
                 adminEmails,
             });
         }

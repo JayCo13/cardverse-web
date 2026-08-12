@@ -11,6 +11,7 @@ export type LocalizedString = {
 
 export interface Card {
   id: string;
+  userId?: string;
   name: string;
   imageUrl: string;
   imageUrls?: string[];
@@ -124,7 +125,8 @@ export interface Notification {
   userId: string;
   type:
     | 'offer_received' | 'offer_accepted' | 'offer_rejected' | 'card_sold' | 'message_received'
-    | 'order_new' | 'order_shipped' | 'order_completed' | 'order_refunded' | 'order_cancelled' | 'order_disputed';
+    | 'order_new' | 'order_shipped' | 'order_completed' | 'order_refunded' | 'order_cancelled' | 'order_disputed'
+    | 'shipping_update' | 'dispute_resolved' | 'withdrawal_completed';
   title: string;
   message: string;
   cardId?: string;

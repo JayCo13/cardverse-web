@@ -13,12 +13,12 @@ let workerPromise: Promise<any> | null = null;
 async function getWorker() {
     if (!workerPromise) {
         workerPromise = (async () => {
-            const { createWorker } = await import('tesseract.js');
+            const { createWorker, PSM } = await import('tesseract.js');
             const worker = await createWorker('eng');
             await worker.setParameters({
                 // card numbers are digits + a few letters + separators only
                 tessedit_char_whitelist: '0123456789/-ABCDEFGHIJKLMNOPQRSTUVWXYZ',
-                tessedit_pageseg_mode: '11', // sparse text — find numbers anywhere
+                tessedit_pageseg_mode: PSM.SPARSE_TEXT, // sparse text — find numbers anywhere
             });
             return worker;
         })();

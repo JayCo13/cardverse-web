@@ -14,6 +14,7 @@ import { ListFilter } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSupabase } from '@/lib/supabase';
+import type { Database } from '@/lib/supabase/database.types';
 
 export type Filters = {
   search: string;
@@ -45,13 +46,14 @@ export default function RazzPage() {
         .eq('status', 'active');
 
       if (data && !error) {
-        const cards: Card[] = data.map(c => ({
-          id: c.id, name: c.name, imageUrl: c.image_url || '', imageUrls: c.image_urls,
-          category: c.category, condition: c.condition, listingType: c.listing_type,
-          price: c.price, currentBid: c.current_bid, startingBid: c.starting_bid,
-          auctionEnds: c.auction_ends, ticketPrice: c.ticket_price, razzEntries: c.razz_entries,
-          totalTickets: c.total_tickets, sellerId: c.seller_id, author: c.seller_id,
-          description: c.description, status: c.status,
+        const rows = data as Database['public']['Tables']['cards']['Row'][];
+        const cards: Card[] = rows.map(c => ({
+          id: c.id, name: c.name, imageUrl: c.image_url || '', imageUrls: c.image_urls || undefined,
+          category: c.category, condition: c.condition || undefined, listingType: c.listing_type,
+          price: c.price || undefined, currentBid: c.current_bid || undefined, startingBid: c.starting_bid || undefined,
+          auctionEnds: c.auction_ends || undefined, ticketPrice: c.ticket_price || undefined, razzEntries: c.razz_entries || undefined,
+          totalTickets: c.total_tickets || undefined, sellerId: c.seller_id, author: c.seller_id,
+          description: c.description || undefined, status: c.status,
         }));
         setRazzCards(cards);
       }
@@ -63,7 +65,7 @@ export default function RazzPage() {
   const filteredAndSortedCards = useMemo(() => {
     if (!razzCards) return [];
 
-    let filtered = razzCards.filter((card) => {
+    const filtered = razzCards.filter((card) => {
       const { search, categories, conditions } = filters;
 
       const name = card.name.toLowerCase();

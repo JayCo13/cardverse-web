@@ -82,7 +82,8 @@ export default function PokemonPage() {
 
                 if (error) throw error;
 
-                const setNames = (data || []).map(d => d.set_name).filter(Boolean);
+                const rows = (data || []) as Array<{ set_name: string | null }>;
+                const setNames = rows.map(d => d.set_name).filter(Boolean);
                 setSets(setNames as string[]);
             } catch (err) {
                 console.error('Failed to fetch sets:', err);
@@ -441,12 +442,12 @@ export default function PokemonPage() {
                         <div className="flex flex-wrap gap-2 mb-4">
                             {searchTerm && (
                                 <span className="px-3 py-1 text-xs bg-yellow-500/20 text-yellow-400 rounded-full border border-yellow-500/30">
-                                    Search: "{searchTerm}"
+                                    Search: {`"${searchTerm}"`}
                                 </span>
                             )}
                             {priceFilter !== "all" && (
                                 <span className="px-3 py-1 text-xs bg-green-500/20 text-green-400 rounded-full border border-green-500/30">
-                                    {/* @ts-ignore */}
+                                    {/* @ts-expect-error Dynamic filter keys are validated by the select options. */}
                                     {t(`price_${priceFilter}`)}
                                 </span>
                             )}
