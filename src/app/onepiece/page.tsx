@@ -76,7 +76,8 @@ export default function OnePiecePage() {
                     .limit(1000); // Reasonable limit to get most active sets
 
                 if (data) {
-                    const uniqueSets = Array.from(new Set(data.map(item => item.set_name))).sort();
+                    const rows = data as Array<{ set_name: string | null }>;
+                    const uniqueSets = Array.from(new Set(rows.map(item => item.set_name))).sort();
                     setSets(uniqueSets as string[]);
                 }
             } catch (e) {

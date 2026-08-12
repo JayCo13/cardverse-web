@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomInt } from 'crypto';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
-import { getPayOS, MARKETPLACE_ORDER_PAYMENT_TYPE } from '@/lib/payos';
+import { hashFinancialRequest, stableFinancialUuid } from '@/lib/financial-idempotency';
+import { getPayOS } from '@/lib/payos';
+import { quoteVerifiedShipping } from '@/lib/verified-shipping';
+import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link-claim';
+import { translateRequest } from '@/lib/request-localization';
 
 // Fee model: the 5% platform fee is charged ONCE, at withdrawal
 // (src/app/api/wallet/withdraw/route.ts). Orders carry platform_fee = 0; the
@@ -38,9 +42,9 @@ type CheckoutCard = {
   price: number | null;
   status: string;
   listing_type: string | null;
+  is_bundle: boolean | null;
 };
 
-type WalletRow = { id: string; available_balance: number };
 type CreatedOrder = Record<string, unknown>;
 
 function orderShipping(body: ShippingBody) {
@@ -82,6 +86,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+    const idempotencyKey = request.headers.get('idempotency-key');
     const mode = body.mode as 'cart' | 'offer';
     const paymentMethod = body.payment_method as 'wallet' | 'direct_payos';
 
@@ -92,9 +97,71 @@ export async function POST(request: NextRequest) {
     if (!['wallet', 'direct_payos'].includes(paymentMethod)) {
       return NextResponse.json({ error: 'Invalid payment method' }, { status: 400 });
     }
+    if (!idempotencyKey || !/^[0-9a-f-]{36}$/i.test(idempotencyKey)) {
+      return NextResponse.json({ error: 'Idempotency-Key is required' }, { status: 400 });
+    }
 
     if (!shippingIsComplete(body)) {
       return NextResponse.json({ error: 'Shipping address is incomplete' }, { status: 400 });
+    }
+
+    const requestItems: Array<{ cart_item_id: string | null }> = Array.isArray(body.items)
+      ? body.items.map((item: CheckoutItemInput) => ({ cart_item_id: item.cart_item_id || null }))
+      : [];
+    const apiRequestHash = hashFinancialRequest({
+      version: 1,
+      route: 'checkout',
+      user_id: user.id,
+      mode,
+      payment_method: paymentMethod,
+      items: requestItems,
+      offer_id: body.offer_id || null,
+      ...orderShipping(body as ShippingBody),
+    });
+    const service = createServiceSupabaseClient();
+    const { data: replayData, error: replayError } = await service.rpc(
+      'get_marketplace_checkout_replay' as never,
+      {
+        p_user_id: user.id,
+        p_idempotency_key: idempotencyKey,
+        p_request_hash: apiRequestHash,
+      } as never,
+    );
+    if (replayError) {
+      const conflict = replayError.message.includes('idempotency_conflict');
+      return NextResponse.json(
+        { error: conflict ? 'Idempotency key conflicts with another checkout.' : 'Could not replay checkout.', code: conflict ? 'idempotency_conflict' : 'checkout_replay_failed' },
+        { status: conflict ? 409 : 500 },
+      );
+    }
+    const replay = replayData as unknown as {
+      found?: boolean;
+      payment_method?: 'wallet' | 'direct_payos';
+      orders?: CreatedOrder[];
+      payment_order?: { checkout_url?: string | null; order_code?: number };
+    };
+    if (replay.found) {
+      if (mode === 'cart' && requestItems.length > 0) {
+        const cartItemIds = requestItems.map((item) => item.cart_item_id).filter(Boolean) as string[];
+        await supabase.from('cart_items').delete().eq('user_id', user.id).in('id', cartItemIds);
+      }
+      if (replay.payment_method === 'wallet' && replay.orders?.length) {
+        return NextResponse.json({ success: true, orders: replay.orders, payment_method: 'wallet', replayed: true });
+      }
+      if (replay.payment_method === 'direct_payos' && replay.orders?.length && replay.payment_order?.checkout_url) {
+        return NextResponse.json({
+          success: true,
+          orders: replay.orders,
+          payment_method: 'direct_payos',
+          checkoutUrl: replay.payment_order.checkout_url,
+          orderCode: replay.payment_order.order_code,
+          replayed: true,
+        });
+      }
+      return NextResponse.json({
+        error: 'Checkout exists, but the PayOS link is not ready. Do not create another payment; contact support.',
+        code: 'payment_link_recovery_required',
+      }, { status: 409 });
     }
 
     await supabase.rpc('release_expired_card_reservations' as never);
@@ -132,28 +199,33 @@ export async function POST(request: NextRequest) {
 
         const { data: card, error: cardError } = await supabase
           .from('cards')
-          .select('id, name, seller_id, price, status, listing_type')
+          .select('id, name, seller_id, price, status, listing_type, is_bundle')
           .eq('id', cartItem.card_id)
           .single<CheckoutCard>();
 
         if (cardError || !card || card.status !== 'active' || card.listing_type !== 'sale') {
-          return NextResponse.json({ error: 'Một thẻ trong giỏ hàng không còn khả dụng.', code: 'card_unavailable' }, { status: 409 });
+          return NextResponse.json({ error: 'A card in the cart is no longer available.', code: 'card_unavailable' }, { status: 409 });
         }
 
         if (card.seller_id === user.id) {
-          return NextResponse.json({ error: 'Bạn không thể mua bài đăng của chính mình.' }, { status: 400 });
+          return NextResponse.json({ error: 'You cannot buy your own listing.', code: 'self_purchase_forbidden' }, { status: 400 });
+        }
+        if (card.is_bundle) {
+          return NextResponse.json({
+            error: 'Open the bundle listing to select the exact cards you want to buy.',
+            code: 'bundle_cart_checkout_unsupported',
+          }, { status: 409 });
         }
 
         checkoutItems.push({
           cartItemId: cartItem.id,
           card,
           amount: Number(card.price || 0),
-          shippingFee: Math.max(0, parseInt(String(input.shipping_fee || 0)) || 0),
+          shippingFee: 0,
         });
       }
     } else {
       const offerId = body.offer_id as string | undefined;
-      const shippingFee = Math.max(0, parseInt(String(body.shipping_fee || 0)) || 0);
 
       if (!offerId) {
         return NextResponse.json({ error: 'offer_id is required' }, { status: 400 });
@@ -170,11 +242,11 @@ export async function POST(request: NextRequest) {
       }
 
       if (offer.buyer_id !== user.id) {
-        return NextResponse.json({ error: 'Chỉ người mua mới có thể thanh toán offer này.' }, { status: 403 });
+        return NextResponse.json({ error: 'Only the buyer can pay for this offer.', code: 'offer_forbidden' }, { status: 403 });
       }
 
       if (offer.status !== 'chosen') {
-        return NextResponse.json({ error: 'Offer này chưa sẵn sàng để thanh toán.', code: 'offer_not_ready' }, { status: 409 });
+        return NextResponse.json({ error: 'This offer is not ready for checkout.', code: 'offer_not_ready' }, { status: 409 });
       }
 
       const { data: existingOrder } = await supabase
@@ -185,17 +257,23 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
 
       if (existingOrder) {
-        return NextResponse.json({ error: 'Offer này đã có đơn hàng.', code: 'order_exists', order: existingOrder }, { status: 409 });
+        return NextResponse.json({ error: 'An order already exists for this offer.', code: 'order_exists', order: existingOrder }, { status: 409 });
       }
 
       const { data: card, error: cardError } = await supabase
         .from('cards')
-        .select('id, name, seller_id, price, status, listing_type')
+        .select('id, name, seller_id, price, status, listing_type, is_bundle')
         .eq('id', offer.card_id)
         .single<CheckoutCard>();
 
       if (cardError || !card || card.status === 'sold') {
-        return NextResponse.json({ error: 'Thẻ này không còn khả dụng.', code: 'card_unavailable' }, { status: 409 });
+        return NextResponse.json({ error: 'This card is no longer available.', code: 'card_unavailable' }, { status: 409 });
+      }
+      if (card.is_bundle) {
+        return NextResponse.json({
+          error: 'Bundles cannot be purchased through an offer.',
+          code: 'bundle_offer_checkout_unsupported',
+        }, { status: 409 });
       }
 
       checkoutItems.push({
@@ -203,187 +281,75 @@ export async function POST(request: NextRequest) {
         offerBuyerId: offer.buyer_id,
         card,
         amount: Number(offer.price),
-        shippingFee,
+        shippingFee: 0,
+      });
+    }
+
+    for (const item of checkoutItems) {
+      item.shippingFee = await quoteVerifiedShipping({
+        sellerId: item.card.seller_id,
+        toDistrictId: Number(body.to_district_id),
+        toWardCode: String(body.to_ward_code),
+        insuranceValue: item.amount,
       });
     }
 
     const totalPaid = checkoutItems.reduce((sum, item) => sum + item.amount + item.shippingFee, 0);
+    const plannedOrderIds = checkoutItems.map((item, index) => stableFinancialUuid(
+      `checkout:${user.id}:${idempotencyKey}:${index}:${item.card.id}`,
+    ));
     const shipping = orderShipping(body as ShippingBody);
-
-    let walletRow: WalletRow | null = null;
-    if (paymentMethod === 'wallet') {
-      const { data: wallet, error: walletError } = await supabase
-        .from('wallets')
-        .select('*')
-        .eq('user_id', user.id)
-        .single<WalletRow>();
-
-      if (walletError || !wallet) {
-        return NextResponse.json({ error: 'Không tìm thấy ví. Vui lòng nạp tiền trước.' }, { status: 400 });
-      }
-      if (wallet.available_balance < totalPaid) {
-        return NextResponse.json({ error: 'Insufficient balance', available: wallet.available_balance, required: totalPaid }, { status: 400 });
-      }
-      walletRow = wallet;
-    }
 
     // Wallet mutations go through the service-role client: RLS allows owners
     // to SELECT their wallet but all writes are server-trusted only.
-    const service = createServiceSupabaseClient();
-
-    const claimedCardIds: string[] = [];
-    const soldCardIds: string[] = [];
-    const createdOrderIds: string[] = [];
-    let walletDebited = false;
-
-    const unavailableError = (message: string) => {
-      const err = new Error(message);
-      (err as any).status = 409;
-      (err as any).code = 'card_unavailable';
-      return err;
-    };
-
     try {
       const reservedUntil = new Date(Date.now() + RESERVATION_MINUTES * 60 * 1000).toISOString();
-      if (mode === 'cart') {
-        for (const item of checkoutItems) {
-          const { data: claimed } = await supabase
-            .from('cards')
-            .update({ status: 'in_transaction', reserved_until: reservedUntil, updated_at: new Date().toISOString() } as never)
-            .eq('id', item.card.id)
-            .eq('status', 'active')
-            .eq('listing_type', 'sale')
-            .select('id')
-            .maybeSingle<{ id: string }>();
-
-          if (!claimed) {
-            throw unavailableError('Một thẻ vừa được người khác mua hoặc giữ thanh toán.');
-          }
-          claimedCardIds.push(item.card.id);
-        }
-      } else {
-        // Offer mode: claim the card atomically too (previously only cart
-        // mode claimed, leaving a TOCTOU window where an expired 2h offer
-        // hold was re-sold to someone else and this path still force-sold
-        // the card a second time). The accept flow left the card
-        // 'in_transaction'; it may have lapsed back to 'active' — both are
-        // claimable, but only if nobody else has a live order on the card.
-        const item = checkoutItems[0];
-
-        const { data: conflictingOrder } = await supabase
-          .from('orders')
-          .select('id')
-          .eq('card_id', item.card.id)
-          .neq('buyer_id', user.id)
-          .in('status', ['pending_payment', 'paid', 'shipping', 'delivered', 'completed'])
-          .limit(1)
-          .maybeSingle();
-        if (conflictingOrder) {
-          throw unavailableError('Thẻ này đã được người khác mua.');
-        }
-
-        const { data: claimed } = await supabase
-          .from('cards')
-          .update({ status: 'in_transaction', reserved_until: reservedUntil, updated_at: new Date().toISOString() } as never)
-          .eq('id', item.card.id)
-          .in('status', ['active', 'in_transaction'])
-          .select('id')
-          .maybeSingle<{ id: string }>();
-
-        if (!claimed) {
-          throw unavailableError('Thẻ này không còn khả dụng.');
-        }
-        claimedCardIds.push(item.card.id);
-      }
+      const orderSpecs = checkoutItems.map((item, index) => ({
+        order_id: plannedOrderIds[index],
+        card_id: item.card.id,
+        seller_id: item.card.seller_id,
+        offer_id: item.offerId || null,
+        amount: item.amount,
+        shipping_fee: item.shippingFee,
+        total_paid: item.amount + item.shippingFee,
+        metadata: { api_request_hash: apiRequestHash },
+        ...shipping,
+      }));
 
       if (paymentMethod === 'wallet') {
-        const wallet = walletRow!;
-        const newBalance = wallet.available_balance - totalPaid;
-
-        // Optimistic lock on the balance we just read: of two concurrent
-        // checkouts only the first matches, the second gets 409 (same pattern
-        // as wallet/withdraw).
-        const { data: debited, error: deductError } = await service
-          .from('wallets')
-          .update({ available_balance: newBalance, updated_at: new Date().toISOString() } as never)
-          .eq('user_id', user.id)
-          .eq('available_balance', wallet.available_balance)
-          .select('id')
-          .maybeSingle();
-        if (deductError || !debited) {
-          const conflict = new Error('Số dư vừa thay đổi, vui lòng thử lại.');
+        const { data: walletResultData, error: walletOrderError } = await service.rpc(
+          'create_verified_wallet_marketplace_orders' as never,
+          {
+            p_user_id: user.id,
+            p_orders: orderSpecs,
+            p_idempotency_key: idempotencyKey,
+            p_description: mode === 'offer' ? 'Card offer payment' : 'CardVerse cart payment',
+          } as never,
+        );
+        if (walletOrderError || !walletResultData) {
+          const conflict = new Error('Verified balance is insufficient or changed. Please try again.');
           (conflict as any).status = 409;
-          (conflict as any).code = 'balance_changed';
-          throw deductError || conflict;
+          (conflict as any).code = 'verified_balance_changed';
+          throw conflict;
         }
-        walletDebited = true;
-
-        const { error: walletTransactionError } = await service.from('wallet_transactions').insert({
-          wallet_id: wallet.id,
-          user_id: user.id,
-          type: 'marketplace_buy',
-          amount: -totalPaid,
-          balance_after: newBalance,
-          description: mode === 'offer' ? 'Thanh toán offer thẻ' : 'Thanh toán giỏ hàng CardVerse',
-          reference_id: checkoutItems[0]?.card.id,
-        } as never);
-        if (walletTransactionError) throw walletTransactionError;
-
-        const orders: CreatedOrder[] = [];
-        for (const item of checkoutItems) {
-          const amount = item.amount;
-          const { data: order, error: orderError } = await supabase
-            .from('orders')
-            .insert({
-              card_id: item.card.id,
-              seller_id: item.card.seller_id,
-              buyer_id: user.id,
-              offer_id: item.offerId || null,
-              amount,
-              platform_fee: 0, // fee is charged at withdrawal, not at sale
-              total_paid: amount + item.shippingFee,
-              shipping_fee: item.shippingFee,
-              payment_method: 'wallet',
-              status: 'paid',
-              ship_deadline: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-              ...shipping,
-            } as never)
-            .select()
-            .single();
-
-          if (orderError) throw orderError;
-          orders.push(order);
-          createdOrderIds.push((order as { id: string }).id);
-
-          // Guarded: only a card still holding OUR claim can be sold. If the
-          // claim was raced away, abort — the catch rolls back the orders and
-          // refunds, instead of force-selling a card someone else bought.
-          const { data: soldCard } = await supabase
-            .from('cards')
-            .update({ status: 'sold', reserved_until: null, updated_at: new Date().toISOString() } as never)
-            .eq('id', item.card.id)
-            .eq('status', 'in_transaction')
-            .select('id')
-            .maybeSingle<{ id: string }>();
-
-          if (!soldCard) {
-            throw unavailableError('Một thẻ vừa được người khác mua hoặc giữ thanh toán.');
-          }
-          soldCardIds.push(item.card.id);
+        const walletResult = walletResultData as unknown as { orders?: CreatedOrder[] };
+        const orders = walletResult.orders || [];
+        if (orders.length !== checkoutItems.length) {
+          throw new Error('Atomic wallet checkout returned an inconsistent order count');
         }
 
-        // Notify sellers only after every order committed — a mid-loop
-        // failure must not leave sellers with "please ship" notifications
-        // for orders that were rolled back.
         for (const item of checkoutItems) {
-          await service.from('notifications').insert({
+          const { error: notificationError } = await service.from('notifications').insert({
             user_id: item.card.seller_id,
             type: 'order_new',
-            title: 'Đơn hàng mới!',
-            message: `Thẻ "${item.card.name}" đã được thanh toán. Vui lòng giao hàng.`,
+            title: 'New order!',
+            message: `Card "${item.card.name}" was paid for. Please ship the order.`,
             card_id: item.card.id,
             offer_id: item.offerId || null,
           } as never);
+          if (notificationError) {
+            console.error('Checkout notification failed:', notificationError);
+          }
         }
 
         if (mode === 'cart') {
@@ -395,57 +361,60 @@ export async function POST(request: NextRequest) {
       }
 
       const orderCode = randomInt(10_000_000, 99_999_999);
-      const { data: paymentOrder, error: poError } = await supabase
-        .from('payment_orders')
-        .insert({
-          user_id: user.id,
-          order_code: orderCode,
-          package_type: MARKETPLACE_ORDER_PAYMENT_TYPE,
-          amount: totalPaid,
-          status: 'pending',
-        } as never)
-        .select()
-        .single<{ id: string }>();
-      if (poError || !paymentOrder) throw (poError || new Error('Could not create payment order'));
-
-        const orders: CreatedOrder[] = [];
-      for (const item of checkoutItems) {
-        const amount = item.amount;
-        const { data: order, error: orderError } = await supabase
-          .from('orders')
-          .insert({
-            card_id: item.card.id,
-            seller_id: item.card.seller_id,
-            buyer_id: user.id,
-            offer_id: item.offerId || null,
-            amount,
-            platform_fee: 0, // fee is charged at withdrawal, not at sale
-            total_paid: amount + item.shippingFee,
-            shipping_fee: item.shippingFee,
-            payment_method: 'direct_payos',
-            payment_order_id: paymentOrder.id,
-            status: 'pending_payment',
-            ...shipping,
-          } as never)
-          .select()
-          .single();
-        if (orderError) throw orderError;
-        orders.push(order);
-        createdOrderIds.push((order as { id: string }).id);
+      const { data: stagedData, error: stageError } = await service.rpc(
+        'stage_payos_marketplace_checkout' as never,
+        {
+          p_user_id: user.id,
+          p_order_code: orderCode,
+          p_orders: orderSpecs,
+          p_idempotency_key: idempotencyKey,
+          p_reserved_until: reservedUntil,
+        } as never,
+      );
+      const staged = stagedData as unknown as {
+        payment_order?: { id: string; order_code: number; payos_checkout_url?: string | null };
+        orders?: CreatedOrder[];
+      };
+      const paymentOrder = staged?.payment_order;
+      const orders = staged?.orders || [];
+      if (stageError || !paymentOrder || orders.length !== checkoutItems.length) {
+        throw stageError || new Error('Could not stage PayOS checkout');
       }
+      const persistedOrderCode = Number(paymentOrder.order_code);
 
       if (mode === 'cart') {
         const cartItemIds = checkoutItems.map(item => item.cartItemId).filter(Boolean) as string[];
         await supabase.from('cart_items').delete().eq('user_id', user.id).in('id', cartItemIds);
       }
-      // (Offer mode: the card was already claimed 'in_transaction' with a
-      // fresh reserved_until in the atomic claim above.)
+      if (paymentOrder.payos_checkout_url) {
+        return NextResponse.json({
+          success: true,
+          orders,
+          payment_method: 'direct_payos',
+          checkoutUrl: paymentOrder.payos_checkout_url,
+          orderCode: persistedOrderCode,
+        });
+      }
+      const linkClaim = await claimPayOSLinkCreation(service, user.id, persistedOrderCode);
+      if (linkClaim.checkoutUrl) {
+        return NextResponse.json({
+          success: true,
+          orders,
+          payment_method: 'direct_payos',
+          checkoutUrl: linkClaim.checkoutUrl,
+          orderCode: persistedOrderCode,
+          replayed: true,
+        });
+      }
 
       const origin = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
       const paymentLink = await getPayOS().paymentRequests.create({
-        orderCode,
+        orderCode: persistedOrderCode,
         amount: totalPaid,
-        description: mode === 'offer' ? 'Thanh toan offer CV' : 'Thanh toan gio hang CV',
+        description: translateRequest(
+          request,
+          mode === 'offer' ? 'payos_description_offer_checkout' : 'payos_description_cart_checkout',
+        ).slice(0, 25),
         expiredAt: Math.floor((Date.now() + RESERVATION_MINUTES * 60 * 1000) / 1000),
         cancelUrl: `${origin}/orders?status=cancelled`,
         returnUrl: `${origin}/orders?status=success`,
@@ -456,13 +425,13 @@ export async function POST(request: NextRequest) {
         })),
       });
 
-      await supabase
-        .from('payment_orders')
-        .update({
-          payos_payment_link_id: paymentLink.paymentLinkId,
-          payos_checkout_url: paymentLink.checkoutUrl,
-        } as never)
-        .eq('order_code', orderCode);
+      await attachClaimedPayOSLink(service, {
+        userId: user.id,
+        orderCode: persistedOrderCode,
+        claimId: linkClaim.claimId!,
+        paymentLinkId: paymentLink.paymentLinkId,
+        checkoutUrl: paymentLink.checkoutUrl,
+      });
 
       return NextResponse.json({
         success: true,
@@ -470,76 +439,13 @@ export async function POST(request: NextRequest) {
         payment_method: 'direct_payos',
         checkoutUrl: paymentLink.checkoutUrl,
         qrCode: paymentLink.qrCode,
-        orderCode,
+        orderCode: persistedOrderCode,
       });
     } catch (err) {
-      // Full rollback, in dependency order. Previously a mid-loop failure in
-      // a multi-item wallet checkout left earlier orders 'paid' and their
-      // cards 'sold' while STILL refunding the buyer 100% — free cards.
-      // 1) Remove every order this request created (paid or pending_payment).
-      if (createdOrderIds.length > 0) {
-        await service.from('orders').delete().in('id', createdOrderIds);
-      }
-
-      // 2) Un-sell cards this request flipped to 'sold' (guarded so a card
-      //    legitimately re-sold elsewhere is never clobbered back to active).
-      if (soldCardIds.length > 0) {
-        await supabase
-          .from('cards')
-          .update({ status: 'active', reserved_until: null, updated_at: new Date().toISOString() } as never)
-          .in('id', soldCardIds)
-          .eq('status', 'sold');
-      }
-
-      // 3) Release cart claims that never reached 'sold'. Offer-mode cards
-      //    stay 'in_transaction' — the offer is still 'chosen', so the hold
-      //    should persist (release_expired_card_reservations self-heals it
-      //    when the fresh reserved_until lapses).
-      if (mode === 'cart') {
-        for (const cardId of claimedCardIds) {
-          await supabase
-            .from('cards')
-            .update({ status: 'active', reserved_until: null, updated_at: new Date().toISOString() } as never)
-            .eq('id', cardId)
-            .eq('status', 'in_transaction');
-        }
-      }
-
-      // 4) Compensation: if the wallet was already debited but order creation
-      // failed afterwards, put the money back (best-effort with one retry —
-      // previously the buyer simply lost the balance).
-      if (walletDebited) {
-        for (let attempt = 0; attempt < 2; attempt += 1) {
-          const { data: currentWallet } = await service
-            .from('wallets')
-            .select('id, available_balance')
-            .eq('user_id', user.id)
-            .single<{ id: string; available_balance: number }>();
-          if (!currentWallet) break;
-
-          const refundedBalance = currentWallet.available_balance + totalPaid;
-          const { data: refunded } = await service
-            .from('wallets')
-            .update({ available_balance: refundedBalance, updated_at: new Date().toISOString() } as never)
-            .eq('user_id', user.id)
-            .eq('available_balance', currentWallet.available_balance)
-            .select('id')
-            .maybeSingle();
-
-          if (refunded) {
-            await service.from('wallet_transactions').insert({
-              wallet_id: currentWallet.id,
-              user_id: user.id,
-              type: 'refund',
-              amount: totalPaid,
-              balance_after: refundedBalance,
-              description: 'Hoàn tiền - thanh toán thất bại',
-              reference_id: checkoutItems[0]?.card.id,
-            } as never);
-            break;
-          }
-        }
-      }
+      // Both wallet settlement and direct-PayOS database staging are atomic.
+      // If the external provider call is uncertain, keep the reservation
+      // fail-closed for webhook/retry/expiry recovery rather than releasing a
+      // potentially payable order back to the marketplace.
       throw err;
     }
   } catch (error: any) {

@@ -216,7 +216,7 @@ export function PostCard({ post }: PostCardProps) {
     const handleDeleteComment = async (commentId: string) => {
         try {
             const { error } = await supabase
-                .rpc('delete_forum_comment', { comment_id_param: commentId });
+                .rpc('delete_forum_comment' as never, { comment_id_param: commentId } as never);
 
             if (error) throw error;
 

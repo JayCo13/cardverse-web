@@ -2,12 +2,13 @@
     "name": "card-verse",
     "version": "0.1.0",
     "private": true,
-    "scripts": {
-        "dev": "next dev",
-        "build": "next build",
-        "start": "next start",
-        "lint": "next lint"
-    },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "wallet:reconcile": "node scripts/wallet-reconcile.mjs"
+  },
     "dependencies": {
         "@genkit-ai/google-genai": "^1.26.0",
         "@hookform/resolvers": "^3.9.1",

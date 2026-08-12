@@ -216,11 +216,12 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
 
     if (existingConversation) {
-        conversationId = (existingConversation as any).id;
+        const existingConversationId = (existingConversation as { id: string }).id;
+        conversationId = existingConversationId;
         await supabase
             .from('conversations')
             .update({ offer_id: offer.id, updated_at: new Date().toISOString() } as never)
-            .eq('id', conversationId);
+            .eq('id', existingConversationId);
     } else {
         const { data: createdConversation } = await supabase
             .from('conversations')

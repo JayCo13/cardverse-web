@@ -23,6 +23,7 @@ export const cards: Card[] = [
         currentBid: 1250.00,
         auctionEnds: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
         userId: 'user1',
+        sellerId: 'user1',
         author: 'Leighton Kramer'
     },
     {
@@ -35,6 +36,7 @@ export const cards: Card[] = [
         listingType: 'sale',
         price: 8500.00,
         userId: 'user2',
+        sellerId: 'user2',
         author: 'Haylie Arcand'
     },
     {
@@ -49,6 +51,7 @@ export const cards: Card[] = [
         razzEntries: 45,
         totalTickets: 100,
         userId: 'user3',
+        sellerId: 'user3',
         author: 'Bowen Higgins'
     },
     {
@@ -61,6 +64,7 @@ export const cards: Card[] = [
         listingType: 'sale',
         price: 5250.00,
         userId: 'user4',
+        sellerId: 'user4',
         author: 'Saige Fuentes'
     },
     {
@@ -73,6 +77,7 @@ export const cards: Card[] = [
         listingType: 'sale',
         price: 250.00,
         userId: 'user5',
+        sellerId: 'user5',
         author: 'Sophie Mclain'
     },
     {
@@ -86,6 +91,7 @@ export const cards: Card[] = [
         currentBid: 550.00,
         auctionEnds: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
         userId: 'user6',
+        sellerId: 'user6',
         author: 'Jeremy Burch'
     },
     {
@@ -98,6 +104,7 @@ export const cards: Card[] = [
         listingType: 'sale',
         price: 45.00,
         userId: 'user7',
+        sellerId: 'user7',
         author: 'Amelia Griffith'
     },
     {
@@ -112,6 +119,7 @@ export const cards: Card[] = [
         razzEntries: 120,
         totalTickets: 250,
         userId: 'user8',
+        sellerId: 'user8',
         author: 'Isabela Hart'
     },
 ];

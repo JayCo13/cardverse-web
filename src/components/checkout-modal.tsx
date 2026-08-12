@@ -14,6 +14,7 @@ import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
 import { AddressBook, type SavedAddress } from '@/components/address-book';
 import { useLocalization } from '@/context/localization-context';
+import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { getCategoryCode } from '@/lib/category-code';
 import Image from 'next/image';
 
@@ -49,7 +50,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
   const supabase = useSupabase();
   const { setOpen: setAuthOpen } = useAuthModal();
   const { toast } = useToast();
-  const { locale } = useLocalization();
+  const { locale, t } = useLocalization();
   const copy = locale === 'ja-JP'
     ? {
         feeError: '送料を計算できませんでした。もう一度お試しください。',
@@ -82,6 +83,9 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
         errorTitle: 'エラー',
         walletLoadError: 'ウォレット残高を読み込めませんでした。',
         payAmount: '支払う {amount}',
+        cardsToBuy: '購入するカード',
+        cardFallback: 'カード {number}',
+        carrier: '配送業者',
       }
     : locale === 'vi-VN'
       ? {
@@ -115,6 +119,9 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
           errorTitle: 'Lỗi',
           walletLoadError: 'Không thể tải số dư ví.',
           payAmount: 'Thanh toán {amount}',
+          cardsToBuy: 'Thẻ sẽ mua',
+          cardFallback: 'Thẻ {number}',
+          carrier: 'Đơn vị vận chuyển',
         }
       : {
           feeError: 'Could not calculate shipping fee. Please try again.',
@@ -147,6 +154,9 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
           errorTitle: 'Error',
           walletLoadError: 'Unable to load wallet balance.',
           payAmount: 'Pay {amount}',
+          cardsToBuy: 'Cards to buy',
+          cardFallback: 'Card {number}',
+          carrier: 'Carrier',
         };
   const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'direct_payos'>('wallet');
   // Bundle: indices of the cards the buyer wants to buy (default = all).
@@ -154,6 +164,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [isLoadingWallet, setIsLoadingWallet] = useState(true);
   const [isPurchasing, setIsPurchasing] = useState(false);
+  const purchaseRequestRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
   // Shipping — address comes from the buyer's TikTok-style address book.
   const [selectedAddress, setSelectedAddress] = useState<SavedAddress | null>(null);
@@ -266,7 +277,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
     void calculateFee(selectedAddress);
   }, [open, selectedAddress, card?.id, calculateFee]);
 
-  const formatVND = (amount: number) => new Intl.NumberFormat('vi-VN').format(amount) + 'đ';
+  const formatVND = (amount: number) => new Intl.NumberFormat(locale).format(amount) + '₫';
 
   const selectedSubtotal = isBundle
     ? selectedBundle.reduce((sum, i) => sum + (bundleItems[i]?.price || 0), 0)
@@ -287,9 +298,24 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
 
     setIsPurchasing(true);
     try {
+      const fingerprint = JSON.stringify({
+        cardId: card.id,
+        paymentMethod,
+        shippingFee,
+        selectedCarrier,
+        selectedBundle,
+        addressId: selectedAddress.id,
+      });
+      if (purchaseRequestRef.current?.fingerprint !== fingerprint) {
+        purchaseRequestRef.current = { fingerprint, key: crypto.randomUUID() };
+      }
       const res = await fetch('/api/marketplace/buy', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': purchaseRequestRef.current.key,
+          'X-CardVerse-Locale': locale,
+        },
         body: JSON.stringify({
           card_id: card.id,
           payment_method: paymentMethod,
@@ -314,24 +340,31 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
       const data = await res.json();
 
       // Lost the race: another buyer bought or reserved this card first.
-      if (res.status === 409 || data.code === 'card_unavailable') {
+      if (data.code === 'card_unavailable' || data.code === 'bundle_item_unavailable') {
         toast({
           variant: 'destructive',
           title: copy.unavailableTitle,
-          description: data.error || copy.unavailableDesc,
+          description: localizeFinancialApiError(t, data.code, copy.unavailableDesc),
         });
         onOpenChange(false);
         onSuccess?.();
         return;
       }
 
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) {
+        throw new Error(localizeFinancialApiError(t, data.code, copy.errorTitle));
+      }
+      purchaseRequestRef.current = null;
 
       if (data.payment_method === 'direct_payos') {
         if (!data.checkoutUrl) {
           // PayOS didn't return a payment link — surface it instead of silently
           // "succeeding" and closing the dialog with an orphaned pending order.
-          toast({ variant: 'destructive', title: copy.errorTitle, description: data.error || 'PayOS chưa tạo được link thanh toán. Vui lòng thử lại hoặc thanh toán bằng ví.' });
+          toast({
+            variant: 'destructive',
+            title: copy.errorTitle,
+            description: localizeFinancialApiError(t, data.code || 'payos_link_missing', copy.errorTitle),
+          });
           return;
         }
         // Same-tab redirect — window.open('_blank') after an await is blocked by
@@ -387,13 +420,15 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
           {isBundle && (
             <div className="space-y-2">
               <Label className="text-sm font-medium">
-                {locale === 'ja-JP' ? '購入するカード' : locale === 'en-US' ? 'Cards to buy' : 'Thẻ sẽ mua'}
+                {copy.cardsToBuy}
                 <span className="ml-1 text-muted-foreground">({selectedBundle.length}/{bundleItems.length})</span>
               </Label>
               <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border p-2">
                 {selectedBundle.map(i => bundleItems[i]).filter(Boolean).map((it, k) => (
                   <div key={k} className="flex items-center gap-2 px-2 py-1 text-sm">
-                    <span className="min-w-0 flex-1 truncate">{it.title || `Thẻ ${k + 1}`}</span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {it.title || copy.cardFallback.replace('{number}', String(k + 1))}
+                    </span>
                     <span className="shrink-0 font-semibold text-orange-500">{formatVND(it.price)}</span>
                   </div>
                 ))}
@@ -419,7 +454,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
             <div className="space-y-2">
               <Label className="flex items-center gap-1.5 text-sm font-medium">
                 <Truck className="h-4 w-4" />
-                {locale === 'ja-JP' ? '配送業者' : locale === 'en-US' ? 'Carrier' : 'Đơn vị vận chuyển'}
+                {copy.carrier}
               </Label>
               {shipOptions.length === 1 ? (
                 (() => {

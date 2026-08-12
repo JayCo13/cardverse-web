@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
-import { cancelOrder as cancelGHNOrder } from '@/lib/ghn';
 import { getCarrier, getTrackingUrl, getDeliveryDays } from '@/lib/shipping-carriers';
 import { sendOrderShippedEmail } from '@/lib/mail';
 import { expireUnshippedPaidOrders } from '@/lib/expire-orders';
+import type { Database } from '@/lib/supabase/database.types';
+
+type OrderRow = Database['public']['Tables']['orders']['Row'];
 
 // GET: Fetch orders for current user
 export async function GET(request: NextRequest) {
@@ -77,21 +79,26 @@ export async function PATCH(request: NextRequest) {
 
         const body = await request.json();
         const { order_id, action, tracking_number, shipping_provider, dispute_reason } = body;
+        const idempotencyKey = request.headers.get('idempotency-key');
 
         if (!order_id || !action) {
             return NextResponse.json({ error: 'order_id and action are required' }, { status: 400 });
         }
+        if (!idempotencyKey || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idempotencyKey)) {
+            return NextResponse.json({ error: 'Idempotency-Key is required', code: 'idempotency_key_required' }, { status: 400 });
+        }
 
         // Get the order
-        const { data: order, error: orderError } = await supabase
+        const { data: orderData, error: orderError } = await supabase
             .from('orders')
             .select('*')
             .eq('id', order_id)
             .single();
 
-        if (orderError || !order) {
+        if (orderError || !orderData) {
             return NextResponse.json({ error: 'Order not found' }, { status: 404 });
         }
+        const order = orderData as OrderRow;
 
         // Cross-user writes (wallet credits, notifications to the other party)
         // go through the service client — both tables are RLS-locked for
@@ -105,71 +112,42 @@ export async function PATCH(request: NextRequest) {
                 if (order.seller_id !== user.id) {
                     return NextResponse.json({ error: 'Only seller can ship' }, { status: 403 });
                 }
-                if (order.status !== 'paid') {
-                    return NextResponse.json({ error: 'Order must be paid to ship' }, { status: 400 });
-                }
-
                 const carrierCode = typeof shipping_provider === 'string' ? shipping_provider.trim() : '';
                 const trackingNo = typeof tracking_number === 'string' ? tracking_number.trim() : '';
                 const carrier = getCarrier(carrierCode);
                 if (!carrier) {
-                    return NextResponse.json({ error: 'Vui lòng chọn đơn vị vận chuyển hợp lệ.', code: 'invalid_carrier' }, { status: 400 });
+                    return NextResponse.json({ error: 'Select a valid shipping carrier.', code: 'invalid_carrier' }, { status: 400 });
                 }
                 // Hand delivery ('self') may skip the tracking number; carriers require it.
                 if (carrierCode !== 'self' && !trackingNo) {
-                    return NextResponse.json({ error: 'Vui lòng nhập mã vận đơn.', code: 'missing_tracking' }, { status: 400 });
-                }
-
-                // Atomically claim the order (paid → shipping); a concurrent
-                // 'cancel' can no longer refund an order that is being shipped.
-                const { data: claimedOrder } = await supabase
-                    .from('orders')
-                    .update({ status: 'shipping', updated_at: new Date().toISOString() } as never)
-                    .eq('id', order_id)
-                    .eq('status', 'paid')
-                    .select('id')
-                    .maybeSingle();
-
-                if (!claimedOrder) {
-                    return NextResponse.json({
-                        error: 'Đơn hàng vừa thay đổi trạng thái (có thể đã bị hủy hoặc đã ship).',
-                        code: 'order_state_changed',
-                    }, { status: 409 });
+                    return NextResponse.json({ error: 'Enter a tracking number.', code: 'missing_tracking' }, { status: 400 });
                 }
 
                 // Escalation deadline = est. max delivery + 3-day buffer from now.
                 // If the buyer hasn't confirmed by then, the order escalates to
                 // admin review (it is NOT auto-paid to the seller).
                 const estMaxDays = getDeliveryDays(carrierCode)?.max ?? 5;
-                const { error: updateError } = await supabase
-                    .from('orders')
-                    .update({
-                        status: 'shipping',
-                        tracking_number: trackingNo || null,
-                        shipping_provider: carrierCode,
-                        auto_complete_at: new Date(Date.now() + (estMaxDays + 3) * 24 * 60 * 60 * 1000).toISOString(),
-                        updated_at: new Date().toISOString(),
-                    } as never)
-                    .eq('id', order_id);
-
-                if (updateError) throw updateError;
+                const { data: actionData, error: actionError } = await service.rpc(
+                    'perform_marketplace_order_action' as never,
+                    {
+                        p_order_id: order_id,
+                        p_action: 'ship',
+                        p_actor_id: user.id,
+                        p_idempotency_key: idempotencyKey,
+                        p_payload: {
+                            tracking_number: trackingNo || null,
+                            shipping_provider: carrierCode,
+                            auto_complete_at: new Date(Date.now() + (estMaxDays + 3) * 24 * 60 * 60 * 1000).toISOString(),
+                        },
+                    } as never,
+                );
+                if (actionError) throw actionError;
+                const actionResult = actionData as { replayed?: boolean } | null;
 
                 const trackingUrl = getTrackingUrl(carrierCode, trackingNo);
 
-                // Notify buyer in-app
-                await service.from('notifications').insert({
-                    user_id: order.buyer_id,
-                    type: 'order_shipped',
-                    title: 'Đơn hàng đã được gửi!',
-                    message: trackingNo
-                        ? `Đơn đang được ${carrier.name} vận chuyển. Mã vận đơn: ${trackingNo}`
-                        : 'Người bán đang giao trực tiếp đơn hàng của bạn.',
-                    card_id: order.card_id,
-                    order_id,
-                } as never);
-
                 // Catch-up email to the buyer (best-effort — never block shipping).
-                if (trackingNo) {
+                if (trackingNo && !actionResult?.replayed) {
                     try {
                         const [{ data: buyer }, { data: card }] = await Promise.all([
                             service.from('profiles').select('email').eq('id', order.buyer_id).single(),
@@ -180,7 +158,7 @@ export async function PATCH(request: NextRequest) {
                         const buyerEmail = (buyer as any)?.email;
                         if (buyerEmail) {
                             await sendOrderShippedEmail(buyerEmail, {
-                                cardName: (card as any)?.name || 'thẻ',
+                                cardName: (card as any)?.name || 'card',
                                 carrierName: carrier.name,
                                 trackingNumber: trackingNo,
                                 trackingUrl,
@@ -205,72 +183,25 @@ export async function PATCH(request: NextRequest) {
                 if (order.buyer_id !== user.id) {
                     return NextResponse.json({ error: 'Only buyer can confirm' }, { status: 403 });
                 }
-                if (!['shipping', 'delivered'].includes(order.status)) {
-                    return NextResponse.json({ error: 'Order must be shipping/delivered to confirm' }, { status: 400 });
-                }
-
-                // Atomically claim the completion: only the request that wins
-                // this CAS pays the seller. A double-click, a retry, or the
-                // 72h auto-release RPC (which guards on status='delivered')
-                // can no longer produce a second payout.
-                const { data: completedOrder } = await supabase
-                    .from('orders')
-                    .update({
-                        status: 'completed',
-                        buyer_confirmed_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString(),
-                    } as never)
-                    .eq('id', order_id)
-                    .in('status', ['shipping', 'delivered'])
-                    .select('id')
-                    .maybeSingle();
-
-                if (!completedOrder) {
-                    return NextResponse.json({
-                        error: 'Đơn hàng vừa thay đổi trạng thái, không thể xác nhận lại.',
-                        code: 'order_state_changed',
-                    }, { status: 409 });
-                }
-
-                // Release funds to seller. Fee model: seller gets the FULL
-                // amount — the 5% platform fee is charged once, at withdrawal.
-                // credit_wallet is an atomic SECURITY DEFINER RPC (balance
-                // increment + ledger row in one transaction), service-role only.
-                const sellerPayout = order.amount;
-                const { error: payoutError } = await service.rpc('credit_wallet' as never, {
-                    p_user_id: order.seller_id,
-                    p_amount: sellerPayout,
-                    p_type: 'marketplace_sale',
-                    p_description: `Bán thẻ - Đơn #${order_id.substring(0, 8)}`,
-                    p_reference_id: order_id,
-                } as never);
-
-                if (payoutError) {
-                    // Put the order back so the payout can be retried (buyer
-                    // re-confirms, or the 72h auto-release picks it up).
-                    await supabase
-                        .from('orders')
-                        .update({ status: 'delivered', buyer_confirmed_at: null, updated_at: new Date().toISOString() } as never)
-                        .eq('id', order_id)
-                        .eq('status', 'completed');
-                    throw payoutError;
-                }
-
-                // Notify seller
-                await service.from('notifications').insert({
-                    user_id: order.seller_id,
-                    type: 'order_completed',
-                    title: 'Đơn hàng hoàn tất!',
-                    message: `Người mua đã xác nhận nhận hàng. ${sellerPayout.toLocaleString()}đ đã được cộng vào ví.`,
-                    card_id: order.card_id,
-                    order_id,
-                } as never);
-
+                // Order completion, verified escrow release, seller balance,
+                // provenance source and ledger are committed in one RPC.
+                const { data: payoutData, error: payoutError } = await service.rpc(
+                    'perform_marketplace_order_action' as never,
+                    {
+                        p_order_id: order_id,
+                        p_action: 'confirm_received',
+                        p_actor_id: user.id,
+                        p_idempotency_key: idempotencyKey,
+                        p_payload: {},
+                    } as never,
+                );
+                if (payoutError) throw payoutError;
+                const payoutResult = payoutData as { seller_payout?: number; replayed?: boolean } | null;
                 // Record the completed sale for VN market pricing — only
                 // standardized single-card listings (with a catalog key) count,
                 // so open asking prices can never skew the aggregate. Never
                 // let a pricing write break order confirmation.
-                try {
+                if (!payoutResult?.replayed) try {
                     const completedOrder = order as any;
                     const { data: soldCard } = await supabase
                         .from('cards')
@@ -308,13 +239,15 @@ export async function PATCH(request: NextRequest) {
 
                 // Reputation: a confirmed order counts as one successful sale.
                 // Never block the confirmation on it.
-                const { error: statsError } = await service.rpc('update_seller_reputation' as never, {
-                    p_seller_id: order.seller_id,
-                    p_success: 1,
-                    p_fault: 0,
-                } as never);
-                if (statsError) {
-                    console.error('update_seller_reputation failed:', statsError);
+                if (!payoutResult?.replayed) {
+                    const { error: statsError } = await service.rpc('update_seller_reputation' as never, {
+                        p_seller_id: order.seller_id,
+                        p_success: 1,
+                        p_fault: 0,
+                    } as never);
+                    if (statsError) {
+                        console.error('update_seller_reputation failed:', statsError);
+                    }
                 }
 
                 return NextResponse.json({ success: true, status: 'completed' });
@@ -325,119 +258,37 @@ export async function PATCH(request: NextRequest) {
                 if (order.buyer_id !== user.id) {
                     return NextResponse.json({ error: 'Only buyer can dispute' }, { status: 403 });
                 }
-                if (!['shipping', 'delivered'].includes(order.status)) {
-                    return NextResponse.json({ error: 'Cannot dispute at this stage' }, { status: 400 });
+                const reason = typeof dispute_reason === 'string' ? dispute_reason.trim() : '';
+                if (!reason) {
+                    return NextResponse.json({ error: 'Dispute reason is required' }, { status: 400 });
                 }
-
-                await supabase
-                    .from('orders')
-                    .update({
-                        status: 'disputed',
-                        dispute_reason: dispute_reason || 'No reason provided',
-                        updated_at: new Date().toISOString(),
-                    } as never)
-                    .eq('id', order_id);
-
-                // Notify seller
-                await service.from('notifications').insert({
-                    user_id: order.seller_id,
-                    type: 'order_disputed',
-                    title: 'Đơn hàng bị khiếu nại!',
-                    message: `Người mua đã mở khiếu nại cho đơn hàng. Lý do: ${dispute_reason || 'Không rõ'}`,
-                    card_id: order.card_id,
-                    order_id,
-                } as never);
+                const { error: disputeError } = await service.rpc(
+                    'perform_marketplace_order_action' as never,
+                    {
+                        p_order_id: order_id,
+                        p_action: 'open_dispute',
+                        p_actor_id: user.id,
+                        p_idempotency_key: idempotencyKey,
+                        p_payload: { reason },
+                    } as never,
+                );
+                if (disputeError) throw disputeError;
 
                 return NextResponse.json({ success: true, status: 'disputed' });
             }
 
             case 'cancel': {
-                // Once an order is PAID, neither the buyer nor the seller may
-                // cancel it — problems are handled by admin ("Report to admin").
-                // Only an unpaid (pending_payment) order can still be dropped.
                 const isOwner = order.buyer_id === user.id || order.seller_id === user.id;
                 if (!isOwner) {
                     return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
                 }
-                if (order.status !== 'pending_payment') {
-                    return NextResponse.json({
-                        error: 'Không thể huỷ đơn đã thanh toán. Vui lòng dùng "Báo cáo admin" nếu có vấn đề.',
-                        code: 'cancel_not_allowed',
-                    }, { status: 400 });
+                if (order.status === 'cancelled') {
+                    return NextResponse.json({ success: true, status: 'cancelled', replayed: true });
                 }
-
-                // Atomically claim the cancellation per prior status. Only the
-                // request that wins a CAS refunds — two concurrent cancels, or
-                // a cancel racing the seller's 'ship' claim, can't both act.
-                const { data: cancelledPaid } = await supabase
-                    .from('orders')
-                    .update({ status: 'cancelled', updated_at: new Date().toISOString() } as never)
-                    .eq('id', order_id)
-                    .eq('status', 'paid')
-                    .select('id')
-                    .maybeSingle();
-
-                if (!cancelledPaid) {
-                    const { data: cancelledPending } = await supabase
-                        .from('orders')
-                        .update({ status: 'cancelled', updated_at: new Date().toISOString() } as never)
-                        .eq('id', order_id)
-                        .eq('status', 'pending_payment')
-                        .select('id')
-                        .maybeSingle();
-
-                    if (!cancelledPending) {
-                        return NextResponse.json({
-                            error: 'Đơn hàng vừa thay đổi trạng thái, không thể hủy.',
-                            code: 'order_state_changed',
-                        }, { status: 409 });
-                    }
-                }
-
-                // Refund a paid order to the buyer's CardVerse wallet — for
-                // BOTH payment methods. A direct_payos payment already landed
-                // in the platform account, so it is refunded as wallet balance
-                // the buyer can spend or withdraw (previously it was silently
-                // kept). credit_wallet is atomic, so a lost race above can't
-                // double-refund.
-                if (cancelledPaid) {
-                    const { error: refundError } = await service.rpc('credit_wallet' as never, {
-                        p_user_id: order.buyer_id,
-                        p_amount: order.total_paid,
-                        p_type: 'refund',
-                        p_description: `Hoàn tiền - Đơn #${order_id.substring(0, 8)} đã hủy`,
-                        p_reference_id: order_id,
-                    } as never);
-
-                    if (refundError) {
-                        // Put the order back so the refund can be retried.
-                        await supabase
-                            .from('orders')
-                            .update({ status: 'paid', updated_at: new Date().toISOString() } as never)
-                            .eq('id', order_id)
-                            .eq('status', 'cancelled');
-                        throw refundError;
-                    }
-
-                    await service.from('notifications').insert({
-                        user_id: order.buyer_id,
-                        type: 'order_refunded',
-                        title: 'Đơn hàng đã hủy - tiền đã hoàn',
-                        message: `${Number(order.total_paid).toLocaleString()}đ đã được hoàn vào ví CardVerse của bạn.`,
-                        card_id: order.card_id,
-                        order_id,
-                    } as never);
-                }
-
-                // Restore card to active (guarded: don't clobber a card that
-                // was independently re-listed or re-sold in the meantime).
-                await supabase
-                    .from('cards')
-                    .update({ status: 'active', reserved_until: null, updated_at: new Date().toISOString() } as never)
-                    .eq('id', order.card_id)
-                    .in('status', ['sold', 'in_transaction']);
-
-                return NextResponse.json({ success: true, status: 'cancelled' });
+                return NextResponse.json({
+                    error: 'A PayOS link that may still be payable cannot be cancelled locally. Cancel it in PayOS or wait for the webhook; use the dispute flow for paid orders.',
+                    code: 'cancel_requires_provider_confirmation',
+                }, { status: 409 });
             }
 
             default:

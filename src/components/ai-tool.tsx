@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { useLocalization } from "@/context/localization-context";
 
-const getFormSchema = (t: (key: string) => string) => z.object({
+const getFormSchema = (t: ReturnType<typeof useLocalization>['t']) => z.object({
   searchTerm: z.string().min(3, { message: t('ai_tool_search_validation') }),
 });
 

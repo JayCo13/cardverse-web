@@ -289,6 +289,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     const [isUpdatingMute, setIsUpdatingMute] = useState(false);
     const [offer, setOffer] = useState<OfferSummary | null>(null);
     const [isAcceptingOffer, setIsAcceptingOffer] = useState(false);
+    const offerActionKeys = useRef<Record<string, string>>({});
     const [isRejectingOffer, setIsRejectingOffer] = useState(false);
     const bottomRef = useRef<HTMLDivElement | null>(null);
     const lastScrolledConversationRef = useRef<string | null>(null);
@@ -389,7 +390,12 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
         if (!offer || isAcceptingOffer) return;
         setIsAcceptingOffer(true);
         try {
-            const response = await fetch(`/api/offers/${offer.id}/accept`, { method: "POST" });
+            const fingerprint = `${offer.id}:accept`;
+            offerActionKeys.current[fingerprint] ||= crypto.randomUUID();
+            const response = await fetch(`/api/offers/${offer.id}/accept`, {
+                method: "POST",
+                headers: { "Idempotency-Key": offerActionKeys.current[fingerprint] },
+            });
             const payload = await response.json();
             if (!response.ok) {
                 toast({
@@ -399,6 +405,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 });
                 return;
             }
+            delete offerActionKeys.current[fingerprint];
             await fetchOffer();
             // The seller accepts; checkout is the BUYER's step. Never redirect the
             // seller to /checkout (they'd hit "offer forbidden"). Just confirm —
@@ -415,7 +422,12 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
         if (!offer || isRejectingOffer) return;
         setIsRejectingOffer(true);
         try {
-            const response = await fetch(`/api/offers/${offer.id}/reject`, { method: "POST" });
+            const fingerprint = `${offer.id}:reject`;
+            offerActionKeys.current[fingerprint] ||= crypto.randomUUID();
+            const response = await fetch(`/api/offers/${offer.id}/reject`, {
+                method: "POST",
+                headers: { "Idempotency-Key": offerActionKeys.current[fingerprint] },
+            });
             const payload = await response.json();
             if (!response.ok) {
                 toast({
@@ -425,6 +437,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 });
                 return;
             }
+            delete offerActionKeys.current[fingerprint];
             await fetchOffer();
         } catch {
             toast({ variant: "destructive", title: copy.error, description: copy.declineOfferFailed });
