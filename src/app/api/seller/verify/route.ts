@@ -303,13 +303,43 @@ export async function GET() {
 
         const { data, error } = await supabase
             .from('seller_verifications')
-            .select('*')
+            .select(
+                'id, status, rejection_reason, created_at, updated_at, ' +
+                'bank_name, bank_account_number, bank_account_name, ' +
+                'bank_account_name_verified, bank_verified_at'
+            )
             .eq('user_id', user.id)
             .single() as { data: Record<string, unknown> | null; error: { code?: string; message?: string } | null };
 
         if (error && error.code !== 'PGRST116') throw error;
 
-        return NextResponse.json({ verification: data || null });
+        if (!data) return NextResponse.json({ verification: null });
+
+        const accountNumber = typeof data.bank_account_number === 'string'
+            ? data.bank_account_number
+            : '';
+
+        // Never return the full payout destination from a GET endpoint. The
+        // withdrawal RPC snapshots it server-side when a request is created.
+        return NextResponse.json({
+            verification: {
+                id: data.id,
+                status: data.status,
+                rejection_reason: data.rejection_reason,
+                created_at: data.created_at,
+                updated_at: data.updated_at,
+                bank_name: data.bank_name,
+                bank_account_masked: accountNumber.length > 4
+                    ? `••••${accountNumber.slice(-4)}`
+                    : '••••',
+                bank_account_name: data.bank_account_name,
+                bank_verified: (
+                    typeof data.bank_verified_at === 'string' &&
+                    typeof data.bank_account_name_verified === 'string' &&
+                    data.bank_account_name_verified.trim().length > 0
+                ),
+            },
+        });
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Internal server error';
         console.error('Get verification error:', message);

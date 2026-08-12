@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Header } from '@/components/layout/header';
@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { ArrowLeft, Truck, MapPin, CreditCard, Clock, Package, User, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { useLocalization } from '@/context/localization-context';
+import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { useToast } from '@/hooks/use-toast';
 import { optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
 import { getCarrier, getTrackingUrl, getDeliveryDays } from '@/lib/shipping-carriers';
@@ -29,11 +30,12 @@ const STATUS_STYLE: Record<string, string> = {
 export default function OrderDetailsPage() {
   const params = useParams();
   const router = useRouter();
-  const { locale } = useLocalization();
+  const { locale, t } = useLocalization();
   const { toast } = useToast();
   const id = String(params?.id || '');
   const tx = (vi: string, en: string, ja: string) => (locale === 'ja-JP' ? ja : locale === 'en-US' ? en : vi);
-  const fmt = (n: number | null | undefined) => new Intl.NumberFormat('vi-VN').format(Number(n || 0)) + 'đ';
+  const fmt = (n: number | null | undefined) =>
+    new Intl.NumberFormat(locale, { style: 'currency', currency: 'VND' }).format(Number(n || 0));
   const dt = (s: string | null | undefined) => (s ? new Date(s).toLocaleString(locale) : '—');
 
   const [order, setOrder] = useState<any | null>(null);
@@ -43,8 +45,8 @@ export default function OrderDetailsPage() {
   const [nowTs, setNowTs] = useState(() => Date.now());
 
   useEffect(() => {
-    const t = setInterval(() => setNowTs(Date.now()), 1000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(timer);
   }, []);
 
   const load = useCallback(async () => {
@@ -92,17 +94,26 @@ export default function OrderDetailsPage() {
   const [confirm, setConfirm] = useState<{ action: string; title: string; message: string; extra?: any } | null>(null);
   const [shipOpen, setShipOpen] = useState(false);
   const [trackingInput, setTrackingInput] = useState('');
+  const actionKeys = useRef<Record<string, string>>({});
 
   const runAction = async (action: string, extra?: any) => {
+    const fingerprint = `${id}:${action}:${JSON.stringify(extra || {})}`;
+    actionKeys.current[fingerprint] ||= crypto.randomUUID();
     setActing(true);
     try {
       const res = await fetch('/api/marketplace/orders', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': actionKeys.current[fingerprint],
+        },
         body: JSON.stringify({ order_id: id, action, ...extra }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Error');
+      if (!res.ok) {
+        throw new Error(localizeFinancialApiError(t, data.code, tx('Lỗi', 'Error', 'エラー')));
+      }
+      delete actionKeys.current[fingerprint];
       toast({ title: tx('Thành công', 'Done', '完了') });
       setConfirm(null); setShipOpen(false); setTrackingInput('');
       await load();

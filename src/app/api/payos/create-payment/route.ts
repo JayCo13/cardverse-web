@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { getPayOS, PACKAGES, type PackageType } from '@/lib/payos';
 import { randomInt } from 'crypto';
+import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link-claim';
 
 export async function POST(request: NextRequest) {
     try {
@@ -14,24 +16,13 @@ export async function POST(request: NextRequest) {
 
         const body = await request.json();
         const packageType = body.packageType as PackageType;
+        const idempotencyKey = request.headers.get('idempotency-key');
 
         if (!packageType || !PACKAGES[packageType]) {
             return NextResponse.json({ error: 'Invalid package type' }, { status: 400 });
         }
-
-        // ── Rate limiting: max 5 payment orders per minute per user ──
-        const oneMinuteAgo = new Date(Date.now() - 60_000).toISOString();
-        const { count: recentOrders } = await supabase
-            .from('payment_orders')
-            .select('id', { count: 'exact', head: true })
-            .eq('user_id', user.id)
-            .gte('created_at', oneMinuteAgo);
-
-        if ((recentOrders ?? 0) >= 5) {
-            return NextResponse.json(
-                { error: 'Too many payment requests. Please wait a moment.' },
-                { status: 429 }
-            );
+        if (!idempotencyKey || !/^[0-9a-f-]{36}$/i.test(idempotencyKey)) {
+            return NextResponse.json({ error: 'Idempotency-Key is required' }, { status: 400 });
         }
 
         const pkg = PACKAGES[packageType];
@@ -41,19 +32,46 @@ export async function POST(request: NextRequest) {
         const orderCode = randomInt(10_000_000, 99_999_999);
 
         // Create payment order in database
-        const { error: insertError } = await supabase
-            .from('payment_orders')
-            .insert({
-                user_id: user.id,
-                order_code: orderCode,
-                package_type: packageType,
-                amount: pkg.amount,
-                status: 'pending',
-            } as never);
+        const service = createServiceSupabaseClient();
+        const { data: paymentOrder, error: insertError } = await service.rpc('create_server_payment_order' as never, {
+            p_user_id: user.id,
+            p_order_code: orderCode,
+            p_package_type: packageType,
+            p_amount: pkg.amount,
+            p_currency: 'VND',
+            p_idempotency_key: idempotencyKey,
+        } as never);
 
         if (insertError) {
             console.error('Error creating payment order:', insertError);
-            return NextResponse.json({ error: 'Failed to create order' }, { status: 500 });
+            const rateLimited = insertError.message.includes('payment_rate_limited');
+            const conflict = insertError.message.includes('idempotency_conflict');
+            return NextResponse.json(
+                { error: rateLimited ? 'Too many payment requests. Please wait a moment.' : conflict ? 'Idempotency key conflict.' : 'Failed to create order' },
+                { status: rateLimited ? 429 : conflict ? 409 : 500 },
+            );
+        }
+        const persisted = paymentOrder as {
+            order_code?: number;
+            payos_checkout_url?: string | null;
+        } | null;
+        const persistedOrderCode = Number(persisted?.order_code || orderCode);
+        if (persisted?.payos_checkout_url) {
+            return NextResponse.json({
+                checkoutUrl: persisted.payos_checkout_url,
+                qrCode: null,
+                orderCode: persistedOrderCode,
+                replayed: true,
+            });
+        }
+        const linkClaim = await claimPayOSLinkCreation(service, user.id, persistedOrderCode);
+        if (linkClaim.checkoutUrl) {
+            return NextResponse.json({
+                checkoutUrl: linkClaim.checkoutUrl,
+                qrCode: null,
+                orderCode: persistedOrderCode,
+                replayed: true,
+            });
         }
 
         // Create PayOS payment link using v2 SDK
@@ -63,7 +81,7 @@ export async function POST(request: NextRequest) {
         const origin = process.env.NEXT_PUBLIC_APP_URL || request.headers.get('origin') || 'http://localhost:3000';
 
         const paymentLink = await getPayOS().paymentRequests.create({
-            orderCode,
+            orderCode: persistedOrderCode,
             amount: pkg.amount,
             description: pkg.description,
             cancelUrl: `${origin}/api/payos/return`,
@@ -78,24 +96,25 @@ export async function POST(request: NextRequest) {
         });
 
         // Update order with PayOS info
-        await supabase
-            .from('payment_orders')
-            .update({
-                payos_payment_link_id: paymentLink.paymentLinkId,
-                payos_checkout_url: paymentLink.checkoutUrl,
-            } as never)
-            .eq('order_code', orderCode);
+        await attachClaimedPayOSLink(service, {
+            userId: user.id,
+            orderCode: persistedOrderCode,
+            claimId: linkClaim.claimId!,
+            paymentLinkId: paymentLink.paymentLinkId,
+            checkoutUrl: paymentLink.checkoutUrl,
+        });
 
         return NextResponse.json({
             checkoutUrl: paymentLink.checkoutUrl,
             qrCode: paymentLink.qrCode,
-            orderCode,
+            orderCode: persistedOrderCode,
         });
     } catch (error: any) {
         console.error('PayOS create payment error:', error);
+        const status = typeof error?.status === 'number' ? error.status : 500;
         return NextResponse.json({
             error: 'Internal server error',
             details: error?.message || String(error)
-        }, { status: 500 });
+        }, { status });
     }
 }

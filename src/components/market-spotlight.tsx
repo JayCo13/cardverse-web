@@ -241,7 +241,7 @@ export function MarketSpotlight() {
                     high_price: product.high_price,
                     category: product.category_id === CATEGORY_SOCCER ? 'Soccer' : (product.category_id === CATEGORY_ONEPIECE ? 'One Piece' : 'Pokemon'),
                     rarity: product.rarity,
-                });
+                } as never);
 
             if (error) {
                 // If duplicate, still show success

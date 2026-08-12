@@ -27,13 +27,18 @@ export async function GET() {
         if (error && error.code === 'PGRST116') {
             // No wallet exists (pre-trigger account) — create one. Wallet
             // writes are RLS-locked, so this insert needs the service client.
-            const { data: newWallet, error: createError } = await createServiceSupabaseClient()
-                .from('wallets')
-                .insert({ user_id: user.id } as never)
-                .select()
-                .single();
+            const service = createServiceSupabaseClient();
+            const { error: createError } = await service.rpc('ensure_wallet_for_user' as never, {
+                p_user_id: user.id,
+            } as never);
 
             if (createError) throw createError;
+            const { data: newWallet, error: reloadError } = await supabase
+                .from('wallets')
+                .select('*')
+                .eq('user_id', user.id)
+                .single();
+            if (reloadError) throw reloadError;
             wallet = newWallet;
         } else if (error) {
             throw error;
@@ -42,7 +47,7 @@ export async function GET() {
         // Withdrawal requests are returned alongside the ledger so the wallet
         // can show pending/rejected lifecycle entries without pretending money
         // has already left the account.
-        const [{ data: transactions }, { data: withdrawals }] = await Promise.all([
+        const [{ data: transactions }, { data: withdrawals }, { data: fundStatement, error: statementError }] = await Promise.all([
             supabase
                 .from('wallet_transactions')
                 .select('*')
@@ -51,16 +56,24 @@ export async function GET() {
                 .limit(40),
             supabase
                 .from('wallet_withdrawals')
-                .select('*')
+                .select(`
+                    id, amount_requested, fee, amount_net, currency, status,
+                    funding_state, bank_name, bank_account_masked,
+                    rejection_reason, recovery_required, recovery_reason,
+                    created_at, processed_at
+                `)
                 .eq('user_id', user.id)
                 .order('created_at', { ascending: false })
                 .limit(20),
+            supabase.rpc('get_my_wallet_fund_statement' as never),
         ]);
+        if (statementError) throw statementError;
 
         return NextResponse.json({
             wallet,
             transactions: transactions || [],
             withdrawals: withdrawals || [],
+            fund_statement: fundStatement,
         });
     } catch (error: any) {
         console.error('Get wallet error:', error);

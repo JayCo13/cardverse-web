@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
@@ -15,6 +15,7 @@ import { useAuth } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
 import { useLocalization } from '@/context/localization-context';
+import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { SHIPPING_CARRIERS, getTrackingUrl, getCarrier } from '@/lib/shipping-carriers';
@@ -86,7 +87,7 @@ export default function OrdersPage() {
   const { user, isLoading: authLoading } = useAuth();
   const { setOpen } = useAuthModal();
   const { toast } = useToast();
-  const { locale } = useLocalization();
+  const { locale, t } = useLocalization();
   const router = useRouter();
   const copy = locale === 'ja-JP'
     ? {
@@ -287,6 +288,7 @@ export default function OrdersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const actionKeys = useRef<Record<string, string>>({});
 
   // Dispute dialog
   const [disputeDialog, setDisputeDialog] = useState<{ open: boolean; orderId: string }>({ open: false, orderId: '' });
@@ -332,14 +334,20 @@ export default function OrdersPage() {
     if (user) fetchOrders(activeTab);
   }, [user, activeTab, fetchOrders]);
 
-  const formatVND = (amount: number) => new Intl.NumberFormat('vi-VN').format(amount) + 'đ';
+  const formatVND = (amount: number) =>
+    new Intl.NumberFormat(locale, { style: 'currency', currency: 'VND' }).format(amount);
 
   const handleAction = async (orderId: string, action: string, extra?: Record<string, string>) => {
+    const fingerprint = `${orderId}:${action}:${JSON.stringify(extra || {})}`;
+    actionKeys.current[fingerprint] ||= crypto.randomUUID();
     setActionLoading(orderId);
     try {
       const res = await fetch('/api/marketplace/orders', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': actionKeys.current[fingerprint],
+        },
         body: JSON.stringify({ order_id: orderId, action, ...extra }),
       });
       const data = await res.json();
@@ -354,10 +362,11 @@ export default function OrdersPage() {
           });
           return;
         }
-        throw new Error(data.error);
+        throw new Error(localizeFinancialApiError(t, data.code, copy.errorTitle));
       }
 
       toast({ title: copy.success, description: copy.updated });
+      delete actionKeys.current[fingerprint];
       setShipDialog({ open: false, orderId: '' });
       fetchOrders(activeTab);
     } catch (err: any) {

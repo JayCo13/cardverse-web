@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
-import { getPayOS, MARKETPLACE_ORDER_PAYMENT_TYPE } from '@/lib/payos';
+import { getPayOS } from '@/lib/payos';
 import { matchBundleSelection, type BundleSelection } from '@/lib/bundle';
 import { randomInt } from 'crypto';
+import { hashFinancialRequest, stableFinancialUuid } from '@/lib/financial-idempotency';
+import { quoteVerifiedShipping } from '@/lib/verified-shipping';
+import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link-claim';
+import { translateRequest } from '@/lib/request-localization';
 
 // Fee model: the 5% platform fee is charged once, at withdrawal — orders carry
 // platform_fee = 0 and the seller is credited the full amount on completion.
@@ -19,13 +23,14 @@ type MarketplaceCard = {
 };
 
 
-type WalletRow = {
-    id: string;
-    available_balance: number;
-};
-
 type PaymentOrderRow = {
     id: string;
+    order_code: number;
+};
+
+type WalletOrderResult = {
+    orders: Array<Record<string, unknown>>;
+    replayed: boolean;
 };
 
 export async function POST(request: NextRequest) {
@@ -38,9 +43,9 @@ export async function POST(request: NextRequest) {
         }
 
         const body = await request.json();
+        const idempotencyKey = request.headers.get('idempotency-key');
         const {
             card_id, payment_method, shipping_address,
-            shipping_fee: clientShippingFee,
             shipping_carrier: clientCarrier,
             to_name, to_phone,
             to_district_id, to_district_name,
@@ -49,14 +54,15 @@ export async function POST(request: NextRequest) {
             to_address_detail,
         } = body;
 
-        const shippingFee = Math.max(0, parseInt(clientShippingFee) || 0);
-
         if (!card_id || !payment_method) {
             return NextResponse.json({ error: 'card_id and payment_method are required' }, { status: 400 });
         }
 
         if (!['wallet', 'direct_payos'].includes(payment_method)) {
             return NextResponse.json({ error: 'Invalid payment method' }, { status: 400 });
+        }
+        if (!idempotencyKey || !/^[0-9a-f-]{36}$/i.test(idempotencyKey)) {
+            return NextResponse.json({ error: 'Idempotency-Key is required' }, { status: 400 });
         }
 
         if (
@@ -71,6 +77,74 @@ export async function POST(request: NextRequest) {
             !to_address_detail
         ) {
             return NextResponse.json({ error: 'Shipping address is incomplete' }, { status: 400 });
+        }
+
+        const selection: BundleSelection[] = Array.isArray(body.bundle_selection)
+            ? body.bundle_selection.map((item: unknown) => {
+                const value = item as { title?: unknown; price?: unknown };
+                return { title: String(value?.title ?? ''), price: Number(value?.price) || 0 };
+            })
+            : [];
+        const apiRequestHash = hashFinancialRequest({
+            version: 1,
+            route: 'marketplace_buy',
+            user_id: user.id,
+            card_id,
+            payment_method,
+            shipping_address: shipping_address || null,
+            shipping_carrier: clientCarrier || null,
+            to_name,
+            to_phone,
+            to_district_id,
+            to_district_name,
+            to_province_id,
+            to_province_name,
+            to_ward_code,
+            to_ward_name,
+            to_address_detail,
+            bundle_selection: selection,
+        });
+        const service = createServiceSupabaseClient();
+        const { data: replayData, error: replayError } = await service.rpc(
+            'get_marketplace_checkout_replay' as never,
+            {
+                p_user_id: user.id,
+                p_idempotency_key: idempotencyKey,
+                p_request_hash: apiRequestHash,
+            } as never,
+        );
+        if (replayError) {
+            const conflict = replayError.message.includes('idempotency_conflict');
+            return NextResponse.json(
+                { error: conflict ? 'Idempotency key conflicts with another checkout.' : 'Could not replay checkout.', code: conflict ? 'idempotency_conflict' : 'checkout_replay_failed' },
+                { status: conflict ? 409 : 500 },
+            );
+        }
+        const replay = replayData as unknown as {
+            found?: boolean;
+            payment_method?: 'wallet' | 'direct_payos';
+            orders?: Array<Record<string, unknown>>;
+            payment_order?: { checkout_url?: string | null; order_code?: number };
+        };
+        if (replay.found) {
+            const order = replay.orders?.[0];
+            if (replay.payment_method === 'wallet' && order) {
+                return NextResponse.json({ success: true, order, payment_method: 'wallet', replayed: true });
+            }
+            if (replay.payment_method === 'direct_payos' && order && replay.payment_order?.checkout_url) {
+                return NextResponse.json({
+                    success: true,
+                    order,
+                    payment_method: 'direct_payos',
+                    checkoutUrl: replay.payment_order.checkout_url,
+                    orderCode: replay.payment_order.order_code,
+                    replayed: true,
+                });
+            }
+            return NextResponse.json({
+                error: 'Checkout exists, but the PayOS link is not ready. Do not create another payment; contact support.',
+                code: 'payment_link_recovery_required',
+            }, { status: 409 });
         }
 
         // Free any cards whose PayOS reservation lapsed (buyer abandoned the QR
@@ -98,8 +172,8 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json(
                     {
                         error: existingCard.status === 'in_transaction'
-                            ? 'Thẻ này đang được người khác giữ để thanh toán. Vui lòng chọn thẻ khác hoặc quay lại sau vài phút.'
-                            : 'Thẻ này đã được người khác mua hoặc không còn bán nữa. Vui lòng chọn thẻ khác.',
+                            ? 'This card is reserved by another buyer. Choose another card or try again later.'
+                            : 'This card was purchased or is no longer listed. Please choose another card.',
                         code: 'card_unavailable',
                         card_status: existingCard.status,
                     },
@@ -107,7 +181,7 @@ export async function POST(request: NextRequest) {
                 );
             }
 
-            return NextResponse.json({ error: 'Không tìm thấy thẻ này. Vui lòng tải lại trang và thử lại.', code: 'card_not_found' }, { status: 404 });
+            return NextResponse.json({ error: 'Card not found. Refresh the page and try again.', code: 'card_not_found' }, { status: 404 });
         }
 
         // Cannot buy your own card
@@ -117,21 +191,17 @@ export async function POST(request: NextRequest) {
 
         // ── Bundle: buyer picks specific cards; the rest stays listed ──
         const isBundle = !!card.is_bundle;
-        const selection: BundleSelection[] = Array.isArray(body.bundle_selection)
-            ? body.bundle_selection.map((s: any) => ({ title: String(s?.title ?? ''), price: Number(s?.price) || 0 }))
-            : [];
-
         let amount: number;
         let bundleRemaining: Array<{ title?: string; price?: number }> | null = null;
 
         if (isBundle) {
             if (selection.length === 0) {
-                return NextResponse.json({ error: 'Vui lòng chọn ít nhất 1 thẻ trong bộ.', code: 'no_bundle_selection' }, { status: 400 });
+                return NextResponse.json({ error: 'Select at least one card from the bundle.', code: 'no_bundle_selection' }, { status: 400 });
             }
             const items = Array.isArray(card.bundle_items) ? card.bundle_items : [];
             const matched = matchBundleSelection(items, selection);
             if (!matched) {
-                return NextResponse.json({ error: 'Một số thẻ bạn chọn không còn khả dụng. Vui lòng tải lại trang.', code: 'bundle_item_unavailable' }, { status: 409 });
+                return NextResponse.json({ error: 'Some selected bundle cards are no longer available. Refresh the page.', code: 'bundle_item_unavailable' }, { status: 409 });
             }
             amount = matched.matchedTotal;
             bundleRemaining = matched.remaining;
@@ -141,253 +211,146 @@ export async function POST(request: NextRequest) {
             amount = Number(card.price);
         }
 
-        const platformFee = 0; // fee is charged at withdrawal, not at sale
-        let totalPaid = amount + shippingFee; // Buyer pays selected price + shipping fee
+        // Never trust the fee echoed by the browser. Re-quote from the seller's
+        // stored origin and the authenticated checkout destination.
+        const shippingFee = await quoteVerifiedShipping({
+            sellerId: card.seller_id,
+            toDistrictId: Number(to_district_id),
+            toWardCode: String(to_ward_code),
+            insuranceValue: amount,
+            itemCount: isBundle ? selection.length : 1,
+        });
+
+        const totalPaid = amount + shippingFee; // Buyer pays selected price + shipping fee
 
         // Address persistence now lives in the shipping_addresses book (managed
         // straight from checkout), so the buy route no longer writes any
         // profiles.default_shipping_* defaults here.
 
-        // Wallet pre-check (no mutation) — verify funds BEFORE claiming so we
-        // never lock the card for a buyer who can't actually pay.
-        let walletRow: WalletRow | null = null;
-        if (payment_method === 'wallet') {
-            const { data: wallet, error: walletError } = await supabase
-                .from('wallets')
-                .select('*')
-                .eq('user_id', user.id)
-                .single<WalletRow>();
-
-            if (walletError || !wallet) {
-                return NextResponse.json({ error: 'Wallet not found. Please deposit first.' }, { status: 400 });
-            }
-            if (wallet.available_balance < totalPaid) {
-                return NextResponse.json({
-                    error: 'Insufficient balance',
-                    available: wallet.available_balance,
-                    required: totalPaid,
-                }, { status: 400 });
-            }
-            walletRow = wallet;
-        }
-
-        // Atomic claim — the concurrency gate. Only the first buyer flips the
-        // card active → in_transaction; a simultaneous second buyer matches 0
-        // rows here and is rejected, so one card can never be sold twice.
         const reservedUntil = new Date(Date.now() + RESERVATION_MINUTES * 60 * 1000);
-        const { data: claimed } = await supabase
-            .from('cards')
-            .update({
-                status: 'in_transaction',
-                reserved_until: reservedUntil.toISOString(),
-                updated_at: new Date().toISOString(),
-            } as never)
-            .eq('id', card_id)
-            .eq('status', 'active')
-            .eq('listing_type', 'sale')
-            .select('id')
-            .maybeSingle();
-
-        if (!claimed) {
-            return NextResponse.json(
-                { error: 'Thẻ này vừa được người khác mua. Vui lòng chọn thẻ khác.', code: 'card_unavailable' },
-                { status: 409 },
-            );
-        }
-
-        // Wallet writes are RLS-locked; mutations go through the service client.
-        const service = createServiceSupabaseClient();
-        let walletDebited = false;
-
-        const revertClaim = async () => {
-            await service
-                .from('cards')
-                .update({ status: 'active', reserved_until: null, updated_at: new Date().toISOString() } as never)
-                .eq('id', card_id)
-                .eq('status', 'in_transaction');
+        const orderId = stableFinancialUuid(`marketplace-buy:${user.id}:${idempotencyKey}`);
+        const orderSpec = {
+            order_id: orderId,
+            card_id,
+            seller_id: card.seller_id,
+            amount,
+            shipping_fee: shippingFee,
+            total_paid: totalPaid,
+            metadata: {
+                api_request_hash: apiRequestHash,
+                ...(isBundle ? { bundle_selection: selection } : {}),
+                ...(clientCarrier ? { shipping_carrier: String(clientCarrier) } : {}),
+            },
+            ...(isBundle ? { bundle_items_before: card.bundle_items || [] } : {}),
+            shipping_address: shipping_address || null,
+            to_name,
+            to_phone,
+            to_district_id,
+            to_district_name,
+            to_province_id,
+            to_province_name,
+            to_ward_code,
+            to_ward_name,
+            to_address_detail,
         };
-
-        // Re-validate the bundle selection against the FRESH item list now that we
-        // hold the claim — another buyer may have removed some items between our
-        // read and this claim. Recompute the amount from the live data.
-        if (isBundle) {
-            const { data: fresh } = await service
-                .from('cards')
-                .select('bundle_items')
-                .eq('id', card_id)
-                .single();
-            const freshItems = Array.isArray((fresh as any)?.bundle_items) ? (fresh as any).bundle_items : [];
-            const matched = matchBundleSelection(freshItems, selection);
-            if (!matched) {
-                await revertClaim();
-                return NextResponse.json({ error: 'Một số thẻ vừa được người khác mua. Vui lòng chọn lại.', code: 'bundle_item_unavailable' }, { status: 409 });
-            }
-            amount = matched.matchedTotal;
-            bundleRemaining = matched.remaining;
-            totalPaid = amount + shippingFee;
-        }
 
         try {
         if (payment_method === 'wallet') {
-            // ── WALLET PAYMENT ──
-            const wallet = walletRow!;
-            // Deduct from buyer wallet with an optimistic lock on the balance
-            // we just read (two concurrent buys → second gets 409).
-            const newBalance = wallet.available_balance - totalPaid;
-            const { data: debited, error: deductError } = await service
-                .from('wallets')
-                .update({
-                    available_balance: newBalance,
-                    updated_at: new Date().toISOString(),
-                } as never)
-                .eq('user_id', user.id)
-                .eq('available_balance', wallet.available_balance)
-                .select('id')
-                .maybeSingle();
+            // Order creation, inventory finalization, verified FIFO allocation,
+            // wallet debit, funding evidence and transaction finalization all
+            // commit (or roll back) together inside this RPC.
+            const walletOrderSpec = {
+                ...orderSpec,
+                ...(isBundle ? { bundle_remaining: bundleRemaining || [] } : {}),
+            };
+            const { data: walletResultData, error: walletOrderError } = await service.rpc(
+                'create_verified_wallet_marketplace_orders' as never,
+                {
+                p_user_id: user.id,
+                p_orders: [walletOrderSpec],
+                p_idempotency_key: idempotencyKey,
+                p_description: `Card purchase: ${card.name}`,
+                } as never,
+            );
 
-            if (deductError || !debited) {
-                // Throw (don't return) so the catch below releases the card claim.
-                const conflict = new Error('Số dư vừa thay đổi, vui lòng thử lại.');
+            if (walletOrderError || !walletResultData) {
+                const conflict = new Error('Verified balance is insufficient or changed. Please try again.');
                 (conflict as any).status = 409;
-                (conflict as any).code = 'balance_changed';
-                throw deductError || conflict;
+                (conflict as any).code = 'verified_balance_changed';
+                throw conflict;
             }
-            walletDebited = true;
+            const walletResult = walletResultData as unknown as WalletOrderResult;
+            const order = walletResult.orders?.[0];
+            if (!order) throw new Error('Atomic wallet order did not return an order');
 
-            // Record wallet transaction
-            await service.from('wallet_transactions').insert({
-                wallet_id: wallet.id,
-                user_id: user.id,
-                type: 'marketplace_buy',
-                amount: -totalPaid,
-                balance_after: newBalance,
-                description: `Mua thẻ: ${card.name}`,
-                reference_id: card_id,
-            } as never);
-
-            // Create order (status = paid)
-            const { data: order, error: orderError } = await supabase
-                .from('orders')
-                .insert({
-                    card_id,
-                    seller_id: card.seller_id,
-                    buyer_id: user.id,
-                    amount,
-                    platform_fee: platformFee,
-                    total_paid: totalPaid,
-                    shipping_fee: shippingFee,
-                    payment_method: 'wallet',
-                    status: 'paid',
-                    ship_deadline: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-                    metadata: {
-                        ...(isBundle ? { bundle_selection: selection } : {}),
-                        ...(clientCarrier ? { shipping_carrier: String(clientCarrier) } : {}),
-                    },
-                    shipping_address: shipping_address || null,
-                    to_name: to_name || null,
-                    to_phone: to_phone || null,
-                    to_district_id: to_district_id || null,
-                    to_district_name: to_district_name || null,
-                    to_province_id: to_province_id || null,
-                    to_province_name: to_province_name || null,
-                    to_ward_code: to_ward_code || null,
-                    to_ward_name: to_ward_name || null,
-                    to_address_detail: to_address_detail || null,
-                } as never)
-                .select()
-                .single();
-
-            if (orderError) throw orderError;
-
-            // Inventory: for a partial bundle purchase, remove the bought cards and
-            // keep the listing active; otherwise mark the whole listing sold.
-            if (isBundle && bundleRemaining && bundleRemaining.length > 0) {
-                await service
-                    .from('cards')
-                    .update({ bundle_items: bundleRemaining as never, status: 'active', reserved_until: null, updated_at: new Date().toISOString() } as never)
-                    .eq('id', card_id);
-            } else {
-                await service
-                    .from('cards')
-                    .update({ status: 'sold', reserved_until: null, updated_at: new Date().toISOString() } as never)
-                    .eq('id', card_id);
-            }
-
-            // Notify seller
-            const soldLabel = isBundle ? `${selection.length} thẻ trong bộ "${card.name}"` : `Thẻ "${card.name}"`;
-            await service.from('notifications').insert({
+            const soldLabel = isBundle ? `${selection.length} cards from bundle "${card.name}"` : `Card "${card.name}"`;
+            const { error: notificationError } = await service.from('notifications').insert({
                 user_id: card.seller_id,
                 type: 'order_new',
-                title: 'Đơn hàng mới!',
-                message: `${soldLabel} đã được mua. Vui lòng giao hàng.`,
+                title: 'New order!',
+                message: `${soldLabel} was purchased. Please ship the order.`,
                 card_id,
                 order_id: (order as any).id,
             } as never);
+            if (notificationError) {
+                console.error('Wallet order notification failed:', notificationError);
+            }
 
             return NextResponse.json({ success: true, order, payment_method: 'wallet' });
 
         } else {
             // ── DIRECT PAYOS PAYMENT ──
             const orderCode = randomInt(10_000_000, 99_999_999);
-
-            // Create payment order
-            const { data: paymentOrder, error: poError } = await supabase
-                .from('payment_orders')
-                .insert({
-                    user_id: user.id,
-                    order_code: orderCode,
-                    package_type: MARKETPLACE_ORDER_PAYMENT_TYPE,
-                    amount: totalPaid,
-                    status: 'pending',
-                } as never)
-                .select()
-                .single<PaymentOrderRow>();
-
-            if (poError) throw poError;
-
-            // Create order (status = pending_payment)
-            const { data: order, error: orderError } = await supabase
-                .from('orders')
-                .insert({
-                    card_id,
-                    seller_id: card.seller_id,
-                    buyer_id: user.id,
-                    amount,
-                    platform_fee: platformFee,
-                    total_paid: totalPaid,
-                    shipping_fee: shippingFee,
+            const { data: stagedData, error: stageError } = await service.rpc(
+                'stage_payos_marketplace_checkout' as never,
+                {
+                    p_user_id: user.id,
+                    p_order_code: orderCode,
+                    p_orders: [orderSpec],
+                    p_idempotency_key: idempotencyKey,
+                    p_reserved_until: reservedUntil.toISOString(),
+                } as never,
+            );
+            const staged = stagedData as unknown as {
+                payment_order?: PaymentOrderRow & { payos_checkout_url?: string | null };
+                orders?: Array<Record<string, unknown>>;
+            };
+            const paymentOrder = staged?.payment_order;
+            const order = staged?.orders?.[0];
+            if (stageError || !paymentOrder || !order) {
+                throw stageError || new Error('Could not stage PayOS marketplace checkout');
+            }
+            const persistedOrderCode = Number(paymentOrder.order_code);
+            if (paymentOrder.payos_checkout_url) {
+                return NextResponse.json({
+                    success: true,
+                    order,
                     payment_method: 'direct_payos',
-                    payment_order_id: paymentOrder.id,
-                    status: 'pending_payment',
-                    metadata: {
-                        ...(isBundle ? { bundle_selection: selection } : {}),
-                        ...(clientCarrier ? { shipping_carrier: String(clientCarrier) } : {}),
-                    },
-                    shipping_address: shipping_address || null,
-                    to_name: to_name || null,
-                    to_phone: to_phone || null,
-                    to_district_id: to_district_id || null,
-                    to_district_name: to_district_name || null,
-                    to_province_id: to_province_id || null,
-                    to_province_name: to_province_name || null,
-                    to_ward_code: to_ward_code || null,
-                    to_ward_name: to_ward_name || null,
-                    to_address_detail: to_address_detail || null,
-                } as never)
-                .select()
-                .single();
-
-            if (orderError) throw orderError;
+                    checkoutUrl: paymentOrder.payos_checkout_url,
+                    orderCode: persistedOrderCode,
+                });
+            }
+            const linkClaim = await claimPayOSLinkCreation(service, user.id, persistedOrderCode);
+            if (linkClaim.checkoutUrl) {
+                return NextResponse.json({
+                    success: true,
+                    order,
+                    payment_method: 'direct_payos',
+                    checkoutUrl: linkClaim.checkoutUrl,
+                    orderCode: persistedOrderCode,
+                    replayed: true,
+                });
+            }
 
             // Card is already reserved by the atomic claim above (for
             // RESERVATION_MINUTES). Create the PayOS link.
             const origin = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
             const paymentLink = await getPayOS().paymentRequests.create({
-                orderCode,
+                orderCode: persistedOrderCode,
                 amount: totalPaid,
                 // PayOS caps the description at 25 characters.
-                description: `Mua the ${card.name}`.slice(0, 25),
+                description: translateRequest(request, 'payos_description_card_purchase').slice(0, 25),
                 // Expire the link with the reservation so PayOS also fires a
                 // cancel webhook (which releases the card) when time runs out.
                 expiredAt: Math.floor(reservedUntil.getTime() / 1000),
@@ -401,21 +364,21 @@ export async function POST(request: NextRequest) {
             });
 
             // PayOS occasionally returns no checkout URL — treat it as a failure
-            // (the catch below rolls back the card claim) and drop the pending
-            // order so the buyer doesn't see an unpayable ghost order.
+            // and keep the staged reservation fail-closed for expiry/operator
+            // recovery. Releasing it here could expose a provider-created but
+            // locally unrecorded payment link to a second buyer.
             if (!paymentLink?.checkoutUrl) {
-                await service.from('orders').update({ status: 'cancelled', updated_at: new Date().toISOString() } as never).eq('id', (order as any).id);
-                throw new Error('PayOS không tạo được link thanh toán. Vui lòng thử lại.');
+                throw new Error('PayOS did not return a payment link. Please try again.');
             }
 
             // Update payment order with PayOS info
-            await supabase
-                .from('payment_orders')
-                .update({
-                    payos_payment_link_id: paymentLink.paymentLinkId,
-                    payos_checkout_url: paymentLink.checkoutUrl,
-                } as never)
-                .eq('order_code', orderCode);
+            await attachClaimedPayOSLink(service, {
+                userId: user.id,
+                orderCode: persistedOrderCode,
+                claimId: linkClaim.claimId!,
+                paymentLinkId: paymentLink.paymentLinkId,
+                checkoutUrl: paymentLink.checkoutUrl,
+            });
 
             return NextResponse.json({
                 success: true,
@@ -423,51 +386,10 @@ export async function POST(request: NextRequest) {
                 payment_method: 'direct_payos',
                 checkoutUrl: paymentLink.checkoutUrl,
                 qrCode: paymentLink.qrCode,
-                orderCode,
+                orderCode: persistedOrderCode,
             });
         }
         } catch (err) {
-            // Roll back the claim so a failed transaction doesn't strand the card.
-            await supabase
-                .from('cards')
-                .update({ status: 'active', reserved_until: null, updated_at: new Date().toISOString() } as never)
-                .eq('id', card_id)
-                .eq('status', 'in_transaction');
-
-            // Compensation: if the wallet was debited but the order failed,
-            // put the money back (best-effort, one retry).
-            if (walletDebited) {
-                for (let attempt = 0; attempt < 2; attempt += 1) {
-                    const { data: currentWallet } = await service
-                        .from('wallets')
-                        .select('id, available_balance')
-                        .eq('user_id', user.id)
-                        .single<WalletRow>();
-                    if (!currentWallet) break;
-
-                    const refundedBalance = currentWallet.available_balance + totalPaid;
-                    const { data: refunded } = await service
-                        .from('wallets')
-                        .update({ available_balance: refundedBalance, updated_at: new Date().toISOString() } as never)
-                        .eq('user_id', user.id)
-                        .eq('available_balance', currentWallet.available_balance)
-                        .select('id')
-                        .maybeSingle();
-
-                    if (refunded) {
-                        await service.from('wallet_transactions').insert({
-                            wallet_id: currentWallet.id,
-                            user_id: user.id,
-                            type: 'refund',
-                            amount: totalPaid,
-                            balance_after: refundedBalance,
-                            description: 'Hoàn tiền - thanh toán thất bại',
-                            reference_id: card_id,
-                        } as never);
-                        break;
-                    }
-                }
-            }
             throw err;
         }
     } catch (error: any) {
