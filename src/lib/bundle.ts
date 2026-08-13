@@ -9,18 +9,20 @@ export type BundleSelection = { title: string; price: number };
 export function matchBundleSelection(
   items: BundleItem[],
   selection: BundleSelection[],
-): { matchedTotal: number; remaining: BundleItem[] } | null {
+): { matched: BundleItem[]; matchedTotal: number; remaining: BundleItem[] } | null {
   const remaining = [...items];
+  const matched: BundleItem[] = [];
   let matchedTotal = 0;
   for (const sel of selection) {
     const idx = remaining.findIndex(
       (it) => String(it?.title ?? '') === sel.title && Number(it?.price) === sel.price,
     );
     if (idx === -1) return null;
-    matchedTotal += Number(remaining[idx]?.price) || 0;
-    remaining.splice(idx, 1);
+    const [matchedItem] = remaining.splice(idx, 1);
+    matched.push(matchedItem);
+    matchedTotal += Number(matchedItem?.price) || 0;
   }
-  return { matchedTotal, remaining };
+  return { matched, matchedTotal, remaining };
 }
 
 /** Read a stored bundle_selection out of an order's metadata (jsonb). */
