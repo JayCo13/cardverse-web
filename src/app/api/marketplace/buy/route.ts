@@ -8,6 +8,7 @@ import { hashFinancialRequest, stableFinancialUuid } from '@/lib/financial-idemp
 import { quoteVerifiedShipping } from '@/lib/verified-shipping';
 import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link-claim';
 import { translateRequest } from '@/lib/request-localization';
+import { walletCheckoutError } from '@/lib/wallet-checkout-error';
 import { sendOrderPlacedToBuyer, sendOrderPlacedToSeller } from '@/lib/mail';
 
 // Fee model: the 5% platform fee is charged once, at withdrawal — orders carry
@@ -194,6 +195,7 @@ export async function POST(request: NextRequest) {
         const isBundle = !!card.is_bundle;
         let amount: number;
         let bundleRemaining: Array<{ title?: string; price?: number }> | null = null;
+        let canonicalBundleSelection: Array<{ title?: string; price?: number; [key: string]: unknown }> = [];
 
         if (isBundle) {
             if (selection.length === 0) {
@@ -206,6 +208,10 @@ export async function POST(request: NextRequest) {
             }
             amount = matched.matchedTotal;
             bundleRemaining = matched.remaining;
+            // The database performs exact JSONB multiset subtraction. Use the
+            // canonical stored items (including publisher/set/season), not the
+            // browser's intentionally minimal { title, price } selectors.
+            canonicalBundleSelection = matched.matched;
             // Partial purchase is finalized on payment: wallet immediately (below),
             // PayOS in the webhook — both remove the bought cards from the bundle.
         } else {
@@ -239,7 +245,7 @@ export async function POST(request: NextRequest) {
             total_paid: totalPaid,
             metadata: {
                 api_request_hash: apiRequestHash,
-                ...(isBundle ? { bundle_selection: selection } : {}),
+                ...(isBundle ? { bundle_selection: canonicalBundleSelection } : {}),
                 ...(clientCarrier ? { shipping_carrier: String(clientCarrier) } : {}),
             },
             ...(isBundle ? { bundle_items_before: card.bundle_items || [] } : {}),
@@ -275,10 +281,12 @@ export async function POST(request: NextRequest) {
             );
 
             if (walletOrderError || !walletResultData) {
-                const conflict = new Error('Verified balance is insufficient or changed. Please try again.');
-                (conflict as any).status = 409;
-                (conflict as any).code = 'verified_balance_changed';
-                throw conflict;
+                console.error('Atomic wallet marketplace order failed:', walletOrderError);
+                const mapped = walletCheckoutError(walletOrderError);
+                return NextResponse.json(
+                    { error: mapped.message, code: mapped.code },
+                    { status: mapped.status },
+                );
             }
             const walletResult = walletResultData as unknown as WalletOrderResult;
             const order = walletResult.orders?.[0];
