@@ -4,6 +4,9 @@ import { getPayOS } from '@/lib/payos';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { processPayOSWebhookPostProcessing } from '@/lib/payos-webhook-processing';
 
+/** Order code PayOS sends when validating a webhook URL. Never a real order. */
+const PAYOS_VALIDATION_ORDER_CODE = 123;
+
 type PayOSVerifiedWebhook = {
   orderCode: number;
   code: string;
@@ -45,7 +48,7 @@ export async function POST(request: NextRequest) {
     if (
       process.env.NODE_ENV !== 'production'
       && process.env.PAYOS_ALLOW_TEST_WEBHOOK_BYPASS === 'true'
-      && body?.data?.orderCode === 123
+      && body?.data?.orderCode === PAYOS_VALIDATION_ORDER_CODE
     ) {
       return NextResponse.json({ success: true });
     }
@@ -57,6 +60,19 @@ export async function POST(request: NextRequest) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('[SECURITY] Invalid PayOS webhook signature:', message);
       return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
+    }
+
+    // PayOS registers a webhook URL by POSTing a signed probe carrying the
+    // sample order code, which matches no real payment. It only accepts the URL
+    // on a 2xx, so answering the probe from the order lookup below returned 404
+    // and PayOS reported "Webhook url invalid" — with no way to register at all.
+    //
+    // Acknowledging it here is safe on two counts: the signature check above
+    // already proves the request came from PayOS, and every real order code is
+    // randomInt(10_000_000, 99_999_999), so 123 can never collide with one.
+    if (webhook.orderCode === PAYOS_VALIDATION_ORDER_CODE) {
+      console.log('[PayOS] Webhook URL validation probe acknowledged');
+      return NextResponse.json({ success: true });
     }
 
     const service = createServiceSupabaseClient();
