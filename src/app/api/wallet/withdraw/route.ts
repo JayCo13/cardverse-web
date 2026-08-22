@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
             const withdrawal = withdrawalData as { bank_name?: string | null; bank_account_masked?: string | null } | null;
 
             await sendWithdrawalSubmittedToAdmin({
-                sellerName: profile?.display_name || profile?.email || user.email || 'Seller CardVerse',
+                sellerName: profile?.display_name || profile?.email || user.email || 'Seller CardVerseHub',
                 sellerEmail: profile?.email || user.email || '',
                 amountRequested: result.amount_requested || amount,
                 fee: result.fee || 0,

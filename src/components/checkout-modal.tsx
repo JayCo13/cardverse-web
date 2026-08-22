@@ -69,7 +69,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
         chooseAddressFee: '住所を選択して計算',
         total: '合計支払い',
         paymentMethod: '支払い方法',
-        wallet: 'CardVerseウォレット',
+        wallet: 'CardVerseHubウォレット',
         balance: '残高',
         insufficient: '不足',
         payos: '銀行振込 / QR (PayOS)',
@@ -140,7 +140,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
           chooseAddressFee: 'Choose an address to calculate',
           total: 'Total payment',
           paymentMethod: 'Payment method',
-          wallet: 'CardVerse wallet',
+          wallet: 'CardVerseHub wallet',
           balance: 'Balance',
           insufficient: 'Insufficient',
           payos: 'Bank transfer / QR (PayOS)',
@@ -314,7 +314,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
         headers: {
           'Content-Type': 'application/json',
           'Idempotency-Key': purchaseRequestRef.current.key,
-          'X-CardVerse-Locale': locale,
+          'X-CardVerseHub-Locale': locale,
         },
         body: JSON.stringify({
           card_id: card.id,

@@ -48,7 +48,7 @@ export function ForumSidebar() {
 
             <div className="mt-auto pt-6 border-t border-white/5">
                 <div className="text-xs text-muted-foreground leading-relaxed px-4">
-                    <p>© 2025 CardVerse</p>
+                    <p>© 2025 CardVerseHub</p>
                     <p className="opacity-50 hover:opacity-100 cursor-pointer">Privacy · Terms · Cookies</p>
                 </div>
             </div>

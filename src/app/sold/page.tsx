@@ -59,9 +59,9 @@ export default function SoldCardsPage() {
             {tx('Thẻ đã bán', 'Sold cards', '販売済みカード')}
           </h1>
           <p className="text-muted-foreground">
-            {tx('Lịch sử giá bán và giá offer được chấp nhận trên CardVerse.',
-               'History of sale prices and accepted offer prices on CardVerse.',
-               'CardVerseでの販売価格と承認オファー価格の履歴。')}
+            {tx('Lịch sử giá bán và giá offer được chấp nhận trên CardVerseHub.',
+               'History of sale prices and accepted offer prices on CardVerseHub.',
+               'CardVerseHubでの販売価格と承認オファー価格の履歴。')}
           </p>
         </div>
 

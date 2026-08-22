@@ -324,7 +324,7 @@ export async function POST(request: NextRequest) {
             p_user_id: user.id,
             p_orders: orderSpecs,
             p_idempotency_key: idempotencyKey,
-            p_description: mode === 'offer' ? 'Card offer payment' : 'CardVerse cart payment',
+            p_description: mode === 'offer' ? 'Card offer payment' : 'CardVerseHub cart payment',
           } as never,
         );
         if (walletOrderError || !walletResultData) {

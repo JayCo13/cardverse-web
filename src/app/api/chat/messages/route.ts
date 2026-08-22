@@ -20,10 +20,10 @@ const SAFETY_TERMS = [
 ];
 
 const SAFETY_WARNING =
-    '⚠️ CardVerse phát hiện nội dung có thể đưa giao dịch ra ngoài nền tảng. Để tránh scam, hãy trao đổi và thanh toán trực tiếp trên CardVerse.';
+    '⚠️ CardVerseHub phát hiện nội dung có thể đưa giao dịch ra ngoài nền tảng. Để tránh scam, hãy trao đổi và thanh toán trực tiếp trên CardVerseHub.';
 
 // Hard-block patterns: external links and phone numbers are not allowed at all,
-// because the whole anti-scam model relies on keeping the deal on CardVerse.
+// because the whole anti-scam model relies on keeping the deal on CardVerseHub.
 const LINK_REGEX = /(https?:\/\/|www\.)[^\s]+|\b[a-z0-9-]+\.(com|vn|net|org|io|me|info|shop|store|co|xyz|app)\b/i;
 
 // Normalize separators (space, dot, dash, parentheses) then look for a

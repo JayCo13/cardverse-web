@@ -622,16 +622,16 @@ export const ja = {
   financial_rate_limited: 'リクエストが多すぎます。しばらくしてから再試行してください。',
   financial_deposit_failed: 'ウォレットへの入金を作成できませんでした。',
   wallet_funds_pending_verification_title: '{amount}は資金源の確認待ちです',
-  wallet_funds_pending_verification_safe: 'この資金はウォレット内にそのまま残っており、紛失したりCardVerseに差し引かれたりしていません。',
+  wallet_funds_pending_verification_safe: 'この資金はウォレット内にそのまま残っており、紛失したりCardVerseHubに差し引かれたりしていません。',
   wallet_funds_pending_verification_reason: '資金源確認の導入前に記録された残高のため、現在は出金できません。新しいPayOS入金とマーケット売上は、有効な支払いまたは注文完了後に自動確認されます。',
   wallet_funds_pending_verification_action: '旧残高の出金を有効にするには、PayOS取引コードまたは注文IDをサポートへ送り、照合を依頼してください。承認後、残高を再加算・減算せずに出金可能になります。',
   wallet_request_fund_verification: '資金源の照合を依頼',
 
   // PayOS descriptions (maximum 25 characters)
-  payos_description_wallet_deposit: 'CardVerse入金',
-  payos_description_cart_checkout: 'CardVerseカート',
-  payos_description_offer_checkout: 'CardVerseオファー',
-  payos_description_card_purchase: 'CardVerseカード',
+  payos_description_wallet_deposit: 'CardVerseHub入金',
+  payos_description_cart_checkout: 'CardVerseHubカート',
+  payos_description_offer_checkout: 'CardVerseHubオファー',
+  payos_description_card_purchase: 'CardVerseHubカード',
 
   // System notifications
   notification_offer_received_title: '新しいオファー',

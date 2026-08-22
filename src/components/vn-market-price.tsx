@@ -6,7 +6,7 @@ import { enUS, ja, vi } from 'date-fns/locale';
 import { getSupabaseClient } from '@/lib/supabase/client';
 import { useLocalization } from '@/context/localization-context';
 
-// "Giá thị trường VN" — aggregated from real completed CardVerse sales
+// "Giá thị trường VN" — aggregated from real completed CardVerseHub sales
 // (vn_market_price view: 90-day median per catalog card). Renders nothing
 // until there is at least one recorded sale, so it can sit safely next to
 // the eBay price for any scanned card.

@@ -82,7 +82,7 @@ export function HeroSection() {
             <h1
               className="text-3xl sm:text-4xl md:text-6xl font-extrabold !leading-tight tracking-tighter uppercase glitch-text"
               style={{ fontFamily: "'Orbitron', sans-serif" }}
-              data-text="CardVerse"
+              data-text="CardVerseHub"
             >
               CardVerseHub
             </h1>

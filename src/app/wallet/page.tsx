@@ -124,7 +124,7 @@ export default function WalletPage() {
       exceededBalance: 'Vượt quá số dư khả dụng.',
       insufficientVerifiedBalance: 'Số tiền này chưa được xác minh nguồn nên chưa thể rút.',
       minWithdraw: 'Tối thiểu {amount}.',
-      walletTitle: 'Ví CardVerse',
+      walletTitle: 'Ví CardVerseHub',
       availableBalance: 'Số dư khả dụng',
       heldBalance: 'Đang tạm giữ',
       totalDeposited: 'Tổng đã nạp',
@@ -186,7 +186,7 @@ export default function WalletPage() {
         exceededBalance: '利用可能残高を超えています。',
         insufficientVerifiedBalance: '資金源が未確認のため、この金額はまだ出金できません。',
         minWithdraw: '最低 {amount}。',
-        walletTitle: 'CardVerseウォレット',
+        walletTitle: 'CardVerseHubウォレット',
         availableBalance: '利用可能残高',
         heldBalance: '保留中',
         totalDeposited: '累計入金額',
@@ -247,7 +247,7 @@ export default function WalletPage() {
         exceededBalance: 'Exceeds available balance.',
         insufficientVerifiedBalance: 'This amount cannot be withdrawn until its funding source is verified.',
         minWithdraw: 'Minimum {amount}.',
-        walletTitle: 'CardVerse Wallet',
+        walletTitle: 'CardVerseHub Wallet',
         availableBalance: 'Available balance',
         heldBalance: 'Held balance',
         totalDeposited: 'Total deposited',
@@ -385,7 +385,7 @@ export default function WalletPage() {
         headers: {
           'Content-Type': 'application/json',
           'Idempotency-Key': depositRequestRef.current.key,
-          'X-CardVerse-Locale': locale,
+          'X-CardVerseHub-Locale': locale,
         },
         body: JSON.stringify({ amount }),
       });
@@ -426,7 +426,7 @@ export default function WalletPage() {
         headers: {
           'Content-Type': 'application/json',
           'Idempotency-Key': withdrawIdempotencyKeyRef.current,
-          'X-CardVerse-Locale': locale,
+          'X-CardVerseHub-Locale': locale,
         },
         body: JSON.stringify({ amount: withdrawNum }),
       });

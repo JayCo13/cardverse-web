@@ -88,6 +88,6 @@ export function getFromAddress() {
         process.env.RESEND_FROM_EMAIL ||
         process.env.SMTP_FROM_EMAIL ||
         process.env.SMTP_USER ||
-        'CardVerse <noreply@cardversehub.com>'
+        'CardVerseHub <noreply@cardversehub.com>'
     );
 }

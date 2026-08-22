@@ -27,7 +27,7 @@ export function Footer() {
               href="/"
               className="flex items-center justify-center gap-2 mb-2 w-full"
             >
-              <Image src="/assets/logo-verse.png" width={220} height={220} alt="CardVerse logo" className="object-contain" priority />
+              <Image src="/assets/logo-verse.png" width={220} height={220} alt="CardVerseHub logo" className="object-contain" priority />
             </Link>
             <p className="text-base sm:text-lg text-muted-foreground/90 font-serif italic tracking-wide leading-relaxed bg-clip-text bg-gradient-to-r from-gray-400 to-gray-500 w-full text-center">
                 {t('footer_tagline')}
@@ -66,7 +66,7 @@ export function Footer() {
           </div>
         </div>
         <div className="mt-8 border-t pt-4 text-center text-sm text-muted-foreground">
-          © {new Date().getFullYear()} CardVerse. {t('footer_copyright')}
+          © {new Date().getFullYear()} CardVerseHub. {t('footer_copyright')}
         </div>
       </div>
     </footer>

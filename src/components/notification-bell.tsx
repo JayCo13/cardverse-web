@@ -249,7 +249,7 @@ export function NotificationBell() {
                         setTimeout(() => setIsRinging(false), 3000);
 
                         // A browser notification complements the in-app unread state
-                        // while CardVerse is open in a background tab.
+                        // while CardVerseHub is open in a background tab.
                         if (browserPermissionRef.current === 'granted' && document.hidden) {
                             const localized = localizeSystemNotification(newNotification, translateRef.current);
                             const browserNotification = new window.Notification(localized.title, {

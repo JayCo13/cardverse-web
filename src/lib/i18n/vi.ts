@@ -623,16 +623,16 @@ export const vi = {
   financial_rate_limited: 'Bạn thao tác quá nhanh. Vui lòng chờ rồi thử lại.',
   financial_deposit_failed: 'Không thể tạo lệnh nạp tiền vào ví.',
   wallet_funds_pending_verification_title: '{amount} đang chờ xác minh nguồn tiền',
-  wallet_funds_pending_verification_safe: 'Số tiền này vẫn còn nguyên trong ví của bạn, không bị mất và không bị CardVerse khấu trừ.',
+  wallet_funds_pending_verification_safe: 'Số tiền này vẫn còn nguyên trong ví của bạn, không bị mất và không bị CardVerseHub khấu trừ.',
   wallet_funds_pending_verification_reason: 'Đây là số dư được ghi nhận trước khi hệ thống xác minh nguồn tiền được áp dụng nên hiện chưa thể dùng để rút. Tiền nạp PayOS và doanh thu bán hàng mới sẽ được tự động xác minh khi thanh toán hoặc đơn hàng hoàn tất hợp lệ.',
   wallet_funds_pending_verification_action: 'Để mở rút tiền cho số dư cũ, hãy gửi mã giao dịch PayOS hoặc mã đơn hàng cho bộ phận hỗ trợ đối soát. Sau khi bằng chứng được duyệt, số tiền sẽ chuyển sang số dư có thể rút mà không bị cộng hoặc trừ lần nữa.',
   wallet_request_fund_verification: 'Yêu cầu đối soát nguồn tiền',
 
   // Mô tả PayOS (tối đa 25 ký tự)
-  payos_description_wallet_deposit: 'Nạp ví CardVerse',
-  payos_description_cart_checkout: 'Giỏ hàng CardVerse',
-  payos_description_offer_checkout: 'Offer CardVerse',
-  payos_description_card_purchase: 'Mua thẻ CardVerse',
+  payos_description_wallet_deposit: 'Nạp ví CardVerseHub',
+  payos_description_cart_checkout: 'Giỏ hàng CardVerseHub',
+  payos_description_offer_checkout: 'Offer CardVerseHub',
+  payos_description_card_purchase: 'Mua thẻ CardVerseHub',
 
   // Thông báo hệ thống
   notification_offer_received_title: 'Offer mới',

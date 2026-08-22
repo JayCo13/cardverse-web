@@ -58,7 +58,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         conversationId = (created as { id?: string } | null)?.id || null;
     }
     if (conversationId && !result.replayed) {
-        const body = `The seller accepted your ${formatVND(Number(result.price))} offer. Continue to checkout to complete payment on CardVerse.`;
+        const body = `The seller accepted your ${formatVND(Number(result.price))} offer. Continue to checkout to complete payment on CardVerseHub.`;
         const { data: message } = await supabase.from('messages').insert({
             conversation_id: conversationId,
             sender_id: user.id,

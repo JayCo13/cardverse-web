@@ -2644,7 +2644,7 @@ export function MarketSpotlight() {
                             </div>
                         </div>
 
-                        {/* VN market price — real completed CardVerse sales for this card */}
+                        {/* VN market price — real completed CardVerseHub sales for this card */}
                         {product && product.product_id > 0 && (
                             <VnMarketPrice productId={product.product_id} />
                         )}

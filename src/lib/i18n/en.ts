@@ -624,16 +624,16 @@ export const en = {
   financial_rate_limited: 'Too many requests. Please wait and try again.',
   financial_deposit_failed: 'Unable to create the wallet deposit.',
   wallet_funds_pending_verification_title: '{amount} is awaiting source verification',
-  wallet_funds_pending_verification_safe: 'This money remains in your wallet. It has not been lost or deducted by CardVerse.',
+  wallet_funds_pending_verification_safe: 'This money remains in your wallet. It has not been lost or deducted by CardVerseHub.',
   wallet_funds_pending_verification_reason: 'This balance was recorded before fund-source verification was introduced, so it is not currently withdrawable. New PayOS deposits and marketplace earnings are verified automatically after a valid payment or completed order.',
   wallet_funds_pending_verification_action: 'To unlock an older balance for withdrawal, send its PayOS transaction code or marketplace order ID to support for reconciliation. Once approved, it becomes withdrawable without being credited or deducted again.',
   wallet_request_fund_verification: 'Request fund-source review',
 
   // PayOS descriptions (maximum 25 characters)
-  payos_description_wallet_deposit: 'CardVerse wallet deposit',
-  payos_description_cart_checkout: 'CardVerse cart',
-  payos_description_offer_checkout: 'CardVerse offer',
-  payos_description_card_purchase: 'CardVerse card',
+  payos_description_wallet_deposit: 'CardVerseHub deposit',
+  payos_description_cart_checkout: 'CardVerseHub cart',
+  payos_description_offer_checkout: 'CardVerseHub offer',
+  payos_description_card_purchase: 'CardVerseHub card',
 
   // System notifications
   notification_offer_received_title: 'New offer',

@@ -280,7 +280,7 @@ export function Header() {
               href="/"
               className="flex items-center gap-2 text-lg font-semibold lg:text-base"
             >
-              <Image src="/assets/logo-verse.png" width={160} height={40} className="w-[150px] lg:w-[170px] h-auto" alt="CardVerse logo" />
+              <Image src="/assets/logo-verse.png" width={160} height={40} className="w-[150px] lg:w-[170px] h-auto" alt="CardVerseHub logo" />
             </Link>
           </div>
 
@@ -326,7 +326,7 @@ export function Header() {
                     href="/"
                     className="flex items-center gap-2 text-2xl font-semibold"
                   >
-                    <Image src="/assets/logo-verse.png" width={140} height={35} alt="CardVerse logo" />
+                    <Image src="/assets/logo-verse.png" width={140} height={35} alt="CardVerseHub logo" />
                   </Link>
                   <div className="relative group">
                     {renderBetaNavItem('/buy', t('nav_buy'), 'beta', 'text-muted-foreground hover:text-foreground flex items-center gap-1')}

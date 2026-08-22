@@ -24,7 +24,7 @@ export function ForumHeader() {
                         <ArrowLeft className="h-4 w-4 text-white" />
                     </div>
                     <span className="hidden sm:inline font-medium text-gray-300 group-hover:text-white transition-colors">
-                        Back to CardVerse
+                        Back to CardVerseHub
                     </span>
                 </Link>
 

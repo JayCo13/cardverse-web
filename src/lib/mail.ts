@@ -18,7 +18,7 @@ function buildTemplate(title: string, body: string) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="dark">
-    <title>CardVerse</title>
+    <title>CardVerseHub</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #08080a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
     <!-- Preheader (hidden) -->
@@ -31,7 +31,7 @@ function buildTemplate(title: string, body: string) {
                     <!-- Header with centered logo -->
                     <tr>
                         <td align="center" style="padding: 40px 40px 32px; background: linear-gradient(135deg, rgba(249,115,22,0.18) 0%, rgba(249,115,22,0.03) 55%, transparent 100%);">
-                            <img src="${logoUrl}" alt="CardVerse" height="40" style="display: block; height: 40px; width: auto; border: 0; outline: none; text-decoration: none;">
+                            <img src="${logoUrl}" alt="CardVerseHub" height="40" style="display: block; height: 40px; width: auto; border: 0; outline: none; text-decoration: none;">
                         </td>
                     </tr>
                     <!-- Accent divider -->
@@ -55,10 +55,10 @@ function buildTemplate(title: string, body: string) {
                     <!-- Footer -->
                     <tr>
                         <td style="padding: 28px 40px; background-color: rgba(0,0,0,0.35); border-top: 1px solid rgba(255,255,255,0.06);">
-                            <p style="margin: 0 0 6px; color: #71717a; font-size: 13px; text-align: center; font-weight: 600;">CardVerse — Sàn giao dịch thẻ bài</p>
+                            <p style="margin: 0 0 6px; color: #71717a; font-size: 13px; text-align: center; font-weight: 600;">CardVerseHub — Sàn giao dịch thẻ bài</p>
                             <p style="margin: 0; color: #52525b; font-size: 12px; text-align: center; line-height: 1.6;">
                                 <a href="${appUrl}" style="color: #f97316; text-decoration: none;">${appUrl.replace(/^https?:\/\//, '')}</a>
-                                &nbsp;&middot;&nbsp; &copy; ${year} CardVerse. All rights reserved.
+                                &nbsp;&middot;&nbsp; &copy; ${year} CardVerseHub. All rights reserved.
                             </p>
                         </td>
                     </tr>
@@ -86,17 +86,17 @@ export async function sendKYCSubmittedToUser(userEmail: string, fullName: string
         await transporter.sendMail({
             from,
             to: userEmail,
-            subject: '📋 Hồ sơ KYC đã được gửi — CardVerse',
+            subject: '📋 Hồ sơ KYC đã được gửi — CardVerseHub',
             html: buildTemplate(
                 '📋 Hồ sơ KYC đã được gửi',
                 `<p style="color: #e4e4e7;">Xin chào <strong style="color: #f97316;">${fullName}</strong>,</p>
-                <p>Hồ sơ xác minh người bán của bạn đã được gửi thành công đến đội ngũ CardVerse.</p>
+                <p>Hồ sơ xác minh người bán của bạn đã được gửi thành công đến đội ngũ CardVerseHub.</p>
                 <div style="background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.2); border-radius: 8px; padding: 16px; margin: 20px 0;">
                     <p style="margin: 0; color: #fb923c;">⏳ <strong>Trạng thái:</strong> Đang chờ duyệt</p>
                     <p style="margin: 8px 0 0; color: #a1a1aa; font-size: 13px;">Thời gian xử lý: 1-3 ngày làm việc</p>
                 </div>
                 <p>Chúng tôi sẽ gửi email thông báo khi hồ sơ được duyệt hoặc cần bổ sung thông tin.</p>
-                <p style="color: #71717a; font-size: 13px; margin-top: 24px;">Cảm ơn bạn đã chọn CardVerse!</p>`
+                <p style="color: #71717a; font-size: 13px; margin-top: 24px;">Cảm ơn bạn đã chọn CardVerseHub!</p>`
             ),
         });
         console.log(`[Mail] KYC submitted notification sent to ${userEmail}`);
@@ -122,7 +122,7 @@ export async function sendOrderShippedEmail(
         await transporter.sendMail({
             from,
             to: buyerEmail,
-            subject: '📦 Đơn hàng của bạn đã được gửi — CardVerse',
+            subject: '📦 Đơn hàng của bạn đã được gửi — CardVerseHub',
             html: buildTemplate(
                 '📦 Đơn hàng đã được gửi',
                 `<p style="color:#e4e4e7;">Người bán đã gửi thẻ <strong style="color:#f97316;">${cardName}</strong> cho bạn.</p>
@@ -229,19 +229,19 @@ export async function sendKYCApproved(userEmail: string, fullName: string) {
         await transporter.sendMail({
             from,
             to: userEmail,
-            subject: '✅ Hồ sơ KYC đã được duyệt — CardVerse',
+            subject: '✅ Hồ sơ KYC đã được duyệt — CardVerseHub',
             html: buildTemplate(
                 '✅ Xác minh thành công!',
                 `<p style="color: #e4e4e7;">Xin chào <strong style="color: #f97316;">${fullName}</strong>,</p>
                 <p>Hồ sơ xác minh người bán của bạn đã được <strong style="color: #22c55e;">DUYỆT</strong> thành công! 🎉</p>
                 <div style="background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.2); border-radius: 8px; padding: 16px; margin: 20px 0;">
                     <p style="margin: 0; color: #4ade80;">✅ <strong>Trạng thái:</strong> Đã xác minh</p>
-                    <p style="margin: 8px 0 0; color: #a1a1aa; font-size: 13px;">Bạn đã có thể đăng bán thẻ trên CardVerse!</p>
+                    <p style="margin: 8px 0 0; color: #a1a1aa; font-size: 13px;">Bạn đã có thể đăng bán thẻ trên CardVerseHub!</p>
                 </div>
                 <div style="text-align: center; margin: 24px 0;">
                     <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/sell" style="display: inline-block; background: #f97316; color: #fff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">Đăng bán ngay →</a>
                 </div>
-                <p style="color: #71717a; font-size: 13px;">Cảm ơn bạn đã tham gia cộng đồng CardVerse!</p>`
+                <p style="color: #71717a; font-size: 13px;">Cảm ơn bạn đã tham gia cộng đồng CardVerseHub!</p>`
             ),
         });
         console.log(`[Mail] KYC approved notification sent to ${userEmail}`);
@@ -258,7 +258,7 @@ export async function sendKYCRejected(userEmail: string, fullName: string, reaso
         await transporter.sendMail({
             from,
             to: userEmail,
-            subject: '❌ Hồ sơ KYC chưa được duyệt — CardVerse',
+            subject: '❌ Hồ sơ KYC chưa được duyệt — CardVerseHub',
             html: buildTemplate(
                 '❌ Hồ sơ chưa được duyệt',
                 `<p style="color: #e4e4e7;">Xin chào <strong style="color: #f97316;">${fullName}</strong>,</p>
@@ -313,10 +313,10 @@ export async function sendOrderPlacedToBuyer(
         await transporter.sendMail({
             from,
             to: buyerEmail,
-            subject: `✅ Đặt hàng thành công #${shortOrderId(params.orderId)} — CardVerse`,
+            subject: `✅ Đặt hàng thành công #${shortOrderId(params.orderId)} — CardVerseHub`,
             html: buildTemplate(
                 '✅ Đặt hàng thành công',
-                `<p style="color:#e4e4e7;">Cảm ơn bạn đã mua hàng trên CardVerse. Đơn hàng của bạn đã được thanh toán và đang chờ người bán gửi đi.</p>
+                `<p style="color:#e4e4e7;">Cảm ơn bạn đã mua hàng trên CardVerseHub. Đơn hàng của bạn đã được thanh toán và đang chờ người bán gửi đi.</p>
                 <div style="background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.2); border-radius: 8px; padding: 16px; margin: 20px 0;">
                     <p style="margin:0; color:#a1a1aa; font-size:13px;">Mã đơn hàng</p>
                     <p style="margin:2px 0 12px; color:#fff; font-weight:700;">#${shortOrderId(params.orderId)}</p>
@@ -331,7 +331,7 @@ export async function sendOrderPlacedToBuyer(
                 ${params.carrierName ? `<p style="color:#a1a1aa; font-size:13px; margin:0;">Đơn vị vận chuyển: <strong style="color:#e4e4e7;">${params.carrierName}</strong></p>` : ''}
                 ${params.shippingAddress ? `<p style="color:#a1a1aa; font-size:13px; margin:4px 0 0;">Giao đến: <strong style="color:#e4e4e7;">${params.shippingAddress}</strong></p>` : ''}
                 <p style="margin-top:20px;">Chúng tôi sẽ báo bạn ngay khi người bán gửi hàng. Xem chi tiết tại <a href="${appUrl}/orders" style="color:#f97316; text-decoration:none;">Đơn hàng của tôi</a>.</p>
-                <p style="color:#71717a; font-size:13px; margin-top:24px;">Tiền của bạn được CardVerse giữ cho đến khi bạn xác nhận đã nhận thẻ.</p>`,
+                <p style="color:#71717a; font-size:13px; margin-top:24px;">Tiền của bạn được CardVerseHub giữ cho đến khi bạn xác nhận đã nhận thẻ.</p>`,
             ),
         });
         console.log(`[Mail] Order placed notification sent to buyer ${buyerEmail}`);
@@ -368,7 +368,7 @@ export async function sendOrderPlacedToSeller(
         await transporter.sendMail({
             from,
             to: sellerEmail,
-            subject: `🛒 Bạn có đơn hàng mới #${shortOrderId(params.orderId)} — CardVerse`,
+            subject: `🛒 Bạn có đơn hàng mới #${shortOrderId(params.orderId)} — CardVerseHub`,
             html: buildTemplate(
                 '🛒 Bạn có đơn hàng mới',
                 `<p style="color:#e4e4e7;">Người mua đã thanh toán. Vui lòng chuẩn bị và gửi hàng sớm nhất có thể.</p>

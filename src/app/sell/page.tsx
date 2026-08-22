@@ -201,7 +201,7 @@ export default function SellPage() {
         viewAll: 'すべて見る',
         noOrders: '注文はまだありません',
         unknownCard: '不明なカード',
-        verifyDesc: 'CardVerseでカードを出品するには、3つの確認ステップを完了してください。',
+        verifyDesc: 'CardVerseHubでカードを出品するには、3つの確認ステップを完了してください。',
         step1: '本人確認',
         step2: '電話番号確認',
         step3: '確認して送信',
@@ -241,7 +241,7 @@ export default function SellPage() {
           viewAll: 'Xem tất cả',
           noOrders: 'Chưa có đơn hàng nào',
           unknownCard: 'Thẻ không xác định',
-          verifyDesc: 'Hoàn thành 3 bước xác minh để bắt đầu đăng bán thẻ trên CardVerse.',
+          verifyDesc: 'Hoàn thành 3 bước xác minh để bắt đầu đăng bán thẻ trên CardVerseHub.',
           step1: 'Xác minh danh tính',
           step2: 'Xác minh số điện thoại',
           step3: 'Xác nhận và gửi',
@@ -280,7 +280,7 @@ export default function SellPage() {
           viewAll: 'View all',
           noOrders: 'No orders yet',
           unknownCard: 'Unknown card',
-          verifyDesc: 'Complete 3 verification steps to start listing cards on CardVerse.',
+          verifyDesc: 'Complete 3 verification steps to start listing cards on CardVerseHub.',
           step1: 'Identity verification',
           step2: 'Phone verification',
           step3: 'Review and submit',
@@ -1262,9 +1262,9 @@ export default function SellPage() {
                 </CardTitle>
                 <CardDescription>
                   {tx(
-                    'Bạn sẽ được chuyển sang trang xác minh của đối tác để chụp CCCD và quét khuôn mặt. Ảnh giấy tờ do đối tác lưu giữ, CardVerse không giữ bản sao.',
-                    'You will be taken to our verification partner to capture your ID and a face scan. The partner stores the document images — CardVerse keeps no copy.',
-                    'パートナーの確認ページで身分証と顔スキャンを行います。画像はパートナーが保管し、CardVerseは保存しません。'
+                    'Bạn sẽ được chuyển sang trang xác minh của đối tác để chụp CCCD và quét khuôn mặt. Ảnh giấy tờ do đối tác lưu giữ, CardVerseHub không giữ bản sao.',
+                    'You will be taken to our verification partner to capture your ID and a face scan. The partner stores the document images — CardVerseHub keeps no copy.',
+                    'パートナーの確認ページで身分証と顔スキャンを行います。画像はパートナーが保管し、CardVerseHubは保存しません。'
                   )}
                 </CardDescription>
               </CardHeader>

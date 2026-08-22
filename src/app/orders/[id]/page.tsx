@@ -245,7 +245,7 @@ export default function OrderDetailsPage() {
               <div className="flex justify-between text-sm"><span className="text-muted-foreground">{tx('Tiền hàng', 'Item price', '商品代金')}</span><span>{fmt(order.amount)}</span></div>
               <div className="flex justify-between text-sm"><span className="text-muted-foreground">{tx('Phí vận chuyển', 'Shipping fee', '送料')}</span><span>{fmt(order.shipping_fee)}</span></div>
               <div className="flex justify-between border-t pt-2 text-base font-bold"><span>{tx('Tổng', 'Total', '合計')}</span><span className="text-orange-500">{fmt(order.total_paid)}</span></div>
-              <p className="pt-1 text-xs text-muted-foreground">{tx('Phương thức', 'Method', '方法')}: {order.payment_method === 'wallet' ? tx('Ví CardVerse', 'CardVerse wallet', 'CardVerseウォレット') : 'PayOS'}</p>
+              <p className="pt-1 text-xs text-muted-foreground">{tx('Phương thức', 'Method', '方法')}: {order.payment_method === 'wallet' ? tx('Ví CardVerseHub', 'CardVerseHub wallet', 'CardVerseHubウォレット') : 'PayOS'}</p>
             </div>
 
             {/* Counterparty */}

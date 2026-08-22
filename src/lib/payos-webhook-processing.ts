@@ -87,7 +87,7 @@ async function sendOrderPlacedEmails(supabase: SupabaseClient, order: PaidOrder)
     );
     const buyer = byId.get(order.buyer_id);
     const seller = byId.get(order.seller_id);
-    const cardName = (card as { name?: string } | null)?.name || 'Thẻ CardVerse';
+    const cardName = (card as { name?: string } | null)?.name || 'Thẻ CardVerseHub';
     const shippingFee = order.shipping_fee ?? 0;
 
     await Promise.allSettled([

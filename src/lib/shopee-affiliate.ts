@@ -1,7 +1,7 @@
 // =====================================================================
 // Shopee Affiliate config
 //
-// CardVerse is a trading-card site, so the natural affiliate fit is card
+// CardVerseHub is a trading-card site, so the natural affiliate fit is card
 // CARE/STORAGE accessories (sleeves, toploaders, binders, deck boxes…).
 //
 // HOW TO EARN COMMISSION:
