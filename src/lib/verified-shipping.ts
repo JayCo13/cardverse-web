@@ -1,5 +1,6 @@
 import 'server-only';
 import { calculateShippingFee, CARD_DEFAULTS } from '@/lib/ghn';
+import { resolveShippingTier, type ShopShippingFees } from '@/lib/shipping-fee';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
 type ShippingQuoteInput = {
@@ -9,6 +10,64 @@ type ShippingQuoteInput = {
   insuranceValue: number;
   itemCount?: number;
 };
+
+type ConfiguredShippingQuoteInput = {
+  sellerId: string;
+  carrier: string;
+  toProvinceId: number;
+  toProvinceName: string;
+};
+
+type SellerShippingProfile = {
+  shipping_carriers: string[] | null;
+  shipping_fees: ShopShippingFees | null;
+  address_province_id: number | null;
+  address_province_name: string | null;
+};
+
+/**
+ * Recalculate a marketplace fee from the seller's stored checkout settings.
+ * The browser may choose a carrier, but it never supplies the amount charged.
+ */
+export async function quoteConfiguredShipping(input: ConfiguredShippingQuoteInput): Promise<number> {
+  const service = createServiceSupabaseClient();
+  const { data, error } = await service
+    .from('profiles')
+    .select('shipping_carriers, shipping_fees, address_province_id, address_province_name')
+    .eq('id', input.sellerId)
+    .single<SellerShippingProfile>();
+
+  if (error || !data) throw new Error('seller_shipping_configuration_missing');
+
+  const carrier = String(input.carrier || '').trim();
+  const enabledCarriers = Array.isArray(data.shipping_carriers) ? data.shipping_carriers : [];
+  if (!carrier || carrier === 'self' || !enabledCarriers.includes(carrier)) {
+    throw new Error('invalid_shipping_carrier');
+  }
+
+  const toProvinceId = Number(input.toProvinceId);
+  if (!Number.isSafeInteger(toProvinceId) || !input.toProvinceName
+      || !Number.isSafeInteger(data.address_province_id) || !data.address_province_name) {
+    throw new Error('seller_shipping_configuration_missing');
+  }
+
+  const tier = resolveShippingTier(
+    {
+      provinceId: data.address_province_id,
+      provinceName: data.address_province_name,
+    },
+    {
+      provinceId: toProvinceId,
+      provinceName: input.toProvinceName,
+    },
+  );
+  const fee = data.shipping_fees?.[carrier]?.[tier];
+  if (typeof fee !== 'number' || !Number.isSafeInteger(fee) || fee < 0) {
+    throw new Error('shipping_fee_not_configured');
+  }
+
+  return fee;
+}
 
 export async function quoteVerifiedShipping(input: ShippingQuoteInput): Promise<number> {
   const service = createServiceSupabaseClient();

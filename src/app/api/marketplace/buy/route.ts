@@ -5,7 +5,7 @@ import { getPayOS } from '@/lib/payos';
 import { matchBundleSelection, type BundleSelection } from '@/lib/bundle';
 import { randomInt } from 'crypto';
 import { hashFinancialRequest, stableFinancialUuid } from '@/lib/financial-idempotency';
-import { quoteVerifiedShipping } from '@/lib/verified-shipping';
+import { quoteConfiguredShipping } from '@/lib/verified-shipping';
 import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link-claim';
 import { translateRequest } from '@/lib/request-localization';
 import { walletCheckoutError } from '@/lib/wallet-checkout-error';
@@ -217,15 +217,30 @@ export async function POST(request: NextRequest) {
             amount = Number(card.price);
         }
 
-        // Never trust the fee echoed by the browser. Re-quote from the seller's
-        // stored origin and the authenticated checkout destination.
-        const shippingFee = await quoteVerifiedShipping({
-            sellerId: card.seller_id,
-            toDistrictId: Number(to_district_id),
-            toWardCode: String(to_ward_code),
-            insuranceValue: amount,
-            itemCount: isBundle ? selection.length : 1,
-        });
+        // Never trust a fee echoed by the browser. The browser only chooses an
+        // enabled carrier; the server resolves the tier and amount again from
+        // the seller's stored shipping configuration.
+        let shippingFee: number;
+        try {
+            shippingFee = await quoteConfiguredShipping({
+                sellerId: card.seller_id,
+                carrier: String(clientCarrier || ''),
+                toProvinceId: Number(to_province_id),
+                toProvinceName: String(to_province_name),
+            });
+        } catch (shippingError) {
+            const code = shippingError instanceof Error ? shippingError.message : 'shipping_fee_not_configured';
+            const invalidCarrier = code === 'invalid_shipping_carrier';
+            return NextResponse.json(
+                {
+                    error: invalidCarrier
+                        ? 'The selected shipping carrier is not available.'
+                        : 'The seller shipping fee is not configured for this address.',
+                    code: invalidCarrier ? 'invalid_carrier' : 'shipping_fee_not_configured',
+                },
+                { status: invalidCarrier ? 400 : 409 },
+            );
+        }
 
         const totalPaid = amount + shippingFee; // Buyer pays selected price + shipping fee
 
