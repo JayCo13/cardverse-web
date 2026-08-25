@@ -194,8 +194,12 @@ function normaliseIdentity(payload: Record<string, unknown>): KycIdentity {
         return joined ? joined.toUpperCase() : null;
     })();
 
+    // Chip first when NFC ran: it is issuer-signed data, not a read of a
+    // photograph, so it cannot drop a character or reorder anything. Everything
+    // below it is OCR and can.
     const fullName = isVietnamese
-        ? (mrzFullName
+        ? (joinParts(str(chip?.first_name), str(chip?.last_name))
+            || mrzFullName
             || joinParts(str(id?.first_name), str(id?.last_name))
             || str(id?.full_name))
         : (str(id?.full_name)
