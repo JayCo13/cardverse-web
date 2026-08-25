@@ -164,28 +164,44 @@ function normaliseIdentity(payload: Record<string, unknown>): KycIdentity {
         : null);
 
     const issuingState = str(id?.issuing_state) || str(id?.issuing_state_name) || str(chip?.issuing_state);
+    const isVietnamese = /^VN|^VNM/i.test(issuingState || '');
 
     /**
      * Join split name parts in the order the issuing country prints them.
-     * Vietnamese documents are family-name-first ("Cổ Trịnh Hiền Tài"), so the
-     * Western first+last join reverses them into a different name — which then
-     * fails every downstream comparison against the bank account holder.
+     * Vietnamese documents are family-name-first, so the Western first+last
+     * join reverses them into a different name.
      */
     const joinParts = (first: string | null, last: string | null) => {
-        const parts = /^VN|^VNM/i.test(issuingState || '') ? [last, first] : [first, last];
+        const parts = isVietnamese ? [last, first] : [first, last];
         return str(parts.filter(Boolean).join(' '));
     };
 
-    // The printed full name is authoritative: it preserves the document's own
-    // ordering, which no reassembly from split parts can be trusted to do.
-    // Chip and MRZ fields are only a fallback for when OCR read no full name.
-    const fullName =
-        str(id?.full_name) ||
-        str(chip?.full_name) ||
-        str(mrz?.full_name) ||
-        joinParts(str(chip?.first_name), str(chip?.last_name)) ||
-        joinParts(str(id?.first_name), str(id?.last_name)) ||
-        joinParts(str(mrz?.first_name), str(mrz?.last_name));
+    /**
+     * The MRZ is the only field that preserves the document's own name order:
+     * `surname` then `name` (the given names), exactly as printed.
+     *
+     * Didit's `full_name` cannot be used for a Vietnamese card. It is not the
+     * printed name — it is reassembled Western-style, which turns
+     * "QUACH THANH NHA" into "Nha Thanh Quach", reversing both the surname
+     * position and the order of the given names. `first_name` carries the same
+     * reversal, so rebuilding from the split parts does not recover it either.
+     *
+     * Upper-cased because that is how a CCCD prints a name, and because the MRZ
+     * mixes cases between reads (`Quach` one time, `QUACH` the next).
+     */
+    const mrzFullName = (() => {
+        const joined = [str(mrz?.surname), str(mrz?.name)].filter(Boolean).join(' ');
+        return joined ? joined.toUpperCase() : null;
+    })();
+
+    const fullName = isVietnamese
+        ? (mrzFullName
+            || joinParts(str(id?.first_name), str(id?.last_name))
+            || str(id?.full_name))
+        : (str(id?.full_name)
+            || str(chip?.full_name)
+            || joinParts(str(id?.first_name), str(id?.last_name))
+            || mrzFullName);
 
     const nfcSkipped = nfc?.is_nfc_skipped;
     const authenticity = (nfc?.authenticity && typeof nfc.authenticity === 'object'
@@ -195,11 +211,15 @@ function normaliseIdentity(payload: Record<string, unknown>): KycIdentity {
     return {
         fullName,
         dateOfBirth: toIsoDate(chip?.date_of_birth ?? id?.date_of_birth ?? mrz?.date_of_birth),
-        documentNumber:
-            str(chip?.document_number) ||
-            str(id?.document_number) ||
-            str(id?.personal_number) ||
-            str(mrz?.document_number),
+        documentNumber: isVietnamese
+            ? pickCccd(
+                chip?.document_number, id?.personal_number, mrz?.personal_number,
+                id?.document_number, mrz?.document_number,
+            )
+            : (str(chip?.document_number)
+                || str(id?.document_number)
+                || str(id?.personal_number)
+                || str(mrz?.document_number)),
         documentType: str(chip?.document_type) || str(id?.document_type),
         issuingState,
         livenessScore: num(liveness?.score),
@@ -209,8 +229,59 @@ function normaliseIdentity(payload: Record<string, unknown>): KycIdentity {
             nfcSkipped !== true &&
             authenticity?.sod_integrity !== false &&
             authenticity?.dg_integrity !== false,
-        warnings: collectWarnings(id, liveness, faceMatch, nfc),
+        warnings: [...collectWarnings(id, liveness, faceMatch, nfc), ...mrzReadWarnings(mrz)],
     };
+}
+
+/**
+ * A Vietnamese CCCD number is exactly 12 digits. Several fields claim to hold
+ * it and only some do: the MRZ `document_number` is a shorter derived value,
+ * while `personal_number` embeds the real one among filler ("096205005744<YK").
+ *
+ * Requiring exactly 12 digits picks the right field and, usefully, rejects a
+ * misread outright rather than storing a number that differs between scans of
+ * the same card — which would silently defeat duplicate detection, since that
+ * compares an HMAC of this value.
+ */
+function pickCccd(...candidates: unknown[]): string | null {
+    for (const candidate of candidates) {
+        const raw = str(candidate);
+        if (!raw) continue;
+        const digits = raw.replace(/\D/g, '');
+        if (digits.length === 12) return digits;
+    }
+    return null;
+}
+
+/**
+ * MRZ parse errors that indicate the read itself is unreliable.
+ *
+ * Vietnamese cards routinely fail the final check digit — a clean scan still
+ * reports "false final hash" — so that one alone means nothing. Anything
+ * further (a birth date, nationality or expiry that will not parse) has, in
+ * the scans seen so far, accompanied a corrupted name: one read returned
+ * "THAN" where the card says "THANH", and a document number differing from
+ * the same card's other scans.
+ *
+ * These only hold a submission for review; they never reject it.
+ */
+const BENIGN_MRZ_ERRORS = ['false final hash'];
+
+function mrzReadWarnings(mrz: Record<string, unknown> | null): KycWarning[] {
+    if (!mrz) return [];
+    const errors = Array.isArray(mrz.errors) ? mrz.errors.map((e) => String(e)) : [];
+    const significant = errors.filter(
+        (error) => !BENIGN_MRZ_ERRORS.includes(error.trim().toLowerCase()),
+    );
+    if (significant.length === 0) return [];
+
+    return [{
+        feature: 'ID_VERIFICATION',
+        risk: 'MRZ_READ_UNRELIABLE',
+        logType: 'warning',
+        shortDescription: 'Vùng máy đọc trên giấy tờ lỗi — họ tên hoặc số giấy tờ có thể bị đọc sai.',
+        longDescription: `Lỗi MRZ: ${significant.join('; ')}`,
+    }];
 }
 
 // ─── Provider ────────────────────────────────────────────────────────────────
