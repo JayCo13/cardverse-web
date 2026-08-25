@@ -53,14 +53,18 @@ export const DEFAULT_ACCEPTANCE_POLICY: KycAcceptancePolicy = {
  */
 export function evaluateIdentity(
     identity: KycIdentity,
-    policy: KycAcceptancePolicy = DEFAULT_ACCEPTANCE_POLICY
+    policy: KycAcceptancePolicy = DEFAULT_ACCEPTANCE_POLICY,
+    evidence?: { hasDocumentNumberHash?: boolean }
 ): string[] {
     const flags: string[] = [];
 
     if (!identity.fullName) {
         flags.push('Nhà cung cấp không đọc được họ tên trên giấy tờ.');
     }
-    if (!identity.documentNumber) {
+    // Provider-backed sessions deliberately discard the raw document number
+    // after hashing it. A keyed hash proves the provider read a document
+    // number without retaining the national identifier itself.
+    if (!identity.documentNumber && !evidence?.hasDocumentNumberHash) {
         flags.push('Nhà cung cấp không đọc được số giấy tờ.');
     }
 

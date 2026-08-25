@@ -2,18 +2,42 @@
 // SMTP otherwise. Re-exported so existing importers keep working.
 export { createMailTransporter, getFromAddress } from './mail-transport';
 import { createMailTransporter, getFromAddress } from './mail-transport';
+import { translations, type TranslationKey } from './i18n';
+import type { SupportedLocale } from './request-localization';
 
 function getAppUrl() {
     return process.env.NEXT_PUBLIC_APP_URL || 'https://cardversehub.com';
 }
 
-function buildTemplate(title: string, body: string) {
+function escapeHtml(value: string) {
+    return value
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}
+
+function mailText(
+    locale: SupportedLocale,
+    key: TranslationKey,
+    variables?: Record<string, string>,
+) {
+    let value = translations[locale][key] || translations['en-US'][key] || key;
+    for (const [name, replacement] of Object.entries(variables || {})) {
+        value = value.replaceAll(`{${name}}`, replacement);
+    }
+    return value;
+}
+
+function buildTemplate(title: string, body: string, locale: SupportedLocale = 'vi-VN') {
     const appUrl = getAppUrl();
     const logoUrl = `${appUrl}/assets/logo-verse.png`;
     const year = new Date().getFullYear();
+    const language = locale === 'ja-JP' ? 'ja' : locale === 'en-US' ? 'en' : 'vi';
 
     return `<!DOCTYPE html>
-<html lang="vi">
+<html lang="${language}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -55,10 +79,10 @@ function buildTemplate(title: string, body: string) {
                     <!-- Footer -->
                     <tr>
                         <td style="padding: 28px 40px; background-color: rgba(0,0,0,0.35); border-top: 1px solid rgba(255,255,255,0.06);">
-                            <p style="margin: 0 0 6px; color: #71717a; font-size: 13px; text-align: center; font-weight: 600;">CardVerseHub — Sàn giao dịch thẻ bài</p>
+                            <p style="margin: 0 0 6px; color: #71717a; font-size: 13px; text-align: center; font-weight: 600;">CardVerseHub — ${mailText(locale, 'email_brand_description')}</p>
                             <p style="margin: 0; color: #52525b; font-size: 12px; text-align: center; line-height: 1.6;">
                                 <a href="${appUrl}" style="color: #f97316; text-decoration: none;">${appUrl.replace(/^https?:\/\//, '')}</a>
-                                &nbsp;&middot;&nbsp; &copy; ${year} CardVerseHub. All rights reserved.
+                                &nbsp;&middot;&nbsp; &copy; ${year} CardVerseHub. ${mailText(locale, 'email_all_rights_reserved')}
                             </p>
                         </td>
                     </tr>
@@ -67,7 +91,7 @@ function buildTemplate(title: string, body: string) {
                 <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width: 100%; max-width: 600px;">
                     <tr>
                         <td style="padding: 16px 40px 0; text-align: center;">
-                            <p style="margin: 0; color: #3f3f46; font-size: 11px; line-height: 1.6;">Email này được gửi tự động, vui lòng không trả lời trực tiếp.</p>
+                            <p style="margin: 0; color: #3f3f46; font-size: 11px; line-height: 1.6;">${mailText(locale, 'email_automated_notice')}</p>
                         </td>
                     </tr>
                 </table>
@@ -78,25 +102,65 @@ function buildTemplate(title: string, body: string) {
 </html>`;
 }
 
-export async function sendKYCSubmittedToUser(userEmail: string, fullName: string) {
+export async function sendKYCIdentityApproved(
+    userEmail: string,
+    fullName: string,
+    locale: SupportedLocale,
+): Promise<boolean> {
     try {
         const transporter = createMailTransporter();
         const from = getFromAddress();
+        const safeName = escapeHtml(fullName);
+        const appUrl = getAppUrl();
 
         await transporter.sendMail({
             from,
             to: userEmail,
-            subject: '📋 Hồ sơ KYC đã được gửi — CardVerseHub',
+            subject: mailText(locale, 'email_kyc_identity_subject'),
             html: buildTemplate(
-                '📋 Hồ sơ KYC đã được gửi',
-                `<p style="color: #e4e4e7;">Xin chào <strong style="color: #f97316;">${fullName}</strong>,</p>
-                <p>Hồ sơ xác minh người bán của bạn đã được gửi thành công đến đội ngũ CardVerseHub.</p>
+                mailText(locale, 'email_kyc_identity_title'),
+                `<p style="color: #e4e4e7;">${mailText(locale, 'email_kyc_identity_greeting', { fullName: safeName })}</p>
+                <p>${mailText(locale, 'email_kyc_identity_body')}</p>
                 <div style="background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.2); border-radius: 8px; padding: 16px; margin: 20px 0;">
-                    <p style="margin: 0; color: #fb923c;">⏳ <strong>Trạng thái:</strong> Đang chờ duyệt</p>
-                    <p style="margin: 8px 0 0; color: #a1a1aa; font-size: 13px;">Thời gian xử lý: 1-3 ngày làm việc</p>
+                    <p style="margin: 0; color: #fb923c;">${mailText(locale, 'email_kyc_identity_next_step')}</p>
                 </div>
-                <p>Chúng tôi sẽ gửi email thông báo khi hồ sơ được duyệt hoặc cần bổ sung thông tin.</p>
-                <p style="color: #71717a; font-size: 13px; margin-top: 24px;">Cảm ơn bạn đã chọn CardVerseHub!</p>`
+                <div style="text-align: center; margin: 24px 0;">
+                    <a href="${appUrl}/sell" style="display: inline-block; background: #f97316; color: #fff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">${mailText(locale, 'email_kyc_identity_cta')} →</a>
+                </div>`,
+                locale,
+            ),
+        });
+        console.log(`[Mail] KYC identity-complete notification sent to ${userEmail}`);
+        return true;
+    } catch (error) {
+        console.error('[Mail] Failed to send KYC identity-complete email:', error);
+        return false;
+    }
+}
+
+export async function sendKYCSubmittedToUser(
+    userEmail: string,
+    fullName: string,
+    locale: SupportedLocale = 'vi-VN',
+) {
+    try {
+        const transporter = createMailTransporter();
+        const from = getFromAddress();
+        const safeName = escapeHtml(fullName);
+
+        await transporter.sendMail({
+            from,
+            to: userEmail,
+            subject: mailText(locale, 'email_kyc_submitted_subject'),
+            html: buildTemplate(
+                mailText(locale, 'email_kyc_submitted_title'),
+                `<p style="color: #e4e4e7;">${mailText(locale, 'email_kyc_submitted_greeting', { fullName: safeName })}</p>
+                <p>${mailText(locale, 'email_kyc_submitted_body')}</p>
+                <div style="background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.2); border-radius: 8px; padding: 16px; margin: 20px 0;">
+                    <p style="margin: 0; color: #fb923c;">${mailText(locale, 'email_kyc_submitted_status')}</p>
+                </div>
+                <p>${mailText(locale, 'email_kyc_submitted_next_step')}</p>`,
+                locale,
             ),
         });
         console.log(`[Mail] KYC submitted notification sent to ${userEmail}`);
@@ -221,27 +285,33 @@ export async function sendWithdrawalSubmittedToAdmin(input: {
     }
 }
 
-export async function sendKYCApproved(userEmail: string, fullName: string) {
+export async function sendKYCApproved(
+    userEmail: string,
+    fullName: string,
+    locale: SupportedLocale = 'vi-VN',
+) {
     try {
         const transporter = createMailTransporter();
         const from = getFromAddress();
+        const safeName = escapeHtml(fullName);
+        const appUrl = getAppUrl();
 
         await transporter.sendMail({
             from,
             to: userEmail,
-            subject: '✅ Hồ sơ KYC đã được duyệt — CardVerseHub',
+            subject: mailText(locale, 'email_kyc_approved_subject'),
             html: buildTemplate(
-                '✅ Xác minh thành công!',
-                `<p style="color: #e4e4e7;">Xin chào <strong style="color: #f97316;">${fullName}</strong>,</p>
-                <p>Hồ sơ xác minh người bán của bạn đã được <strong style="color: #22c55e;">DUYỆT</strong> thành công! 🎉</p>
+                mailText(locale, 'email_kyc_approved_title'),
+                `<p style="color: #e4e4e7;">${mailText(locale, 'email_kyc_approved_greeting', { fullName: safeName })}</p>
+                <p>${mailText(locale, 'email_kyc_approved_body')}</p>
                 <div style="background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.2); border-radius: 8px; padding: 16px; margin: 20px 0;">
-                    <p style="margin: 0; color: #4ade80;">✅ <strong>Trạng thái:</strong> Đã xác minh</p>
-                    <p style="margin: 8px 0 0; color: #a1a1aa; font-size: 13px;">Bạn đã có thể đăng bán thẻ trên CardVerseHub!</p>
+                    <p style="margin: 0; color: #4ade80;">${mailText(locale, 'email_kyc_approved_status')}</p>
+                    <p style="margin: 8px 0 0; color: #a1a1aa; font-size: 13px;">${mailText(locale, 'email_kyc_approved_next_step')}</p>
                 </div>
                 <div style="text-align: center; margin: 24px 0;">
-                    <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/sell" style="display: inline-block; background: #f97316; color: #fff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">Đăng bán ngay →</a>
-                </div>
-                <p style="color: #71717a; font-size: 13px;">Cảm ơn bạn đã tham gia cộng đồng CardVerseHub!</p>`
+                    <a href="${appUrl}/sell" style="display: inline-block; background: #f97316; color: #fff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">${mailText(locale, 'email_kyc_approved_cta')} →</a>
+                </div>`,
+                locale,
             ),
         });
         console.log(`[Mail] KYC approved notification sent to ${userEmail}`);

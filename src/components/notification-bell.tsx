@@ -270,7 +270,9 @@ export function NotificationBell() {
                                     notification.id === newNotification.id ? { ...notification, read: true } : notification,
                                 ));
 
-                                if (newNotification.type === 'offer_accepted' && newNotification.offerId) {
+                                if (newNotification.type.startsWith('kyc_')) {
+                                    window.location.assign('/sell');
+                                } else if (newNotification.type === 'offer_accepted' && newNotification.offerId) {
                                     window.location.assign(`/checkout?offerId=${newNotification.offerId}`);
                                 } else if (newNotification.type === 'offer_accepted' && newNotification.transactionId) {
                                     window.location.assign(`/transaction/${newNotification.transactionId}`);
@@ -331,6 +333,11 @@ export function NotificationBell() {
     const handleNotificationClick = async (notification: Notification) => {
         await markAsRead(notification.id);
         setIsOpen(false);
+
+        if (notification.type.startsWith('kyc_')) {
+            router.push('/sell');
+            return;
+        }
 
         // Accepted offer → go straight to checkout. Legacy notifications may
         // still carry a transaction id, so keep that fallback alive.

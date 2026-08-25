@@ -143,6 +143,7 @@ export default function SellPage() {
   const [kycSession, setKycSession] = useState<KycSession | null>(null);
   const [isStartingKyc, setIsStartingKyc] = useState(false);
   const [isRefreshingKyc, setIsRefreshingKyc] = useState(false);
+  const [kycPollingTimedOut, setKycPollingTimedOut] = useState(false);
   const [kycError, setKycError] = useState<string | null>(null);
 
   const [bankScreenshotFile, setBankScreenshotFile] = useState<File | null>(null);
@@ -347,6 +348,7 @@ export default function SellPage() {
     || kycSession?.status === 'Abandoned'
     || kycSession?.status === 'Expired'
     || kycSession?.status === 'Kyc Expired';
+  const isKycUnderReview = kycSession?.status === 'In Review';
 
   // The name the provider actually read off the document. The server re-checks
   // every condition below before approving; this only keeps the user from
@@ -568,6 +570,7 @@ export default function SellPage() {
       const data = await readJson(res);
       const session = (data.session ?? null) as KycSession | null;
       setKycSession(session);
+      if (session?.status !== 'In Review') setKycPollingTimedOut(false);
 
       // Pre-fill the name the provider actually read, so the user is not left
       // guessing which spelling the document carries.
@@ -652,6 +655,7 @@ export default function SellPage() {
   const startKycVerification = async () => {
     setIsStartingKyc(true);
     setKycError(null);
+    setKycPollingTimedOut(false);
     try {
       const res = await fetch('/api/seller/kyc/session', {
         method: 'POST',
@@ -664,7 +668,18 @@ export default function SellPage() {
 
       const data = await readJson(res);
       if (!res.ok) {
-        setKycError(data.error || tx('Không thể khởi tạo phiên xác minh.', 'Could not start the verification session.', '確認セッションを開始できませんでした。'));
+        if (data.code === 'kyc_under_review' && data.session) {
+          // POST returns the authoritative session when this tab missed the
+          // initial GET or still holds stale state. Apply it before returning
+          // so the review/polling/support UI replaces the start button.
+          setKycSession(data.session as KycSession);
+          setKycPollingTimedOut(false);
+        }
+        setKycError(
+          data.code === 'kyc_under_review'
+            ? t('seller_kyc_under_review_error')
+            : data.error || tx('Không thể khởi tạo phiên xác minh.', 'Could not start the verification session.', '確認セッションを開始できませんでした。')
+        );
         return;
       }
 
@@ -681,19 +696,24 @@ export default function SellPage() {
   // Poll while a session is open. The webhook is the source of truth, but it
   // can arrive late, and the user is sitting on this screen waiting.
   useEffect(() => {
-    if (!user) return;
-    if (!isKycInFlight) return;
+    if (!user || !isKycInFlight) {
+      setKycPollingTimedOut(false);
+      return;
+    }
 
     // Each tick can cost a provider API call server-side, so stop after ~5
-    // minutes. The webhook is the real delivery path; someone who has not
-    // finished by then will reopen the session anyway.
+    // minutes. The webhook is the real delivery path; after that the UI offers
+    // an explicit check and support instead of asking the user to reopen it.
     let ticks = 0;
     const timer = setInterval(() => {
-      if (++ticks > 60) { clearInterval(timer); return; }
+      if (++ticks > 60) {
+        setKycPollingTimedOut(true);
+        clearInterval(timer);
+        return;
+      }
       refreshKycSession({ silent: true });
     }, 5000);
     return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, isKycInFlight]);
 
   const handlePhoneChange = (value: string) => {
@@ -757,13 +777,13 @@ export default function SellPage() {
 
       if (data.auto_approved) {
         toast({
-          title: tx('Đã xác minh xong!', 'Verification complete!', '確認が完了しました！'),
-          description: tx('Tài khoản của bạn đã được duyệt tự động. Bạn có thể bắt đầu đăng bán ngay.', 'Your account was approved automatically. You can start listing right away.', 'アカウントが自動承認されました。すぐに出品を開始できます。'),
+          title: t('seller_kyc_auto_approved_title'),
+          description: t('seller_kyc_auto_approved_description'),
         });
       } else {
         toast({
-          title: tx('Đã gửi yêu cầu xác minh', 'Verification request submitted', '確認申請を送信しました'),
-          description: tx('Hồ sơ cần admin soát lại. Chúng tôi sẽ phản hồi trong thời gian sớm nhất.', 'Your profile needs an admin review. We will get back to you shortly.', 'プロフィールは管理者の確認が必要です。折り返しご連絡します。'),
+          title: t('seller_kyc_submitted_title'),
+          description: t('seller_kyc_submitted_description'),
         });
       }
       fetchVerification();
@@ -1304,6 +1324,28 @@ export default function SellPage() {
                         <p className="font-medium">{verifiedName || '—'}</p>
                       </div>
                     </div>
+                  ) : isKycUnderReview ? (
+                    <div className="space-y-3 text-sm">
+                      <p className="text-orange-400 flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        {t('seller_kyc_in_review_status')}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {kycPollingTimedOut
+                          ? t('seller_kyc_in_review_timeout')
+                          : t('seller_kyc_in_review_description')}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => refreshKycSession()} disabled={isRefreshingKyc}>
+                          {t('seller_kyc_check_again')}
+                        </Button>
+                        {kycPollingTimedOut && (
+                          <Button type="button" variant="outline" size="sm" asChild>
+                            <Link href="/contact">{t('seller_kyc_contact_support')}</Link>
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                   ) : isKycInFlight ? (
                     <div className="space-y-3 text-sm">
                       <p className="text-orange-400 flex items-center gap-2">
@@ -1329,7 +1371,7 @@ export default function SellPage() {
                   )}
                 </div>
 
-                {!isKycApproved && (
+                {!isKycApproved && !isKycUnderReview && (
                   <Button
                     type="button"
                     onClick={startKycVerification}
