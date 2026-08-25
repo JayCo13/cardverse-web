@@ -20,7 +20,12 @@ const nextConfig: NextConfig = {
         optimizePackageImports: ['lucide-react', '@radix-ui/react-icons', '@phosphor-icons/react'],
     },
     compiler: {
-        removeConsole: process.env.NODE_ENV === 'production',
+        // Strip the chatty levels, keep the ones that explain a failure: this
+        // applies to route handlers too, and with a blanket `true` a 502 in
+        // production leaves nothing at all in the function logs.
+        removeConsole: process.env.NODE_ENV === 'production'
+            ? { exclude: ['error', 'warn'] }
+            : false,
     },
     compress: true,
     poweredByHeader: false,

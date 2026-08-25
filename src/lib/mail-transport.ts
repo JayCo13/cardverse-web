@@ -71,6 +71,13 @@ function smtpTransport(): MailTransport {
             user: process.env.SMTP_USER,
             pass: process.env.SMTP_PASSWORD,
         },
+        // Nodemailer waits two minutes by default. A serverless function is
+        // killed long before that, and outbound SMTP is exactly the kind of
+        // connection that hangs rather than refuses — so fail inside the
+        // request's own budget and let the caller report a real error.
+        connectionTimeout: 5_000,
+        greetingTimeout: 5_000,
+        socketTimeout: 8_000,
     }) as unknown as MailTransport;
 }
 

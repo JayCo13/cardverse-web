@@ -12,6 +12,9 @@ const MAX_SESSIONS_PER_HOUR = 5;
 /** Marks a failure that happened after the provider session was already created. */
 class PersistenceError extends Error {}
 
+/** Marks a step that ran out of the handler's own time budget. */
+class DeadlineError extends Error {}
+
 type KycSessionRow = {
     id: string;
     provider: string;
@@ -36,12 +39,47 @@ type KycSessionRow = {
  */
 const POLL_PROVIDER_BUDGET_MS = 4_000;
 
+/**
+ * Wall clock this handler allows itself, kept under Netlify's 10s function
+ * timeout with room for the platform's own overhead.
+ *
+ * Every await below is billed against it. Bounding only the provider call is
+ * not enough: auth, three database round trips and the provider's own 7s
+ * ceiling add up past 10s on a cold start, and the function is then killed
+ * mid-flight — which reaches the browser as an HTML 502 that no JSON error
+ * handling can read.
+ */
+const FUNCTION_BUDGET_MS = 8_500;
+
+/** Reserved out of the budget for the auth round trip. */
+const AUTH_BUDGET_MS = 2_500;
+
+/** Reserved out of the budget for the pre-checks. */
+const PRECHECK_BUDGET_MS = 2_500;
+
+/** Kept back so the session can still be written after the provider answers. */
+const PERSIST_RESERVE_MS = 1_500;
+
+/** Under this there is no point starting a provider call. */
+const MIN_PROVIDER_BUDGET_MS = 1_500;
+
+/** Cap on the approval handoff, which sends mail on a shared connection. */
+const NOTIFY_BUDGET_MS = 3_000;
+
 /** Resolves to null rather than waiting past the budget. */
-function withBudget<T>(work: Promise<T>): Promise<T | null> {
-    return Promise.race([
-        work,
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), POLL_PROVIDER_BUDGET_MS)),
-    ]);
+function withBudget<T>(work: Promise<T>, budgetMs: number = POLL_PROVIDER_BUDGET_MS): Promise<T | null> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expiry = new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), budgetMs);
+    });
+    return Promise.race([work, expiry]).finally(() => clearTimeout(timer));
+}
+
+/** Same, but an expired budget is an error rather than a missing value. */
+async function withDeadline<T>(work: Promise<T>, budgetMs: number, step: string): Promise<T> {
+    const result = await withBudget(work.then((value) => ({ value })), budgetMs);
+    if (!result) throw new DeadlineError(`${step} exceeded ${budgetMs}ms`);
+    return result.value;
 }
 
 const SESSION_COLUMNS =
@@ -73,9 +111,16 @@ function toClientShape(row: KycSessionRow) {
 
 // POST: open a hosted identity-verification session and return its URL.
 export async function POST(request: NextRequest) {
+    const startedAt = Date.now();
+    const remainingMs = () => FUNCTION_BUDGET_MS - (Date.now() - startedAt);
+
     try {
         const supabase = await createServerSupabaseClient();
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        const { data: { user }, error: authError } = await withDeadline(
+            supabase.auth.getUser(),
+            AUTH_BUDGET_MS,
+            'auth.getUser'
+        );
         if (authError || !user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
@@ -87,7 +132,7 @@ export async function POST(request: NextRequest) {
         // than two. This handler already spends its latency budget on auth,
         // the provider call and the insert; on a cold start the serial version
         // can push the whole function past the platform timeout.
-        const [existingResult, rateResult, latestResult] = await Promise.all([
+        const [existingResult, rateResult, latestResult] = await withDeadline(Promise.all([
             service
                 .from('seller_verifications')
                 .select('status')
@@ -106,7 +151,7 @@ export async function POST(request: NextRequest) {
                 .order('created_at', { ascending: false })
                 .limit(1)
                 .maybeSingle(),
-        ]);
+        ]), PRECHECK_BUDGET_MS, 'kyc pre-checks');
 
         const existing = existingResult.data as { status: string } | null;
         const count = rateResult.count;
@@ -161,12 +206,22 @@ export async function POST(request: NextRequest) {
         const origin = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
         const provider = getKycProvider();
 
+        // Hand the adapter what is actually left rather than letting it spend
+        // its own fixed ceiling: everything above has already been billed
+        // against the same function timeout, and the write below still needs
+        // its share.
+        const providerBudgetMs = remainingMs() - PERSIST_RESERVE_MS;
+        if (providerBudgetMs < MIN_PROVIDER_BUDGET_MS) {
+            throw new DeadlineError(`no time left for the provider call (${providerBudgetMs}ms)`);
+        }
+
         const session = await provider.createSession({
             userId: user.id,
             callbackUrl: `${origin}/sell/kyc/callback`,
             language,
             email: user.email,
             expectedFullName,
+            timeoutMs: providerBudgetMs,
         });
 
         // Upsert, not insert: the provider deduplicates by vendor_data, so it
@@ -198,23 +253,33 @@ export async function POST(request: NextRequest) {
         const message = error instanceof Error ? error.message : 'Internal server error';
 
         // Classify without leaking specifics. The operator needs to know which
-        // of the three things to go fix; the browser must not learn key names,
+        // of the four things to go fix; the browser must not learn key names,
         // provider responses, or database schema.
         const code =
             error instanceof PersistenceError ? 'persistence_error'
-                : /is not configured/.test(message) ? 'config_error'
-                    : 'provider_error';
+                : error instanceof DeadlineError || /timed out after/.test(message) ? 'timeout_error'
+                    : /is not configured/.test(message) ? 'config_error'
+                        : 'provider_error';
 
         const hint = {
             config_error: 'Thiếu biến môi trường Didit trên server.',
             provider_error: 'Nhà cung cấp xác minh từ chối yêu cầu.',
             persistence_error: 'Không ghi được phiên vào cơ sở dữ liệu.',
+            timeout_error: 'Hệ thống phản hồi quá chậm. Vui lòng thử lại sau ít phút.',
         }[code];
 
-        console.error(`[KYC] Create session failed (${code}):`, message);
+        // A timeout is the caller's to retry, and it is the one failure the
+        // platform would otherwise report as an unreadable HTML 502 — answer it
+        // as 504 so the browser can tell "try again" from "go fix the server".
+        const status = code === 'timeout_error' ? 504 : 502;
+
+        console.error(
+            `[KYC] Create session failed (${code}) after ${Date.now() - startedAt}ms:`,
+            message
+        );
         return NextResponse.json(
             { error: `Không thể khởi tạo phiên xác minh. ${hint}`, code },
-            { status: 502 }
+            { status }
         );
     }
 }
@@ -227,21 +292,29 @@ export async function POST(request: NextRequest) {
  * MRZ, scores) can never be pulled client-side.
  */
 export async function GET() {
+    const startedAt = Date.now();
+    const remainingMs = () => FUNCTION_BUDGET_MS - (Date.now() - startedAt);
+
     try {
         const supabase = await createServerSupabaseClient();
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        const { data: { user }, error: authError } = await withDeadline(
+            supabase.auth.getUser(),
+            AUTH_BUDGET_MS,
+            'auth.getUser'
+        );
         if (authError || !user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
         const service = createServiceSupabaseClient();
-        const { data: row } = await service
+        const { data: row } = await withDeadline(service
             .from('kyc_sessions')
             .select(SESSION_COLUMNS)
             .eq('user_id', user.id)
             .order('created_at', { ascending: false })
             .limit(1)
-            .maybeSingle() as { data: KycSessionRow | null };
+            .maybeSingle() as unknown as Promise<{ data: KycSessionRow | null }>,
+            PRECHECK_BUDGET_MS, 'kyc session read');
 
         if (!row) return NextResponse.json({ session: null });
 
@@ -251,7 +324,20 @@ export async function GET() {
         if (POLLABLE_STATUSES.includes(row.status as KycStatus)) {
             try {
                 const provider = getKycProvider();
-                const decision = await withBudget(provider.getDecision(row.provider_session_id));
+                // Bound the adapter too, not just the wait: racing a promise
+                // leaves the request itself running against the provider's own
+                // ceiling, and that pending work is what holds the function
+                // open past the platform timeout.
+                // Never more than what is left after the reserve, so a slow
+                // provider cannot push the poll past the function timeout.
+                const pollBudgetMs = Math.min(
+                    POLL_PROVIDER_BUDGET_MS,
+                    remainingMs() - PERSIST_RESERVE_MS - NOTIFY_BUDGET_MS
+                );
+                const decision = pollBudgetMs <= 0 ? null : await withBudget(
+                    provider.getDecision(row.provider_session_id, pollBudgetMs),
+                    pollBudgetMs
+                );
                 if (decision && decision.status !== row.status) {
                     const { data: updated } = await service
                         .from('kyc_sessions')
@@ -261,11 +347,15 @@ export async function GET() {
                         .single() as { data: KycSessionRow | null };
                     if (updated) {
                         if (updated.status === 'Approved') {
-                            await notifyKycIdentityApproved({
+                            // Budgeted: the handoff sends mail, and a stalled
+                            // SMTP connection must not cost the user the status
+                            // they are polling for. The claim is idempotent, so
+                            // an abandoned send is simply retried next poll.
+                            await withBudget(notifyKycIdentityApproved({
                                 service,
                                 sessionId: updated.id,
                                 userEmail: user.email,
-                            });
+                            }), Math.min(NOTIFY_BUDGET_MS, Math.max(0, remainingMs())));
                         }
                         return NextResponse.json({ session: toClientShape(updated) });
                     }
@@ -280,17 +370,23 @@ export async function GET() {
         // run on every poll, re-reading the session and re-upserting the
         // notification long after the email had gone out.
         if (row.status === 'Approved' && !row.identity_email_sent_at) {
-            await notifyKycIdentityApproved({
+            await withBudget(notifyKycIdentityApproved({
                 service,
                 sessionId: row.id,
                 userEmail: user.email,
-            });
+            }), Math.min(NOTIFY_BUDGET_MS, Math.max(0, remainingMs())));
         }
 
         return NextResponse.json({ session: toClientShape(row) });
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Internal server error';
-        console.error('[KYC] Get session failed:', message);
-        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+        const timedOut = error instanceof DeadlineError;
+        console.error(`[KYC] Get session failed after ${Date.now() - startedAt}ms:`, message);
+        return NextResponse.json(
+            timedOut
+                ? { error: 'Máy chủ phản hồi chậm. Vui lòng thử lại.', code: 'timeout_error' }
+                : { error: 'Internal server error' },
+            { status: timedOut ? 504 : 500 }
+        );
     }
 }

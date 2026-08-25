@@ -37,6 +37,14 @@ export interface CreateKycSessionInput {
     email?: string | null;
     /** Name the user typed, passed as a hint so the provider can cross-check. */
     expectedFullName?: string | null;
+    /**
+     * How long the caller is still allowed to wait on the provider.
+     *
+     * The handler knows how much of the platform's function budget it has
+     * already spent; the adapter does not. Passing what is left keeps a slow
+     * provider from taking the whole function down with it.
+     */
+    timeoutMs?: number;
 }
 
 export interface CreatedKycSession {
@@ -94,7 +102,7 @@ export interface KycWebhookEvent {
 export interface KycProvider {
     readonly name: string;
     createSession(input: CreateKycSessionInput): Promise<CreatedKycSession>;
-    getDecision(providerSessionId: string): Promise<KycDecision>;
+    getDecision(providerSessionId: string, timeoutMs?: number): Promise<KycDecision>;
     /**
      * Verify the signature and return the event, or null when the signature,
      * timestamp, or payload shape is not acceptable. Never throws on bad input

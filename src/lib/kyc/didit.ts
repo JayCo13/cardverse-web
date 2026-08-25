@@ -291,13 +291,28 @@ function mrzReadWarnings(mrz: Record<string, unknown> | null): KycWarning[] {
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 /**
+ * Fallback ceiling for a provider call when the caller does not say how much
+ * of its own budget is left.
+ *
  * Must stay below the platform's function timeout (10s on Netlify by default).
  * Otherwise a slow provider takes the whole function down and the caller gets
- * an HTML 502 from the edge instead of a JSON error it can act on.
+ * an HTML 502 from the edge instead of a JSON error it can act on. Callers
+ * that have already spent part of that budget on auth and database round trips
+ * pass a smaller number — a fixed 7s here plus their own latency is exactly
+ * how the function ends up over the limit.
  */
 const REQUEST_TIMEOUT_MS = 7_000;
 
-async function diditFetch(path: string, init: RequestInit) {
+/** Below this a call cannot realistically complete; fail fast instead. */
+const MIN_TIMEOUT_MS = 1_000;
+
+function resolveTimeout(timeoutMs?: number) {
+    if (!Number.isFinite(timeoutMs)) return REQUEST_TIMEOUT_MS;
+    return Math.min(REQUEST_TIMEOUT_MS, Math.max(MIN_TIMEOUT_MS, Math.floor(timeoutMs as number)));
+}
+
+async function diditFetch(path: string, init: RequestInit, timeoutMs?: number) {
+    const budget = resolveTimeout(timeoutMs);
     let response: Response;
     try {
         response = await fetch(`${baseUrl()}${path}`, {
@@ -307,12 +322,12 @@ async function diditFetch(path: string, init: RequestInit) {
                 'Content-Type': 'application/json',
                 ...(init.headers || {}),
             },
-            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+            signal: AbortSignal.timeout(budget),
         });
     } catch (error) {
         const name = (error as Error)?.name;
         if (name === 'TimeoutError' || name === 'AbortError') {
-            throw new Error(`Didit ${path} timed out after ${REQUEST_TIMEOUT_MS}ms`);
+            throw new Error(`Didit ${path} timed out after ${budget}ms`);
         }
         throw new Error(`Didit ${path} unreachable: ${(error as Error)?.message || 'network error'}`);
     }
@@ -361,7 +376,7 @@ export const diditProvider: KycProvider = {
         const data = await diditFetch('/v3/session/', {
             method: 'POST',
             body: JSON.stringify(body),
-        });
+        }, input.timeoutMs);
 
         const providerSessionId = str(data.session_id);
         const url = str(data.url);
@@ -377,10 +392,11 @@ export const diditProvider: KycProvider = {
         };
     },
 
-    async getDecision(providerSessionId: string): Promise<KycDecision> {
+    async getDecision(providerSessionId: string, timeoutMs?: number): Promise<KycDecision> {
         const data = await diditFetch(
             `/v3/session/${encodeURIComponent(providerSessionId)}/decision/`,
-            { method: 'GET' }
+            { method: 'GET' },
+            timeoutMs
         );
 
         return {
