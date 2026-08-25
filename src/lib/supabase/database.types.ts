@@ -979,6 +979,7 @@ export interface Database {
                     offer_id: string | null
                     conversation_id: string | null
                     transaction_id: string | null
+                    kyc_session_id: string | null
                     read: boolean
                     created_at: string
                 }
@@ -992,6 +993,7 @@ export interface Database {
                     offer_id?: string | null
                     conversation_id?: string | null
                     transaction_id?: string | null
+                    kyc_session_id?: string | null
                     read?: boolean
                     created_at?: string
                 }
@@ -1005,6 +1007,7 @@ export interface Database {
                     offer_id?: string | null
                     conversation_id?: string | null
                     transaction_id?: string | null
+                    kyc_session_id?: string | null
                     read?: boolean
                     created_at?: string
                 }
@@ -1151,8 +1154,11 @@ export interface Database {
                     id_card_front_url: string | null
                     id_card_back_url: string | null
                     bank_name: string
+                    bank_bin: string | null
                     bank_account_number: string
                     bank_account_name: string
+                    bank_account_name_verified: string | null
+                    bank_verified_at: string | null
                     bank_screenshot_url: string | null
                     phone_number: string | null
                     ai_cccd_name: string | null
@@ -1184,8 +1190,11 @@ export interface Database {
                     id_card_front_url?: string | null
                     id_card_back_url?: string | null
                     bank_name: string
+                    bank_bin?: string | null
                     bank_account_number: string
                     bank_account_name: string
+                    bank_account_name_verified?: string | null
+                    bank_verified_at?: string | null
                     bank_screenshot_url?: string | null
                     phone_number?: string | null
                     ai_cccd_name?: string | null
@@ -1217,8 +1226,11 @@ export interface Database {
                     id_card_front_url?: string | null
                     id_card_back_url?: string | null
                     bank_name?: string
+                    bank_bin?: string | null
                     bank_account_number?: string
                     bank_account_name?: string
+                    bank_account_name_verified?: string | null
+                    bank_verified_at?: string | null
                     bank_screenshot_url?: string | null
                     phone_number?: string | null
                     ai_cccd_name?: string | null
@@ -1251,6 +1263,9 @@ export interface Database {
                     provider: string
                     provider_session_id: string
                     session_url: string | null
+                    locale: string
+                    identity_email_sending_at: string | null
+                    identity_email_sent_at: string | null
                     workflow_id: string | null
                     status: string
                     verified_full_name: string | null
@@ -1273,6 +1288,9 @@ export interface Database {
                     provider?: string
                     provider_session_id: string
                     session_url?: string | null
+                    locale?: string
+                    identity_email_sending_at?: string | null
+                    identity_email_sent_at?: string | null
                     workflow_id?: string | null
                     status?: string
                     verified_full_name?: string | null
@@ -1295,6 +1313,9 @@ export interface Database {
                     provider?: string
                     provider_session_id?: string
                     session_url?: string | null
+                    locale?: string
+                    identity_email_sending_at?: string | null
+                    identity_email_sent_at?: string | null
                     workflow_id?: string | null
                     status?: string
                     verified_full_name?: string | null
@@ -1646,6 +1667,14 @@ export interface Database {
             pokemon_sets_jp: { Row: { set_name: string | null } }
         }
         Functions: {
+            claim_kyc_identity_email: {
+                Args: { p_session_id: string }
+                Returns: { user_id: string; verified_full_name: string | null; locale: string }[]
+            }
+            finalize_seller_verification: {
+                Args: { p_user_id: string; p_session_id: string; p_verification: Json; p_auto_approved: boolean }
+                Returns: Json
+            }
             request_wallet_withdrawal: {
                 Args: { p_amount: number; p_request_idempotency_key: string }
                 Returns: Json

@@ -17,6 +17,9 @@ const NOTIFICATION_KEYS: Partial<Record<Notification['type'], readonly [Translat
   dispute_resolved: ['notification_dispute_resolved_title', 'notification_dispute_resolved_message'],
   withdrawal_completed: ['notification_withdrawal_completed_title', 'notification_withdrawal_completed_message'],
   card_sold: ['notification_card_sold_title', 'notification_card_sold_message'],
+  kyc_identity_approved: ['notification_kyc_identity_approved_title', 'notification_kyc_identity_approved_message'],
+  kyc_approved: ['notification_kyc_approved_title', 'notification_kyc_approved_message'],
+  kyc_rejected: ['notification_kyc_rejected_title', 'notification_kyc_rejected_message'],
 };
 
 export function localizeSystemNotification(notification: Notification, t: Translate) {
