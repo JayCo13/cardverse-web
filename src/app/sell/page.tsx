@@ -93,11 +93,16 @@ async function readJson(res: Response): Promise<Record<string, any>> {
     try {
         return JSON.parse(text) as Record<string, any>;
     } catch {
+        // Name the endpoint and the status. Without them the message says only
+        // that something returned a page, which is the same for a route that
+        // 404s, one that times out, and one that crashed — three different
+        // problems that were being reported identically.
+        const path = new URL(res.url, window.location.origin).pathname;
         const isHtml = text.trimStart().startsWith('<');
         throw new Error(
             isHtml
-                ? `Máy chủ trả về trang lỗi (HTTP ${res.status}) thay vì dữ liệu. Endpoint có thể chưa được deploy.`
-                : `Phản hồi không hợp lệ từ máy chủ (HTTP ${res.status}).`
+                ? `Máy chủ lỗi khi gọi ${path} (HTTP ${res.status}). Nhiều khả năng hàm bị quá thời gian hoặc dừng đột ngột.`
+                : `Phản hồi không hợp lệ từ ${path} (HTTP ${res.status}).`
         );
     }
 }
