@@ -34,12 +34,13 @@ export async function POST(request: NextRequest) {
 
         if (lookup.status === 'unavailable') {
             // Say which it is. "Temporarily disrupted" is wrong — and unhelpful —
-            // when the lookup is simply not on our plan, because then waiting
-            // and retrying will never work.
+            // when the key is missing, rejected, or out of balance, because then
+            // waiting and retrying will never work. Those three read the same to
+            // a seller; they are told to type the name and move on.
             const message =
                 lookup.reason === 'rate_limited'
                     ? 'Bạn đã tra cứu quá nhiều lần. Vui lòng thử lại sau 1 giờ.'
-                    : lookup.reason === 'not_configured' || lookup.reason === 'plan_required' || lookup.reason === 'unauthorized'
+                    : lookup.reason === 'not_configured' || lookup.reason === 'unauthorized' || lookup.reason === 'insufficient_balance'
                         ? 'Tra cứu tự động chưa được bật. Vui lòng nhập tên chủ tài khoản đúng như trên giấy tờ — admin sẽ đối chiếu khi duyệt.'
                         : 'Dịch vụ tra cứu ngân hàng đang gián đoạn. Bạn vẫn có thể gửi hồ sơ, admin sẽ kiểm tra thủ công.';
 

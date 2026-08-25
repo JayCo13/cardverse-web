@@ -10,7 +10,7 @@ import { findKycDuplicates } from '@/lib/kyc-duplicate';
 import { getAdminNotificationEmails } from '@/lib/admin-recipients';
 import { checkNameConsistency, evaluateIdentity, type KycIdentity } from '@/lib/kyc';
 import { verifyBankAccount, checkBankAccountHolder } from '@/lib/bank-verification';
-import { isBankLookupConfigured } from '@/lib/vietqr';
+import { isBankLookupConfigured } from '@/lib/bank-lookup';
 import type { SupportedLocale } from '@/lib/request-localization';
 
 type KycSessionRow = {

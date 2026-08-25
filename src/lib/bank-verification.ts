@@ -1,8 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { lookupBankAccountName, type BankLookupResult } from './vietqr';
+import { lookupBankAccountName, type BankLookupResult } from './bank-lookup';
 import { namesMatch, normalizeVietnameseName } from './kyc-verification';
 
-/** Lookups a single user may trigger per hour. Each one costs VietQR quota. */
+/** Lookups a single user may trigger per hour. Each successful one is billed. */
 const MAX_LOOKUPS_PER_HOUR = 15;
 
 /** How long a successful lookup stands in for a fresh call. */
