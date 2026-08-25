@@ -22,10 +22,30 @@ type KycSessionRow = {
     verified_full_name: string | null;
     consumed_at: string | null;
     created_at: string;
+    identity_email_sent_at: string | null;
 };
 
+/**
+ * How long this handler will wait on the provider before giving up and
+ * answering with the stored status.
+ *
+ * The browser polls this endpoint every few seconds, and the provider call is
+ * only a fallback for a webhook that has not arrived yet — so it must never
+ * spend the whole function budget. Netlify stops a function at 10s, and a
+ * timeout there reaches the browser as an HTML 502 rather than a JSON reply.
+ */
+const POLL_PROVIDER_BUDGET_MS = 4_000;
+
+/** Resolves to null rather than waiting past the budget. */
+function withBudget<T>(work: Promise<T>): Promise<T | null> {
+    return Promise.race([
+        work,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), POLL_PROVIDER_BUDGET_MS)),
+    ]);
+}
+
 const SESSION_COLUMNS =
-    'id, provider, provider_session_id, session_url, locale, status, verified_full_name, consumed_at, created_at';
+    'id, provider, provider_session_id, session_url, locale, status, verified_full_name, consumed_at, created_at, identity_email_sent_at';
 
 /**
  * Statuses where the user still has work to do at the provider, so the same
@@ -231,8 +251,8 @@ export async function GET() {
         if (POLLABLE_STATUSES.includes(row.status as KycStatus)) {
             try {
                 const provider = getKycProvider();
-                const decision = await provider.getDecision(row.provider_session_id);
-                if (decision.status !== row.status) {
+                const decision = await withBudget(provider.getDecision(row.provider_session_id));
+                if (decision && decision.status !== row.status) {
                     const { data: updated } = await service
                         .from('kyc_sessions')
                         .update(toKycSessionDecisionUpdate(decision) as never)
@@ -256,7 +276,10 @@ export async function GET() {
             }
         }
 
-        if (row.status === 'Approved') {
+        // Only when the handoff has not been delivered yet. This branch used to
+        // run on every poll, re-reading the session and re-upserting the
+        // notification long after the email had gone out.
+        if (row.status === 'Approved' && !row.identity_email_sent_at) {
             await notifyKycIdentityApproved({
                 service,
                 sessionId: row.id,
