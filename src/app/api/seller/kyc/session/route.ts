@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { getKycProvider } from '@/lib/kyc';
+import type { KycStatus } from '@/lib/kyc';
+import { toKycSessionDecisionUpdate } from '@/lib/kyc/session-decision';
+import { notifyKycIdentityApproved } from '@/lib/kyc/identity-notification';
 
 /** Sessions a user may open per hour. Each one costs a provider credit. */
 const MAX_SESSIONS_PER_HOUR = 5;
@@ -14,6 +17,7 @@ type KycSessionRow = {
     provider: string;
     provider_session_id: string;
     session_url: string | null;
+    locale: string;
     status: string;
     verified_full_name: string | null;
     consumed_at: string | null;
@@ -21,7 +25,7 @@ type KycSessionRow = {
 };
 
 const SESSION_COLUMNS =
-    'id, provider, provider_session_id, session_url, status, verified_full_name, consumed_at, created_at';
+    'id, provider, provider_session_id, session_url, locale, status, verified_full_name, consumed_at, created_at';
 
 /**
  * Statuses where the user still has work to do at the provider, so the same
@@ -29,6 +33,8 @@ const SESSION_COLUMNS =
  * Abandoned, Kyc Expired) must start a fresh one.
  */
 const RESUMABLE_STATUSES = ['Not Started', 'In Progress', 'Awaiting User'];
+
+const POLLABLE_STATUSES: readonly KycStatus[] = ['Not Started', 'In Progress', 'In Review'];
 
 /** Provider sessions do not live forever; past this we start a new one. */
 const RESUME_WINDOW_MS = 12 * 60 * 60 * 1000;
@@ -94,6 +100,13 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Hồ sơ đang chờ duyệt.' }, { status: 400 });
         }
 
+        if (latest?.status === 'In Review') {
+            return NextResponse.json({
+                code: 'kyc_under_review',
+                session: toClientShape(latest),
+            }, { status: 409 });
+        }
+
         // Resume an unfinished session rather than opening another one. The
         // user backing out of the provider's page and clicking again is the
         // normal case, and creating a second session there costs a credit and
@@ -122,6 +135,7 @@ export async function POST(request: NextRequest) {
 
         const body = await request.json().catch(() => ({} as Record<string, unknown>));
         const language = typeof body?.language === 'string' ? body.language : 'vi';
+        const locale = language === 'ja' ? 'ja-JP' : language === 'en' ? 'en-US' : 'vi-VN';
         const expectedFullName = typeof body?.full_name === 'string' ? body.full_name : null;
 
         const origin = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
@@ -145,6 +159,7 @@ export async function POST(request: NextRequest) {
                 provider: provider.name,
                 provider_session_id: session.providerSessionId,
                 session_url: session.url,
+                locale,
                 workflow_id: session.workflowId,
                 status: session.status,
             } as never, { onConflict: 'provider,provider_session_id' })
@@ -213,23 +228,40 @@ export async function GET() {
         // Webhooks can be delayed or lost. If the user is back on our callback
         // page and the session is still open, ask the provider directly rather
         // than leaving the UI spinning.
-        if (row.status === 'Not Started' || row.status === 'In Progress') {
+        if (POLLABLE_STATUSES.includes(row.status as KycStatus)) {
             try {
                 const provider = getKycProvider();
                 const decision = await provider.getDecision(row.provider_session_id);
                 if (decision.status !== row.status) {
                     const { data: updated } = await service
                         .from('kyc_sessions')
-                        .update({ status: decision.status } as never)
+                        .update(toKycSessionDecisionUpdate(decision) as never)
                         .eq('id', row.id)
                         .select(SESSION_COLUMNS)
                         .single() as { data: KycSessionRow | null };
-                    if (updated) return NextResponse.json({ session: toClientShape(updated) });
+                    if (updated) {
+                        if (updated.status === 'Approved') {
+                            await notifyKycIdentityApproved({
+                                service,
+                                sessionId: updated.id,
+                                userEmail: user.email,
+                            });
+                        }
+                        return NextResponse.json({ session: toClientShape(updated) });
+                    }
                 }
             } catch (pollError) {
                 // Non-fatal: fall through and report the stored status.
                 console.warn('[KYC] Status poll failed:', pollError);
             }
+        }
+
+        if (row.status === 'Approved') {
+            await notifyKycIdentityApproved({
+                service,
+                sessionId: row.id,
+                userEmail: user.email,
+            });
         }
 
         return NextResponse.json({ session: toClientShape(row) });

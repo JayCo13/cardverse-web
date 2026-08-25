@@ -11,6 +11,7 @@ import { getAdminNotificationEmails } from '@/lib/admin-recipients';
 import { checkNameConsistency, evaluateIdentity, type KycIdentity } from '@/lib/kyc';
 import { verifyBankAccount, checkBankAccountHolder } from '@/lib/bank-verification';
 import { isBankLookupConfigured } from '@/lib/vietqr';
+import type { SupportedLocale } from '@/lib/request-localization';
 
 type KycSessionRow = {
     id: string;
@@ -26,12 +27,18 @@ type KycSessionRow = {
     nfc_verified: boolean;
     warnings: unknown;
     consumed_at: string | null;
+    locale: string;
 };
 
-async function notifySubmission(userEmail: string, fullName: string) {
+function toSupportedLocale(locale: string): SupportedLocale {
+    if (locale === 'en-US' || locale === 'ja-JP') return locale;
+    return 'vi-VN';
+}
+
+async function notifySubmission(userEmail: string, fullName: string, locale: SupportedLocale) {
     const adminEmails = await getAdminNotificationEmails();
     const deliveries: Promise<void>[] = [sendKYCSubmittedToAdmin(fullName, userEmail, adminEmails)];
-    if (userEmail) deliveries.push(sendKYCSubmittedToUser(userEmail, fullName));
+    if (userEmail) deliveries.push(sendKYCSubmittedToUser(userEmail, fullName, locale));
     await Promise.allSettled(deliveries);
 }
 
@@ -99,7 +106,7 @@ export async function POST(request: NextRequest) {
             .from('kyc_sessions')
             .select(
                 'id, user_id, provider, status, verified_full_name, verified_dob, verified_document_type, ' +
-                'document_number_hash, liveness_score, face_match_score, nfc_verified, warnings, consumed_at'
+                'document_number_hash, liveness_score, face_match_score, nfc_verified, warnings, consumed_at, locale'
             )
             .eq('id', kyc_session_id)
             .eq('user_id', user.id)
@@ -125,7 +132,9 @@ export async function POST(request: NextRequest) {
 
         // Everything that could send this to manual review, collected together.
         const reviewFlags: string[] = [
-            ...evaluateIdentity(identity),
+            ...evaluateIdentity(identity, undefined, {
+                hasDocumentNumberHash: !!session.document_number_hash,
+            }),
             ...checkNameConsistency({
                 verifiedName: session.verified_full_name,
                 submittedName: full_name,
@@ -198,9 +207,7 @@ export async function POST(request: NextRequest) {
 
         // Clean identity + matching names + no duplicate => no human needed.
         const autoApproved = autoApproveEnabled && reviewFlags.length === 0;
-        const status = autoApproved ? 'approved' : 'pending';
-
-        const record = {
+        const verificationPayload = {
             full_name,
             bank_name,
             bank_bin: bank_bin ? String(bank_bin) : null,
@@ -212,60 +219,30 @@ export async function POST(request: NextRequest) {
             bank_verified_at: bankVerifiedAt,
             bank_screenshot_url: bank_screenshot_url || null,
             phone_number,
-            kyc_session_id: session.id,
-            kyc_provider: session.provider,
-            document_number_hash: session.document_number_hash,
-            ai_cccd_name: session.verified_full_name,
             ai_name_match: reviewFlags.length === 0,
             is_duplicate: isDuplicate,
             duplicate_notes: duplicateNotes,
-            auto_approved: autoApproved,
             review_flags: reviewFlags.length > 0 ? reviewFlags : null,
-            status,
-            rejection_reason: null,
-            reviewed_by: null,
-            reviewed_at: autoApproved ? new Date().toISOString() : null,
-            updated_at: new Date().toISOString(),
         };
 
-        if (existing) {
-            const { error: updateError } = await service
-                .from('seller_verifications')
-                .update(record as never)
-                .eq('id', existing.id);
-            if (updateError) throw updateError;
-        } else {
-            const { error: insertError } = await service
-                .from('seller_verifications')
-                .insert({ user_id: user.id, ...record } as never);
-            if (insertError) throw insertError;
-        }
-
-        // Redeem the session so one approved identity cannot back a second
-        // submission with different payout details.
-        await service
-            .from('kyc_sessions')
-            .update({ consumed_at: new Date().toISOString() } as never)
-            .eq('id', session.id);
+        // Lock + consume the provider session, write the verification and grant
+        // seller rights (when clean) in one transaction. A double-submit can no
+        // longer redeem the same identity twice or leave a half-written result.
+        const { error: finalizeError } = await service.rpc('finalize_seller_verification' as never, {
+            p_user_id: user.id,
+            p_session_id: session.id,
+            p_verification: verificationPayload,
+            p_auto_approved: autoApproved,
+        } as never);
+        if (finalizeError) throw finalizeError;
 
         const userEmail = user.email || '';
+        const locale = toSupportedLocale(session.locale);
 
         if (autoApproved) {
-            await service
-                .from('profiles')
-                .update({ seller_verified: true } as never)
-                .eq('id', user.id);
-
-            await service.from('notifications').insert({
-                user_id: user.id,
-                type: 'kyc_approved',
-                title: '✅ Xác minh đã được duyệt!',
-                message: 'Tài khoản của bạn đã được xác minh tự động. Bạn có thể bắt đầu đăng bán thẻ ngay!',
-            } as never);
-
             // Awaited: on serverless the function freezes once the response is
             // returned, which would cut an in-flight SMTP send.
-            if (userEmail) await sendKYCApproved(userEmail, full_name);
+            if (userEmail) await sendKYCApproved(userEmail, full_name, locale);
 
             return NextResponse.json({
                 success: true,
@@ -275,7 +252,7 @@ export async function POST(request: NextRequest) {
             });
         }
 
-        await notifySubmission(userEmail, full_name);
+        await notifySubmission(userEmail, full_name, locale);
 
         return NextResponse.json({
             success: true,
