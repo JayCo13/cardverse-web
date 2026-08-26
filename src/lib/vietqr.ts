@@ -2,9 +2,14 @@
  * VietQR bank directory.
  *
  * Public, free and unauthenticated — the one part of VietQR still worth using
- * after lookup moved behind a subscription. It is the source of truth for the
- * BIN the seller form submits, and for translating that BIN into the short bank
- * code the lookup provider expects (see `./bank-lookup`).
+ * after lookup moved behind a subscription. It backs the seller form's bank
+ * dropdown and is the source of the BIN that form submits.
+ *
+ * It is NOT a source of bank codes for the lookup provider. The two directories
+ * disagree on 18 of 59 shared BINs, and two of those collide: VietQR's "SCB"
+ * (970429) is the lookup provider's Sacombank. `./bank-lookup` resolves codes
+ * from the provider's own list for exactly that reason — do not add a
+ * BIN-to-code helper here.
  */
 
 const BANKS_URL = 'https://api.vietqr.io/v2/banks';
@@ -41,17 +46,4 @@ export async function getVietQrBanks(): Promise<VietQrBank[]> {
         logo: String(bank.logo ?? ''),
         lookupSupported: Number(bank.lookupSupported ?? 0),
     })).filter((bank: VietQrBank) => bank.bin && bank.shortName);
-}
-
-/**
- * Short bank code ("VCB") for a NAPAS BIN ("970436").
- *
- * The rest of the system carries the BIN because that is what NAPAS and the
- * seller form use; the lookup provider keys on the code instead. Resolving it
- * here keeps that mismatch in one place, off the shape stored in
- * `bank_account_lookups`.
- */
-export async function bankCodeForBin(bin: string): Promise<string | null> {
-    const banks = await getVietQrBanks();
-    return banks.find((bank) => bank.bin === bin)?.code || null;
 }
