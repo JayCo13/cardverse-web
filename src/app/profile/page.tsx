@@ -33,13 +33,60 @@ const formatVnd = (amount: number | null | undefined) =>
         ? "—"
         : new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
 
-/** Rank thresholds, measured in completed sales. */
+/**
+ * Rank thresholds, measured in completed sales.
+ *
+ * Each rank carries a struck-metal face rather than a flat colour wash. A
+ * translucent tint over a dark page has almost no contrast — the badge reads as
+ * a smudge behind the icon instead of as an award — so the medal gets a lit
+ * gradient, a hairline rim and a coloured glow, which is what makes it look
+ * like an object sitting on the page.
+ *
+ * These class strings must stay in this file: Tailwind only scans
+ * src/{app,components,pages}, so a palette moved to src/lib stops being
+ * generated. See the category-badge note in CLAUDE.md.
+ */
 const RANKS = [
-    { name: "Bronze", minSales: 0, icon: Shield, color: "text-orange-500", bgColor: "bg-orange-500/10", ring: "ring-orange-500/40" },
-    { name: "Silver", minSales: 5, icon: Shield, color: "text-zinc-300", bgColor: "bg-zinc-400/10", ring: "ring-zinc-400/40" },
-    { name: "Gold", minSales: 15, icon: Star, color: "text-yellow-500", bgColor: "bg-yellow-500/10", ring: "ring-yellow-500/40" },
-    { name: "Platinum", minSales: 30, icon: Award, color: "text-cyan-400", bgColor: "bg-cyan-500/10", ring: "ring-cyan-500/40" },
-    { name: "Diamond", minSales: 50, icon: Crown, color: "text-purple-400", bgColor: "bg-purple-500/10", ring: "ring-purple-500/40" },
+    {
+        name: "Bronze", minSales: 0, icon: Shield,
+        medal: "bg-[linear-gradient(135deg,#fbbf24_0%,#f97316_45%,#9a3412_100%)]",
+        glow: "shadow-[0_0_16px_-2px_rgba(249,115,22,0.65)]",
+        ring: "ring-orange-500/50",
+        text: "text-orange-400",
+        soft: "bg-orange-500/10",
+    },
+    {
+        name: "Silver", minSales: 5, icon: Shield,
+        medal: "bg-[linear-gradient(135deg,#f4f4f5_0%,#a1a1aa_45%,#52525b_100%)]",
+        glow: "shadow-[0_0_16px_-2px_rgba(212,212,216,0.55)]",
+        ring: "ring-zinc-300/50",
+        text: "text-zinc-200",
+        soft: "bg-zinc-400/10",
+    },
+    {
+        name: "Gold", minSales: 15, icon: Star,
+        medal: "bg-[linear-gradient(135deg,#fde68a_0%,#f59e0b_45%,#b45309_100%)]",
+        glow: "shadow-[0_0_18px_-2px_rgba(245,158,11,0.7)]",
+        ring: "ring-amber-400/60",
+        text: "text-amber-300",
+        soft: "bg-amber-500/10",
+    },
+    {
+        name: "Platinum", minSales: 30, icon: Award,
+        medal: "bg-[linear-gradient(135deg,#cffafe_0%,#22d3ee_45%,#0e7490_100%)]",
+        glow: "shadow-[0_0_18px_-2px_rgba(34,211,238,0.65)]",
+        ring: "ring-cyan-300/60",
+        text: "text-cyan-300",
+        soft: "bg-cyan-500/10",
+    },
+    {
+        name: "Diamond", minSales: 50, icon: Crown,
+        medal: "bg-[linear-gradient(135deg,#f0abfc_0%,#a855f7_45%,#6d28d9_100%)]",
+        glow: "shadow-[0_0_20px_-2px_rgba(168,85,247,0.7)]",
+        ring: "ring-fuchsia-400/60",
+        text: "text-fuchsia-300",
+        soft: "bg-fuchsia-500/10",
+    },
 ];
 
 /**
@@ -393,8 +440,17 @@ export default function ProfilePage() {
     const activeCards = listings.filter((c) => c.status !== "sold");
     const purchases = transactions.filter((t) => t.direction === "buy" && t.status === "completed");
 
-    const listingTypeLabel = (type: string | null) =>
-        type === "auction" ? copy.auction : type === "razz" ? copy.razz : copy.buyNow;
+    /**
+     * Listing type as a coloured chip. All three rendered as the same grey
+     * outline before, so the one thing that changes how a card is bought was
+     * the least visible label on the tile.
+     */
+    const listingTypeChip = (type: string | null) =>
+        type === "auction"
+            ? { label: copy.auction, className: "bg-amber-500/15 text-amber-300 ring-1 ring-inset ring-amber-500/30" }
+            : type === "razz"
+                ? { label: copy.razz, className: "bg-fuchsia-500/15 text-fuchsia-300 ring-1 ring-inset ring-fuchsia-500/30" }
+                : { label: copy.buyNow, className: "bg-emerald-500/15 text-emerald-300 ring-1 ring-inset ring-emerald-500/30" };
 
     const statusLabel = (status: string | null) =>
         status === "completed" ? copy.completed
@@ -410,7 +466,7 @@ export default function ProfilePage() {
                 <section className="rounded-2xl border bg-gradient-to-br from-primary/10 via-background to-background p-6 md:p-8 mb-6">
                     <div className="flex flex-col sm:flex-row items-start gap-6">
                         <div className="relative shrink-0">
-                            <div className={`relative w-24 h-24 md:w-28 md:h-28 rounded-full overflow-hidden bg-muted ring-4 ${rank.ring}`}>
+                            <div className={`relative w-24 h-24 md:w-28 md:h-28 rounded-full overflow-hidden bg-muted ring-4 ring-offset-2 ring-offset-background ${rank.ring}`}>
                                 {profile?.profile_image_url ? (
                                     <Image
                                         src={profile.profile_image_url}
@@ -425,8 +481,15 @@ export default function ProfilePage() {
                                     </div>
                                 )}
                             </div>
-                            <div className={`absolute -bottom-1 -right-1 p-2 rounded-full ${rank.bgColor} ring-2 ring-background`}>
-                                <RankIcon className={`h-4 w-4 ${rank.color}`} />
+                            {/* Struck as a medal: the dark icon reads against lit
+                                metal, where a coloured icon on a tinted disc did
+                                not read at all. */}
+                            <div
+                                className={`absolute -bottom-1 -right-1 grid place-items-center h-9 w-9 rounded-full
+                                    ${rank.medal} ${rank.glow} ring-[3px] ring-background`}
+                                title={rank.name}
+                            >
+                                <RankIcon className="h-[18px] w-[18px] text-black/75" strokeWidth={2.5} />
                             </div>
                         </div>
 
@@ -436,13 +499,16 @@ export default function ProfilePage() {
                                     {profile?.display_name || user?.email}
                                 </h1>
                                 {profile?.seller_verified && (
-                                    <Badge className="bg-sky-500/10 text-sky-400 border-0 gap-1">
-                                        <BadgeCheck className="h-3.5 w-3.5" />
+                                    <Badge className="gap-1 border-0 pl-1.5 pr-2.5 text-black font-semibold
+                                        bg-[linear-gradient(135deg,#7dd3fc_0%,#0ea5e9_50%,#0369a1_100%)]
+                                        shadow-[0_0_14px_-2px_rgba(14,165,233,0.6)]">
+                                        <BadgeCheck className="h-3.5 w-3.5" strokeWidth={2.5} />
                                         {copy.verifiedSeller}
                                     </Badge>
                                 )}
-                                <Badge className={`${rank.bgColor} ${rank.color} border-0 gap-1`}>
-                                    <RankIcon className="h-3 w-3" />
+                                <Badge className={`gap-1 border-0 pl-1.5 pr-2.5 text-black font-semibold uppercase tracking-wide
+                                    ${rank.medal} ${rank.glow}`}>
+                                    <RankIcon className="h-3.5 w-3.5" strokeWidth={2.5} />
                                     {rank.name}
                                 </Badge>
                             </div>
@@ -521,12 +587,12 @@ export default function ProfilePage() {
                     <CardContent className="p-5">
                         <div className="flex items-center justify-between gap-4 mb-3">
                             <div className="flex items-center gap-3 min-w-0">
-                                <div className={`p-2.5 rounded-xl ${rank.bgColor}`}>
-                                    <RankIcon className={`h-5 w-5 ${rank.color}`} />
+                                <div className={`grid place-items-center h-11 w-11 rounded-xl ${rank.medal} ${rank.glow}`}>
+                                    <RankIcon className="h-5 w-5 text-black/75" strokeWidth={2.5} />
                                 </div>
                                 <div className="min-w-0">
                                     <p className="text-xs text-muted-foreground">{copy.accountRank}</p>
-                                    <p className={`font-bold ${rank.color}`}>{rank.name}</p>
+                                    <p className={`font-bold ${rank.text}`}>{rank.name}</p>
                                 </div>
                             </div>
                             <p className="text-sm text-muted-foreground text-right">
@@ -577,8 +643,10 @@ export default function ProfilePage() {
                                         card={card}
                                         price={formatVnd(card.price)}
                                         priceClass="text-primary"
-                                        typeLabel={listingTypeLabel(card.listingType)}
-                                        overlay={card.status === "in_transaction" ? copy.inTransaction : null}
+                                        type={listingTypeChip(card.listingType)}
+                                        overlay={card.status === "in_transaction"
+                                            ? { label: copy.inTransaction, className: "bg-amber-400 text-black shadow-[0_0_14px_-2px_rgba(251,191,36,0.7)]" }
+                                            : null}
                                     />
                                 ))}
                             </div>
@@ -599,8 +667,8 @@ export default function ProfilePage() {
                                         // only when the sale predates that column.
                                         price={formatVnd(card.lastSoldPrice ?? card.price)}
                                         priceClass="text-green-500"
-                                        typeLabel={listingTypeLabel(card.listingType)}
-                                        overlay={copy.soldTab}
+                                        type={listingTypeChip(card.listingType)}
+                                        overlay={{ label: copy.soldTab, className: "bg-emerald-400 text-black shadow-[0_0_14px_-2px_rgba(52,211,153,0.7)]" }}
                                         dimmed
                                     />
                                 ))}
@@ -722,12 +790,12 @@ function StatTile({ icon, label, value, hint, suffix, accent, progress }: {
     );
 }
 
-function CardTile({ card, price, priceClass, typeLabel, overlay, dimmed }: {
+function CardTile({ card, price, priceClass, type, overlay, dimmed }: {
     card: ListingCard;
     price: string;
     priceClass: string;
-    typeLabel: string;
-    overlay: string | null;
+    type: { label: string; className: string };
+    overlay: { label: string; className: string } | null;
     dimmed?: boolean;
 }) {
     return (
@@ -742,13 +810,19 @@ function CardTile({ card, price, priceClass, typeLabel, overlay, dimmed }: {
                         className={`object-cover transition-transform group-hover:scale-105 ${dimmed ? "opacity-70" : ""}`}
                     />
                     {overlay && (
-                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                            <Badge className="bg-green-500">{overlay}</Badge>
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent flex items-end justify-center pb-3">
+                            <span className={`text-[11px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full ${overlay.className}`}>
+                                {overlay.label}
+                            </span>
                         </div>
                     )}
+                    {/* Type sits on the art, where the eye already is, rather than
+                        competing with the name and price below it. */}
+                    <span className={`absolute top-2 left-2 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full backdrop-blur-sm ${type.className}`}>
+                        {type.label}
+                    </span>
                 </div>
                 <CardContent className="p-3">
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 mb-1.5">{typeLabel}</Badge>
                     <p className="font-medium text-sm truncate" title={card.name}>{card.name}</p>
                     <p className={`font-bold tabular-nums truncate ${priceClass}`}>{price}</p>
                 </CardContent>
