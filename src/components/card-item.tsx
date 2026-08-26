@@ -446,7 +446,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
             }
           }}
         >
-          <div className="relative aspect-[3/4] w-full md:h-full">
+          <div className="relative aspect-[3/4] max-h-[300px] w-full md:h-full md:max-h-none">
             <Image
               src={optimizeCloudinaryUrl(activeImage, 500)}
               alt={card.name}

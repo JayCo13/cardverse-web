@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { enUS, ja, vi } from "date-fns/locale";
-import { AlertTriangle, Bell, BellOff, CheckCircle, CreditCard, HandCoins, Image as ImageIcon, Inbox, Loader2, MessageCircle, Send, ShieldAlert, Smile, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bell, BellOff, CheckCircle, CreditCard, HandCoins, Image as ImageIcon, Inbox, Loader2, MessageCircle, Send, ShieldAlert, Smile, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -107,6 +107,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             loginRequired: "Vui lòng đăng nhập để xem tin nhắn.",
             inboxTitle: "Hộp thư",
             inboxSubtitle: "Quản lý trao đổi với buyer/seller",
+            backToInbox: "Quay lại hộp thư",
             loading: "Đang tải...",
             noConversations: "Chưa có hội thoại nào.",
             marketplaceChat: "Chat giao dịch",
@@ -169,6 +170,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 loginRequired: "メッセージを見るにはログインしてください。",
                 inboxTitle: "受信トレイ",
                 inboxSubtitle: "購入者・販売者とのやり取りを管理します",
+                backToInbox: "受信トレイに戻る",
                 loading: "読み込み中...",
                 noConversations: "会話はまだありません。",
                 marketplaceChat: "取引チャット",
@@ -230,6 +232,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 loginRequired: "Please log in to view messages.",
                 inboxTitle: "Inbox",
                 inboxSubtitle: "Manage conversations with buyers and sellers",
+                backToInbox: "Back to inbox",
                 loading: "Loading...",
                 noConversations: "No conversations yet.",
                 marketplaceChat: "Marketplace chat",
@@ -750,7 +753,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                     </div>
                 ) : (
                     <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[340px_1fr]">
-                        <aside className="min-h-0 border-r">
+                        <aside className={`min-h-0 border-r ${selectedConversation ? "hidden md:block" : "block"}`}>
                             <div className="border-b p-4">
                                 <p className="text-sm font-semibold">{copy.inboxTitle}</p>
                                 <p className="text-xs text-muted-foreground">{copy.inboxSubtitle}</p>
@@ -807,7 +810,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                             </ScrollArea>
                         </aside>
 
-                        <section className="flex min-h-0 flex-col">
+                        <section className={`${selectedConversation ? "flex" : "hidden md:flex"} min-h-0 flex-col`}>
                             {!selectedConversation ? (
                                 <div className="flex flex-1 items-center justify-center p-8 text-center text-muted-foreground">
                                     {copy.selectConversation}
@@ -816,6 +819,17 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                 <>
                                     <div className="border-b p-4">
                                         <div className="flex items-center gap-3">
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => setSelectedId(null)}
+                                                aria-label={copy.backToInbox}
+                                                title={copy.backToInbox}
+                                                className="shrink-0 md:hidden"
+                                            >
+                                                <ArrowLeft className="h-5 w-5" />
+                                            </Button>
                                             <div className="relative h-12 w-12 overflow-hidden rounded-lg bg-muted">
                                                 {selectedConversation.card?.image_url ? (
                                                     <Image src={optimizeCloudinaryUrl(selectedConversation.card.image_url, 160)} alt="" fill className="object-cover" />
