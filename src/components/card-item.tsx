@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Clock, Tag, Ticket, Hammer, Zap, Sparkles, Target, Trophy, Star, Gem, Crown, Pencil, User, HandCoins, ShoppingCart, ChevronLeft, ChevronRight } from "lucide-react";
+import { Clock, Tag, Ticket, Hammer, Zap, Sparkles, Target, Trophy, Star, Gem, Crown, Pencil, User, HandCoins, ShoppingCart, ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useLocalization } from "@/context/localization-context";
 import { useCurrency } from "@/contexts/currency-context";
@@ -417,25 +417,25 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
   if (layout === 'list') {
     const catStyle = getCategoryStyle(card.category);
     const listTitleSize = card.name.length > 110
-      ? 'text-base md:text-lg'
+      ? 'text-[13px] md:text-lg'
       : card.name.length > 70
-        ? 'text-lg md:text-xl'
-        : 'text-xl md:text-2xl';
+        ? 'text-[13px] md:text-xl'
+        : 'text-[13px] md:text-2xl';
     return (
       <Card
-        className={`group relative flex w-full flex-col overflow-hidden rounded-lg border bg-gradient-to-br from-card via-card to-card/50 transition-all duration-300 md:flex-row
+        className={`group relative flex w-full flex-row items-stretch gap-2.5 overflow-hidden rounded-[10px] border border-orange-400/40 bg-white/[0.02] p-2.5 shadow-[0_2px_8px_rgba(0,0,0,0.35)] transition-all duration-300 md:items-stretch md:gap-0 md:rounded-lg md:border md:border-white/5 md:bg-gradient-to-br md:from-card md:via-card md:to-card/50 md:p-0 md:shadow-sm
           ${card.status === 'sold'
-            ? 'border-green-500/40 opacity-80'
-            : 'border-border/60 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[0_10px_40px_-12px_hsl(var(--primary)/0.35)]'}`}
+            ? 'opacity-80 md:border-green-500/40'
+            : 'md:border-border/60 md:hover:-translate-y-0.5 md:hover:border-primary/40 md:hover:shadow-[0_10px_40px_-12px_hsl(var(--primary)/0.35)]'}`}
       >
         {/* Left accent rail — grows in on hover */}
         {card.status !== 'sold' && (
-          <span className="pointer-events-none absolute left-0 top-0 z-10 h-full w-[3px] origin-top scale-y-0 bg-gradient-to-b from-primary via-primary/70 to-transparent transition-transform duration-300 group-hover:scale-y-100" />
+          <span className="pointer-events-none absolute left-0 top-0 z-10 hidden h-full w-[3px] origin-top scale-y-0 bg-gradient-to-b from-primary via-primary/70 to-transparent transition-transform duration-300 group-hover:scale-y-100 md:block" />
         )}
 
         {/* Image — the "display case" frame */}
         <div
-          className="relative w-full shrink-0 cursor-pointer overflow-hidden bg-black/25 md:w-56 lg:w-64"
+          className="relative h-auto w-[120px] min-w-[120px] shrink-0 self-stretch cursor-pointer overflow-hidden rounded-lg bg-black/25 md:w-56 md:min-w-0 md:self-auto md:rounded-none lg:w-64"
           onClick={handleDetailClick}
           role="link"
           tabIndex={0}
@@ -446,14 +446,14 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
             }
           }}
         >
-          <div className="relative aspect-[3/4] max-h-[300px] w-full md:h-full md:max-h-none">
+          <div className="relative h-full min-h-full max-h-none w-full md:h-full md:aspect-[3/4]">
             <Image
               src={optimizeCloudinaryUrl(activeImage, 500)}
               alt={card.name}
               data-ai-hint={card.imageHint || 'trading card'}
               fill
-              sizes="(max-width: 768px) 100vw, 16rem"
-              className={`object-contain p-2 transition-transform duration-500 ${card.status === 'sold' ? 'grayscale' : 'group-hover:scale-[1.02]'}`}
+              sizes="(max-width: 767px) 120px, 16rem"
+              className={`h-full w-full object-cover transition-transform duration-500 md:object-contain md:p-2 ${card.status === 'sold' ? 'grayscale' : 'group-hover:scale-[1.02]'}`}
             />
             {/* depth / blend into card body */}
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent md:bg-gradient-to-r md:from-transparent md:via-transparent md:to-card/40" />
@@ -507,7 +507,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
         </div>
 
         {/* Body */}
-        <div className="grid flex-1 gap-5 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-0 md:grid md:gap-5 md:p-5 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-stretch">
           <div className="flex min-w-0 flex-col">
             {(card.status === 'sold' || card.isBundle) && (
               <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -523,14 +523,14 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
             )}
 
             <h3
-              className={`line-clamp-2 cursor-pointer break-words font-semibold leading-snug tracking-normal hover:text-primary [overflow-wrap:anywhere] ${listTitleSize}`}
+              className={`line-clamp-2 cursor-pointer break-words font-semibold leading-snug tracking-normal hover:text-primary [overflow-wrap:anywhere] md:font-semibold ${listTitleSize}`}
               onClick={handleDetailClick}
               title={card.name}
             >
               {card.name}
             </h3>
 
-            <p className="mt-1.5 text-sm text-muted-foreground">
+            <p className="hidden md:mt-1.5 md:block md:text-sm md:leading-5">
               {card.condition || 'Pre-owned'}
               {card.publisher && <span> · {card.publisher}</span>}
               {card.setName && <span> · {card.setName}</span>}
@@ -549,18 +549,18 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                 card.lastSoldPrice && { label: copy.lastSold, value: displayPrice(card.lastSoldPrice) },
               ].filter(Boolean) as { label: string; value: string }[];
               return (
-                <dl className="mt-5 flex flex-wrap gap-x-8 gap-y-4 border-t border-border/40 pt-5">
+                <dl className="mt-1 flex flex-wrap gap-x-2.5 gap-y-0.5 border-0 pt-0 text-[10px] md:mt-5 md:gap-x-8 md:gap-y-4 md:border-t md:border-border/40 md:pt-5 md:text-base">
                   {specs.map((s, i) => (
-                    <div key={i} className="flex flex-col">
-                      <dt className="text-[11px] uppercase tracking-wider text-muted-foreground/60">{s.label}</dt>
-                      <dd className="mt-1 text-[0.95rem] font-semibold text-foreground">{s.value}</dd>
+                    <div key={i} className="flex flex-row items-baseline gap-1 md:flex-col md:items-stretch md:gap-0">
+                      <dt className="text-[9px] uppercase tracking-wide text-muted-foreground/60 opacity-50 md:text-[11px] md:tracking-wider md:opacity-100">{s.label}</dt>
+                      <dd className="text-[10.5px] font-medium text-foreground md:mt-1 md:text-[0.95rem] md:font-semibold">{s.value}</dd>
                     </div>
                   ))}
                 </dl>
               );
             })()}
 
-            <div className="mt-auto flex flex-wrap items-center gap-x-5 gap-y-2 pt-6 text-xs text-muted-foreground">
+            <div className="hidden text-muted-foreground md:mt-auto md:flex md:flex-wrap md:items-center md:gap-x-5 md:gap-y-2 md:pt-6 md:text-xs">
               <span className="inline-flex items-center gap-1.5 font-medium text-emerald-400">
                 <Sparkles className="h-3.5 w-3.5 shrink-0" />
                 {copy.protected}
@@ -598,60 +598,61 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
             </div>
           </div>
 
-          <div className="flex flex-col justify-between gap-4 border-t border-border/50 pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
-            <div className="flex min-w-0 items-center gap-3">
+          <div className="mt-0.5 flex flex-col justify-between gap-1.5 border-0 border-t border-dashed border-white/10 bg-transparent p-0 pt-1.5 md:mt-0 md:gap-4 md:border-solid md:border-border/50 md:pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+            <div className="flex min-w-0 items-center gap-1.5 md:gap-3">
               {card.sellerAvatar ? (
-                <Image src={card.sellerAvatar} alt={card.sellerName || ''} width={42} height={42} className="rounded-full object-cover ring-1 ring-border" />
+                <Image src={card.sellerAvatar} alt={card.sellerName || ''} width={42} height={42} className="h-[22px] w-[22px] rounded-full object-cover ring-1 ring-border md:h-[42px] md:w-[42px]" />
               ) : (
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/15 ring-1 ring-primary/30">
-                  <span className="text-base font-bold text-primary">{(card.sellerName || card.author || 'C').charAt(0).toUpperCase()}</span>
+                <div className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-primary/15 ring-1 ring-primary/30 md:h-11 md:w-11">
+                  <span className="text-[10px] font-bold text-primary md:text-base">{(card.sellerName || card.author || 'C').charAt(0).toUpperCase()}</span>
                 </div>
               )}
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-foreground">{card.sellerName || card.author}</p>
-                <p className="truncate text-xs text-muted-foreground">{sellerStatsText}</p>
+              <div className="flex min-w-0 items-baseline gap-1 text-[11px] md:block md:text-sm">
+                <p className="truncate font-semibold text-foreground">{card.sellerName || card.author}</p>
+                <span className="text-muted-foreground md:hidden">·</span>
+                <p className="truncate text-muted-foreground md:text-xs">{sellerStatsText}</p>
               </div>
             </div>
 
-            <div className="rounded-xl border border-amber-500/40 bg-gradient-to-br from-amber-500/10 to-amber-500/[0.02] p-3.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{copy.price}</span>
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center border-0 bg-transparent p-0 md:block md:rounded-xl md:border md:border-amber-500/40 md:bg-gradient-to-br md:from-amber-500/10 md:to-amber-500/[0.02] md:p-3.5">
+              <div className="order-2 flex items-center gap-2 md:order-none md:justify-between">
+                <span className="hidden text-xs font-medium uppercase tracking-wide text-muted-foreground md:block">{copy.price}</span>
                 {card.acceptOffers ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-400">
-                    <HandCoins className="h-3 w-3" />
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9.5px] font-medium text-amber-400 md:px-2 md:text-[11px]">
+                    <HandCoins className="hidden h-3 w-3 md:block" />
                     {copy.acceptsOffers}
                   </span>
                 ) : (
-                  <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-[11px] font-medium text-rose-400/90">
+                  <span className="rounded-full bg-rose-500/10 px-1.5 py-0.5 text-[9.5px] font-medium text-rose-400/90 md:px-2 md:text-[11px]">
                     {copy.noOffers}
                   </span>
                 )}
               </div>
-              <p className="mt-1.5 text-lg font-bold leading-none text-amber-500 md:text-xl">
+              <p className="order-1 text-base font-semibold leading-none text-foreground md:order-none md:mt-1.5 md:text-xl md:font-bold md:text-amber-500">
                 {card.listingType === 'sale' ? salePriceText : 'N/A'}
               </p>
             </div>
 
-            <div className="grid grid-cols-1 gap-2">
+            <div className="flex flex-row gap-1.5 md:grid md:grid-cols-1 md:gap-2">
               {isOwner ? (
                 <Button
                   size="sm"
                   variant="secondary"
-                  className="h-11 rounded-lg px-4 text-sm font-bold"
+                  className="h-8 flex-1 rounded-lg px-2.5 text-[11px] font-bold md:h-11 md:w-full md:flex-none md:px-4 md:text-sm"
                   onClick={handleManageClick}
                 >
-                  <Pencil className="mr-1.5 h-4 w-4" />
+                  <Pencil className="mr-1 h-3.5 w-3.5 md:mr-1.5 md:h-4 md:w-4" />
                   {copy.manage}
                 </Button>
               ) : (
                 <Button
                   size="sm"
                   aria-label={`Buy ${card.name} now`}
-                  className="h-11 rounded-lg bg-primary px-4 text-sm font-bold"
+                  className="h-8 flex-1 rounded-lg bg-primary px-2.5 text-[11px] font-bold md:h-11 md:w-full md:flex-none md:px-4 md:text-sm"
                   onClick={handleActionClick}
                   disabled={card.status === 'sold'}
                 >
-                  <Tag className="mr-1.5 h-4 w-4" />
+                  <Tag className="mr-1 h-3.5 w-3.5 md:mr-1.5 md:h-4 md:w-4" />
                   {card.listingType === 'sale' ? t('card_item_buy_now') :
                     card.listingType === 'auction' ? t('card_item_place_bid') :
                       t('card_item_buy_ticket')}
@@ -662,20 +663,22 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                   size="sm"
                   variant="outline"
                   aria-label={`Make an offer for ${card.name}`}
-                  className="h-11 rounded-lg border-amber-500/70 text-sm font-bold text-amber-500 hover:bg-amber-500/10 hover:text-amber-500"
+                  className="h-8 w-8 rounded-lg border-amber-500/70 p-0 text-amber-500 hover:bg-amber-500/10 hover:text-amber-500 md:h-11 md:w-full md:px-4 md:text-sm md:font-bold"
                   onClick={handleOfferClick}
                 >
-                  <HandCoins className="mr-1.5 h-4 w-4" />
-                  {offerActionLabel}
+                  <HandCoins className="h-4 w-4 md:mr-1.5" />
+                  <span className="hidden md:inline">{offerActionLabel}</span>
                 </Button>
               ) : (
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-11 rounded-lg text-sm font-bold"
+                  aria-label={copy.viewDetails}
+                  className="h-8 w-8 rounded-lg p-0 md:h-11 md:w-full md:px-4 md:text-sm md:font-bold"
                   onClick={handleDetailClick}
                 >
-                  {copy.viewDetails}
+                  <MoreHorizontal className="h-4 w-4 md:hidden" />
+                  <span className="hidden md:inline">{copy.viewDetails}</span>
                 </Button>
               )}
               {!isOwner && card.status !== 'sold' && onAddToCart && (
@@ -683,11 +686,11 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                   size="sm"
                   variant="outline"
                   aria-label={`Add ${card.name} to cart`}
-                  className="h-11 rounded-lg border-emerald-500/50 text-sm font-bold text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
+                  className="h-8 w-8 rounded-lg border-emerald-500/50 p-0 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 md:h-11 md:w-full md:px-4 md:text-sm md:font-bold"
                   onClick={handleAddToCart}
                 >
-                  <ShoppingCart className="mr-1.5 h-4 w-4" />
-                  {copy.addToCart}
+                  <ShoppingCart className="h-4 w-4 md:mr-1.5" />
+                  <span className="hidden md:inline">{copy.addToCart}</span>
                 </Button>
               )}
             </div>

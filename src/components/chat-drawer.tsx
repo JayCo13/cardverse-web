@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { enUS, ja, vi } from "date-fns/locale";
-import { AlertTriangle, ArrowLeft, Bell, BellOff, CheckCircle, CreditCard, HandCoins, Image as ImageIcon, Inbox, Loader2, MessageCircle, Send, ShieldAlert, Smile, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bell, BellOff, CheckCircle, ChevronDown, CreditCard, HandCoins, Image as ImageIcon, Inbox, Loader2, MessageCircle, Plus, Send, ShieldAlert, Smile, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -108,6 +108,9 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             inboxTitle: "Hộp thư",
             inboxSubtitle: "Quản lý trao đổi với buyer/seller",
             backToInbox: "Quay lại hộp thư",
+            safetyTips: "Mẹo an toàn",
+            moreActions: "Thêm tùy chọn",
+            sendMessage: "Gửi tin nhắn",
             loading: "Đang tải...",
             noConversations: "Chưa có hội thoại nào.",
             marketplaceChat: "Chat giao dịch",
@@ -171,6 +174,9 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 inboxTitle: "受信トレイ",
                 inboxSubtitle: "購入者・販売者とのやり取りを管理します",
                 backToInbox: "受信トレイに戻る",
+                safetyTips: "安全のヒント",
+                moreActions: "その他の操作",
+                sendMessage: "メッセージを送信",
                 loading: "読み込み中...",
                 noConversations: "会話はまだありません。",
                 marketplaceChat: "取引チャット",
@@ -233,6 +239,9 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 inboxTitle: "Inbox",
                 inboxSubtitle: "Manage conversations with buyers and sellers",
                 backToInbox: "Back to inbox",
+                safetyTips: "Safety tips",
+                moreActions: "More actions",
+                sendMessage: "Send message",
                 loading: "Loading...",
                 noConversations: "No conversations yet.",
                 marketplaceChat: "Marketplace chat",
@@ -288,7 +297,10 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     const [isSending, setIsSending] = useState(false);
     const [isUploadingImage, setIsUploadingImage] = useState(false);
     const [showEmoji, setShowEmoji] = useState(false);
+    const [showMobileActions, setShowMobileActions] = useState(false);
+    const [isSafetyExpanded, setIsSafetyExpanded] = useState(false);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const mobileTextareaRef = useRef<HTMLTextAreaElement | null>(null);
     const [isUpdatingMute, setIsUpdatingMute] = useState(false);
     const [offer, setOffer] = useState<OfferSummary | null>(null);
     const [isAcceptingOffer, setIsAcceptingOffer] = useState(false);
@@ -303,6 +315,25 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     const isComposingRef = useRef(false);
     const isSendingRef = useRef(false);
     const selectedIdRef = useRef<string | null>(selectedId);
+
+    const resizeMobileTextarea = useCallback((element: HTMLTextAreaElement | null) => {
+        if (!element) return;
+        element.style.height = "44px";
+        const styles = window.getComputedStyle(element);
+        const lineHeight = Number.parseFloat(styles.lineHeight) || 24;
+        const verticalPadding = Number.parseFloat(styles.paddingTop) + Number.parseFloat(styles.paddingBottom);
+        const maxHeight = (lineHeight * 5) + verticalPadding;
+        element.style.height = `${Math.min(element.scrollHeight, maxHeight)}px`;
+        element.style.overflowY = element.scrollHeight > maxHeight ? "auto" : "hidden";
+    }, []);
+
+    const scrollChatToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                bottomRef.current?.scrollIntoView({ behavior, block: "end" });
+            });
+        });
+    }, []);
 
     const selectedConversation = useMemo(
         () => conversations.find(conversation => conversation.id === selectedId) || null,
@@ -484,7 +515,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || copy.loadConversationsFailed);
             setConversations(payload.conversations || []);
-            if (!selectedId && payload.conversations?.[0]) {
+            if (!selectedId && payload.conversations?.[0] && window.matchMedia("(min-width: 768px)").matches) {
                 setSelectedId(payload.conversations[0].id);
             }
         } catch (error) {
@@ -639,6 +670,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
         draftRef.current = "";
         setDraft("");
         setIsSending(true);
+        requestAnimationFrame(() => resizeMobileTextarea(mobileTextareaRef.current));
 
         const restoreDraft = () => {
             if (selectedIdRef.current !== conversationId) return;
@@ -646,6 +678,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             const restoredDraft = currentDraft.trim() ? `${body}\n${currentDraft}` : body;
             draftRef.current = restoredDraft;
             setDraft(restoredDraft);
+            requestAnimationFrame(() => resizeMobileTextarea(mobileTextareaRef.current));
         };
 
         try {
@@ -685,6 +718,10 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
         const next = `${draftRef.current}${emoji}`;
         draftRef.current = next;
         setDraft(next);
+        requestAnimationFrame(() => {
+            resizeMobileTextarea(mobileTextareaRef.current);
+            mobileTextareaRef.current?.focus();
+        });
     };
 
     const sendImageMessage = async (file: File) => {
@@ -738,8 +775,11 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
 
     return (
         <Sheet open={open} onOpenChange={onOpenChange}>
-            <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-5xl">
-                    <SheetHeader className="border-b px-5 py-4">
+            <SheetContent
+                side="right"
+                className="flex h-[100dvh] w-full flex-col gap-0 p-0 [&>button]:flex [&>button]:h-11 [&>button]:w-11 [&>button]:items-center [&>button]:justify-center md:h-full md:[&>button]:h-auto md:[&>button]:w-auto sm:max-w-5xl"
+            >
+                    <SheetHeader className={`${selectedConversation ? "hidden md:flex" : "flex"} border-b px-5 py-4`}>
                         <SheetTitle className="flex items-center gap-2">
                             <MessageCircle className="h-5 w-5 text-orange-500" />
                             {copy.title}
@@ -758,7 +798,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                 <p className="text-sm font-semibold">{copy.inboxTitle}</p>
                                 <p className="text-xs text-muted-foreground">{copy.inboxSubtitle}</p>
                             </div>
-                            <ScrollArea className="h-[calc(100vh-132px)]">
+                            <ScrollArea className="h-[calc(100dvh-132px)] md:h-[calc(100vh-132px)]">
                                 {isLoadingConversations && conversations.length === 0 ? (
                                     <div className="flex items-center justify-center p-6 text-muted-foreground">
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -774,7 +814,12 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                         <button
                                             key={conversation.id}
                                             type="button"
-                                            onClick={() => setSelectedId(conversation.id)}
+                                            onClick={() => {
+                                                setIsSafetyExpanded(false);
+                                                setShowMobileActions(false);
+                                                setShowEmoji(false);
+                                                setSelectedId(conversation.id);
+                                            }}
                                             className={`flex w-full gap-3 border-b p-4 text-left transition hover:bg-muted/50 ${selectedId === conversation.id ? "bg-orange-500/10" : ""}`}
                                         >
                                             <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-muted">
@@ -817,20 +862,25 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                 </div>
                             ) : (
                                 <>
-                                    <div className="border-b p-4">
-                                        <div className="flex items-center gap-3">
+                                    <div className="shrink-0 border-b p-2 pr-16 md:p-4">
+                                        <div className="flex min-h-[48px] items-center gap-2 md:min-h-0 md:gap-3">
                                             <Button
                                                 type="button"
                                                 variant="ghost"
                                                 size="icon"
-                                                onClick={() => setSelectedId(null)}
+                                                onClick={() => {
+                                                    setIsSafetyExpanded(false);
+                                                    setShowMobileActions(false);
+                                                    setShowEmoji(false);
+                                                    setSelectedId(null);
+                                                }}
                                                 aria-label={copy.backToInbox}
                                                 title={copy.backToInbox}
-                                                className="shrink-0 md:hidden"
+                                                className="h-11 w-11 shrink-0 md:hidden"
                                             >
                                                 <ArrowLeft className="h-5 w-5" />
                                             </Button>
-                                            <div className="relative h-12 w-12 overflow-hidden rounded-lg bg-muted">
+                                            <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-muted md:h-12 md:w-12">
                                                 {selectedConversation.card?.image_url ? (
                                                     <Image src={optimizeCloudinaryUrl(selectedConversation.card.image_url, 160)} alt="" fill className="object-cover" />
                                                 ) : null}
@@ -850,7 +900,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                 disabled={isUpdatingMute}
                                                 aria-label={selectedConversation.muted ? copy.unmuteConversation : copy.muteConversation}
                                                 title={selectedConversation.muted ? copy.unmuteConversation : copy.muteConversation}
-                                                className="shrink-0"
+                                                className="h-11 w-11 shrink-0 md:h-10 md:w-10"
                                             >
                                                 {isUpdatingMute ? (
                                                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -861,7 +911,23 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                 )}
                                             </Button>
                                         </div>
-                                        <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs leading-5 text-amber-100">
+                                        <button
+                                            type="button"
+                                            aria-expanded={isSafetyExpanded}
+                                            onClick={() => setIsSafetyExpanded(current => !current)}
+                                            className="mt-1 flex min-h-11 w-full items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 text-left text-xs font-medium text-amber-100 md:hidden"
+                                        >
+                                            <ShieldAlert className="h-4 w-4 shrink-0 text-amber-400" />
+                                            <span className="flex-1">{copy.safetyTips}</span>
+                                            <ChevronDown className={`h-4 w-4 transition-transform ${isSafetyExpanded ? "rotate-180" : ""}`} />
+                                        </button>
+                                        {isSafetyExpanded && (
+                                            <div className="mt-1 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-100 md:hidden">
+                                                {copy.safetyBanner}
+                                            </div>
+                                        )}
+
+                                        <div className="mt-3 hidden rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs leading-5 text-amber-100 md:block">
                                             <div className="flex gap-2">
                                                 <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
                                                 <span>{copy.safetyBanner}</span>
@@ -869,7 +935,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                         </div>
 
                                         {offer && (
-                                            <div className="mt-3 rounded-lg border border-orange-500/40 bg-orange-500/10 p-3">
+                                            <div className="mt-3 hidden rounded-lg border border-orange-500/40 bg-orange-500/10 p-3 md:block">
                                                 <div className="flex items-center justify-between gap-3">
                                                     <div className="min-w-0">
                                                         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -932,6 +998,57 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                         )}
                                     </div>
 
+                                    {offer && (
+                                        <div className="shrink-0 border-b border-orange-500/30 bg-background p-2 md:hidden">
+                                            <div className="flex min-h-[56px] items-center gap-2 rounded-lg border border-orange-500/40 bg-orange-500/10 px-3 py-2">
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="truncate text-base font-bold text-orange-400">{formatVND(offer.price)}</p>
+                                                    <p className="truncate text-[11px] text-muted-foreground">
+                                                        {offer.status === "pending" && copy.offerPending}
+                                                        {offer.status === "chosen" && copy.offerChosen}
+                                                        {offer.status === "accepted" && copy.offerAccepted}
+                                                        {offer.status === "rejected" && copy.offerRejected}
+                                                    </p>
+                                                </div>
+
+                                                {isSellerInSelectedConversation && offer.status === "pending" && (
+                                                    <div className="flex shrink-0 gap-1.5">
+                                                        <Button
+                                                            type="button"
+                                                            onClick={() => void handleAcceptOffer()}
+                                                            disabled={isAcceptingOffer || isRejectingOffer}
+                                                            className="h-11 bg-orange-500 px-3 text-white hover:bg-orange-600"
+                                                        >
+                                                            {isAcceptingOffer ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                                                            <span className="sr-only">{copy.acceptOffer}</span>
+                                                        </Button>
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            onClick={() => void handleRejectOffer()}
+                                                            disabled={isAcceptingOffer || isRejectingOffer}
+                                                            className="h-11 border-rose-500/50 px-3 text-rose-500 hover:bg-rose-500/10 hover:text-rose-500"
+                                                        >
+                                                            {isRejectingOffer ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                                                            <span className="sr-only">{copy.declineOffer}</span>
+                                                        </Button>
+                                                    </div>
+                                                )}
+
+                                                {offer.buyer_id === user.id && offer.status === "chosen" && (
+                                                    <Button
+                                                        type="button"
+                                                        onClick={() => router.push(`/checkout?offerId=${offer.id}`)}
+                                                        className="h-11 shrink-0 bg-orange-500 px-3 text-white hover:bg-orange-600"
+                                                    >
+                                                        <CreditCard className="mr-1.5 h-4 w-4" />
+                                                        {copy.payNow}
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
                                     <ScrollArea className="min-h-0 flex-1 p-4">
                                         {isLoadingMessages ? (
                                             <div className="flex items-center justify-center p-6 text-muted-foreground">
@@ -989,7 +1106,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                                 {showCheckout && (
                                                                     <Button
                                                                         size="sm"
-                                                                        className="mt-2 h-8 w-full bg-orange-500 text-white hover:bg-orange-600"
+                                                                        className={`mt-2 h-8 w-full bg-orange-500 text-white hover:bg-orange-600 ${offer?.buyer_id === user.id && offer.status === "chosen" ? "hidden md:inline-flex" : "inline-flex"}`}
                                                                         onClick={() => router.push(meta.checkoutUrl as string)}
                                                                     >
                                                                         {copy.goCheckout}
@@ -1034,21 +1151,21 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                         const offerCardName = typeof meta.cardName === "string" ? meta.cardName : null;
                                                         return (
                                                             <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                                                                <div className="max-w-[78%] overflow-hidden rounded-2xl border border-orange-500/30 bg-orange-500/10">
-                                                                    <div className="flex items-center gap-1.5 border-b border-orange-500/20 px-3 py-1.5 text-[11px] font-semibold text-orange-300">
+                                                                <div className="max-w-[86%] overflow-hidden rounded-2xl border border-orange-500/30 bg-orange-500/10 md:max-w-[78%]">
+                                                                    <div className="flex items-center gap-1.5 border-b border-orange-500/20 px-2.5 py-1.5 text-[11px] font-semibold text-orange-300 md:px-3">
                                                                         <HandCoins className="h-3.5 w-3.5" />
                                                                         {senderLabel} · {copy.offerTag}
                                                                     </div>
-                                                                    <div className="px-3 py-2">
+                                                                    <div className="px-2.5 py-2 md:px-3">
                                                                         {offerPrice !== null ? (
                                                                             <>
-                                                                                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{copy.offerPriceLabel}</p>
-                                                                                <p className="text-lg font-bold text-orange-400">{formatVND(offerPrice)}</p>
+                                                                                <p className="hidden text-[10px] uppercase tracking-wide text-muted-foreground md:block">{copy.offerPriceLabel}</p>
+                                                                                <p className="text-base font-bold text-orange-400 md:text-lg">{formatVND(offerPrice)}</p>
                                                                             </>
                                                                         ) : (
                                                                             <p className="text-sm text-orange-100">{message.body}</p>
                                                                         )}
-                                                                        {offerCardName && <p className="mt-0.5 text-xs text-muted-foreground">{offerCardName}</p>}
+                                                                        {offerCardName && <p className="mt-0.5 hidden text-xs text-muted-foreground md:block">{offerCardName}</p>}
                                                                         {offerText && (
                                                                             <div className="mt-2 rounded-md bg-background/40 px-2.5 py-1.5">
                                                                                 <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{copy.offerMessageLabel}</p>
@@ -1086,7 +1203,128 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                         )}
                                     </ScrollArea>
 
-                                    <div className="border-t p-4">
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={event => {
+                                            const file = event.currentTarget.files?.[0];
+                                            event.currentTarget.value = "";
+                                            if (file) void sendImageMessage(file);
+                                        }}
+                                    />
+
+                                    <div className="shrink-0 border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:hidden">
+                                        {showEmoji && (
+                                            <div className="mb-2 grid max-h-40 grid-cols-7 gap-1 overflow-y-auto rounded-lg border bg-background p-2">
+                                                {CHAT_EMOJIS.map(emoji => (
+                                                    <button
+                                                        key={emoji}
+                                                        type="button"
+                                                        className="min-h-11 min-w-11 rounded text-lg transition-colors hover:bg-muted"
+                                                        onClick={() => insertEmoji(emoji)}
+                                                    >
+                                                        {emoji}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        <div className="relative flex items-end gap-2">
+                                            {showMobileActions && (
+                                                <div className="absolute bottom-full left-0 z-30 mb-2 flex gap-1 rounded-lg border bg-background p-1.5 shadow-lg">
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        aria-label={copy.emojiButton}
+                                                        onClick={() => {
+                                                            setShowEmoji(current => !current);
+                                                            setShowMobileActions(false);
+                                                        }}
+                                                        className="h-11 w-11"
+                                                    >
+                                                        <Smile className="h-5 w-5" />
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        aria-label={copy.imageButton}
+                                                        onClick={() => {
+                                                            setShowMobileActions(false);
+                                                            fileInputRef.current?.click();
+                                                        }}
+                                                        disabled={isUploadingImage}
+                                                        className="h-11 w-11"
+                                                    >
+                                                        {isUploadingImage ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
+                                                    </Button>
+                                                </div>
+                                            )}
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                aria-label={copy.moreActions}
+                                                aria-expanded={showMobileActions}
+                                                onClick={() => {
+                                                    setShowMobileActions(current => !current);
+                                                    setShowEmoji(false);
+                                                }}
+                                                className="h-11 w-11 shrink-0"
+                                            >
+                                                <Plus className={`h-5 w-5 transition-transform ${showMobileActions ? "rotate-45" : ""}`} />
+                                            </Button>
+                                            <Textarea
+                                                ref={mobileTextareaRef}
+                                                rows={1}
+                                                value={draft}
+                                                onFocus={() => {
+                                                    scrollChatToBottom("auto");
+                                                    window.setTimeout(() => scrollChatToBottom("auto"), 250);
+                                                }}
+                                                onChange={event => {
+                                                    draftRef.current = event.currentTarget.value;
+                                                    setDraft(event.currentTarget.value);
+                                                    resizeMobileTextarea(event.currentTarget);
+                                                }}
+                                                onCompositionStart={() => {
+                                                    isComposingRef.current = true;
+                                                }}
+                                                onCompositionEnd={event => {
+                                                    isComposingRef.current = false;
+                                                    draftRef.current = event.currentTarget.value;
+                                                    setDraft(event.currentTarget.value);
+                                                    resizeMobileTextarea(event.currentTarget);
+                                                }}
+                                                onKeyDown={event => {
+                                                    if (event.key === "Enter" && !event.shiftKey) {
+                                                        const nativeEvent = event.nativeEvent;
+                                                        if (isComposingRef.current || nativeEvent.isComposing || nativeEvent.keyCode === 229) {
+                                                            return;
+                                                        }
+                                                        event.preventDefault();
+                                                        void sendMessage();
+                                                    }
+                                                }}
+                                                placeholder={copy.messagePlaceholder}
+                                                className="h-11 min-h-11 max-h-[132px] resize-none overflow-y-hidden py-2.5"
+                                                maxLength={2000}
+                                            />
+                                            <Button
+                                                type="button"
+                                                onClick={() => void sendMessage()}
+                                                disabled={!draft.trim() || isSending}
+                                                aria-label={copy.sendMessage}
+                                                className="h-11 w-11 shrink-0 bg-orange-500 px-0 text-white hover:bg-orange-600"
+                                            >
+                                                {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    <div className="hidden border-t p-4 md:block">
                                         {showEmoji && (
                                             <div className="mb-2 grid grid-cols-10 gap-1 rounded-lg border bg-background p-2">
                                                 {CHAT_EMOJIS.map(emoji => (
@@ -1101,17 +1339,6 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                 ))}
                                             </div>
                                         )}
-                                        <input
-                                            ref={fileInputRef}
-                                            type="file"
-                                            accept="image/*"
-                                            className="hidden"
-                                            onChange={event => {
-                                                const file = event.currentTarget.files?.[0];
-                                                event.currentTarget.value = "";
-                                                if (file) void sendImageMessage(file);
-                                            }}
-                                        />
                                         <div className="flex items-end gap-2">
                                             <Button
                                                 type="button"
