@@ -14,6 +14,7 @@ import {
     ChevronLeft,
     ChevronRight,
     CreditCard,
+    FileText,
     Gem,
     HandCoins,
     Heart,
@@ -35,10 +36,18 @@ import { OfferModal } from "@/components/offer-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+    Drawer,
+    DrawerContent,
+    DrawerDescription,
+    DrawerHeader,
+    DrawerTitle,
+} from "@/components/ui/drawer";
 import { useAuthModal } from "@/components/auth-modal";
 import { useSupabase, useUser } from "@/lib/supabase";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { getCategoryCode } from "@/lib/category-code";
+import { formatCompactCount } from "@/lib/format";
 import type { Card, Offer } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { useLocalization } from "@/context/localization-context";
@@ -256,6 +265,8 @@ export default function CardDetailsPage() {
             buyer: "Người mua",
             seller: "Người bán CardVerseHub",
             viewAll: "Xem tất cả",
+            viewProductDetails: "Xem chi tiết sản phẩm",
+            viewMoreOffers: "Xem thêm offer khác",
             preOwned: "Đã qua sử dụng",
             notSpecified: "Chưa xác định",
             categoryLabel: "Danh mục", setLabel: "Bộ thẻ", playerLabel: "Nhân vật/Cầu thủ",
@@ -278,7 +289,7 @@ export default function CardDetailsPage() {
             search: "Tìm kiếm",
             allCategories: "Tất cả danh mục",
             similarFrom: "Tìm các mặt hàng tương tự từ",
-            itemsSold: "mặt hàng đã bán",
+            itemsSold: "đã bán",
             positive: "uy tín",
             aboutSeller: "Về người bán",
             relatedItems: "Sản phẩm liên quan",
@@ -355,6 +366,8 @@ export default function CardDetailsPage() {
                 buyer: "購入者",
                 seller: "CardVerseHub販売者",
                 viewAll: "すべて見る",
+                viewProductDetails: "商品詳細を見る",
+                viewMoreOffers: "他のオファーを見る",
                 preOwned: "中古",
                 notSpecified: "未指定",
                 categoryLabel: "カテゴリー", setLabel: "セット", playerLabel: "選手/キャラクター",
@@ -377,7 +390,7 @@ export default function CardDetailsPage() {
                 search: "検索",
                 allCategories: "すべてのカテゴリ",
                 similarFrom: "この販売者の類似商品",
-                itemsSold: "件販売",
+                itemsSold: "販売",
                 positive: "高評価",
                 aboutSeller: "販売者について",
                 relatedItems: "関連商品",
@@ -453,6 +466,8 @@ export default function CardDetailsPage() {
                 buyer: "Buyer",
                 seller: "CardVerseHub seller",
                 viewAll: "View all",
+                viewProductDetails: "View product details",
+                viewMoreOffers: "View more offers",
                 preOwned: "Pre-owned",
                 notSpecified: "Not specified",
                 categoryLabel: "Category", setLabel: "Set", playerLabel: "Player/Athlete",
@@ -475,7 +490,7 @@ export default function CardDetailsPage() {
                 search: "Search",
                 allCategories: "All Categories",
                 similarFrom: "Find similar items from",
-                itemsSold: "items sold",
+                itemsSold: "sold",
                 positive: "positive",
                 aboutSeller: "About the seller",
                 relatedItems: "Related items",
@@ -558,6 +573,9 @@ export default function CardDetailsPage() {
     const [offerOpen, setOfferOpen] = useState(false);
     const [chatOpen, setChatOpen] = useState(false);
     const [chatConversationId, setChatConversationId] = useState<string | null>(null);
+    const [shippingDrawerOpen, setShippingDrawerOpen] = useState(false);
+    const [detailsDrawerOpen, setDetailsDrawerOpen] = useState(false);
+    const [offersDrawerOpen, setOffersDrawerOpen] = useState(false);
     const [startingChatOfferId, setStartingChatOfferId] = useState<string | null>(null);
     const [acceptingOfferId, setAcceptingOfferId] = useState<string | null>(null);
     const offerActionKeys = useRef<Record<string, string>>({});
@@ -863,6 +881,66 @@ export default function CardDetailsPage() {
         }
     };
 
+    const renderOfferRows = (offerList: Offer[]) => (
+        <div className="space-y-3">
+            {offerList.map(offer => (
+                <div key={offer.id} className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                        <p className="text-lg font-semibold">{formatVND(offer.price)}</p>
+                        <p className="text-xs text-muted-foreground">
+                            {offer.buyerEmail} · {formatDistanceToNow(new Date(offer.createdAt), { addSuffix: true, locale: dateLocale })}
+                        </p>
+                        {offer.message && <p className="mt-1 text-sm text-muted-foreground">{offer.message}</p>}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-orange-500 text-orange-500 hover:bg-orange-500/10 hover:text-orange-400"
+                            onClick={() => void handleStartChat(offer.id)}
+                            disabled={startingChatOfferId === offer.id}
+                        >
+                            {startingChatOfferId === offer.id ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                                <MessageCircle className="mr-2 h-4 w-4" />
+                            )}
+                            {copy.chat}
+                        </Button>
+                        {offer.status === "pending" ? (
+                            <>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="border-red-500/70 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                                    onClick={() => handleRejectOffer(offer)}
+                                    disabled={!!acceptingOfferId || !!rejectingOfferId}
+                                >
+                                    {rejectingOfferId === offer.id ? (
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    ) : null}
+                                    {copy.reject}
+                                </Button>
+                                <Button size="sm" onClick={() => handleAcceptOffer(offer)} disabled={!!acceptingOfferId || !!rejectingOfferId}>
+                                    {acceptingOfferId === offer.id ? (
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <CheckCircle className="mr-2 h-4 w-4" />
+                                    )}
+                                    {copy.accept}
+                                </Button>
+                            </>
+                        ) : (
+                            <Badge className={`w-fit ${offer.status === "rejected" ? "bg-red-500" : "bg-green-500"}`}>
+                                {offer.status === "chosen" ? copy.chosen : offer.status === "rejected" ? copy.reject : copy.processed}
+                            </Badge>
+                        )}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+
     if (isLoading) {
         return (
             <div className="flex min-h-screen flex-col">
@@ -930,7 +1008,7 @@ export default function CardDetailsPage() {
         <div className="flex min-h-screen flex-col bg-background">
             <Header />
             <main className="flex-1">
-                <div className="mx-auto w-full max-w-[1820px] space-y-8 px-4 py-6 sm:px-6">
+                <div className="mx-auto w-full max-w-[1820px] space-y-4 px-4 py-6 sm:px-6 xl:space-y-8">
                     <div className="flex items-center justify-between gap-4 border-b pb-4">
                         <Button variant="ghost" onClick={() => router.back()} className="h-9 px-2 text-muted-foreground">
                             <ArrowLeft className="mr-2 h-4 w-4" /> {copy.back}
@@ -978,10 +1056,10 @@ export default function CardDetailsPage() {
                             </div>
                         </div>
 
-                        <aside className="space-y-4">
+                        <aside className="space-y-3 xl:space-y-4">
                             <div className="overflow-hidden rounded-xl border bg-card shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
-                                <div className="border-b p-5 md:p-6">
-                                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                                <div className="border-b p-3 md:p-5 xl:p-6">
+                                    <div className="mb-3 hidden flex-wrap items-center gap-2 xl:flex">
                                         <Badge className="rounded-full bg-orange-500/15 px-3 py-1 text-orange-300 hover:bg-orange-500/15">
                                             {card.category}
                                         </Badge>
@@ -1000,42 +1078,49 @@ export default function CardDetailsPage() {
                                     <h1 className="text-2xl font-semibold leading-tight tracking-normal md:text-3xl">
                                         {card.name}
                                     </h1>
-                                    <div className="mt-4 flex items-center gap-3">
+                                    <div className="mt-4 flex min-w-0 items-center gap-2.5">
                                         {seller?.profile_image_url ? (
-                                            <Image src={seller.profile_image_url} alt="" width={44} height={44} className="rounded-full object-cover" />
+                                            <Image src={seller.profile_image_url} alt="" width={44} height={44} className="shrink-0 rounded-full object-cover" />
                                         ) : (
-                                            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-orange-500 font-bold text-white">
+                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-500 font-bold text-white">
                                                 {(seller?.display_name || "C").charAt(0).toUpperCase()}
                                             </div>
                                         )}
-                                        <div className="min-w-0 flex-1">
-                                            <div className="flex items-center gap-1.5">
-                                                <span className="truncate font-semibold">{seller?.display_name || card.sellerName || copy.seller}</span>
+                                        <div className="min-w-0 flex-1 overflow-hidden">
+                                            <div className="flex min-w-0 items-center gap-1">
+                                                <span className="truncate font-medium">{seller?.display_name || card.sellerName || copy.seller}</span>
                                                 {seller?.seller_verified && <BadgeCheck className="h-4 w-4 shrink-0 text-orange-500" />}
                                             </div>
-                                            <p className="text-sm text-muted-foreground">
-                                                {seller?.seller_rating ? `${Number(seller.seller_rating).toFixed(1)}% ${copy.positive}` : copy.newSeller} · {seller?.seller_review_count || 0} {copy.itemsSold}
+                                            <p className="truncate text-xs text-muted-foreground">
+                                                {seller?.seller_rating ? `${Number(seller.seller_rating).toFixed(1)}% ${copy.positive}` : copy.newSeller} · {formatCompactCount(seller?.seller_review_count || 0, locale)} {copy.itemsSold}
                                             </p>
                                         </div>
                                         <Button
                                             variant="outline"
                                             size="sm"
-                                            className="rounded-full border-orange-500 text-orange-500 hover:bg-orange-500/10 hover:text-orange-400"
+                                            className="h-8 shrink-0 rounded-full border-orange-500 px-3 text-xs text-orange-500 hover:bg-orange-500/10 hover:text-orange-400"
                                             onClick={() => void handleStartChat()}
                                             disabled={isOwner || startingChatOfferId === "listing"}
                                         >
                                             {startingChatOfferId === "listing" ? (
-                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                                             ) : (
-                                                <MessageCircle className="mr-2 h-4 w-4" />
+                                                <MessageCircle className="mr-1.5 h-3.5 w-3.5" />
                                             )}
                                             {copy.message}
                                         </Button>
                                     </div>
                                 </div>
 
-                                <div className="space-y-5 p-5 md:p-6">
-                                    <div className="rounded-lg border bg-background/70 p-4">
+                                <div className="space-y-4 p-3 md:space-y-5 md:p-5 xl:p-6">
+                                    <div className="py-3 xl:hidden">
+                                        <p className="text-[32px] font-bold leading-none tracking-normal text-orange-400">{formatVND(card.price)}</p>
+                                        {card.acceptOffers && (
+                                            <p className="mt-1 text-sm text-muted-foreground">{copy.bestOffer}</p>
+                                        )}
+                                    </div>
+
+                                    <div className="hidden rounded-lg border bg-background/70 p-4 xl:block">
                                         <div className="flex items-start justify-between gap-4">
                                             <div>
                                                 <p className="text-sm text-muted-foreground">{copy.buyNow}</p>
@@ -1048,7 +1133,13 @@ export default function CardDetailsPage() {
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                    <div className="border-y border-white/10 py-2 text-sm text-muted-foreground xl:hidden">
+                                        <span className="font-medium text-foreground">{card.condition || copy.ungraded}</span>
+                                        {" · "}{card.setName || card.publisher || copy.notSpecified}
+                                        {" · "}{card.quantity || 1} {copy.available}
+                                    </div>
+
+                                    <div className="hidden grid-cols-1 gap-2 sm:grid-cols-2 xl:grid">
                                         {listingHighlights.map(({ label, value, icon: Icon }) => (
                                             <div key={label} className="rounded-lg border bg-background/50 p-3">
                                                 <div className="mb-1 flex items-center gap-2 text-xs uppercase text-muted-foreground">
@@ -1060,7 +1151,7 @@ export default function CardDetailsPage() {
                                         ))}
                                     </div>
 
-                                    <div className="grid grid-cols-3 gap-2 text-center text-xs text-muted-foreground">
+                                    <div className="hidden grid-cols-3 gap-2 text-center text-xs text-muted-foreground xl:grid">
                                         <div className="rounded-lg border bg-background/40 px-2 py-3">
                                             <ShieldCheck className="mx-auto mb-1 h-4 w-4 text-emerald-400" />
                                             {copy.protectedCheckout}
@@ -1076,7 +1167,7 @@ export default function CardDetailsPage() {
                                     </div>
 
                                     {isOwner ? (
-                                        <div className="flex flex-col gap-3 rounded-lg border border-orange-500/30 bg-orange-500/10 p-4 text-sm text-orange-300 sm:flex-row sm:items-center sm:justify-between">
+                                        <div className="hidden flex-col gap-2 text-xs text-muted-foreground xl:mb-0 xl:flex xl:flex-row xl:items-center xl:justify-between xl:rounded-lg xl:border xl:border-orange-500/30 xl:bg-orange-500/10 xl:p-4 xl:text-sm xl:text-orange-300">
                                             <span>{copy.ownListing}</span>
                                             {card.status === "active" && card.listingType === "sale" && (
                                                 <Button
@@ -1127,7 +1218,22 @@ export default function CardDetailsPage() {
                                 </div>
                             )}
 
-                            <div className="space-y-4 rounded-xl border bg-card p-5">
+                            <button
+                                type="button"
+                                onClick={() => setShippingDrawerOpen(true)}
+                                className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 px-3 py-3 text-left xl:hidden"
+                            >
+                                <span className="flex min-w-0 items-start gap-2.5">
+                                    <Truck className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                                    <span>
+                                        <span className="block text-sm font-medium">{copy.shipping} GHN · {copy.returns} · {copy.paymentReady}</span>
+                                        <span className="mt-0.5 block text-xs text-muted-foreground">{copy.estimatedDelivery}</span>
+                                    </span>
+                                </span>
+                                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            </button>
+
+                            <div className="hidden space-y-4 rounded-xl border bg-card p-5 xl:block">
                                 <h2 className="text-xl font-semibold">{copy.shippingPayments}</h2>
                                 <div className="grid grid-cols-[110px_1fr] gap-x-4 gap-y-4 text-sm">
                                     <span className="font-medium">{copy.shipping}:</span>
@@ -1153,7 +1259,35 @@ export default function CardDetailsPage() {
                         </aside>
                     </section>
 
-                    <section className="rounded-lg border bg-card">
+                    <button
+                        type="button"
+                        onClick={() => setDetailsDrawerOpen(true)}
+                        className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 px-3 py-3 text-left xl:hidden"
+                    >
+                        <span className="flex items-center gap-2 text-sm">
+                            <FileText className="h-4 w-4" />
+                            {copy.viewProductDetails}
+                        </span>
+                        <ChevronRight className="h-4 w-4 shrink-0 opacity-60" />
+                    </button>
+
+                    {isOwner && (
+                        <div className="xl:hidden">
+                            {card.status === "active" && card.listingType === "sale" && (
+                                <Button
+                                    type="button"
+                                    className="w-full bg-orange-500 text-white hover:bg-orange-600"
+                                    onClick={() => router.push(`/sell/edit/${card.id}`)}
+                                >
+                                    <Pencil className="mr-2 h-4 w-4" />
+                                    {copy.editListing}
+                                </Button>
+                            )}
+                            <p className="mt-1.5 text-center text-[11px] text-muted-foreground">{copy.ownListing}</p>
+                        </div>
+                    )}
+
+                    <section className="hidden rounded-lg border bg-card xl:block">
                         <div className="border-b px-5 py-3">
                             <span className="rounded-t-md border bg-background px-4 py-3 text-sm font-semibold text-orange-500">{copy.aboutItem}</span>
                         </div>
@@ -1179,76 +1313,41 @@ export default function CardDetailsPage() {
                     </section>
 
                     {isOwner && (
-                        <section className="space-y-3 rounded-lg border bg-card p-5">
-                            <div className="flex items-center justify-between gap-3">
-                                <h2 className="text-xl font-semibold">{copy.offers} ({offers.length})</h2>
-                                <Badge variant="outline">{copy.sellerTools}</Badge>
-                            </div>
-                            {offers.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">{copy.noOffers}</p>
-                            ) : (
-                                <div className="space-y-3">
-                                    {offers.map(offer => (
-                                        <div key={offer.id} className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-3 md:flex-row md:items-center md:justify-between">
-                                            <div>
-                                                <p className="text-lg font-semibold">{formatVND(offer.price)}</p>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {offer.buyerEmail} · {formatDistanceToNow(new Date(offer.createdAt), { addSuffix: true, locale: dateLocale })}
-                                                </p>
-                                                {offer.message && <p className="mt-1 text-sm text-muted-foreground">{offer.message}</p>}
-                                            </div>
-                                            <div className="flex flex-wrap gap-2">
-                                                <Button
-                                                    size="sm"
-                                                    variant="outline"
-                                                    className="border-orange-500 text-orange-500 hover:bg-orange-500/10 hover:text-orange-400"
-                                                    onClick={() => void handleStartChat(offer.id)}
-                                                    disabled={startingChatOfferId === offer.id}
-                                                >
-                                                    {startingChatOfferId === offer.id ? (
-                                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                    ) : (
-                                                        <MessageCircle className="mr-2 h-4 w-4" />
-                                                    )}
-                                                    {copy.chat}
-                                                </Button>
-                                                {offer.status === "pending" ? (
-                                                    <>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            className="border-red-500/70 text-red-400 hover:bg-red-500/10 hover:text-red-300"
-                                                            onClick={() => handleRejectOffer(offer)}
-                                                            disabled={!!acceptingOfferId || !!rejectingOfferId}
-                                                        >
-                                                            {rejectingOfferId === offer.id ? (
-                                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                            ) : null}
-                                                            {copy.reject}
-                                                        </Button>
-                                                        <Button size="sm" onClick={() => handleAcceptOffer(offer)} disabled={!!acceptingOfferId || !!rejectingOfferId}>
-                                                            {acceptingOfferId === offer.id ? (
-                                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                            ) : (
-                                                                <CheckCircle className="mr-2 h-4 w-4" />
-                                                            )}
-                                                            {copy.accept}
-                                                        </Button>
-                                                    </>
-                                                ) : (
-                                                    <Badge className={`w-fit ${offer.status === "rejected" ? "bg-red-500" : "bg-green-500"}`}>
-                                                        {offer.status === "chosen" ? copy.chosen : offer.status === "rejected" ? copy.reject : copy.processed}
-                                                    </Badge>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
+                        <>
+                            <section className="space-y-3 rounded-lg border bg-card p-3 xl:hidden">
+                                <div className="flex items-center justify-between gap-3">
+                                    <h2 className="text-lg font-semibold">{copy.offers} ({offers.length})</h2>
+                                    <Badge variant="outline">{copy.sellerTools}</Badge>
                                 </div>
-                            )}
-                        </section>
+                                {offers.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground">{copy.noOffers}</p>
+                                ) : (
+                                    <>
+                                        {renderOfferRows(offers.slice(0, 1))}
+                                        {offers.length > 1 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setOffersDrawerOpen(true)}
+                                                className="w-full text-sm font-medium text-primary"
+                                            >
+                                                {copy.viewMoreOffers} ({offers.length - 1}) ›
+                                            </button>
+                                        )}
+                                    </>
+                                )}
+                            </section>
+
+                            <section className="hidden space-y-3 rounded-lg border bg-card p-5 xl:block">
+                                <div className="flex items-center justify-between gap-3">
+                                    <h2 className="text-xl font-semibold">{copy.offers} ({offers.length})</h2>
+                                    <Badge variant="outline">{copy.sellerTools}</Badge>
+                                </div>
+                                {offers.length === 0 ? <p className="text-sm text-muted-foreground">{copy.noOffers}</p> : renderOfferRows(offers)}
+                            </section>
+                        </>
                     )}
 
-                    <section className="space-y-4 rounded-xl border bg-card p-5 md:p-6">
+                    <section className="hidden space-y-4 rounded-xl border bg-card p-3 md:p-5 xl:block xl:p-6">
                         <h2 className="text-xl font-semibold">{copy.aboutSeller}</h2>
                         <div className="flex flex-wrap items-center gap-4">
                             {seller?.profile_image_url ? (
@@ -1264,7 +1363,7 @@ export default function CardDetailsPage() {
                                     {seller?.seller_verified && <BadgeCheck className="h-4 w-4 shrink-0 text-orange-500" />}
                                 </p>
                                 <p className="text-sm text-muted-foreground">
-                                    {seller?.seller_rating ? `${Number(seller.seller_rating).toFixed(1)}% ${copy.positive}` : copy.newSeller} · {seller?.seller_review_count || 0} {copy.itemsSold}
+                                    {seller?.seller_rating ? `${Number(seller.seller_rating).toFixed(1)}% ${copy.positive}` : copy.newSeller} · {formatCompactCount(seller?.seller_review_count || 0, locale)} {copy.itemsSold}
                                 </p>
                             </div>
                             {!isOwner && (
@@ -1321,6 +1420,79 @@ export default function CardDetailsPage() {
                 onOpenChange={setChatOpen}
                 initialConversationId={chatConversationId}
             />
+
+            <Drawer open={shippingDrawerOpen} onOpenChange={setShippingDrawerOpen}>
+                <DrawerContent className="xl:hidden">
+                    <DrawerHeader>
+                        <DrawerTitle>{copy.shippingPayments}</DrawerTitle>
+                        <DrawerDescription className="sr-only">{copy.shippingPayments}</DrawerDescription>
+                    </DrawerHeader>
+                    <div className="max-h-[85vh] overflow-y-auto px-4 pb-8">
+                        <div className="grid grid-cols-[96px_1fr] gap-x-3 gap-y-4 text-sm">
+                            <span className="font-medium">{copy.shipping}:</span>
+                            <div>
+                                <p><b>{copy.ghnFee}</b></p>
+                                <p className="text-muted-foreground">{copy.sellerArea}</p>
+                            </div>
+                            <span className="font-medium">{copy.delivery}:</span>
+                            <div>
+                                <p>{copy.estimatedDelivery}</p>
+                                <p className="text-muted-foreground">{copy.sellerShips}</p>
+                            </div>
+                            <span className="font-medium">{copy.returns}:</span>
+                            <p>{copy.returnsPolicy}</p>
+                            <span className="font-medium">{copy.payments}:</span>
+                            <div className="flex flex-wrap gap-2">
+                                {["PayOS", "Wallet", "VISA", "Bank"].map(method => (
+                                    <span key={method} className="rounded border bg-background px-2 py-1 text-xs font-semibold">{method}</span>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </DrawerContent>
+            </Drawer>
+
+            <Drawer open={detailsDrawerOpen} onOpenChange={setDetailsDrawerOpen}>
+                <DrawerContent className="xl:hidden">
+                    <DrawerHeader>
+                        <DrawerTitle>{copy.aboutItem}</DrawerTitle>
+                        <DrawerDescription className="sr-only">{copy.itemSpecifics}</DrawerDescription>
+                    </DrawerHeader>
+                    <div className="max-h-[85vh] overflow-y-auto px-4 pb-8">
+                        <div className="mb-6 flex flex-col gap-1 text-sm text-muted-foreground">
+                            <span>{copy.sellerResponsibility}</span>
+                            <span>{copy.itemNumber}: <b>{card.id.slice(0, 8).toUpperCase()}</b></span>
+                        </div>
+                        <h2 className="mb-4 text-lg font-bold tracking-normal">{copy.itemSpecifics}</h2>
+                        <div className="space-y-2">
+                            {itemSpecifics.map(([label, value]) => (
+                                <div key={label} className="grid grid-cols-[120px_1fr] gap-3 border-b border-border/40 py-1.5 text-sm">
+                                    <span className="text-muted-foreground">{label}</span>
+                                    <span className="font-medium [overflow-wrap:anywhere]">{value}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <h2 className="mb-3 mt-7 text-lg font-bold tracking-normal">{copy.itemDescription}</h2>
+                        <div className="min-h-32 whitespace-pre-line rounded-md bg-muted/40 p-4 text-sm leading-7">
+                            {card.description || copy.noDetailedDescription}
+                        </div>
+                    </div>
+                </DrawerContent>
+            </Drawer>
+
+            {isOwner && offers.length > 1 && (
+                <Drawer open={offersDrawerOpen} onOpenChange={setOffersDrawerOpen}>
+                    <DrawerContent className="xl:hidden">
+                        <DrawerHeader>
+                            <DrawerTitle>{copy.offers} ({offers.length})</DrawerTitle>
+                            <DrawerDescription className="sr-only">{copy.sellerTools}</DrawerDescription>
+                        </DrawerHeader>
+                        <div className="max-h-[85vh] overflow-y-auto px-4 pb-8">
+                            {renderOfferRows(offers)}
+                        </div>
+                    </DrawerContent>
+                </Drawer>
+            )}
         </div>
     );
 }
