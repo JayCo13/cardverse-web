@@ -10,8 +10,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import {
-    User, ShoppingBag, Tag, Star, Shield, Crown, Award, Package,
-    Clock, CheckCircle, XCircle, ChevronRight, BadgeCheck, CalendarDays, Wallet,
+    User, ShoppingBag, Tag, Star, Shield, Package, Clock, CheckCircle, XCircle,
+    ChevronRight, BadgeCheck, CalendarDays, Wallet,
+    Medal, Award, Trophy, Crown, Gem,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -36,11 +37,19 @@ const formatVnd = (amount: number | null | undefined) =>
 /**
  * Rank thresholds, measured in completed sales.
  *
- * Each rank carries a struck-metal face rather than a flat colour wash. A
- * translucent tint over a dark page has almost no contrast — the badge reads as
- * a smudge behind the icon instead of as an award — so the medal gets a lit
- * gradient, a hairline rim and a coloured glow, which is what makes it look
- * like an object sitting on the page.
+ * Each rank is struck from the metal it is named after, using the standard hex
+ * for that metal at the midpoint of the gradient — bronze #cd7f32, silver
+ * #c0c0c0, gold #ffd700, platinum #e5e4e2 — with a lighter highlight above and
+ * a shadow below, which is what makes a flat disc read as a struck face. A
+ * translucent tint over a dark page carries almost no contrast and reads as a
+ * smudge instead of an award.
+ *
+ * The icons climb rather than repeat: medal, rosette, trophy, crown, gem. Two
+ * ranks previously shared the same shield, so the badge could not tell Bronze
+ * from Silver at a glance — the one job it has.
+ *
+ * Silver and platinum are both pale, so platinum carries a cool cast and a
+ * whiter highlight to keep them apart at badge size.
  *
  * These class strings must stay in this file: Tailwind only scans
  * src/{app,components,pages}, so a palette moved to src/lib stops being
@@ -48,44 +57,39 @@ const formatVnd = (amount: number | null | undefined) =>
  */
 const RANKS = [
     {
-        name: "Bronze", minSales: 0, icon: Shield,
-        medal: "bg-[linear-gradient(135deg,#fbbf24_0%,#f97316_45%,#9a3412_100%)]",
-        glow: "shadow-[0_0_16px_-2px_rgba(249,115,22,0.65)]",
-        ring: "ring-orange-500/50",
-        text: "text-orange-400",
-        soft: "bg-orange-500/10",
+        name: "Bronze", minSales: 0, icon: Medal,
+        medal: "bg-[linear-gradient(135deg,#f5c396_0%,#cd7f32_48%,#7c4a1e_100%)]",
+        glow: "shadow-[0_0_16px_-2px_rgba(205,127,50,0.65)]",
+        ring: "ring-[#cd7f32]/60",
+        text: "text-[#d98b4a]",
     },
     {
-        name: "Silver", minSales: 5, icon: Shield,
-        medal: "bg-[linear-gradient(135deg,#f4f4f5_0%,#a1a1aa_45%,#52525b_100%)]",
-        glow: "shadow-[0_0_16px_-2px_rgba(212,212,216,0.55)]",
-        ring: "ring-zinc-300/50",
+        name: "Silver", minSales: 5, icon: Award,
+        medal: "bg-[linear-gradient(135deg,#fdfdfd_0%,#c0c0c0_48%,#6b7280_100%)]",
+        glow: "shadow-[0_0_16px_-2px_rgba(192,192,192,0.6)]",
+        ring: "ring-[#c0c0c0]/60",
         text: "text-zinc-200",
-        soft: "bg-zinc-400/10",
     },
     {
-        name: "Gold", minSales: 15, icon: Star,
-        medal: "bg-[linear-gradient(135deg,#fde68a_0%,#f59e0b_45%,#b45309_100%)]",
-        glow: "shadow-[0_0_18px_-2px_rgba(245,158,11,0.7)]",
-        ring: "ring-amber-400/60",
-        text: "text-amber-300",
-        soft: "bg-amber-500/10",
+        name: "Gold", minSales: 15, icon: Trophy,
+        medal: "bg-[linear-gradient(135deg,#fff4b8_0%,#ffd700_48%,#a67c00_100%)]",
+        glow: "shadow-[0_0_18px_-2px_rgba(255,215,0,0.7)]",
+        ring: "ring-[#ffd700]/60",
+        text: "text-[#f5c518]",
     },
     {
-        name: "Platinum", minSales: 30, icon: Award,
-        medal: "bg-[linear-gradient(135deg,#cffafe_0%,#22d3ee_45%,#0e7490_100%)]",
-        glow: "shadow-[0_0_18px_-2px_rgba(34,211,238,0.65)]",
-        ring: "ring-cyan-300/60",
+        name: "Platinum", minSales: 30, icon: Crown,
+        medal: "bg-[linear-gradient(135deg,#ffffff_0%,#e5e4e2_42%,#8fa3b8_100%)]",
+        glow: "shadow-[0_0_18px_-2px_rgba(203,222,240,0.7)]",
+        ring: "ring-[#dfe6ec]/70",
+        text: "text-slate-200",
+    },
+    {
+        name: "Diamond", minSales: 50, icon: Gem,
+        medal: "bg-[linear-gradient(135deg,#ffffff_0%,#67e8f9_45%,#0284c7_100%)]",
+        glow: "shadow-[0_0_22px_-2px_rgba(34,211,238,0.8)]",
+        ring: "ring-cyan-300/70",
         text: "text-cyan-300",
-        soft: "bg-cyan-500/10",
-    },
-    {
-        name: "Diamond", minSales: 50, icon: Crown,
-        medal: "bg-[linear-gradient(135deg,#f0abfc_0%,#a855f7_45%,#6d28d9_100%)]",
-        glow: "shadow-[0_0_20px_-2px_rgba(168,85,247,0.7)]",
-        ring: "ring-fuchsia-400/60",
-        text: "text-fuchsia-300",
-        soft: "bg-fuchsia-500/10",
     },
 ];
 
