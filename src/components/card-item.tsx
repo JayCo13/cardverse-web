@@ -20,6 +20,7 @@ import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { getCategoryCode } from "@/lib/category-code";
 import { getCarrier } from "@/lib/shipping-carriers";
 import { shopShippingRange } from "@/lib/shipping-fee";
+import { formatCompactCount } from "@/lib/format";
 
 // Category badge styles with colors and gradients (no icons for cleaner look)
 const getCategoryStyle = (category: string) => {
@@ -153,7 +154,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
         sellerOnCardVerse: '販売者評価',
         newSeller: '新規販売者',
         positive: '高評価',
-        itemsSold: '件販売済み',
+        itemsSold: '販売',
         type: '種類',
         quantity: '数量',
         available: '在庫あり',
@@ -214,7 +215,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           sellerOnCardVerse: 'Seller reputation',
           newSeller: 'New seller',
           positive: 'positive',
-          itemsSold: 'sold',
+        itemsSold: 'sold',
           type: 'Type',
           quantity: 'Qty',
           available: 'available',
@@ -280,8 +281,8 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
       ? `${rating.toFixed(1)}% ${copy.positive}`
       : copy.newSeller;
 
-    return `${ratingText} · ${soldCount} ${copy.itemsSold}`;
-  }, [card.sellerRating, card.sellerReviewCount, copy.itemsSold, copy.newSeller, copy.positive]);
+    return `${ratingText} · ${formatCompactCount(soldCount, locale)} ${copy.itemsSold}`;
+  }, [card.sellerRating, card.sellerReviewCount, copy.itemsSold, copy.newSeller, copy.positive, locale]);
 
   const showPreviousImage = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
@@ -601,13 +602,13 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           <div className="mt-0.5 flex flex-col justify-between gap-1.5 border-0 border-t border-dashed border-white/10 bg-transparent p-0 pt-1.5 md:mt-0 md:gap-4 md:border-solid md:border-border/50 md:pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
             <div className="flex min-w-0 items-center gap-1.5 md:gap-3">
               {card.sellerAvatar ? (
-                <Image src={card.sellerAvatar} alt={card.sellerName || ''} width={42} height={42} className="h-[22px] w-[22px] rounded-full object-cover ring-1 ring-border md:h-[42px] md:w-[42px]" />
+                <Image src={card.sellerAvatar} alt={card.sellerName || ''} width={42} height={42} className="h-[22px] w-[22px] shrink-0 rounded-full object-cover ring-1 ring-border md:h-[42px] md:w-[42px]" />
               ) : (
-                <div className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-primary/15 ring-1 ring-primary/30 md:h-11 md:w-11">
+                <div className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-primary/15 ring-1 ring-primary/30 md:h-11 md:w-11">
                   <span className="text-[10px] font-bold text-primary md:text-base">{(card.sellerName || card.author || 'C').charAt(0).toUpperCase()}</span>
                 </div>
               )}
-              <div className="flex min-w-0 items-baseline gap-1 text-[11px] md:block md:text-sm">
+              <div className="flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden text-[11px] md:block md:text-sm">
                 <p className="truncate font-semibold text-foreground">{card.sellerName || card.author}</p>
                 <span className="text-muted-foreground md:hidden">·</span>
                 <p className="truncate text-muted-foreground md:text-xs">{sellerStatsText}</p>

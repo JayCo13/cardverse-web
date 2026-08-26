@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
@@ -16,9 +17,13 @@ import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
 import { useLocalization } from '@/context/localization-context';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { getCloudinarySignature, uploadImageDirectToCloudinary, type CloudinarySignaturePayload } from '@/lib/cloudinary-direct';
 import { getCloudinaryKycScanUrl, toDisplaySafeUrl, optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
 import { isHeicFile, convertHeicToJpeg } from '@/lib/heic';
+import { formatCompactCount } from '@/lib/format';
 import { SellerAddressForm } from '@/components/seller-address-form';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -50,6 +55,63 @@ type MyListing = {
   condition: string | null;
   created_at: string;
 };
+
+function KpiCard({ label, value, tone }: { label: string; value: string | number; tone: string }) {
+  return (
+    <div className={`min-w-0 rounded-lg border p-3 ${tone}`}>
+      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-1 truncate text-lg font-bold md:text-xl">{value}</p>
+    </div>
+  );
+}
+
+function ListingRow({ listing, statusLabel, price }: { listing: MyListing; statusLabel: string; price: string }) {
+  return (
+    <Link href={`/cards/${listing.id}`} className="flex items-center gap-3 border-b py-2 last:border-b-0">
+      <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded bg-muted">
+        {listing.image_url ? (
+          <Image src={optimizeCloudinaryUrl(listing.image_url, 160)} alt="" fill sizes="56px" className="object-cover" />
+        ) : (
+          <Package className="m-auto h-full w-5 text-muted-foreground/40" />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{listing.name}</p>
+        <p className="mt-0.5 text-sm font-semibold text-primary">{price}</p>
+      </div>
+      <Badge variant="outline" className="shrink-0 text-[10px]">{statusLabel}</Badge>
+    </Link>
+  );
+}
+
+function OrderRow({ order, statusLabel, statusClass, unknownCard, date, price }: {
+  order: SellerOrder;
+  statusLabel: string;
+  statusClass: string;
+  unknownCard: string;
+  date: string;
+  price: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 border-b py-2 last:border-b-0">
+      <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-muted">
+        {order.card?.image_url ? (
+          <Image src={optimizeCloudinaryUrl(order.card.image_url, 120)} alt="" fill sizes="40px" className="object-cover" />
+        ) : (
+          <Package className="m-auto h-full w-4 text-muted-foreground/40" />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{order.card?.name || unknownCard}</p>
+        <p className="text-xs text-muted-foreground">{date}</p>
+      </div>
+      <div className="shrink-0 text-right">
+        <p className="text-sm font-semibold">{price}</p>
+        <Badge variant="outline" className={`mt-0.5 text-[10px] ${statusClass}`}>{statusLabel}</Badge>
+      </div>
+    </div>
+  );
+}
 
 /**
  * Identity session handled by the external provider (Didit). The browser only
@@ -117,6 +179,7 @@ type Bank = {
 };
 
 export default function SellPage() {
+  const router = useRouter();
   const { t, locale } = useLocalization();
   const { user, isLoading: authLoading } = useAuth();
   const { setOpen } = useAuthModal();
@@ -138,6 +201,8 @@ export default function SellPage() {
   const [shipCarriers, setShipCarriers] = useState<string[]>([]);
   const [shipFees, setShipFees] = useState<Record<string, { intra: string; inter: string; region: string }>>({});
   const [savingShipping, setSavingShipping] = useState(false);
+  const [shippingConfigOpen, setShippingConfigOpen] = useState(false);
+  const [showAllListings, setShowAllListings] = useState<Record<string, boolean>>({});
 
   // Wizard step
   const [currentStep, setCurrentStep] = useState(1);
@@ -186,7 +251,7 @@ export default function SellPage() {
         dashboardTitle: 'Seller Dashboard',
         dashboardDesc: '出品と注文を管理',
         addPickupAddress: '集荷先住所を追加',
-        listCard: 'カードを出品',
+        listCard: '新しいカードを出品',
         waitingShip: '発送待ち',
         shipping: '配送中',
         completed: '完了',
@@ -226,7 +291,7 @@ export default function SellPage() {
           dashboardTitle: 'Seller Dashboard',
           dashboardDesc: 'Quản lý bài đăng và đơn hàng',
           addPickupAddress: 'Thêm địa chỉ để bán',
-          listCard: 'Đăng bán thẻ',
+          listCard: 'Đăng thẻ mới',
           waitingShip: 'Chờ giao hàng',
           shipping: 'Đang giao',
           completed: 'Hoàn tất',
@@ -265,7 +330,7 @@ export default function SellPage() {
           dashboardTitle: 'Seller Dashboard',
           dashboardDesc: 'Manage listings and orders',
           addPickupAddress: 'Add pickup address',
-          listCard: 'List a card',
+          listCard: 'List a new card',
           waitingShip: 'Waiting to ship',
           shipping: 'Shipping',
           completed: 'Completed',
@@ -292,6 +357,7 @@ export default function SellPage() {
           step3: 'Review and submit',
         };
   const tx = (vi: string, en: string, ja: string) => (locale === 'ja-JP' ? ja : locale === 'vi-VN' ? vi : en);
+  const goToNewListing = () => router.push('/sell/create');
 
   const handleFileChange = async (type: 'bank', file: File | null) => {
     let processed = file;
@@ -809,6 +875,97 @@ export default function SellPage() {
     cancelled: { label: tx('Đã hủy', 'Cancelled', 'キャンセル済み'), icon: <XCircle className="h-4 w-4" />, color: 'text-muted-foreground' },
   };
 
+  const renderShippingConfigForm = () => (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label>{tx('Đơn vị vận chuyển', 'Carriers', '配送業者')}</Label>
+        <div className="flex flex-wrap gap-2">
+          {SHIPPING_CARRIERS.map(c => (
+            <button
+              key={c.code}
+              type="button"
+              onClick={() => toggleShipCarrier(c.code)}
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors ${shipCarriers.includes(c.code) ? 'border-orange-500 bg-orange-500/15 text-orange-300' : 'border-border/60 text-muted-foreground hover:border-orange-500/40'}`}
+            >
+              {c.logo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={c.logo} alt="" className="h-5 w-5 rounded" />
+              ) : (
+                <Truck className="h-4 w-4" />
+              )}
+              {c.name}
+            </button>
+          ))}
+        </div>
+      </div>
+      {shipCarriers.some(c => c !== 'self') && (
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            {tx('Nội tỉnh = cùng tỉnh · Ngoại tỉnh = khác tỉnh, cùng miền · Liên miền = khác miền (Bắc/Trung/Nam). Điền phí riêng cho từng đơn vị (bắt buộc).',
+              'Same province · same region (different province) · cross-region (North/Central/South). Fill fees per carrier (required).',
+              '同一省内 · 同一地域（別の省）· 地域間（北/中/南）。配送業者ごとに料金を入力（必須）。')}
+          </p>
+          {shipCarriers.filter(c => c !== 'self').map(code => {
+            const carrier = SHIPPING_CARRIERS.find(c => c.code === code);
+            const f = shipFees[code] || { intra: '', inter: '', region: '' };
+            return (
+              <div key={code} className="space-y-3 rounded-lg border border-border/60 bg-background/40 p-3">
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  {carrier?.logo && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={carrier.logo} alt="" className="h-5 w-5 rounded" />
+                  )}
+                  {carrier?.name}
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="space-y-1.5">
+                    <Label>{tx('Nội tỉnh (đ)', 'Same province (đ)', '同一省内 (đ)')}</Label>
+                    <Input inputMode="numeric" value={f.intra} onChange={e => setShipFee(code, 'intra', e.target.value)} placeholder="15.000" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>{tx('Ngoại tỉnh (đ)', 'Same region (đ)', '同一地域 (đ)')}</Label>
+                    <Input inputMode="numeric" value={f.inter} onChange={e => setShipFee(code, 'inter', e.target.value)} placeholder="25.000" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>{tx('Liên miền (đ)', 'Cross-region (đ)', '地域間 (đ)')}</Label>
+                    <Input inputMode="numeric" value={f.region} onChange={e => setShipFee(code, 'region', e.target.value)} placeholder="40.000" />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <Button onClick={() => void saveShippingOptions()} disabled={savingShipping} className="bg-orange-500 hover:bg-orange-600">
+        {savingShipping ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Truck className="mr-2 h-4 w-4" />}
+        {tx('Lưu vận chuyển', 'Save shipping', '配送を保存')}
+      </Button>
+    </div>
+  );
+
+  const renderListingTab = (key: string, listings: MyListing[], statusLabel: string) => {
+    const visibleListings = showAllListings[key] ? listings : listings.slice(0, 5);
+
+    return (
+      <TabsContent value={key}>
+        {listings.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">{copy.noListings}</p>
+        ) : (
+          <>
+            <div>{visibleListings.map(listing => (
+              <ListingRow key={listing.id} listing={listing} statusLabel={listing.status === 'sold' ? copy.sold : statusLabel} price={listing.price ? formatVND(listing.price) : '—'} />
+            ))}</div>
+            {listings.length > 5 && !showAllListings[key] && (
+              <button type="button" onClick={() => setShowAllListings(prev => ({ ...prev, [key]: true }))} className="mt-3 w-full text-sm font-medium text-primary">
+                {copy.viewAll} ({listings.length}) ›
+              </button>
+            )}
+          </>
+        )}
+      </TabsContent>
+    );
+  };
+
   const isPhoneValid = /^0[3-9]\d{8}$/.test(phoneNumber);
 
   // ── LOADING STATE ──
@@ -894,11 +1051,21 @@ export default function SellPage() {
     const shippingOrders = sellerOrders.filter(o => o.status === 'shipping');
     const completedOrders = sellerOrders.filter(o => o.status === 'completed');
     const totalEarnings = completedOrders.reduce((sum, o) => sum + (o.amount - o.platform_fee), 0);
+    const activeListings = myListings.filter(listing => listing.status === 'active' || listing.status === 'in_transaction');
+    const soldListings = myListings.filter(listing => listing.status === 'sold');
+    const draftListings = myListings.filter(listing => !activeListings.includes(listing) && !soldListings.includes(listing));
+    const enabledCarriers = SHIPPING_CARRIERS.filter(carrier => shipCarriers.includes(carrier.code));
+    const configuredFees = Object.values(shipFees)
+      .flatMap(fee => [fee.intra, fee.inter, fee.region])
+      .map(fee => Number(fee.replace(/[^\d]/g, '')))
+      .filter(fee => fee > 0);
+    const minFee = configuredFees.length ? formatVND(Math.min(...configuredFees)) : '—';
+    const maxFee = configuredFees.length ? formatVND(Math.max(...configuredFees)) : '—';
 
     return (
       <div className="flex flex-col min-h-screen">
         <Header />
-        <main className="flex-1 container mx-auto px-4 py-8">
+        <main className="flex-1 container mx-auto px-4 py-8 pb-24 md:pb-8">
           <div className="max-w-4xl mx-auto space-y-6">
             <div className="flex items-center justify-between">
               <div>
@@ -908,53 +1075,28 @@ export default function SellPage() {
                 </h1>
                 <p className="text-muted-foreground mt-1">{copy.dashboardDesc}</p>
               </div>
-              {!pickupAddress && !isLoadingAddress ? (
-                <Button
-                  className="bg-orange-500 hover:bg-orange-600"
-                  onClick={() => {
-                    document.getElementById('pickup-address')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    setEditingAddress(true);
-                  }}
-                >
-                  <MapPin className="h-4 w-4 mr-2" />
-                  {copy.addPickupAddress}
-                </Button>
-              ) : (
-                <Button asChild className="bg-orange-500 hover:bg-orange-600">
-                  <Link href="/sell/create">
-                    <Plus className="h-4 w-4 mr-2" />
-                    {copy.listCard}
-                  </Link>
-                </Button>
-              )}
+              <div className="flex shrink-0 items-center gap-2">
+                {!pickupAddress && !isLoadingAddress && (
+                  <Button
+                    className="hidden bg-orange-500 hover:bg-orange-600 md:inline-flex"
+                    onClick={() => {
+                      document.getElementById('pickup-address')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      setEditingAddress(true);
+                    }}
+                  >
+                    <MapPin className="mr-2 h-4 w-4" />
+                    {copy.addPickupAddress}
+                  </Button>
+                )}
+              </div>
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Card className="bg-blue-500/5 border-blue-500/20">
-                <CardContent className="pt-6 text-center">
-                  <p className="text-2xl font-bold text-blue-400">{pendingOrders.length}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{copy.waitingShip}</p>
-                </CardContent>
-              </Card>
-              <Card className="bg-yellow-500/5 border-yellow-500/20">
-                <CardContent className="pt-6 text-center">
-                  <p className="text-2xl font-bold text-yellow-400">{shippingOrders.length}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{copy.shipping}</p>
-                </CardContent>
-              </Card>
-              <Card className="bg-green-500/5 border-green-500/20">
-                <CardContent className="pt-6 text-center">
-                  <p className="text-2xl font-bold text-green-400">{completedOrders.length}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{copy.completed}</p>
-                </CardContent>
-              </Card>
-              <Card className="bg-orange-500/5 border-orange-500/20">
-                <CardContent className="pt-6 text-center">
-                  <p className="text-2xl font-bold text-orange-400">{formatVND(totalEarnings)}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{copy.totalEarnings}</p>
-                </CardContent>
-              </Card>
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-4">
+              <KpiCard label={copy.waitingShip} value={pendingOrders.length} tone="border-blue-500/20 bg-blue-500/5 text-blue-400" />
+              <KpiCard label={copy.shipping} value={shippingOrders.length} tone="border-yellow-500/20 bg-yellow-500/5 text-yellow-400" />
+              <KpiCard label={copy.completed} value={completedOrders.length} tone="border-green-500/20 bg-green-500/5 text-green-400" />
+              <KpiCard label={copy.totalEarnings} value={formatVND(totalEarnings)} tone="border-orange-500/20 bg-orange-500/5 text-orange-400" />
             </div>
 
             {/* Pickup Address — required so shipping fees can be calculated */}
@@ -1012,7 +1154,25 @@ export default function SellPage() {
             </Card>
 
             {/* Shop shipping options */}
-            <Card>
+            <button
+              type="button"
+              onClick={() => setShippingConfigOpen(true)}
+              className="flex w-full items-start justify-between rounded-lg border bg-card p-4 text-left md:hidden"
+            >
+              <span className="flex min-w-0 items-start gap-3">
+                <Truck className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0">
+                  <span className="block font-medium">{tx('Vận chuyển của shop', 'Shop shipping', 'ショップ配送')}</span>
+                  <span className="mt-1 block truncate text-sm text-muted-foreground">
+                    {enabledCarriers.map(carrier => carrier.name).join(' · ') || '—'} ({enabledCarriers.length})
+                  </span>
+                  <span className="block text-sm text-muted-foreground">{minFee} – {maxFee}</span>
+                </span>
+              </span>
+              <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+            </button>
+
+            <Card className="hidden md:block">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Truck className="h-5 w-5 text-orange-400" />
@@ -1022,94 +1182,39 @@ export default function SellPage() {
                   {tx('Chọn đơn vị vận chuyển và khoảng phí ship. Thông tin này hiển thị trên mọi bài đăng; người mua trả mức phí tối đa khi thanh toán.', 'Pick your carriers and a fee range. It shows on all your listings; buyers are charged the maximum at checkout.', '配送業者と料金範囲を選択します。全出品に表示され、購入者は上限額を支払います。')}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>{tx('Đơn vị vận chuyển', 'Carriers', '配送業者')}</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {SHIPPING_CARRIERS.map(c => (
-                      <button
-                        key={c.code}
-                        type="button"
-                        onClick={() => toggleShipCarrier(c.code)}
-                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors ${shipCarriers.includes(c.code) ? 'border-orange-500 bg-orange-500/15 text-orange-300' : 'border-border/60 text-muted-foreground hover:border-orange-500/40'}`}
-                      >
-                        {c.logo ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={c.logo} alt="" className="h-5 w-5 rounded" />
-                        ) : (
-                          <Truck className="h-4 w-4" />
-                        )}
-                        {c.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {shipCarriers.some(c => c !== 'self') && (
-                  <div className="space-y-3">
-                    <p className="text-xs text-muted-foreground">
-                      {tx('Nội tỉnh = cùng tỉnh · Ngoại tỉnh = khác tỉnh, cùng miền · Liên miền = khác miền (Bắc/Trung/Nam). Điền phí riêng cho từng đơn vị (bắt buộc).',
-                          'Same province · same region (different province) · cross-region (North/Central/South). Fill fees per carrier (required).',
-                          '同一省内 · 同一地域（別の省）· 地域間（北/中/南）。配送業者ごとに料金を入力（必須）。')}
-                    </p>
-                    {shipCarriers.filter(c => c !== 'self').map(code => {
-                      const carrier = SHIPPING_CARRIERS.find(c => c.code === code);
-                      const f = shipFees[code] || { intra: '', inter: '', region: '' };
-                      return (
-                        <div key={code} className="space-y-3 rounded-lg border border-border/60 bg-background/40 p-3">
-                          <div className="flex items-center gap-2 text-sm font-semibold">
-                            {carrier?.logo && (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={carrier.logo} alt="" className="h-5 w-5 rounded" />
-                            )}
-                            {carrier?.name}
-                          </div>
-                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                            <div className="space-y-1.5">
-                              <Label>{tx('Nội tỉnh (đ)', 'Same province (đ)', '同一省内 (đ)')}</Label>
-                              <Input inputMode="numeric" value={f.intra} onChange={e => setShipFee(code, 'intra', e.target.value)} placeholder="15.000" />
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label>{tx('Ngoại tỉnh (đ)', 'Same region (đ)', '同一地域 (đ)')}</Label>
-                              <Input inputMode="numeric" value={f.inter} onChange={e => setShipFee(code, 'inter', e.target.value)} placeholder="25.000" />
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label>{tx('Liên miền (đ)', 'Cross-region (đ)', '地域間 (đ)')}</Label>
-                              <Input inputMode="numeric" value={f.region} onChange={e => setShipFee(code, 'region', e.target.value)} placeholder="40.000" />
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                <Button onClick={() => void saveShippingOptions()} disabled={savingShipping} className="bg-orange-500 hover:bg-orange-600">
-                  {savingShipping ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Truck className="mr-2 h-4 w-4" />}
-                  {tx('Lưu vận chuyển', 'Save shipping', '配送を保存')}
-                </Button>
+              <CardContent>
+                {renderShippingConfigForm()}
               </CardContent>
             </Card>
 
             {/* My Listings */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <Package className="h-5 w-5 text-orange-400" />
-                    {copy.myListings}
-                    {!isLoadingListings && myListings.length > 0 && (
-                      <span className="text-sm font-normal text-muted-foreground">
-                        ({copy.activeListings.replace('{count}', String(myListings.filter(l => l.status === 'active').length))})
-                      </span>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <CardTitle className="flex min-w-0 items-center gap-2 text-lg font-semibold md:text-2xl">
+                      <Package className="h-5 w-5 shrink-0 text-orange-400" />
+                      <span className="truncate">{copy.myListings}</span>
+                      {!isLoadingListings && myListings.length > 0 && (
+                        <span className="hidden shrink-0 text-sm font-normal text-muted-foreground md:inline">
+                          ({copy.activeListings.replace('{count}', String(myListings.filter(listing => listing.status === 'active').length))})
+                        </span>
+                      )}
+                    </CardTitle>
+                    {!isLoadingListings && (
+                      <p className="mt-1 text-xs text-muted-foreground md:hidden">
+                        {copy.activeListings.replace('{count}', formatCompactCount(myListings.filter(listing => listing.status === 'active').length, locale))}
+                      </p>
                     )}
-                  </span>
-                  <Button variant="outline" size="sm" asChild>
-                    <Link href="/buy">{copy.viewMarketplace}</Link>
+                  </div>
+                  <Button variant="outline" size="sm" className="shrink-0" asChild>
+                    <Link href="/buy" className="whitespace-nowrap">{copy.viewMarketplace}</Link>
                   </Button>
-                </CardTitle>
+                </div>
               </CardHeader>
               <CardContent>
                 {isLoadingListings ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
                     {[1, 2, 3, 4].map(i => <Skeleton key={i} className="aspect-[3/4] w-full rounded-lg" />)}
                   </div>
                 ) : myListings.length === 0 ? (
@@ -1123,48 +1228,54 @@ export default function SellPage() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                    {myListings.map((listing) => {
-                      const isSold = listing.status === 'sold';
-                      return (
-                        <Link
-                          key={listing.id}
-                          href={`/cards/${listing.id}`}
-                          className="group relative flex flex-col overflow-hidden rounded-xl border bg-card transition-all hover:border-orange-500/40 hover:shadow-md"
-                        >
-                          <div className="relative aspect-[3/4] w-full overflow-hidden bg-muted">
-                            {listing.image_url ? (
-                              <Image
-                                src={optimizeCloudinaryUrl(listing.image_url, 300)}
-                                alt={listing.name}
-                                fill
-                                sizes="(max-width: 768px) 50vw, 25vw"
-                                className={`object-cover transition-transform duration-300 group-hover:scale-105 ${isSold ? 'grayscale' : ''}`}
-                              />
-                            ) : (
-                              <div className="flex h-full items-center justify-center">
-                                <Package className="h-8 w-8 text-muted-foreground/40" />
-                              </div>
-                            )}
-                            <span
-                              className={`absolute left-2 top-2 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isSold
-                                ? 'bg-muted text-muted-foreground'
-                                : 'bg-green-500/90 text-white'
-                                }`}
-                            >
-                              {isSold ? copy.sold : copy.active}
-                            </span>
-                          </div>
-                          <div className="flex flex-1 flex-col p-2.5">
-                            <p className="line-clamp-1 text-sm font-medium">{listing.name}</p>
-                            <p className="mt-1 text-sm font-bold text-orange-400">
-                              {listing.price ? formatVND(listing.price) : '—'}
-                            </p>
-                          </div>
-                        </Link>
-                      );
-                    })}
-                  </div>
+                  <>
+                    <Tabs defaultValue="active" className="md:hidden">
+                      <TabsList className="grid h-auto w-full grid-cols-3">
+                        <TabsTrigger value="active" className="min-w-0 flex-1 truncate px-2 text-xs">{copy.active} ({formatCompactCount(activeListings.length, locale)})</TabsTrigger>
+                        <TabsTrigger value="sold" className="min-w-0 flex-1 truncate px-2 text-xs">{copy.sold} ({formatCompactCount(soldListings.length, locale)})</TabsTrigger>
+                        <TabsTrigger value="draft" className="min-w-0 flex-1 truncate px-2 text-xs">{tx('Nháp', 'Drafts', '下書き')} ({formatCompactCount(draftListings.length, locale)})</TabsTrigger>
+                      </TabsList>
+                      {renderListingTab('active', activeListings, copy.active)}
+                      {renderListingTab('sold', soldListings, copy.sold)}
+                      {renderListingTab('draft', draftListings, tx('Nháp', 'Drafts', '下書き'))}
+                    </Tabs>
+
+                    <div className="hidden grid-cols-2 gap-3 sm:grid-cols-3 md:grid md:grid-cols-4">
+                      {myListings.map((listing) => {
+                        const isSold = listing.status === 'sold';
+                        return (
+                          <Link
+                            key={listing.id}
+                            href={`/cards/${listing.id}`}
+                            className="group relative flex flex-col overflow-hidden rounded-xl border bg-card transition-all hover:border-orange-500/40 hover:shadow-md"
+                          >
+                            <div className="relative aspect-[3/4] w-full overflow-hidden bg-muted">
+                              {listing.image_url ? (
+                                <Image
+                                  src={optimizeCloudinaryUrl(listing.image_url, 300)}
+                                  alt={listing.name}
+                                  fill
+                                  sizes="(max-width: 768px) 50vw, 25vw"
+                                  className={`object-cover transition-transform duration-300 group-hover:scale-105 ${isSold ? 'grayscale' : ''}`}
+                                />
+                              ) : (
+                                <div className="flex h-full items-center justify-center">
+                                  <Package className="h-8 w-8 text-muted-foreground/40" />
+                                </div>
+                              )}
+                              <span className={`absolute left-2 top-2 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isSold ? 'bg-muted text-muted-foreground' : 'bg-green-500/90 text-white'}`}>
+                                {isSold ? copy.sold : copy.active}
+                              </span>
+                            </div>
+                            <div className="flex flex-1 flex-col p-2.5">
+                              <p className="line-clamp-1 text-sm font-medium">{listing.name}</p>
+                              <p className="mt-1 text-sm font-bold text-orange-400">{listing.price ? formatVND(listing.price) : '—'}</p>
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </>
                 )}
               </CardContent>
             </Card>
@@ -1172,12 +1283,19 @@ export default function SellPage() {
             {/* Recent Orders */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span>{copy.recentOrders}</span>
-                  <Button variant="outline" size="sm" asChild>
-                    <Link href="/orders">{copy.viewAll}</Link>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <CardTitle className="truncate text-lg font-semibold md:text-2xl">{copy.recentOrders}</CardTitle>
+                    {!isLoadingOrders && (
+                      <p className="mt-1 text-xs text-muted-foreground md:hidden">
+                        {formatCompactCount(sellerOrders.length, locale)} {tx('đơn hàng', 'orders', '件の注文')}
+                      </p>
+                    )}
+                  </div>
+                  <Button variant="outline" size="sm" className="shrink-0" asChild>
+                    <Link href="/orders" className="whitespace-nowrap">{copy.viewAll}</Link>
                   </Button>
-                </CardTitle>
+                </div>
               </CardHeader>
               <CardContent>
                 {isLoadingOrders ? (
@@ -1187,39 +1305,69 @@ export default function SellPage() {
                 ) : sellerOrders.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">{copy.noOrders}</p>
                 ) : (
-                  <div className="space-y-3">
-                    {sellerOrders.slice(0, 5).map((order) => {
-                      const statusInfo = STATUS_MAP[order.status] || { label: order.status, icon: null, color: '' };
-                      return (
-                        <div key={order.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
-                          <div className="flex items-center gap-3">
-                            {order.card?.image_url && (
-                              <div className="relative w-10 h-14 rounded overflow-hidden flex-shrink-0">
-                                <Image src={order.card.image_url} alt="" fill className="object-cover" />
+                  <>
+                    <div className="md:hidden">
+                      {sellerOrders.slice(0, 3).map(order => {
+                        const statusInfo = STATUS_MAP[order.status] || { label: order.status, color: '' };
+                        return <OrderRow key={order.id} order={order} statusLabel={statusInfo.label} statusClass={statusInfo.color} unknownCard={copy.unknownCard} date={new Date(order.created_at).toLocaleDateString(locale)} price={formatVND(order.amount - order.platform_fee)} />;
+                      })}
+                      {sellerOrders.length > 3 && (
+                        <Link href="/orders" className="mt-3 block text-center text-sm font-medium text-primary">{copy.viewAll} ›</Link>
+                      )}
+                    </div>
+
+                    <div className="hidden space-y-3 md:block">
+                      {sellerOrders.slice(0, 5).map((order) => {
+                        const statusInfo = STATUS_MAP[order.status] || { label: order.status, icon: null, color: '' };
+                        return (
+                          <div key={order.id} className="flex items-center justify-between rounded-lg border bg-card p-3 transition-colors hover:bg-accent/50">
+                            <div className="flex items-center gap-3">
+                              {order.card?.image_url && (
+                                <div className="relative h-14 w-10 shrink-0 overflow-hidden rounded">
+                                  <Image src={order.card.image_url} alt="" fill className="object-cover" />
+                                </div>
+                              )}
+                              <div>
+                                <p className="line-clamp-1 text-sm font-medium">{order.card?.name || copy.unknownCard}</p>
+                                <p className={`flex items-center gap-1 text-xs ${statusInfo.color}`}>{statusInfo.icon} {statusInfo.label}</p>
                               </div>
-                            )}
-                            <div>
-                              <p className="font-medium text-sm line-clamp-1">{order.card?.name || copy.unknownCard}</p>
-                              <p className={`text-xs flex items-center gap-1 ${statusInfo.color}`}>
-                                {statusInfo.icon} {statusInfo.label}
-                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-semibold">{formatVND(order.amount - order.platform_fee)}</p>
+                              <p className="text-xs text-muted-foreground">{new Date(order.created_at).toLocaleDateString(locale)}</p>
                             </div>
                           </div>
-                          <div className="text-right">
-                            <p className="font-semibold text-sm">{formatVND(order.amount - order.platform_fee)}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(order.created_at).toLocaleDateString(locale)}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  </>
                 )}
               </CardContent>
             </Card>
           </div>
         </main>
+        <button
+          type="button"
+          onClick={goToNewListing}
+          aria-label={copy.listCard}
+          className="fixed bottom-5 right-4 z-50 flex h-12 items-center gap-2 rounded-full bg-primary px-5 pb-[env(safe-area-inset-bottom)] text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition hover:scale-105 active:scale-95 md:hidden"
+        >
+          <Plus className="h-5 w-5" />
+          <span>{copy.listCard}</span>
+        </button>
+        <Drawer open={shippingConfigOpen} onOpenChange={setShippingConfigOpen}>
+          <DrawerContent className="md:hidden">
+            <DrawerHeader>
+              <DrawerTitle>{tx('Vận chuyển của shop', 'Shop shipping', 'ショップ配送')}</DrawerTitle>
+              <DrawerDescription>
+                {tx('Chọn đơn vị vận chuyển và khoảng phí ship.', 'Choose carriers and shipping fees.', '配送業者と送料を設定します。')}
+              </DrawerDescription>
+            </DrawerHeader>
+            <div className="max-h-[80vh] overflow-y-auto px-4 pb-6">
+              {renderShippingConfigForm()}
+            </div>
+          </DrawerContent>
+        </Drawer>
         <Footer />
       </div>
     );
