@@ -4,6 +4,7 @@ import { getKycProvider, TERMINAL_KYC_STATUSES } from '@/lib/kyc';
 import type { KycStatus } from '@/lib/kyc';
 import { DECISION_BEARING_KYC_STATUSES, toKycSessionDecisionUpdate } from '@/lib/kyc/session-decision';
 import { notifyKycIdentityApproved } from '@/lib/kyc/identity-notification';
+import { notifyKycNeedsManualReview } from '@/lib/kyc/review-notification';
 
 // Signature verification needs the byte-exact body, so this route must never
 // be cached or statically optimised.
@@ -102,6 +103,23 @@ export async function POST(request: NextRequest) {
 
     if (!updatedSession?.length) {
         return NextResponse.json({ acknowledged: true });
+    }
+
+    // The provider parked this one for a human. Nobody is watching its console,
+    // so the seller would wait on a queue the team was never told about.
+    if (update.status === 'In Review') {
+        const alertStatus = await notifyKycNeedsManualReview({
+            service,
+            sessionId: session.id,
+        });
+        if (alertStatus === 'retry_required') {
+            // Same contract as the approval mail: let Didit redeliver rather
+            // than acknowledge an alert that never reached anyone.
+            return NextResponse.json(
+                { error: 'KYC review alert pending' },
+                { status: 503 },
+            );
+        }
     }
 
     if (update.status === 'Approved') {

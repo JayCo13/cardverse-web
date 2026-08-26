@@ -1266,6 +1266,8 @@ export interface Database {
                     locale: string
                     identity_email_sending_at: string | null
                     identity_email_sent_at: string | null
+                    review_alert_sending_at: string | null
+                    review_alert_sent_at: string | null
                     workflow_id: string | null
                     status: string
                     verified_full_name: string | null
@@ -1291,6 +1293,8 @@ export interface Database {
                     locale?: string
                     identity_email_sending_at?: string | null
                     identity_email_sent_at?: string | null
+                    review_alert_sending_at?: string | null
+                    review_alert_sent_at?: string | null
                     workflow_id?: string | null
                     status?: string
                     verified_full_name?: string | null
@@ -1316,6 +1320,8 @@ export interface Database {
                     locale?: string
                     identity_email_sending_at?: string | null
                     identity_email_sent_at?: string | null
+                    review_alert_sending_at?: string | null
+                    review_alert_sent_at?: string | null
                     workflow_id?: string | null
                     status?: string
                     verified_full_name?: string | null

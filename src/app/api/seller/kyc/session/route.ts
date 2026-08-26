@@ -5,6 +5,7 @@ import { getKycProvider } from '@/lib/kyc';
 import type { KycStatus } from '@/lib/kyc';
 import { toKycSessionDecisionUpdate } from '@/lib/kyc/session-decision';
 import { notifyKycIdentityApproved } from '@/lib/kyc/identity-notification';
+import { notifyKycNeedsManualReview } from '@/lib/kyc/review-notification';
 
 /** Sessions a user may open per hour. Each one costs a provider credit. */
 const MAX_SESSIONS_PER_HOUR = 5;
@@ -346,6 +347,16 @@ export async function GET() {
                         .select(SESSION_COLUMNS)
                         .single() as { data: KycSessionRow | null };
                     if (updated) {
+                        // Webhooks get lost; this poll is often the first thing
+                        // to see the move to 'In Review'. The claim in the RPC
+                        // is what keeps the team from being told twice.
+                        if (updated.status === 'In Review') {
+                            await withBudget(notifyKycNeedsManualReview({
+                                service,
+                                sessionId: updated.id,
+                                userEmail: user.email,
+                            }), Math.min(NOTIFY_BUDGET_MS, Math.max(0, remainingMs())));
+                        }
                         if (updated.status === 'Approved') {
                             // Budgeted: the handoff sends mail, and a stalled
                             // SMTP connection must not cost the user the status

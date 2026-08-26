@@ -1,5 +1,8 @@
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
+/** Auth roles that should receive operational review mail. */
+const NOTIFIED_ROLES = new Set(['admin', 'moderator']);
+
 // Resolve the real admin audience from Supabase Auth. The SMTP account is a
 // safe local fallback for the environment-backed moderator when
 // MODERATOR_EMAIL has not also been copied to the web deployment.
@@ -14,7 +17,10 @@ export async function getAdminNotificationEmails(): Promise<string[]> {
             if (error) throw error;
 
             for (const admin of data.users) {
-                if (admin.app_metadata?.role === 'admin' && admin.email) {
+                // Moderators review the same queue; leaving them out meant a
+                // mod could only be reached by also listing their address in
+                // MODERATOR_EMAIL, which nothing enforced.
+                if (NOTIFIED_ROLES.has(String(admin.app_metadata?.role)) && admin.email) {
                     recipients.set(admin.email.toLowerCase(), admin.email);
                 }
             }

@@ -237,6 +237,73 @@ export async function sendKYCSubmittedToAdmin(fullName: string, userEmail: strin
     }
 }
 
+/**
+ * Tell the review team a session is waiting on a human at the provider.
+ *
+ * The decision is made in Didit's console, not ours: 'In Review' means its
+ * automation would not rule either way, and the case sits there until someone
+ * approves or declines it. So this points at the console and carries the
+ * session id needed to find the case, plus the provider's own warnings — those
+ * are the reason it stopped, and reading them first is what makes the review
+ * short.
+ *
+ * Returns whether the mail was handed to the transport, so the caller can keep
+ * its delivery claim honest.
+ */
+export async function sendKycManualReviewToAdmin(input: {
+    fullName: string | null;
+    userEmail: string | null;
+    providerSessionId: string;
+    warnings: string[];
+    adminEmails: string[];
+}): Promise<boolean> {
+    try {
+        if (!input.adminEmails || input.adminEmails.length === 0) {
+            console.warn('[Mail] KYC manual-review alert has no recipients');
+            return false;
+        }
+
+        const transporter = createMailTransporter();
+        const from = getFromAddress();
+        const consoleUrl = process.env.DIDIT_CONSOLE_URL || 'https://business.didit.me/console';
+        const name = escapeHtml(input.fullName || 'Không đọc được tên');
+
+        const warningRows = input.warnings.length > 0
+            ? input.warnings
+                .map((warning) => `<li style="margin: 4px 0; color: #fcd34d;">${escapeHtml(warning)}</li>`)
+                .join('')
+            : '<li style="margin: 4px 0; color: #a1a1aa;">Nhà cung cấp không nêu cảnh báo cụ thể.</li>';
+
+        await transporter.sendMail({
+            from,
+            to: from,
+            bcc: input.adminEmails,
+            subject: `⏳ KYC chờ duyệt thủ công: ${input.fullName || input.providerSessionId}`,
+            html: buildTemplate(
+                '⏳ Hồ sơ KYC cần người duyệt tay',
+                `<p style="color: #e4e4e7;">Didit đã chuyển một phiên xác minh sang trạng thái <strong>In Review</strong> — hệ thống tự động không kết luận được, cần người vào xem và quyết định.</p>
+                <div style="background: rgba(250,204,21,0.1); border: 1px solid rgba(250,204,21,0.2); border-radius: 8px; padding: 16px; margin: 20px 0;">
+                    <p style="margin: 0; color: #fcd34d;">👤 <strong>Tên trên giấy tờ:</strong> ${name}</p>
+                    <p style="margin: 8px 0 0; color: #a1a1aa;">📧 <strong>Tài khoản:</strong> ${escapeHtml(input.userEmail || 'không rõ')}</p>
+                    <p style="margin: 8px 0 0; color: #a1a1aa;">🔖 <strong>Session ID:</strong> <code style="color:#e4e4e7;">${escapeHtml(input.providerSessionId)}</code></p>
+                </div>
+                <p style="color: #e4e4e7; margin-bottom: 8px;"><strong>Cảnh báo từ nhà cung cấp:</strong></p>
+                <ul style="margin: 0 0 20px; padding-left: 20px;">${warningRows}</ul>
+                <p style="color: #a1a1aa;">Mở Didit Business Console, tìm phiên theo Session ID ở trên, rồi chọn Approve / Decline / Request Resubmission. Kết quả sẽ tự đồng bộ về CardVerseHub qua webhook — không cần thao tác gì thêm ở admin dashboard.</p>
+                <div style="text-align: center; margin: 24px 0;">
+                    <a href="${consoleUrl}" style="display: inline-block; background: #eab308; color: #000; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">Mở Didit Console →</a>
+                </div>`
+            ),
+        });
+
+        console.log(`[Mail] KYC manual-review alert sent to ${input.adminEmails.length} recipient(s)`);
+        return true;
+    } catch (error) {
+        console.error('[Mail] Failed to send KYC manual-review alert:', error);
+        return false;
+    }
+}
+
 export async function sendWithdrawalSubmittedToAdmin(input: {
     sellerName: string;
     sellerEmail: string;
