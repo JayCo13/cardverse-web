@@ -270,7 +270,7 @@ export default function BuyPage() {
   const renderCardList = () => {
     if (isLoading) {
       return (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2 md:gap-4">
           {[...Array(3)].map((_, i) => (
             <div key={i} className="flex flex-col md:flex-row gap-4 p-4 border rounded-lg">
               <Skeleton className="w-full md:w-1/5 aspect-square md:aspect-[3/4] rounded-lg" />
@@ -293,7 +293,7 @@ export default function BuyPage() {
 
     if (filteredAndSortedCards.length > 0) {
       return (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2 md:gap-4">
           {filteredAndSortedCards.map((card) => (
             <CardItem key={card.id} card={card} layout="list" showGhnReadiness={false} onAddToCart={async (c) => {
               if (!user) {
