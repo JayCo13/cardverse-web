@@ -120,16 +120,37 @@ export default function BuyPage() {
   const [offerOpen, setOfferOpen] = useState(false);
 
   useEffect(() => {
-    const fetchCards = async () => {
-      // Self-heal: release cards whose QR/PayOS reservation lapsed so abandoned
-      // checkouts don't keep them hidden from the marketplace.
-      await supabase.rpc('release_expired_card_reservations' as never);
+    // The listing query, factored out so a release can re-run it.
+    const queryCards = () => supabase
+      .from('cards')
+      .select('*, profiles:seller_id(display_name, profile_image_url, seller_verified, seller_rating, seller_review_count, shipping_carriers, shipping_fees)')
+      .eq('listing_type', 'sale')
+      .eq('status', 'active');
 
-      const { data, error } = await supabase
-        .from('cards')
-        .select('*, profiles:seller_id(display_name, profile_image_url, seller_verified, seller_rating, seller_review_count, shipping_carriers, shipping_fees)')
-        .eq('listing_type', 'sale')
-        .eq('status', 'active');
+    const fetchCards = async () => {
+      // These three used to run one after another, and each round trip to the
+      // database costs 150-400ms from a browser — so the marketplace waited
+      // roughly a second before drawing anything. Nothing here depends on the
+      // others: the housekeeping call self-heals lapsed reservations, and a
+      // buyer's own offers can be fetched by buyer alone and matched to cards in
+      // memory rather than by feeding card ids into a second query.
+      const [releaseResult, cardsResult, offersResult] = await Promise.all([
+        supabase.rpc('release_expired_card_reservations' as never),
+        queryCards(),
+        user
+          ? supabase
+            .from('offers')
+            .select('card_id, status, created_at')
+            .eq('buyer_id', user.id)
+            .order('created_at', { ascending: false })
+          : Promise.resolve({ data: [] as { card_id: string; status: string; created_at: string }[] }),
+      ]);
+
+      // Running the release concurrently means this render can miss a card it
+      // just freed. Rare, and cheap to correct: re-read only when it actually
+      // released something.
+      const released = Number(releaseResult.data ?? 0);
+      const { data, error } = released > 0 ? await queryCards() : cardsResult;
 
       if (data && !error) {
         let cards: Card[] = (data as any[]).map((c: any) => ({
@@ -175,13 +196,7 @@ export default function BuyPage() {
           shippingFees: (c.profiles?.shipping_fees || {}) as Record<string, { intra?: number; inter?: number; region?: number }>,
         }));
         if (user && cards.length > 0) {
-          const cardIds = cards.map(card => card.id);
-          const { data: offers } = await supabase
-            .from('offers')
-            .select('card_id, status, created_at')
-            .eq('buyer_id', user.id)
-            .in('card_id', cardIds)
-            .order('created_at', { ascending: false });
+          const offers = offersResult.data;
 
           const latestOfferByCard = new Map<string, 'pending' | 'accepted' | 'rejected' | 'chosen'>();
           (offers || []).forEach((offer: any) => {
