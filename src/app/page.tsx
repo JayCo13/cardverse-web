@@ -5,6 +5,7 @@ import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { HeroSection } from "@/components/hero-section";
 import { MarketTicker } from "@/components/market-ticker";
+import { LazyMount } from "@/components/lazy-mount";
 const MarketSpotlight = dynamic(() => import("@/components/market-spotlight").then(mod => ({ default: mod.MarketSpotlight })), {
   loading: () => <div className="w-full h-[500px] flex items-center justify-center"><div className="w-full max-w-7xl mx-auto px-4"><Skeleton className="h-[400px] w-full rounded-2xl" /></div></div>
 });
@@ -64,7 +65,17 @@ export default function Home() {
       <main className="flex-1">
         <HeroSection />
         <MarketTicker />
-        <MarketSpotlight />
+        {/* The heaviest block on the page — it carries the charting library —
+            and it sits below the fold. Held until the reader approaches it.
+            The anchor lives on the wrapper so the header's scan link still has
+            somewhere to scroll to before the section mounts. */}
+        <LazyMount
+          id="market-spotlight"
+          minHeight={500}
+          fallback={<div className="w-full h-[500px] flex items-center justify-center"><div className="w-full max-w-7xl mx-auto px-4"><Skeleton className="h-[400px] w-full rounded-2xl" /></div></div>}
+        >
+          <MarketSpotlight />
+        </LazyMount>
 
         <div className="relative galaxy-bg pb-20">
           <div className="stars-bg"></div>
@@ -72,27 +83,39 @@ export default function Home() {
           <div className="stars-sm"></div>
 
           <div style={{ animationDelay: '400ms' }} className="animate-fade-in-up relative z-10">
-            <PopularCards />
+            <LazyMount minHeight={420} fallback={<Skeleton className="h-[420px] w-full rounded-2xl" />}>
+              <PopularCards />
+            </LazyMount>
           </div>
 
           <div id="soccer" style={{ animationDelay: '500ms' }} className="animate-fade-in-up relative z-10 scroll-mt-20">
-            <SoccerCards />
+            <LazyMount minHeight={420} fallback={<Skeleton className="h-[420px] w-full rounded-2xl" />}>
+              <SoccerCards />
+            </LazyMount>
           </div>
 
           <div id="pokemon" style={{ animationDelay: '600ms' }} className="animate-fade-in-up relative z-10 scroll-mt-20">
-            <PokemonCards />
+            <LazyMount minHeight={420} fallback={<Skeleton className="h-[420px] w-full rounded-2xl" />}>
+              <PokemonCards />
+            </LazyMount>
           </div>
 
           <div id="onepiece" style={{ animationDelay: '700ms' }} className="animate-fade-in-up relative z-10 scroll-mt-20">
-            <OnePieceCards />
+            <LazyMount minHeight={420} fallback={<Skeleton className="h-[420px] w-full rounded-2xl" />}>
+              <OnePieceCards />
+            </LazyMount>
           </div>
 
           <div style={{ animationDelay: '750ms' }} className="animate-fade-in-up relative z-10">
-            <ShopeeAffiliate />
+            <LazyMount minHeight={300} fallback={<Skeleton className="h-[300px] w-full rounded-2xl" />}>
+              <ShopeeAffiliate />
+            </LazyMount>
           </div>
 
           <div style={{ animationDelay: '800ms' }} className="animate-fade-in-up relative z-10 scroll-mt-20">
-            <SupportSection />
+            <LazyMount minHeight={300} fallback={<Skeleton className="h-[300px] w-full rounded-2xl" />}>
+              <SupportSection />
+            </LazyMount>
           </div>
         </div>
       </main>

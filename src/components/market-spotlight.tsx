@@ -1958,7 +1958,7 @@ export function MarketSpotlight() {
     };
 
     return (
-        <section id="market-spotlight" className="py-16 md:py-24 bg-[#111111] relative overflow-hidden border-y border-white/5">
+        <section className="py-16 md:py-24 bg-[#111111] relative overflow-hidden border-y border-white/5">
             {/* Ambient Background Glows */}
             <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-green-500/10 rounded-full blur-[120px] pointer-events-none" />
             <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-blue-500/10 rounded-full blur-[120px] pointer-events-none" />

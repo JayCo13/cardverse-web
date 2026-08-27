@@ -33,12 +33,52 @@ interface AuthProviderProps {
 // Get singleton client outside component to ensure stability
 const supabase = getSupabaseClient();
 
+
+/**
+ * The session Supabase has already persisted, read synchronously.
+ *
+ * `supabase.auth.getSession()` looks cheap but is not: when the stored access
+ * token has expired — which it always has for anyone reopening the app after an
+ * hour — it refreshes over the network before resolving. Every consumer of
+ * `isLoading` waits on that round trip, so a returning visitor's first sight of
+ * the site was a spinner.
+ *
+ * Reading storage directly lets the app paint from what is already known while
+ * the refresh happens behind it. The token here is unverified and possibly
+ * stale, which is fine for deciding what to draw: row-level security decides
+ * what data anyone actually gets, and `onAuthStateChange` corrects the UI within
+ * the same second if the session turns out to be dead.
+ */
+function readStoredSession(): Session | null {
+    if (typeof window === 'undefined') return null;
+    try {
+        const ref = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).hostname.split('.')[0];
+        const raw = window.localStorage.getItem(`sb-${ref}-auth-token`);
+        if (!raw) return null;
+
+        // supabase-js has written both a bare JSON object and a "base64-" prefixed
+        // form; accept either rather than guessing at the installed version.
+        const decoded = raw.startsWith('base64-')
+            ? atob(raw.slice('base64-'.length))
+            : raw;
+        const parsed = JSON.parse(decoded) as Session | null;
+        return parsed?.access_token && parsed?.user ? parsed : null;
+    } catch {
+        // A shape we do not recognise is not worth a broken page: fall back to
+        // the normal asynchronous path.
+        return null;
+    }
+}
+
 export function SupabaseAuthProvider({ children }: AuthProviderProps) {
-    const [user, setUser] = useState<User | null>(null);
+    // Seed from storage so the first paint already knows who is looking. Both
+    // states are corrected by initAuth and onAuthStateChange below.
+    const [stored] = useState(readStoredSession);
+    const [user, setUser] = useState<User | null>(stored?.user ?? null);
     const [profile, setProfile] = useState<Profile | null>(null);
-    const [session, setSession] = useState<Session | null>(null);
+    const [session, setSession] = useState<Session | null>(stored ?? null);
     const [isLoading, setIsLoading] = useState(true);
-    const currentUserIdRef = useRef<string | null>(null);
+    const currentUserIdRef = useRef<string | null>(stored?.user?.id ?? null);
 
     // Initialize auth state - run once on mount
     useEffect(() => {
@@ -98,6 +138,16 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
             }
         };
 
+        // Paint from the stored session immediately, then verify behind it. Set
+        // here rather than in useState so the server's markup and the first
+        // client render still agree; this costs one extra paint and saves a
+        // network round trip that every page was waiting on.
+        // Deliberate: the rule guards against accidental render cascades, and
+        // this is the opposite — one extra paint traded for the network round
+        // trip that every gated page was waiting on.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        if (stored?.user) setIsLoading(false);
+
         const initAuth = async () => {
             try {
                 const { data: { session: currentSession } } = await supabase.auth.getSession();
@@ -124,8 +174,16 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
                     } else {
                         if (mounted) setIsLoading(false);
                     }
-                } else {
-                    if (mounted) setIsLoading(false);
+                } else if (mounted) {
+                    // The stored session did not survive verification — a
+                    // revoked or expired refresh token. Undo the optimistic
+                    // paint rather than leaving a signed-out visitor looking at
+                    // a signed-in shell.
+                    currentUserIdRef.current = null;
+                    setSession(null);
+                    setUser(null);
+                    setProfile(null);
+                    setIsLoading(false);
                 }
             } catch (error) {
                 console.error('Auth initialization error:', error);
@@ -197,7 +255,7 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
             mounted = false;
             subscription.unsubscribe();
         };
-    }, []); // Empty deps - only run once
+    }, [stored]); // `stored` is read once and never reassigned
 
     // Memoized auth functions to prevent re-renders
     const signInWithGoogle = useCallback(async () => {
