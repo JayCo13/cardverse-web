@@ -17,7 +17,7 @@ import { useAuthModal } from "@/components/auth-modal";
 import { useToast } from "@/hooks/use-toast";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { getCategoryCode } from "@/lib/category-code";
-import { CreditCard, Loader2, PackageCheck, ShieldCheck, Store, Truck, Wallet } from "lucide-react";
+import { CreditCard, Loader2, PackageCheck, ShieldCheck, Truck, Wallet } from "lucide-react";
 import { useLocalization } from "@/context/localization-context";
 import { localizeFinancialApiError } from "@/lib/financial-api-errors";
 
@@ -33,10 +33,18 @@ type CheckoutItem = {
     price: number;
     sellerId: string;
     sellerName?: string | null;
+    sellerAvatarUrl?: string | null;
     sellerPickup?: { districtId: number; wardCode: string } | null;
   };
   amount: number;
   shippingFee: number | null;
+};
+
+type CheckoutSellerGroup = {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  items: CheckoutItem[];
 };
 
 export default function CheckoutPage() {
@@ -238,6 +246,7 @@ export default function CheckoutPage() {
           price: Number(item.cards.price || 0),
           sellerId: item.cards.seller_id,
           sellerName: item.cards.profiles?.display_name,
+          sellerAvatarUrl: item.cards.profiles?.profile_image_url || null,
           sellerPickup: item.cards.profiles?.address_district_id && item.cards.profiles?.address_ward_code
             ? {
               districtId: item.cards.profiles.address_district_id,
@@ -271,6 +280,7 @@ export default function CheckoutPage() {
           seller_id,
           profiles:seller_id(
             display_name,
+            profile_image_url,
             address_district_id,
             address_ward_code
           )
@@ -296,6 +306,7 @@ export default function CheckoutPage() {
         price: Number(row.price || 0),
         sellerId: card.seller_id,
         sellerName: card.profiles?.display_name,
+        sellerAvatarUrl: card.profiles?.profile_image_url || null,
         sellerPickup: card.profiles?.address_district_id && card.profiles?.address_ward_code
           ? {
             districtId: card.profiles.address_district_id,
@@ -383,6 +394,26 @@ export default function CheckoutPage() {
   const hasMissingFee = items.some(item => item.shippingFee === null);
   const insufficient = paymentMethod === "wallet" && walletBalance < total;
   const canPay = !!selectedAddress && items.length > 0 && !hasMissingFee && !isLoadingFee && !isPaying && !insufficient;
+  const sellerGroups = useMemo(() => {
+    const groups = new Map<string, CheckoutSellerGroup>();
+
+    items.forEach(item => {
+      const group = groups.get(item.card.sellerId);
+      if (group) {
+        group.items.push(item);
+        return;
+      }
+
+      groups.set(item.card.sellerId, {
+        id: item.card.sellerId,
+        name: item.card.sellerName || copy.seller,
+        avatarUrl: item.card.sellerAvatarUrl || null,
+        items: [item],
+      });
+    });
+
+    return [...groups.values()];
+  }, [copy.seller, items]);
 
   const handlePay = async () => {
     if (!selectedAddress || !canPay) return;
@@ -480,69 +511,78 @@ export default function CheckoutPage() {
                 <AddressBook selectable selectedId={selectedAddress?.id ?? null} onSelect={handleSelectAddress} />
               </div>
 
-              <div className="rounded-xl border bg-card p-5">
-                <h2 className="mb-4 text-lg font-semibold">{copy.products}</h2>
+              <div className="rounded-xl border bg-card p-3 sm:p-5">
+                <h2 className="mb-4 px-1 text-lg font-semibold sm:px-0">{copy.products}</h2>
                 <div className="space-y-4">
-                  {items.map(item => (
-                    <div
-                      key={item.cartItemId || item.offerId || item.card.id}
-                      className="group flex flex-col overflow-hidden rounded-2xl border bg-background/50 transition hover:border-orange-500/40 sm:flex-row"
-                    >
-                      {/* Image */}
-                      <div className="relative flex shrink-0 items-center justify-center bg-gradient-to-br from-zinc-900 to-black p-4 sm:w-40">
-                        <div className="relative aspect-[3/4] w-28 overflow-hidden rounded-lg border border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.45)] sm:w-full">
-                          {item.card.imageUrl ? (
-                            <Image src={optimizeCloudinaryUrl(item.card.imageUrl, 320)} alt={item.card.name} fill className="object-cover" />
-                          ) : null}
-                        </div>
-                        <span className="absolute right-3 top-3 rounded-md bg-orange-500 px-2 py-0.5 text-[11px] font-bold text-white shadow">
-                          {getCategoryCode(item.card.category)}
-                        </span>
-                      </div>
-
-                      {/* Info */}
-                      <div className="flex min-w-0 flex-1 flex-col p-4 sm:p-5">
-                        <div className="mb-2 flex flex-wrap items-center gap-2">
-                          <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-medium text-muted-foreground">Qty 1</span>
-                          {item.card.condition && (
-                            <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-medium text-muted-foreground">{item.card.condition}</span>
+                  {sellerGroups.map(group => (
+                    <section key={group.id} className="overflow-hidden rounded-xl border border-zinc-800 bg-background/50">
+                      <header className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/70 px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
+                        <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-orange-500/15 text-[10px] font-bold text-orange-300 sm:h-8 sm:w-8 sm:text-xs">
+                          {group.avatarUrl ? (
+                            <Image src={group.avatarUrl} alt="" width={32} height={32} className="h-full w-full object-cover" />
+                          ) : (
+                            group.name.charAt(0).toUpperCase()
                           )}
                         </div>
-                        <h2 className="line-clamp-2 text-lg font-bold tracking-normal sm:text-xl">{item.card.name}</h2>
-                        <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-                          <Store className="h-4 w-4 shrink-0 text-orange-300" />
-                          <span className="truncate">{item.card.sellerName || copy.seller}</span>
-                        </div>
-                        <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-4 text-xs text-muted-foreground">
-                          <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />{copy.protected}</span>
-                          <span className="inline-flex items-center gap-1.5"><CreditCard className="h-3.5 w-3.5 text-orange-300" />{copy.walletPayos}</span>
-                        </div>
-                      </div>
+                        <span className="min-w-0 truncate text-sm font-medium sm:font-semibold">{group.name}</span>
+                        <span className="ml-auto shrink-0 rounded bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-medium text-orange-300 sm:rounded-md sm:px-2 sm:py-1 sm:text-xs">
+                          {copy.cardVerseSeller}
+                        </span>
+                      </header>
 
-                      {/* Price + shipping */}
-                      <div className="flex flex-col justify-between gap-3 border-t bg-background/30 p-4 sm:w-52 sm:border-l sm:border-t-0 sm:p-5">
-                        <div className="space-y-2.5">
-                          <div>
-                            <p className="text-xs text-muted-foreground">{copy.itemPrice}</p>
-                            <p className="whitespace-nowrap text-2xl font-bold tracking-normal text-orange-400">{formatVND(item.amount)}</p>
-                          </div>
-                          <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 px-3 py-2">
-                            <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                              <Truck className="h-3.5 w-3.5 text-orange-300" />{copy.shipping}
-                            </p>
-                            <p className="mt-0.5 whitespace-nowrap text-sm font-semibold text-foreground">
-                              {isLoadingFee
-                                ? copy.calculating
-                                : item.shippingFee !== null
-                                  ? item.shippingFee === 0
-                                    ? `${formatVND(0)} · ${copy.combinedShipping}`
-                                    : formatVND(item.shippingFee)
-                                  : copy.chooseAddressForFee}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                      {group.items.map(item => {
+                        const shippingLabel = isLoadingFee
+                          ? copy.calculating
+                          : item.shippingFee !== null
+                            ? item.shippingFee === 0
+                              ? `${formatVND(0)} · ${copy.combinedShipping}`
+                              : formatVND(item.shippingFee)
+                            : copy.chooseAddressForFee;
+
+                        return (
+                          <article key={item.cartItemId || item.offerId || item.card.id} className="group flex gap-3 border-b border-zinc-800 px-3 py-3 last:border-b-0 sm:gap-0 sm:px-0 sm:py-0">
+                            <div className="relative w-24 shrink-0 self-start overflow-hidden rounded-lg bg-zinc-900 aspect-[3/4] sm:flex sm:w-40 sm:items-center sm:justify-center sm:rounded-none sm:bg-gradient-to-br sm:from-zinc-900 sm:to-black sm:p-4">
+                              <div className="relative h-full w-full overflow-hidden rounded-lg border border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.45)] sm:aspect-[3/4] sm:h-auto">
+                                {item.card.imageUrl ? (
+                                  <Image src={optimizeCloudinaryUrl(item.card.imageUrl, 320)} alt={item.card.name} fill className="object-cover" />
+                                ) : null}
+                              </div>
+                              <span className="absolute right-3 top-3 hidden rounded-md bg-orange-500 px-2 py-0.5 text-[11px] font-bold text-white shadow sm:block">
+                                {getCategoryCode(item.card.category)}
+                              </span>
+                            </div>
+
+                            <div className="flex min-w-0 flex-1 flex-col sm:p-5">
+                              <h3 className="line-clamp-2 text-sm font-semibold tracking-normal sm:text-xl sm:font-bold">{item.card.name}</h3>
+                              <div className="mt-1.5 flex flex-wrap gap-1 sm:mt-2 sm:gap-2">
+                                <span className="rounded bg-orange-500 px-1.5 py-0.5 text-[10px] font-bold text-white sm:hidden">{getCategoryCode(item.card.category)}</span>
+                                <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300 sm:rounded-md sm:border sm:border-white/10 sm:bg-white/5 sm:text-xs sm:text-muted-foreground">Qty 1</span>
+                                {item.card.condition && <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300 sm:rounded-md sm:border sm:border-white/10 sm:bg-white/5 sm:text-xs sm:text-muted-foreground">{item.card.condition}</span>}
+                              </div>
+                              <p className="mt-2 text-base font-bold text-orange-500 sm:hidden">{formatVND(item.amount)}</p>
+                              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground sm:mt-auto sm:gap-x-4 sm:pt-4 sm:text-xs">
+                                <span className="inline-flex items-center gap-1"><Truck className="h-3 w-3 text-orange-300 sm:h-3.5 sm:w-3.5" />{copy.shipping}: {shippingLabel}</span>
+                                <span className="inline-flex items-center gap-1"><ShieldCheck className="h-3 w-3 text-emerald-400 sm:h-3.5 sm:w-3.5" />{copy.protected}</span>
+                                <span className="inline-flex items-center gap-1"><CreditCard className="h-3 w-3 text-orange-300 sm:h-3.5 sm:w-3.5" />{copy.walletPayos}</span>
+                              </div>
+                            </div>
+
+                            <div className="hidden w-52 flex-col justify-between gap-3 border-l bg-background/30 p-5 sm:flex">
+                              <div className="space-y-2.5">
+                                <div>
+                                  <p className="text-xs text-muted-foreground">{copy.itemPrice}</p>
+                                  <p className="whitespace-nowrap text-2xl font-bold tracking-normal text-orange-400">{formatVND(item.amount)}</p>
+                                </div>
+                                <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 px-3 py-2">
+                                  <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Truck className="h-3.5 w-3.5 text-orange-300" />{copy.shipping}</p>
+                                  <p className="mt-0.5 whitespace-nowrap text-sm font-semibold text-foreground">{shippingLabel}</p>
+                                </div>
+                              </div>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </section>
                   ))}
                 </div>
               </div>

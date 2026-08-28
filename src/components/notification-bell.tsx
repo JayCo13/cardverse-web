@@ -12,6 +12,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Bell, CheckCircle, MessageCircle, Tag, Package } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { enUS, ja, vi } from "date-fns/locale";
@@ -53,6 +54,7 @@ export function NotificationBell() {
     const distanceLocale = locale === 'ja-JP' ? ja : locale === 'vi-VN' ? vi : enUS;
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [isOpen, setIsOpen] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
     const [previousUnreadCount, setPreviousUnreadCount] = useState(0);
     const [isRinging, setIsRinging] = useState(false);
     const [browserPermission, setBrowserPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
@@ -67,6 +69,15 @@ export function NotificationBell() {
     useEffect(() => {
         translateRef.current = t;
     }, [t]);
+
+    useEffect(() => {
+        const mediaQuery = window.matchMedia('(max-width: 639px)');
+        const updateIsMobile = () => setIsMobile(mediaQuery.matches);
+
+        updateIsMobile();
+        mediaQuery.addEventListener('change', updateIsMobile);
+        return () => mediaQuery.removeEventListener('change', updateIsMobile);
+    }, []);
     useEffect(() => {
         const audio = new Audio('/assets/notify.wav');
         audio.preload = 'auto';
@@ -442,17 +453,94 @@ export function NotificationBell() {
         );
     }
 
+    const notificationTrigger = (
+        <Button variant="ghost" size="icon" className="relative" aria-label={copy.title}>
+            <Bell className={`h-4 w-4 ${isRinging ? 'animate-bell-ring' : ''}`} />
+            {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+            )}
+        </Button>
+    );
+
+    if (isMobile) {
+        return (
+            <Sheet open={isOpen} onOpenChange={setIsOpen}>
+                <SheetTrigger asChild>{notificationTrigger}</SheetTrigger>
+                <SheetContent side="bottom" className="max-h-[70vh] w-full overflow-y-auto rounded-t-xl p-0">
+                    <div className="flex items-center justify-between border-b px-4 py-3 pr-12">
+                        <SheetTitle className="text-base">{copy.title}</SheetTitle>
+                        {unreadCount > 0 && (
+                            <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={markAllAsRead}>
+                                {copy.markAllRead}
+                            </Button>
+                        )}
+                    </div>
+                    {browserPermission === 'default' && (
+                        <button
+                            type="button"
+                            onClick={() => void requestBrowserNotifications()}
+                            className="flex w-full items-center px-4 py-3 text-left text-sm hover:bg-accent"
+                        >
+                            <Bell className="mr-2 h-4 w-4 text-orange-500" />
+                            {copy.enableBrowser}
+                        </button>
+                    )}
+                    {browserPermission === 'denied' && (
+                        <div className="border-b px-4 py-3 text-xs text-muted-foreground">
+                            {copy.browserBlocked}
+                        </div>
+                    )}
+                    {notifications.length === 0 ? (
+                        <div className="p-4 text-center text-sm text-muted-foreground">
+                            {copy.empty}
+                        </div>
+                    ) : (
+                        <div>
+                            {notifications.slice(0, 10).map((notification) => {
+                                const localized = localizeSystemNotification(notification, t);
+                                return (
+                                    <button
+                                        key={notification.id}
+                                        type="button"
+                                        className={`flex w-full items-start gap-3 border-b p-4 text-left ${!notification.read ? "bg-primary/5" : ""}`}
+                                        onClick={() => void handleNotificationClick(notification)}
+                                    >
+                                        <div className="mt-0.5 flex-shrink-0">
+                                            {getNotificationIcon(notification.type)}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <p className={`text-sm ${!notification.read ? "font-medium" : ""}`}>
+                                                {localized.title}
+                                            </p>
+                                            <p className="line-clamp-2 text-xs text-muted-foreground">
+                                                {localized.message}
+                                            </p>
+                                            <p className="mt-1 text-xs text-muted-foreground">
+                                                {formatDistanceToNow(new Date(notification.createdAt), {
+                                                    addSuffix: true,
+                                                    locale: distanceLocale,
+                                                })}
+                                            </p>
+                                        </div>
+                                        {!notification.read && (
+                                            <div className="h-2 w-2 flex-shrink-0 rounded-full bg-primary" />
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+                </SheetContent>
+            </Sheet>
+        );
+    }
+
     return (
         <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
             <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
-                    <Bell className={`h-4 w-4 ${isRinging ? 'animate-bell-ring' : ''}`} />
-                    {unreadCount > 0 && (
-                        <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold">
-                            {unreadCount > 9 ? "9+" : unreadCount}
-                        </span>
-                    )}
-                </Button>
+                {notificationTrigger}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-80">
                 <DropdownMenuLabel className="flex items-center justify-between">
