@@ -530,3 +530,93 @@ export async function sendOrderPlacedToSeller(
         console.error('[Mail] Failed to send order placed email to seller:', error);
     }
 }
+
+type ContactRequestEmail = {
+    name: string;
+    email: string;
+    subject: string;
+    message: string;
+};
+
+export async function sendContactSubmissionConfirmation(
+    recipient: string,
+    contact: ContactRequestEmail,
+    locale: SupportedLocale,
+) {
+    try {
+        const transporter = createMailTransporter();
+        const from = getFromAddress();
+        const safeName = escapeHtml(contact.name);
+        const safeSubject = escapeHtml(contact.subject);
+        const copy = locale === 'vi-VN'
+            ? {
+                subject: 'Chúng tôi đã nhận được liên hệ của bạn — CardVerseHub',
+                title: 'Đã nhận được yêu cầu liên hệ',
+                body: 'Cảm ơn bạn đã liên hệ với CardVerseHub. Đội ngũ hỗ trợ sẽ xem xét và phản hồi qua email trong thời gian sớm nhất.',
+                reference: 'Chủ đề của bạn',
+            }
+            : locale === 'ja-JP'
+                ? {
+                    subject: 'お問い合わせを受け付けました — CardVerseHub',
+                    title: 'お問い合わせを受け付けました',
+                    body: 'CardVerseHub にお問い合わせいただきありがとうございます。サポートチームが確認後、できるだけ早くメールでご連絡します。',
+                    reference: 'お問い合わせの件名',
+                }
+                : {
+                    subject: 'We received your contact request — CardVerseHub',
+                    title: 'Contact request received',
+                    body: 'Thank you for contacting CardVerseHub. Our support team will review your request and reply by email as soon as possible.',
+                    reference: 'Your subject',
+                };
+
+        await transporter.sendMail({
+            from,
+            to: recipient,
+            subject: copy.subject,
+            html: buildTemplate(
+                copy.title,
+                `<p style="color:#e4e4e7;">${locale === 'vi-VN' ? 'Xin chào' : locale === 'ja-JP' ? 'こんにちは' : 'Hello'} <strong style="color:#f97316;">${safeName}</strong>,</p>
+                <p>${copy.body}</p>
+                <div style="background:rgba(249,115,22,0.1); border:1px solid rgba(249,115,22,0.2); border-radius:8px; padding:16px; margin:20px 0;">
+                    <p style="margin:0; color:#a1a1aa; font-size:13px;">${copy.reference}</p>
+                    <p style="margin:4px 0 0; color:#fff; font-weight:700;">${safeSubject}</p>
+                </div>`,
+                locale,
+            ),
+        });
+    } catch (error) {
+        console.error('[Mail] Failed to send contact confirmation:', error);
+    }
+}
+
+export async function sendContactSubmittedToAdmin(contact: ContactRequestEmail, recipients: string[]) {
+    try {
+        if (recipients.length === 0) return;
+        const transporter = createMailTransporter();
+        const from = getFromAddress();
+        const safeName = escapeHtml(contact.name);
+        const safeEmail = escapeHtml(contact.email);
+        const safeSubject = escapeHtml(contact.subject);
+        const safeMessage = escapeHtml(contact.message).replaceAll('\n', '<br>');
+
+        await transporter.sendMail({
+            from,
+            bcc: recipients,
+            subject: `✉️ Liên hệ mới: ${contact.subject}`,
+            html: buildTemplate(
+                '✉️ Có yêu cầu liên hệ mới',
+                `<p style="color:#e4e4e7;">Một người dùng vừa gửi liên hệ từ website.</p>
+                <div style="background:rgba(249,115,22,0.1); border:1px solid rgba(249,115,22,0.2); border-radius:8px; padding:16px; margin:20px 0;">
+                    <p style="margin:0 0 8px; color:#a1a1aa;">Người gửi: <strong style="color:#fff;">${safeName}</strong></p>
+                    <p style="margin:0 0 8px; color:#a1a1aa;">Email: <strong style="color:#fff;">${safeEmail}</strong></p>
+                    <p style="margin:0; color:#a1a1aa;">Chủ đề: <strong style="color:#fff;">${safeSubject}</strong></p>
+                </div>
+                <p style="color:#a1a1aa; font-size:13px; margin-bottom:6px;">Nội dung</p>
+                <p style="margin:0; color:#e4e4e7; white-space:normal;">${safeMessage}</p>`,
+                'vi-VN',
+            ),
+        });
+    } catch (error) {
+        console.error('[Mail] Failed to send new-contact alert:', error);
+    }
+}

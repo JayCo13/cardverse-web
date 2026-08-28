@@ -11,22 +11,45 @@ import { Textarea } from "@/components/ui/textarea";
 import { Mail, MapPin, Phone } from "lucide-react";
 
 export default function ContactPage() {
-  const { t } = useLocalization();
+  const { t, locale } = useLocalization();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     subject: '',
     message: ''
   });
+  const [submitState, setSubmitState] = useState<'idle' | 'success' | 'error' | 'rate_limited'>('idle');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const mailtoLink = `mailto:cardversehubsupport@gmail.com?subject=${encodeURIComponent(
-      formData.subject || 'Contact from CardVerseHub'
-    )}&body=${encodeURIComponent(
-      `Name: ${formData.name}\nEmail: ${formData.email}\n\nMessage:\n${formData.message}`
-    )}`;
-    window.location.href = mailtoLink;
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
+    setSubmitState('idle');
+    try {
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-cardverse-locale': locale,
+        },
+        body: JSON.stringify(formData),
+      });
+
+      if (response.status === 429) {
+        setSubmitState('rate_limited');
+        return;
+      }
+      if (!response.ok) throw new Error('Contact request failed');
+
+      setFormData({ name: '', email: '', subject: '', message: '' });
+      setSubmitState('success');
+    } catch {
+      setSubmitState('error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -110,6 +133,7 @@ export default function ContactPage() {
                         <Input 
                           placeholder="John Doe" 
                           required
+                          disabled={isSubmitting}
                           value={formData.name}
                           onChange={(e) => setFormData({...formData, name: e.target.value})}
                         />
@@ -120,6 +144,7 @@ export default function ContactPage() {
                           type="email" 
                           placeholder="john@example.com" 
                           required
+                          disabled={isSubmitting}
                           value={formData.email}
                           onChange={(e) => setFormData({...formData, email: e.target.value})}
                         />
@@ -130,6 +155,7 @@ export default function ContactPage() {
                       <Input 
                         placeholder="How can we help?" 
                         required
+                        disabled={isSubmitting}
                         value={formData.subject}
                         onChange={(e) => setFormData({...formData, subject: e.target.value})}
                       />
@@ -140,11 +166,26 @@ export default function ContactPage() {
                         placeholder="Type your message here..." 
                         className="min-h-[220px] resize-y" 
                         required
+                        disabled={isSubmitting}
                         value={formData.message}
                         onChange={(e) => setFormData({...formData, message: e.target.value})}
                       />
                     </div>
-                    <Button type="submit" className="w-full text-lg h-12 mt-4">{t('contact_send')}</Button>
+                    {submitState !== 'idle' && (
+                      <p
+                        role="status"
+                        className={submitState === 'success' ? 'text-sm text-emerald-600 dark:text-emerald-400' : 'text-sm text-destructive'}
+                      >
+                        {submitState === 'success'
+                          ? t('contact_submit_success')
+                          : submitState === 'rate_limited'
+                            ? t('contact_submit_rate_limited')
+                            : t('contact_submit_error')}
+                      </p>
+                    )}
+                    <Button type="submit" className="w-full text-lg h-12 mt-4" disabled={isSubmitting}>
+                      {isSubmitting ? t('contact_sending') : t('contact_send')}
+                    </Button>
                   </form>
                 </div>
               </div>

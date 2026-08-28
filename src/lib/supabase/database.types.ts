@@ -301,6 +301,47 @@ export interface Database {
                     updated_at?: string
                 }
             }
+            contact_requests: {
+                Row: {
+                    id: string
+                    user_id: string | null
+                    name: string
+                    email: string
+                    subject: string
+                    message: string
+                    status: 'open' | 'in_progress' | 'resolved'
+                    email_hash: string
+                    ip_hash: string
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    user_id?: string | null
+                    name: string
+                    email: string
+                    subject: string
+                    message: string
+                    status?: 'open' | 'in_progress' | 'resolved'
+                    email_hash: string
+                    ip_hash: string
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    user_id?: string | null
+                    name?: string
+                    email?: string
+                    subject?: string
+                    message?: string
+                    status?: 'open' | 'in_progress' | 'resolved'
+                    email_hash?: string
+                    ip_hash?: string
+                    created_at?: string
+                    updated_at?: string
+                }
+            }
             shipping_addresses: {
                 Row: {
                     id: string
@@ -1710,6 +1751,18 @@ export interface Database {
             pokemon_sets_jp: { Row: { set_name: string | null } }
         }
         Functions: {
+            create_contact_request: {
+                Args: {
+                    p_user_id: string | null
+                    p_name: string
+                    p_email: string
+                    p_subject: string
+                    p_message: string
+                    p_email_hash: string
+                    p_ip_hash: string
+                }
+                Returns: Json
+            }
             claim_kyc_identity_email: {
                 Args: { p_session_id: string }
                 Returns: { user_id: string; verified_full_name: string | null; locale: string }[]
