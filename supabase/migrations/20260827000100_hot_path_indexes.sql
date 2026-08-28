@@ -40,18 +40,11 @@ create index if not exists offers_card_created_idx
 create index if not exists user_collections_user_idx
   on public.user_collections (user_id, created_at desc);
 
--- KYC: latest session for a user, read by the browser poll every few seconds
--- while a verification is open.
-create index if not exists kyc_sessions_user_created_idx
-  on public.kyc_sessions (user_id, created_at desc);
-
--- Bank lookup cache hit, keyed exactly as bank-verification.ts reads it.
-create index if not exists bank_account_lookups_account_idx
-  on public.bank_account_lookups (bin, account_number, created_at desc);
-
--- Bank lookup rate limit, counted per user per hour.
-create index if not exists bank_account_lookups_user_created_idx
-  on public.bank_account_lookups (user_id, created_at desc);
+-- kyc_sessions(user_id) and both bank_account_lookups lookups are deliberately
+-- absent: idx_kyc_sessions_user_id, idx_bank_account_lookups_account and
+-- idx_bank_account_lookups_user already cover them. This file originally
+-- recreated all three under new names, which the performance advisor then
+-- flagged as duplicates — see 20260828 drop_duplicate_hot_path_indexes.
 
 -- Cart, read on every header render.
 create index if not exists cart_items_user_created_idx
