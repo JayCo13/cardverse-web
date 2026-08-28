@@ -565,7 +565,7 @@ export default function CardDetailsPage() {
 
     const [card, setCard] = useState<Card | null>(null);
     const [seller, setSeller] = useState<SellerProfile | null>(null);
-    const [relatedCards, setRelatedCards] = useState<Card[]>([]);
+    const [relatedPool, setRelatedPool] = useState<Card[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [offers, setOffers] = useState<Offer[]>([]);
     const [activeImage, setActiveImage] = useState("");
@@ -627,6 +627,20 @@ export default function CardDetailsPage() {
         ];
     }, [card, copy]);
 
+    // Show the most relevant first, then backfill with any other active listing
+    // so the rail always fills when there is anything to fill it with.
+    const relatedCards = useMemo(() => {
+        if (!card) return relatedPool.slice(0, 15);
+        const isClosest = (item: Card) =>
+            item.category === card.category ||
+            item.publisher === card.publisher ||
+            item.setName === card.setName;
+        return [
+            ...relatedPool.filter(isClosest),
+            ...relatedPool.filter((item) => !isClosest(item)),
+        ].slice(0, 15);
+    }, [relatedPool, card]);
+
     const listingHighlights = useMemo(() => {
         if (!card) return [];
         return [
@@ -637,28 +651,20 @@ export default function CardDetailsPage() {
         ];
     }, [card, copy]);
 
-    const fetchRelatedCards = useCallback(async (baseCard: Card) => {
+    // The candidate pool. It depends only on the id in the URL, so it no longer
+    // waits behind the card fetch — ranking is a pure function of the two and
+    // happens below, once both have arrived.
+    const fetchRelatedCards = useCallback(async () => {
         const { data } = await supabase
             .from("cards")
             .select("*, profiles:seller_id(display_name, profile_image_url, seller_verified, seller_rating, seller_review_count)")
             .eq("listing_type", "sale")
             .eq("status", "active")
-            .neq("id", baseCard.id)
+            .neq("id", cardId)
             .limit(24);
 
-        if (!data) return;
-
-        const mapped = (data as any[]).map(mapCard);
-        const isClosest = (item: Card) =>
-            item.category === baseCard.category ||
-            item.publisher === baseCard.publisher ||
-            item.setName === baseCard.setName;
-        // Show the most relevant first, then backfill with any other active
-        // listings so the rail always renders 5 cards (when 5 exist at all).
-        const closest = mapped.filter(isClosest);
-        const rest = mapped.filter(item => !isClosest(item));
-        setRelatedCards([...closest, ...rest].slice(0, 15));
-    }, [supabase]);
+        if (data) setRelatedPool((data as any[]).map(mapCard));
+    }, [supabase, cardId]);
 
     const fetchCard = useCallback(async () => {
         setIsLoading(true);
@@ -693,7 +699,6 @@ export default function CardDetailsPage() {
                 setCard(mapped);
                 setSeller((data as any).profiles || null);
                 setActiveImage(mapped.imageUrl || mapped.imageUrls?.[0] || "");
-                void fetchRelatedCards(mapped);
             } else {
                 setCard(null);
                 setSeller(null);
@@ -705,7 +710,7 @@ export default function CardDetailsPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [cardId, fetchRelatedCards, supabase, router]);
+    }, [cardId, supabase, router]);
 
     const fetchOffers = useCallback(async () => {
         const { data } = await supabase
@@ -718,13 +723,19 @@ export default function CardDetailsPage() {
     }, [cardId, supabase]);
 
     useEffect(() => {
+        // Three queries keyed only by the id in the URL. Chained, they cost three
+        // round trips before the page settles — and from a browser each costs
+        // 150-400ms. Started together, the page waits once.
         void fetchCard();
-    }, [fetchCard]);
+        void fetchRelatedCards();
+        void fetchOffers();
+    }, [fetchCard, fetchRelatedCards, fetchOffers]);
 
+    // The realtime subscription still waits for the card, because it only
+    // matters for a listing that can receive offers.
     useEffect(() => {
         if (!card || card.listingType !== "sale") return;
 
-        void fetchOffers();
         const channel = supabase
             .channel(`offers-${cardId}`)
             .on(
