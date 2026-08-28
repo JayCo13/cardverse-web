@@ -97,11 +97,53 @@ const SOCCER_TOPPS_SETS: SetConfig[] = [
   { name: 'Khác' },
 ];
 
+/**
+ * Two more brands that the catalogue already carries.
+ *
+ * The crawled `soccer_cards` table has 30 Leaf cards (2017-2025) and 15 Futera
+ * (2018-2025), neither of which a seller could pick — so those listings had to
+ * be filed under a publisher they do not belong to. The crawl records no set
+ * names for either, so these are the brands' own flagship lines.
+ */
+const SOCCER_LEAF_SETS: SetConfig[] = [
+  { name: 'Leaf Metal' },
+  { name: 'Leaf Ultimate' },
+  { name: 'Leaf Trinity' },
+  { name: 'Leaf Best of Soccer' },
+  { name: 'Khác' },
+];
+
+const SOCCER_FUTERA_SETS: SetConfig[] = [
+  { name: 'Futera Unique' },
+  { name: 'Futera Ultimates' },
+  { name: 'Futera World Football' },
+  { name: 'Khác' },
+];
+
+/**
+ * Seasons ran back only to 2017-18, while the catalogue holds cards from 1979.
+ * A seller with anything vintage had no season to choose and fell through to
+ * "Khác", which made the whole field useless for filtering older stock.
+ *
+ * Listed newest first: that is the order sellers pick from, and the recent
+ * seasons are the ones most listings use.
+ */
 const SOCCER_SEASONS = [
   '2025-26', '2024-25', '2023-24', '2022-23', '2021-22',
-  '2020-21', '2019-20', '2018-19', '2017-18',
-  'FIFA World Cup 2022', 'UEFA Euro 2024', 'UEFA Euro 2020',
-  'FIFA World Cup 2018', 'Khác',
+  '2020-21', '2019-20', '2018-19', '2017-18', '2016-17',
+  '2015-16', '2014-15', '2013-14', '2012-13', '2011-12',
+  '2010-11', '2009-10', '2008-09', '2007-08', '2006-07',
+  '2005-06', '2004-05', '2003-04', '2002-03', '2001-02',
+  '2000-01',
+  // Before 2000 a season label stops being how anyone refers to these; the
+  // decade is what a vintage listing is actually searched by.
+  'Thập niên 1990', 'Thập niên 1980', 'Trước 1980',
+  // Tournaments are their own product line, not a league season.
+  'FIFA World Cup 2026', 'FIFA World Cup 2022', 'FIFA World Cup 2018',
+  'FIFA World Cup 2014', 'FIFA World Cup 2010',
+  'UEFA Euro 2024', 'UEFA Euro 2020', 'UEFA Euro 2016', 'UEFA Euro 2012',
+  'Copa America 2024', 'Copa America 2021',
+  'Khác',
 ];
 
 // ────────────────────────────────────────────
@@ -198,6 +240,9 @@ export const CARD_CATALOG: CategoryConfig[] = [
     publishers: [
       { name: 'Panini', sets: SOCCER_PANINI_SETS },
       { name: 'Topps', sets: SOCCER_TOPPS_SETS },
+      { name: 'Leaf', sets: SOCCER_LEAF_SETS },
+      { name: 'Futera', sets: SOCCER_FUTERA_SETS },
+      { name: 'Khác', sets: [{ name: 'Khác' }] },
     ],
   },
   {

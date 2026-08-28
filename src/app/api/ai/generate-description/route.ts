@@ -40,44 +40,95 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'no_facts', message: 'Fill in the card details first.' }, { status: 400 });
     }
 
-    const prompt = `You write product descriptions for a trading-card marketplace. Using ONLY the facts below, write an engaging, honest listing description in ENGLISH.
+    const prompt = `You write product descriptions for a trading-card marketplace. Using ONLY the facts below, write ONE listing description in ENGLISH.
 
 Rules:
-- Between 300 and 550 characters (must be at least 300).
-- Plain paragraphs only — no markdown, no headings, no bullet points, no emojis.
-- Highlight the card's appeal, its set/edition, condition or grading, and collectibility.
+- About 100 characters. Never more than 160.
+- One sentence, plain text. No markdown, no headings, no bullets, no emojis, no quotes.
+- Use only plain ASCII hyphens and apostrophes.
+- Name what it is and what stands out: the player or title, the set, the season, the condition or grade.
 - Do NOT invent any fact that is not listed. Do NOT mention or guess a price.
-- Write in a confident, appealing but trustworthy tone for collectors.
 
 Facts:
 ${facts}`;
 
-    try {
-        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${groqApiKey}` },
-            body: JSON.stringify({
-                model: 'llama-3.3-70b-versatile',
-                messages: [{ role: 'user', content: prompt }],
-                temperature: 0.7,
-                max_tokens: 400,
-            }),
-        });
+    /**
+     * Groq retires models on short notice, and the previous hardcoded one
+     * (llama-3.3-70b-versatile) had been decommissioned — every request came
+     * back 404 model_not_found while the UI reported a generic failure. The
+     * list is tried in order so one retirement degrades quality rather than
+     * breaking the feature, and the name can be overridden without a deploy.
+     */
+    const models = [
+        process.env.GROQ_TEXT_MODEL,
+        'openai/gpt-oss-20b',
+        'qwen/qwen3.8-27b',
+        'groq/compound-mini',
+    ].filter(Boolean) as string[];
 
-        if (!res.ok) {
-            const detail = await res.text().catch(() => '');
-            console.error('Groq generate-description failed:', res.status, detail);
-            return NextResponse.json({ error: 'ai_failed' }, { status: 502 });
-        }
+    let lastDetail = '';
 
-        const data = await res.json();
-        const description = (data?.choices?.[0]?.message?.content || '').trim();
-        if (!description) {
-            return NextResponse.json({ error: 'empty' }, { status: 502 });
+    for (const model of models) {
+        try {
+            const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${groqApiKey}` },
+                body: JSON.stringify({
+                    model,
+                    messages: [{ role: 'user', content: prompt }],
+                    temperature: 0.6,
+                    // Generous next to a ~100-character answer on purpose. These
+                    // are reasoning models: they spend tokens thinking before
+                    // they write, and a budget sized to the answer is consumed
+                    // entirely by the thinking, returning finish_reason
+                    // "length" with an empty message.
+                    max_tokens: 400,
+                    reasoning_effort: 'low',
+                }),
+                signal: AbortSignal.timeout(8_000),
+            });
+
+            if (!res.ok) {
+                lastDetail = `${model}: HTTP ${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`;
+                console.error('[AI] generate-description rejected —', lastDetail);
+                continue;
+            }
+
+            const data = await res.json();
+            const choice = data?.choices?.[0];
+            const description = normalise(choice?.message?.content || '');
+
+            if (!description) {
+                lastDetail = `${model}: empty content (finish_reason=${choice?.finish_reason})`;
+                console.error('[AI] generate-description returned nothing —', lastDetail);
+                continue;
+            }
+
+            return NextResponse.json({ description });
+        } catch (error) {
+            lastDetail = `${model}: ${(error as Error)?.message || 'request failed'}`;
+            console.error('[AI] generate-description request failed —', lastDetail);
         }
-        return NextResponse.json({ description });
-    } catch (err: any) {
-        console.error('generate-description error:', err);
-        return NextResponse.json({ error: 'ai_failed' }, { status: 502 });
     }
+
+    // The seller cannot act on which model died, but the operator must be able
+    // to tell a retired model from a bad key without reproducing it.
+    console.error('[AI] generate-description exhausted every model. Last:', lastDetail);
+    return NextResponse.json({ error: 'ai_failed' }, { status: 502 });
+}
+
+/**
+ * Models reach for typographic characters — non-breaking hyphens, curly quotes,
+ * em dashes — which survive into the listing and look like mojibake once the
+ * text is echoed somewhere with a different font. Fold them back to ASCII and
+ * flatten any line breaks, since this is meant to be one sentence.
+ */
+function normalise(raw: string) {
+    return raw
+        .replace(/[\u2010-\u2015\u2212]/g, '-')
+        .replace(/[\u2018\u2019]/g, "'")
+        .replace(/[\u201C\u201D]/g, '"')
+        .replace(/\s+/g, ' ')
+        .replace(/^["']|["']$/g, '')
+        .trim();
 }
