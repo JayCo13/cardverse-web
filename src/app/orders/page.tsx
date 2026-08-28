@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
@@ -10,7 +10,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Package, Truck, CheckCircle, XCircle, AlertTriangle, Clock, Loader2, ShoppingBag, Store, ExternalLink, MapPin } from 'lucide-react';
+import { Package, Truck, CheckCircle, XCircle, AlertTriangle, Clock, Loader2, ShoppingBag, Store, ExternalLink, MapPin, ChevronLeft, ChevronRight, ArrowDownUp } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
@@ -53,6 +54,27 @@ type Order = {
   card: { id: string; name: string; image_url: string; category: string; condition: string } | null;
   buyer: { id: string; display_name: string; email: string; profile_image_url: string | null } | null;
   seller: { id: string; display_name: string; email: string; profile_image_url: string | null; seller_verified: boolean; seller_rating: number } | null;
+};
+
+type OrderTab = 'buyer' | 'seller';
+type OrderFilter = 'all' | 'pending' | 'processing' | 'shipping' | 'completed' | 'cancelled';
+type OrderSort = 'newest' | 'amount-desc' | 'amount-asc';
+
+type OrderViewState = {
+  filter: OrderFilter;
+  sort: OrderSort;
+  page: number;
+};
+
+const PAGE_SIZE = 10;
+
+const STATUS_FILTERS: Record<OrderFilter, string[] | null> = {
+  all: null,
+  pending: ['pending_payment'],
+  processing: ['paid'],
+  shipping: ['shipping', 'delivered'],
+  completed: ['completed'],
+  cancelled: ['cancelled', 'refunded', 'disputed'],
 };
 
 // Icons/colors are locale-independent; the labels live in the per-locale
@@ -127,6 +149,18 @@ export default function OrdersPage() {
         orderPrefix: '注文 #',
         shipFeeLabel: '+ 配送:',
         expectedLabel: '配達予定:',
+        allStatuses: 'すべて',
+        pendingOrders: '支払い待ち',
+        processingOrders: '処理中',
+        shippingOrders: '配送中',
+        completedOrders: '完了',
+        cancelledOrders: 'キャンセル',
+        newest: '新しい順',
+        amountHighToLow: '価格: 高い順',
+        amountLowToHigh: '価格: 低い順',
+        showingOrders: '表示 {from}-{to} / {total} 件',
+        previousPage: '前へ',
+        nextPage: '次へ',
         statusLabels: {
           pending_payment: '支払い待ち',
           paid: '支払い済み',
@@ -191,6 +225,18 @@ export default function OrdersPage() {
           orderPrefix: 'Đơn #',
           shipFeeLabel: '+ Ship:',
           expectedLabel: 'Dự kiến:',
+          allStatuses: 'Tất cả',
+          pendingOrders: 'Chờ thanh toán',
+          processingOrders: 'Đang xử lý',
+          shippingOrders: 'Đang giao',
+          completedOrders: 'Hoàn tất',
+          cancelledOrders: 'Đã hủy',
+          newest: 'Mới nhất',
+          amountHighToLow: 'Giá cao → thấp',
+          amountLowToHigh: 'Giá thấp → cao',
+          showingOrders: 'Hiển thị {from}-{to} của {total} đơn hàng',
+          previousPage: 'Trước',
+          nextPage: 'Sau',
           statusLabels: {
             pending_payment: 'Chờ thanh toán',
             paid: 'Đã thanh toán',
@@ -254,6 +300,18 @@ export default function OrdersPage() {
           orderPrefix: 'Order #',
           shipFeeLabel: '+ Shipping:',
           expectedLabel: 'Expected:',
+          allStatuses: 'All',
+          pendingOrders: 'Awaiting payment',
+          processingOrders: 'Processing',
+          shippingOrders: 'Shipping',
+          completedOrders: 'Completed',
+          cancelledOrders: 'Cancelled',
+          newest: 'Newest',
+          amountHighToLow: 'Price: high to low',
+          amountLowToHigh: 'Price: low to high',
+          showingOrders: 'Showing {from}-{to} of {total} orders',
+          previousPage: 'Previous',
+          nextPage: 'Next',
           statusLabels: {
             pending_payment: 'Awaiting payment',
             paid: 'Paid',
@@ -283,7 +341,11 @@ export default function OrdersPage() {
   // Open the tab requested via ?tab=seller|buyer (e.g. from a "new order"
   // notification, which is a seller-side event). Defaults to the buyer tab.
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState(searchParams.get('tab') === 'seller' ? 'seller' : 'buyer');
+  const [activeTab, setActiveTab] = useState<OrderTab>(searchParams.get('tab') === 'seller' ? 'seller' : 'buyer');
+  const [viewStateByTab, setViewStateByTab] = useState<Record<OrderTab, OrderViewState>>({
+    buyer: { filter: 'all', sort: 'newest', page: 1 },
+    seller: { filter: 'all', sort: 'newest', page: 1 },
+  });
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -336,6 +398,62 @@ export default function OrdersPage() {
 
   const formatVND = (amount: number) =>
     new Intl.NumberFormat(locale, { style: 'currency', currency: 'VND' }).format(amount);
+
+  const activeViewState = viewStateByTab[activeTab];
+  const filteredOrders = useMemo(() => {
+    const matchedStatuses = STATUS_FILTERS[activeViewState.filter];
+    const filtered = matchedStatuses
+      ? orders.filter(order => matchedStatuses.includes(order.status))
+      : orders;
+
+    return [...filtered].sort((left, right) => {
+      if (activeViewState.sort === 'amount-desc') return right.amount - left.amount;
+      if (activeViewState.sort === 'amount-asc') return left.amount - right.amount;
+      return new Date(right.created_at).getTime() - new Date(left.created_at).getTime();
+    });
+  }, [activeViewState.filter, activeViewState.sort, orders]);
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
+  const currentPage = Math.min(activeViewState.page, totalPages);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const paginatedOrders = filteredOrders.slice(pageStart, pageStart + PAGE_SIZE);
+  const visibleFrom = filteredOrders.length === 0 ? 0 : pageStart + 1;
+  const visibleTo = Math.min(pageStart + PAGE_SIZE, filteredOrders.length);
+  const filterOptions: Array<{ value: OrderFilter; label: string }> = [
+    { value: 'all', label: copy.allStatuses },
+    { value: 'pending', label: copy.pendingOrders },
+    { value: 'processing', label: copy.processingOrders },
+    { value: 'shipping', label: copy.shippingOrders },
+    { value: 'completed', label: copy.completedOrders },
+    { value: 'cancelled', label: copy.cancelledOrders },
+  ];
+  const paginationPages = [1, currentPage - 1, currentPage, currentPage + 1, totalPages]
+    .filter(page => page >= 1 && page <= totalPages)
+    .filter((page, index, pages) => pages.indexOf(page) === index)
+    .sort((left, right) => left - right);
+  const showingSummary = copy.showingOrders
+    .replace('{from}', String(visibleFrom))
+    .replace('{to}', String(visibleTo))
+    .replace('{total}', String(filteredOrders.length));
+
+  const updateActiveViewState = (next: Partial<OrderViewState>, resetPage = false) => {
+    setViewStateByTab(previous => ({
+      ...previous,
+      [activeTab]: {
+        ...previous[activeTab],
+        ...next,
+        page: resetPage ? 1 : next.page ?? previous[activeTab].page,
+      },
+    }));
+  };
+
+  const handleTabChange = (value: string) => {
+    const tab = value as OrderTab;
+    setActiveTab(tab);
+    setViewStateByTab(previous => ({
+      ...previous,
+      [tab]: { ...previous[tab], page: 1 },
+    }));
+  };
 
   const handleAction = async (orderId: string, action: string, extra?: Record<string, string>) => {
     const fingerprint = `${orderId}:${action}:${JSON.stringify(extra || {})}`;
@@ -615,7 +733,7 @@ export default function OrdersPage() {
             {copy.title}
           </h1>
 
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <Tabs value={activeTab} onValueChange={handleTabChange}>
             <TabsList className="grid w-full grid-cols-2 max-w-sm">
               <TabsTrigger value="buyer" className="flex items-center gap-2">
                 <ShoppingBag className="h-4 w-4" />
@@ -650,7 +768,92 @@ export default function OrdersPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {orders.map(renderOrderCard)}
+                  <div className="flex flex-col gap-3 rounded-xl border bg-card/60 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="-mx-1 flex min-w-0 gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:pb-0">
+                      {filterOptions.map(option => {
+                        const statuses = STATUS_FILTERS[option.value];
+                        const count = statuses ? orders.filter(order => statuses.includes(order.status)).length : orders.length;
+                        const isActive = activeViewState.filter === option.value;
+
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => updateActiveViewState({ filter: option.value }, true)}
+                            className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${isActive ? 'border-orange-500 bg-orange-500/10 text-orange-300' : 'border-border/60 text-muted-foreground hover:border-orange-500/40 hover:text-foreground'}`}
+                          >
+                            {option.label} ({count})
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <Select value={activeViewState.sort} onValueChange={value => updateActiveViewState({ sort: value as OrderSort }, true)}>
+                      <SelectTrigger className="h-9 w-14 shrink-0 px-2 sm:w-[180px] sm:px-3" aria-label={copy.newest}>
+                        <ArrowDownUp className="h-4 w-4 sm:hidden" />
+                        <span className="hidden sm:block"><SelectValue /></span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="newest">{copy.newest}</SelectItem>
+                        <SelectItem value="amount-desc">{copy.amountHighToLow}</SelectItem>
+                        <SelectItem value="amount-asc">{copy.amountLowToHigh}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <p className="text-sm text-muted-foreground">{showingSummary}</p>
+
+                  {filteredOrders.length === 0 ? (
+                    <div className="rounded-xl border border-dashed py-12 text-center text-muted-foreground">
+                      {copy.emptyTitle}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-4">
+                        {paginatedOrders.map(renderOrderCard)}
+                      </div>
+
+                      {totalPages > 1 && (
+                        <nav className="flex flex-wrap items-center justify-center gap-2 pt-2" aria-label="Order pagination">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="gap-1 rounded-lg"
+                            disabled={currentPage === 1}
+                            onClick={() => updateActiveViewState({ page: currentPage - 1 })}
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                            <span className="hidden sm:inline">{copy.previousPage}</span>
+                          </Button>
+                          {paginationPages.map((page, index) => (
+                            <div key={page} className="flex items-center gap-2">
+                              {index > 0 && page - paginationPages[index - 1] > 1 && <span className="text-muted-foreground">…</span>}
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={page === currentPage ? 'default' : 'outline'}
+                                className={`h-9 min-w-9 rounded-lg px-2 ${page === currentPage ? 'bg-orange-500 text-white hover:bg-orange-600' : ''}`}
+                                onClick={() => updateActiveViewState({ page })}
+                              >
+                                {page}
+                              </Button>
+                            </div>
+                          ))}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="gap-1 rounded-lg"
+                            disabled={currentPage === totalPages}
+                            onClick={() => updateActiveViewState({ page: currentPage + 1 })}
+                          >
+                            <span className="hidden sm:inline">{copy.nextPage}</span>
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </nav>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
             </TabsContent>
