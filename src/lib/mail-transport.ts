@@ -43,13 +43,24 @@ function resendTransport(apiKey: string): MailTransport {
             const bcc = toAddressList(message.bcc);
             if (to.length === 0 && bcc.length === 0) return null;
 
+            // Resend rejects an empty `to`. This used to stand the sender in as
+            // recipient for a bcc-only admin fan-out, which addressed the mail to
+            // noreply@ — an address with no mailbox behind it. Those messages
+            // bounced, and a bounce on the envelope recipient puts the whole
+            // delivery at risk, blind copies included: the KYC and withdrawal
+            // alerts were bouncing while the app recorded them as sent.
+            //
+            // Every bcc-only message here is an internal fan-out to admins and
+            // moderators, who already know each other, so the list is promoted to
+            // `to` instead. Nothing user-facing uses bcc; if that ever changes,
+            // this promotion would expose one recipient's address to another.
+            const bccOnly = to.length === 0 && bcc.length > 0;
+            const recipients = bccOnly ? bcc : to;
+
             const { data, error } = await client.emails.send({
                 from: message.from,
-                // Resend rejects an empty `to`; when a message is bcc-only
-                // (admin fan-out) the sender address stands in as recipient,
-                // which is what the SMTP path did too.
-                to: to.length > 0 ? to : [message.from],
-                ...(bcc.length > 0 ? { bcc } : {}),
+                to: recipients.length > 0 ? recipients : [message.from],
+                ...(!bccOnly && bcc.length > 0 ? { bcc } : {}),
                 subject: message.subject,
                 html: message.html,
             });
