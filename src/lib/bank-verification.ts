@@ -81,6 +81,13 @@ export interface BankNameCheck {
     flags: string[];
     /** Holder name as returned by the network, when there was one. */
     verifiedAccountName: string | null;
+    /**
+     * The network never answered — quota, outage, rate limit — as opposed to
+     * answering "no such account". Callers must tell these apart: an outage is
+     * our problem and must not lock out a legitimate seller, while `not_found`
+     * is a real negative the user has to fix.
+     */
+    unavailable: boolean;
 }
 
 /**
@@ -97,14 +104,16 @@ export function checkBankAccountHolder(params: {
     if (params.lookup.status === 'unavailable') {
         return {
             matches: false,
+            unavailable: true,
             verifiedAccountName: null,
-            flags: ['Hệ thống tra cứu ngân hàng đang bận, vui lòng thử lại sau vài phút.'],
+            flags: ['Không tra cứu được tên chủ tài khoản (dịch vụ tạm gián đoạn).'],
         };
     }
 
     if (params.lookup.status === 'not_found') {
         return {
             matches: false,
+            unavailable: false,
             verifiedAccountName: null,
             flags: [`Ngân hàng không tìm thấy tài khoản này: ${params.lookup.message}`],
         };
@@ -113,6 +122,7 @@ export function checkBankAccountHolder(params: {
     if (!identity) {
         return {
             matches: false,
+            unavailable: false,
             verifiedAccountName: params.lookup.accountName,
             flags: ['Không có tên đã xác minh để đối chiếu với chủ tài khoản.'],
         };
@@ -121,6 +131,7 @@ export function checkBankAccountHolder(params: {
     if (!namesMatch(params.lookup.accountName, params.identityName || '')) {
         return {
             matches: false,
+            unavailable: false,
             verifiedAccountName: params.lookup.accountName,
             flags: [
                 `Chủ tài khoản ngân hàng ("${params.lookup.accountName}") không khớp với giấy tờ đã xác minh.`,
@@ -128,5 +139,5 @@ export function checkBankAccountHolder(params: {
         };
     }
 
-    return { matches: true, verifiedAccountName: params.lookup.accountName, flags: [] };
+    return { matches: true, unavailable: false, verifiedAccountName: params.lookup.accountName, flags: [] };
 }

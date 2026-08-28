@@ -63,10 +63,20 @@ that survives serverless cold starts, a 7-day cache so resubmitting the same
 account does not burn quota, and an audit trail for payout disputes. Like
 `kyc_sessions`, it is service-role only.
 
-If VietQR is unconfigured, rate-limited, or down, the submission comes back as
-a **retry**, not a block and not an admin review: `request_withdrawal` requires
-`bank_verified_at`, so approving without a lookup would create a seller who can
-never be paid.
+**The lookup is usually unavailable.** The smallest VietQR package is 50,000
+requests against a need under 1,000 a month, so quota is exhausted far more
+often than not — `unavailable` is the normal answer, not the exceptional one.
+
+The flow therefore distinguishes two very different negatives:
+
+- `unavailable` (quota, outage, rate limit) — the network never answered. The
+  holder name the user typed stands in and `bank_verified_at` is recorded, so
+  onboarding and payouts keep working. This is not self-assertion: the typed
+  name must already match the Didit-verified document. The account *number*
+  goes unverified, which is the residual risk of running without the lookup.
+  The admin approve path makes the identical trade.
+- `not_found` — the bank answered definitively that no such account exists.
+  That is a **retry**: the user has to correct the number.
 
 ## Submission outcomes
 
@@ -92,11 +102,12 @@ through.
 **blocked (409, `code: duplicate_identity`)** — see "Duplicate identities".
 
 **retry (422, `code: retry`)** — something the user can fix: names that do not
-match, an account number NAPAS cannot resolve, a VietQR outage, or a session
-that came back without a name or document number. No row is written; the form
-lists the reasons and the user submits again. A VietQR outage deliberately
-lands here rather than in an admin queue, so a lookup failure costs the user a
-retry instead of a wait.
+match, an account number the bank says does not exist, or a session that came
+back without a name or document number. No row is written; the form lists the
+reasons and the user submits again.
+
+A VietQR *outage* is deliberately **not** a retry — see "Bank account
+verification" below. Only a definitive `not_found` is.
 
 `KYC_AUTO_APPROVE=false` overrides all of this and sends every submission to
 `pending` for admin review. It is a kill switch for incidents, not a mode the

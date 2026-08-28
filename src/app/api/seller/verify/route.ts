@@ -230,6 +230,24 @@ export async function POST(request: NextRequest) {
         let verifiedAccountName: string | null = null;
         let bankVerifiedAt: string | null = null;
 
+        // NAPAS runs on a plan whose quota is exhausted long before the month is,
+        // so `unavailable` is the normal answer here, not the exceptional one.
+        // Blocking on it would mean nobody can ever become a seller.
+        //
+        // When the network cannot answer, the holder name the user typed stands
+        // in. That is not self-assertion: checkNameConsistency above already
+        // required it to match the name on the Didit-verified document — it is
+        // simply unconfirmed by the bank. The admin approve path makes the same
+        // trade for the same reason. The account *number* is unverified either
+        // way, which is the residual risk of running without the lookup.
+        //
+        // `not_found` is different: that is the bank answering definitively, so
+        // the user has to correct the number.
+        const recordHolderStandin = () => {
+            verifiedAccountName = bank_account_name;
+            bankVerifiedAt = new Date().toISOString();
+        };
+
         if (isBankLookupConfigured()) {
             const lookup = await verifyBankAccount(service, {
                 userId: user.id,
@@ -241,17 +259,17 @@ export async function POST(request: NextRequest) {
                 identityName: session.verified_full_name,
             });
 
-            verifiedAccountName = bankCheck.verifiedAccountName;
-            if (bankCheck.matches) bankVerifiedAt = new Date().toISOString();
-            retryFlags.push(...bankCheck.flags);
+            if (bankCheck.unavailable) {
+                recordHolderStandin();
+                advisoryFlags.push(...bankCheck.flags);
+            } else {
+                verifiedAccountName = bankCheck.verifiedAccountName;
+                if (bankCheck.matches) bankVerifiedAt = new Date().toISOString();
+                retryFlags.push(...bankCheck.flags);
+            }
         } else {
-            // Without a lookup the payout account is self-asserted, and
-            // request_withdrawal requires bank_verified_at before money can
-            // move — so approving here would create a seller who can never
-            // withdraw. Better to say so now and let them try again.
-            retryFlags.push(
-                'Hệ thống tra cứu ngân hàng đang bận, vui lòng thử lại sau vài phút.'
-            );
+            recordHolderStandin();
+            advisoryFlags.push('Chưa bật tra cứu ngân hàng — tên chủ tài khoản chưa được đối chiếu với ngân hàng.');
         }
 
         if (retryFlags.length > 0) {
