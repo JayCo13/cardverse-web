@@ -880,6 +880,8 @@ export interface Database {
                     currency: string
                     bank_name: string
                     bank_account_number: string
+                    /** Generated column: digits only. Read-only. */
+                    bank_account_number_normalized: string
                     bank_account_name: string
                     bank_account_masked: string | null
                     status: 'pending' | 'processing' | 'completed' | 'rejected'
@@ -980,6 +982,7 @@ export interface Database {
                     conversation_id: string | null
                     transaction_id: string | null
                     kyc_session_id: string | null
+                    withdrawal_id: string | null
                     read: boolean
                     created_at: string
                 }
@@ -994,6 +997,7 @@ export interface Database {
                     conversation_id?: string | null
                     transaction_id?: string | null
                     kyc_session_id?: string | null
+                    withdrawal_id?: string | null
                     read?: boolean
                     created_at?: string
                 }
@@ -1008,6 +1012,7 @@ export interface Database {
                     conversation_id?: string | null
                     transaction_id?: string | null
                     kyc_session_id?: string | null
+                    withdrawal_id?: string | null
                     read?: boolean
                     created_at?: string
                 }
@@ -1146,6 +1151,35 @@ export interface Database {
                     updated_at?: string
                 }
             }
+            seller_verification_blocks: {
+                Row: {
+                    id: string
+                    user_id: string
+                    matched_axis: string
+                    document_number_hash: string | null
+                    bank_account_number: string | null
+                    matched_user_ids: string[] | null
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    user_id: string
+                    matched_axis: string
+                    document_number_hash?: string | null
+                    bank_account_number?: string | null
+                    matched_user_ids?: string[] | null
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    user_id?: string
+                    matched_axis?: string
+                    document_number_hash?: string | null
+                    bank_account_number?: string | null
+                    matched_user_ids?: string[] | null
+                    created_at?: string
+                }
+            }
             seller_verifications: {
                 Row: {
                     id: string
@@ -1178,6 +1212,7 @@ export interface Database {
                     review_flags: Json | null
                     status: string
                     reviewed_by: string | null
+                    reviewed_by_actor: string | null
                     reviewed_at: string | null
                     rejection_reason: string | null
                     created_at: string | null
@@ -1214,6 +1249,7 @@ export interface Database {
                     review_flags?: Json | null
                     status?: string
                     reviewed_by?: string | null
+                    reviewed_by_actor?: string | null
                     reviewed_at?: string | null
                     rejection_reason?: string | null
                     created_at?: string | null
@@ -1250,6 +1286,7 @@ export interface Database {
                     review_flags?: Json | null
                     status?: string
                     reviewed_by?: string | null
+                    reviewed_by_actor?: string | null
                     reviewed_at?: string | null
                     rejection_reason?: string | null
                     created_at?: string | null

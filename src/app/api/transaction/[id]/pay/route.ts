@@ -4,7 +4,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { getPayOS } from '@/lib/payos';
 import { hashFinancialRequest, stableFinancialUuid } from '@/lib/financial-idempotency';
-import { quoteVerifiedShipping } from '@/lib/verified-shipping';
+import { quoteCheapestConfiguredShipping } from '@/lib/verified-shipping';
 import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link-claim';
 import { translateRequest } from '@/lib/request-localization';
 
@@ -146,11 +146,10 @@ export async function POST(
     }
 
     const amount = Number(transaction.price);
-    const shippingFee = await quoteVerifiedShipping({
+    const shippingFee = await quoteCheapestConfiguredShipping({
       sellerId: transaction.seller_id,
-      toDistrictId: Number(to_district_id),
-      toWardCode: String(to_ward_code),
-      insuranceValue: amount,
+      toProvinceId: Number(to_province_id),
+      toProvinceName: String(to_province_name),
     });
     const totalPaid = amount + shippingFee;
     const orderId = stableFinancialUuid(`transaction-pay:${user.id}:${idempotencyKey}:${transactionId}`);

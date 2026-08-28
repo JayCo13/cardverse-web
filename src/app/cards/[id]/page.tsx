@@ -827,12 +827,13 @@ export default function CardDetailsPage() {
                     title: copy.acceptOfferFailed,
                     description: payload.error || copy.retryLater,
                 });
-                setAcceptingOfferId(null);
                 return;
             }
 
             delete offerActionKeys.current[fingerprint];
-            router.push(payload.checkoutUrl || `/checkout?offerId=${offer.id}`);
+            // Checkout belongs to the buyer. Keep the seller on the listing and
+            // refresh it so the accepted offer and reserved-card state are visible.
+            await Promise.all([fetchCard(), fetchOffers()]);
         } catch (error) {
             console.error("Error accepting offer:", error);
             toast({
@@ -840,6 +841,7 @@ export default function CardDetailsPage() {
                 title: copy.acceptOfferFailed,
                 description: copy.retryLater,
             });
+        } finally {
             setAcceptingOfferId(null);
         }
     };

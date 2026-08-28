@@ -77,7 +77,7 @@ export async function verifyBankAccount(
 export interface BankNameCheck {
     /** True only when NAPAS confirmed the holder and it matches the identity. */
     matches: boolean;
-    /** Reasons this submission cannot auto-approve. */
+    /** Reasons the user must fix something and re-submit. */
     flags: string[];
     /** Holder name as returned by the network, when there was one. */
     verifiedAccountName: string | null;
@@ -98,7 +98,7 @@ export function checkBankAccountHolder(params: {
         return {
             matches: false,
             verifiedAccountName: null,
-            flags: ['Không tra cứu được tên chủ tài khoản (dịch vụ tạm gián đoạn) — cần soát thủ công.'],
+            flags: ['Hệ thống tra cứu ngân hàng đang bận, vui lòng thử lại sau vài phút.'],
         };
     }
 

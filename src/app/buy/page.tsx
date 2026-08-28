@@ -64,7 +64,7 @@ export default function BuyPage() {
     bundlesOnly: false,
     gradedOnly: false,
   });
-  const [sort, setSort] = useState<SortOption>('price-desc');
+  const [sort, setSort] = useState<SortOption>('newest');
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const supabase = useSupabase();
   const { user } = useAuth();

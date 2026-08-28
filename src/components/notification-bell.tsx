@@ -339,6 +339,11 @@ export function NotificationBell() {
             return;
         }
 
+        if (notification.type === 'withdrawal_completed' || notification.type === 'withdrawal_rejected') {
+            router.push('/wallet');
+            return;
+        }
+
         // Accepted offer → go straight to checkout. Legacy notifications may
         // still carry a transaction id, so keep that fallback alive.
         if (notification.type === 'offer_accepted' && notification.offerId) {
@@ -422,6 +427,8 @@ export function NotificationBell() {
                 return <Package className="h-4 w-4 text-green-500" />;
             case "message_received":
                 return <MessageCircle className="h-4 w-4 text-orange-500" />;
+            case "withdrawal_rejected":
+                return <Bell className="h-4 w-4 text-red-500" />;
             default:
                 return <Bell className="h-4 w-4" />;
         }

@@ -42,3 +42,7 @@ next-env.d.ts
 
 # Local Netlify folder
 .netlify
+
+# Local KYC reset backups — contain bank/phone PII, never commit
+.kyc-backups/
+seller-kyc-reset-backup-*.json

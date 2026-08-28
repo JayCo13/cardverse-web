@@ -20,6 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
+import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { getCloudinarySignature, uploadImageDirectToCloudinary, type CloudinarySignaturePayload } from '@/lib/cloudinary-direct';
 import { getCloudinaryKycScanUrl, toDisplaySafeUrl, optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
 import { isHeicFile, convertHeicToJpeg } from '@/lib/heic';
@@ -400,6 +401,10 @@ export default function SellPage() {
 
   // Step 2: contact phone
   const [phoneNumber, setPhoneNumber] = useState('');
+  // Submit outcomes other than success. `blockedAxis` is terminal — re-submitting
+  // returns the same 409 — so it gets a modal rather than a dismissible toast.
+  const [blockedAxis, setBlockedAxis] = useState<'document' | 'bank' | 'both' | null>(null);
+  const [retryFlags, setRetryFlags] = useState<string[]>([]);
 
   const normalizeVietnameseName = (value: string) => value
     .toUpperCase()
@@ -820,6 +825,7 @@ export default function SellPage() {
     }
 
     setIsSubmitting(true);
+    setRetryFlags([]);
     try {
       // Optional evidence for the admin; identity no longer depends on it.
       let bankScreenshotUrl: string | null = null;
@@ -844,6 +850,22 @@ export default function SellPage() {
       });
 
       const data = await readJson(res);
+
+      // A reused document or bank account is refused for good: show a modal and
+      // stop, rather than a toast that fades and invites another pointless try.
+      if (res.status === 409 && data.code === 'duplicate_identity') {
+        setBlockedAxis(data.matched_axis === 'bank' || data.matched_axis === 'both' ? data.matched_axis : 'document');
+        return;
+      }
+
+      // Fixable: keep the reasons on screen next to the submit button.
+      if (res.status === 422) {
+        setRetryFlags(Array.isArray(data.retry_flags) && data.retry_flags.length > 0
+          ? data.retry_flags
+          : [data.error]);
+        return;
+      }
+
       if (!res.ok) throw new Error(data.error);
 
       if (data.auto_approved) {
@@ -1710,7 +1732,7 @@ export default function SellPage() {
                   {tx('Bước 2: Số điện thoại liên hệ', 'Step 2: Contact phone number', 'ステップ2: 連絡先電話番号')}
                 </CardTitle>
                 <CardDescription>
-                  {tx('Nhập số điện thoại Việt Nam để bưu tá liên hệ lấy thẻ khi có đơn hàng. Admin sẽ kiểm tra lại khi duyệt seller.', 'Enter a Vietnamese phone number so carriers can contact you for pickup. Admin will verify it during seller approval.', '注文時に集荷担当が連絡できるベトナムの電話番号を入力してください。販売者承認時に管理者が確認します。')}
+                  {tx('Nhập số điện thoại Việt Nam để bưu tá liên hệ lấy thẻ khi có đơn hàng.', 'Enter a Vietnamese phone number so carriers can contact you for pickup.', '注文時に集荷担当が連絡できるベトナムの電話番号を入力してください。')}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -1806,7 +1828,7 @@ export default function SellPage() {
                           {isBankVerified
                             ? tx('✅ Đã đối chiếu với ngân hàng', '✅ Verified with the bank', '✅ 銀行と照合済み')
                             : isBankLookupUnavailable
-                              ? tx('⚠️ Admin sẽ kiểm tra thủ công', '⚠️ Admin will check manually', '⚠️ 管理者が手動で確認')
+                              ? tx('⚠️ Tra cứu đang bận — sẽ đối chiếu lại khi gửi', '⚠️ Lookup busy — will be re-checked on submit', '⚠️ 照会が混雑中 — 送信時に再照合されます')
                               : tx('❌ Chưa đối chiếu', '❌ Not verified', '❌ 未照合')}
                         </p>
                       </div>
@@ -1840,6 +1862,18 @@ export default function SellPage() {
                   ⚠️ {tx('Nếu danh tính đã xác minh và mọi thông tin khớp, hồ sơ được duyệt ngay. Trường hợp có dấu hiệu bất thường, admin sẽ soát lại trước khi duyệt.', 'If your identity is verified and everything matches, approval is immediate. Anything unusual is reviewed by an admin first.', '本人確認済みで情報が一致すれば即時承認されます。不審な点がある場合は管理者が先に確認します。')}
                 </div>
 
+                {retryFlags.length > 0 && (
+                  <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-4 space-y-2">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-red-300">
+                      <AlertTriangle className="h-4 w-4" /> {t('seller_kyc_retry_title')}
+                    </p>
+                    <ul className="list-disc space-y-1 pl-5 text-sm text-red-200/90">
+                      {retryFlags.map((flag, i) => <li key={i}>{flag}</li>)}
+                    </ul>
+                    <p className="text-xs text-red-200/70">{t('seller_kyc_retry_help')}</p>
+                  </div>
+                )}
+
                 <div className="flex gap-3">
                   <Button type="button" variant="outline" onClick={() => setCurrentStep(2)} className="flex-1">
                     <ChevronLeft className="h-4 w-4 mr-2" /> {tx('Quay lại', 'Back', '戻る')}
@@ -1860,6 +1894,35 @@ export default function SellPage() {
           )}
         </div>
       </main>
+
+      {/* Terminal refusal: one account per person. No retry button — another
+          submit returns the same 409 — so the only way out is support. */}
+      <AlertDialog open={blockedAxis !== null}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-400">
+              <ShieldAlert className="h-5 w-5" /> {t('seller_kyc_blocked_title')}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2 pt-2">
+              <span className="block">
+                {blockedAxis === 'bank'
+                  ? t('seller_kyc_blocked_bank')
+                  : blockedAxis === 'both'
+                    ? t('seller_kyc_blocked_both')
+                    : t('seller_kyc_blocked_document')}
+              </span>
+              <span className="block font-medium text-foreground">{t('seller_kyc_blocked_rule')}</span>
+              <span className="block text-xs">{t('seller_kyc_blocked_help')}</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setBlockedAxis(null)} asChild>
+              <Link href="/contact">{t('seller_kyc_contact_support')}</Link>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Footer />
     </div>
   );

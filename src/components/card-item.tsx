@@ -542,18 +542,19 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                 (card.gradingCompany || card.grade != null) && {
                   label: copy.grading,
                   value: [card.gradingCompany, card.grade].filter((v) => v != null && v !== '').join(' ') || '—',
+                  labelClassName: 'font-medium text-primary',
                 },
                 card.cardNumber && { label: copy.cardNumber, value: card.cardNumber },
                 card.language && { label: copy.language, value: card.language },
-                card.season && { label: copy.season, value: card.season },
-                { label: copy.quantity, value: `${card.quantity || 1} ${copy.available}` },
+                card.season && { label: copy.season, value: card.season, labelClassName: 'font-medium text-primary' },
+                { label: copy.quantity, value: `${card.quantity || 1} ${copy.available}`, labelClassName: 'font-medium text-primary' },
                 card.lastSoldPrice && { label: copy.lastSold, value: displayPrice(card.lastSoldPrice) },
-              ].filter(Boolean) as { label: string; value: string }[];
+              ].filter(Boolean) as { label: string; value: string; labelClassName?: string }[];
               return (
                 <dl className="mt-1 flex flex-wrap gap-x-2.5 gap-y-0.5 border-0 pt-0 text-[10px] md:mt-5 md:gap-x-8 md:gap-y-4 md:border-t md:border-border/40 md:pt-5 md:text-base">
                   {specs.map((s, i) => (
                     <div key={i} className="flex flex-row items-baseline gap-1 md:flex-col md:items-stretch md:gap-0">
-                      <dt className="text-[9px] uppercase tracking-wide text-muted-foreground/60 opacity-50 md:text-[11px] md:tracking-wider md:opacity-100">{s.label}</dt>
+                      <dt className={`text-[9px] uppercase tracking-wide text-muted-foreground/60 opacity-50 md:text-[11px] md:tracking-wider md:opacity-100 ${s.labelClassName || ''}`}>{s.label}</dt>
                       <dd className="text-[10.5px] font-medium text-foreground md:mt-1 md:text-[0.95rem] md:font-semibold">{s.value}</dd>
                     </div>
                   ))}

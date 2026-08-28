@@ -301,6 +301,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     const [isSafetyExpanded, setIsSafetyExpanded] = useState(false);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const mobileTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const desktopTextareaRef = useRef<HTMLTextAreaElement | null>(null);
     const [isUpdatingMute, setIsUpdatingMute] = useState(false);
     const [offer, setOffer] = useState<OfferSummary | null>(null);
     const [isAcceptingOffer, setIsAcceptingOffer] = useState(false);
@@ -316,16 +317,55 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     const isSendingRef = useRef(false);
     const selectedIdRef = useRef<string | null>(selectedId);
 
-    const resizeMobileTextarea = useCallback((element: HTMLTextAreaElement | null) => {
+    const resizeComposer = useCallback((element: HTMLTextAreaElement | null) => {
         if (!element) return;
         element.style.height = "44px";
         const styles = window.getComputedStyle(element);
         const lineHeight = Number.parseFloat(styles.lineHeight) || 24;
         const verticalPadding = Number.parseFloat(styles.paddingTop) + Number.parseFloat(styles.paddingBottom);
         const maxHeight = (lineHeight * 5) + verticalPadding;
-        element.style.height = `${Math.min(element.scrollHeight, maxHeight)}px`;
-        element.style.overflowY = element.scrollHeight > maxHeight ? "auto" : "hidden";
+
+        // An empty textarea reports a single line of scrollHeight, so the
+        // multi-line safety placeholder gets cut off until the user types. Size
+        // the empty box to the placeholder instead, by borrowing the element for
+        // one synchronous measurement — the value is restored before React or
+        // the browser can paint it, so nothing flickers.
+        // Never touch the value mid-IME: on a Japanese or Vietnamese composition
+        // the pending text is not in `value` yet, and writing to it drops it.
+        const measuringPlaceholder = element.value.length === 0
+            && element.placeholder.length > 0
+            && !isComposingRef.current;
+        if (measuringPlaceholder) element.value = element.placeholder;
+        const contentHeight = element.scrollHeight;
+        if (measuringPlaceholder) element.value = "";
+
+        element.style.height = `${Math.min(contentHeight, maxHeight)}px`;
+        element.style.overflowY = contentHeight > maxHeight ? "auto" : "hidden";
     }, []);
+
+    // Callback refs so the box is sized the moment it mounts, not one render
+    // later — otherwise the drawer opens with a clipped placeholder.
+    const attachMobileComposer = useCallback((node: HTMLTextAreaElement | null) => {
+        mobileTextareaRef.current = node;
+        resizeComposer(node);
+    }, [resizeComposer]);
+
+    const attachDesktopComposer = useCallback((node: HTMLTextAreaElement | null) => {
+        desktopTextareaRef.current = node;
+        resizeComposer(node);
+    }, [resizeComposer]);
+
+    // The placeholder wraps differently at different widths, and changes
+    // entirely when the language does.
+    useEffect(() => {
+        const resizeBoth = () => {
+            resizeComposer(mobileTextareaRef.current);
+            resizeComposer(desktopTextareaRef.current);
+        };
+        resizeBoth();
+        window.addEventListener("resize", resizeBoth);
+        return () => window.removeEventListener("resize", resizeBoth);
+    }, [resizeComposer, draft, copy.messagePlaceholder]);
 
     const scrollChatToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
         requestAnimationFrame(() => {
@@ -670,7 +710,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
         draftRef.current = "";
         setDraft("");
         setIsSending(true);
-        requestAnimationFrame(() => resizeMobileTextarea(mobileTextareaRef.current));
+        requestAnimationFrame(() => resizeComposer(mobileTextareaRef.current));
 
         const restoreDraft = () => {
             if (selectedIdRef.current !== conversationId) return;
@@ -678,7 +718,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             const restoredDraft = currentDraft.trim() ? `${body}\n${currentDraft}` : body;
             draftRef.current = restoredDraft;
             setDraft(restoredDraft);
-            requestAnimationFrame(() => resizeMobileTextarea(mobileTextareaRef.current));
+            requestAnimationFrame(() => resizeComposer(mobileTextareaRef.current));
         };
 
         try {
@@ -719,7 +759,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
         draftRef.current = next;
         setDraft(next);
         requestAnimationFrame(() => {
-            resizeMobileTextarea(mobileTextareaRef.current);
+            resizeComposer(mobileTextareaRef.current);
             mobileTextareaRef.current?.focus();
         });
     };
@@ -1277,7 +1317,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                 <Plus className={`h-5 w-5 transition-transform ${showMobileActions ? "rotate-45" : ""}`} />
                                             </Button>
                                             <Textarea
-                                                ref={mobileTextareaRef}
+                                                ref={attachMobileComposer}
                                                 rows={1}
                                                 value={draft}
                                                 onFocus={() => {
@@ -1287,7 +1327,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                 onChange={event => {
                                                     draftRef.current = event.currentTarget.value;
                                                     setDraft(event.currentTarget.value);
-                                                    resizeMobileTextarea(event.currentTarget);
+                                                    resizeComposer(event.currentTarget);
                                                 }}
                                                 onCompositionStart={() => {
                                                     isComposingRef.current = true;
@@ -1296,7 +1336,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                     isComposingRef.current = false;
                                                     draftRef.current = event.currentTarget.value;
                                                     setDraft(event.currentTarget.value);
-                                                    resizeMobileTextarea(event.currentTarget);
+                                                    resizeComposer(event.currentTarget);
                                                 }}
                                                 onKeyDown={event => {
                                                     if (event.key === "Enter" && !event.shiftKey) {
@@ -1309,7 +1349,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                     }
                                                 }}
                                                 placeholder={copy.messagePlaceholder}
-                                                className="h-11 min-h-11 max-h-[132px] resize-none overflow-y-hidden py-2.5"
+                                                className="min-h-11 max-h-[132px] resize-none overflow-y-hidden py-2.5"
                                                 maxLength={2000}
                                             />
                                             <Button
@@ -1362,10 +1402,13 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                 {isUploadingImage ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
                                             </Button>
                                             <Textarea
+                                                ref={attachDesktopComposer}
+                                                rows={1}
                                                 value={draft}
                                                 onChange={event => {
                                                     draftRef.current = event.currentTarget.value;
                                                     setDraft(event.currentTarget.value);
+                                                    resizeComposer(event.currentTarget);
                                                 }}
                                                 onCompositionStart={() => {
                                                     isComposingRef.current = true;
@@ -1374,6 +1417,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                     isComposingRef.current = false;
                                                     draftRef.current = event.currentTarget.value;
                                                     setDraft(event.currentTarget.value);
+                                                    resizeComposer(event.currentTarget);
                                                 }}
                                                 onKeyDown={event => {
                                                     if (event.key === "Enter" && !event.shiftKey) {
@@ -1386,7 +1430,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                     }
                                                 }}
                                                 placeholder={copy.messagePlaceholder}
-                                                className="min-h-11 resize-none"
+                                                className="min-h-11 max-h-[132px] resize-none overflow-y-hidden"
                                                 maxLength={2000}
                                             />
                                             <Button

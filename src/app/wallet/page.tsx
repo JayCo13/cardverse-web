@@ -69,6 +69,10 @@ type WalletWithdrawal = {
   processed_at: string | null;
 };
 
+type HistoryCategory = 'all' | 'income' | 'expense' | 'withdrawal';
+
+const HISTORY_PAGE_SIZE = 10;
+
 const PRESET_AMOUNTS = [50000, 100000, 200000, 500000, 1000000, 2000000];
 const WITHDRAW_FEE_RATE = 0.05;
 const MIN_WITHDRAW = 50000;
@@ -89,12 +93,15 @@ export default function WalletPage() {
       txLabels: {
         deposit: 'Nạp tiền',
         marketplace_buy: 'Mua thẻ',
+        purchase: 'Mua hàng',
         marketplace_sale: 'Bán thẻ',
+        sale_revenue: 'Tiền bán hàng',
         escrow_hold: 'Tạm giữ',
         escrow_release: 'Hoàn trả',
         scan_purchase: 'Scan',
         vip_subscription: 'VIP',
         withdrawal: 'Rút tiền',
+        withdrawal_return_net: 'Ngân hàng hoàn tiền rút',
         platform_fee: 'Phí sàn',
         refund: 'Hoàn tiền',
       },
@@ -131,6 +138,16 @@ export default function WalletPage() {
       buyerTab: '👤 Người mua',
       sellerTab: '🏪 Người bán',
       historyTitle: 'Lịch sử giao dịch',
+      historyAll: 'Tất cả',
+      historyIncome: 'Tiền vào',
+      historyExpense: 'Tiền ra',
+      historyWithdrawal: 'Rút tiền',
+      historyPrevious: 'Trước',
+      historyNext: 'Sau',
+      historyDetails: 'Chi tiết',
+      historyHideDetails: 'Ẩn chi tiết',
+      today: 'Hôm nay',
+      yesterday: 'Hôm qua',
       noTransactions: 'Chưa có giao dịch nào',
       submitWithdrawFailed: 'Không thể tạo yêu cầu rút tiền',
       withdrawRequested: '✅ Đã gửi yêu cầu rút tiền',
@@ -151,12 +168,15 @@ export default function WalletPage() {
         txLabels: {
           deposit: '入金',
           marketplace_buy: 'カード購入',
+          purchase: '購入',
           marketplace_sale: 'カード販売',
+          sale_revenue: '販売収益',
           escrow_hold: '保留',
           escrow_release: '返金',
           scan_purchase: 'スキャン',
           vip_subscription: 'VIP',
           withdrawal: '出金',
+          withdrawal_return_net: '銀行から出金が返金されました',
           platform_fee: '手数料',
           refund: '返金',
         },
@@ -193,6 +213,16 @@ export default function WalletPage() {
         buyerTab: '👤 購入者',
         sellerTab: '🏪 販売者',
         historyTitle: '取引履歴',
+        historyAll: 'すべて',
+        historyIncome: '入金',
+        historyExpense: '出金',
+        historyWithdrawal: '銀行出金',
+        historyPrevious: '前へ',
+        historyNext: '次へ',
+        historyDetails: '詳細',
+        historyHideDetails: '詳細を閉じる',
+        today: '今日',
+        yesterday: '昨日',
         noTransactions: '取引はまだありません',
         submitWithdrawFailed: '出金申請を作成できません',
         withdrawRequested: '✅ 出金申請を送信しました',
@@ -212,12 +242,15 @@ export default function WalletPage() {
         txLabels: {
           deposit: 'Deposit',
           marketplace_buy: 'Card purchase',
+          purchase: 'Purchase',
           marketplace_sale: 'Card sale',
+          sale_revenue: 'Sale revenue',
           escrow_hold: 'Held',
           escrow_release: 'Released',
           scan_purchase: 'Scan',
           vip_subscription: 'VIP',
           withdrawal: 'Withdrawal',
+          withdrawal_return_net: 'Withdrawal returned by bank',
           platform_fee: 'Platform fee',
           refund: 'Refund',
         },
@@ -254,6 +287,16 @@ export default function WalletPage() {
         buyerTab: '👤 Buyer',
         sellerTab: '🏪 Seller',
         historyTitle: 'Transaction history',
+        historyAll: 'All',
+        historyIncome: 'Money in',
+        historyExpense: 'Money out',
+        historyWithdrawal: 'Withdrawals',
+        historyPrevious: 'Previous',
+        historyNext: 'Next',
+        historyDetails: 'Details',
+        historyHideDetails: 'Hide details',
+        today: 'Today',
+        yesterday: 'Yesterday',
         noTransactions: 'No transactions yet',
         submitWithdrawFailed: 'Unable to create withdrawal request',
         withdrawRequested: '✅ Withdrawal request submitted',
@@ -272,12 +315,15 @@ export default function WalletPage() {
   const txTypeLabels: Record<string, { label: string; color: string }> = {
     deposit: { label: copy.txLabels.deposit, color: 'text-green-400' },
     marketplace_buy: { label: copy.txLabels.marketplace_buy, color: 'text-red-400' },
+    purchase: { label: copy.txLabels.purchase, color: 'text-red-400' },
     marketplace_sale: { label: copy.txLabels.marketplace_sale, color: 'text-green-400' },
+    sale_revenue: { label: copy.txLabels.sale_revenue, color: 'text-green-400' },
     escrow_hold: { label: copy.txLabels.escrow_hold, color: 'text-yellow-400' },
     escrow_release: { label: copy.txLabels.escrow_release, color: 'text-green-400' },
     scan_purchase: { label: copy.txLabels.scan_purchase, color: 'text-blue-400' },
     vip_subscription: { label: copy.txLabels.vip_subscription, color: 'text-purple-400' },
     withdrawal: { label: copy.txLabels.withdrawal, color: 'text-red-400' },
+    withdrawal_return_net: { label: copy.txLabels.withdrawal_return_net, color: 'text-green-400' },
     platform_fee: { label: copy.txLabels.platform_fee, color: 'text-orange-400' },
     refund: { label: copy.txLabels.refund, color: 'text-green-400' },
   };
@@ -285,6 +331,9 @@ export default function WalletPage() {
   const [fundBalances, setFundBalances] = useState<WalletFundBalances | null>(null);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [withdrawals, setWithdrawals] = useState<WalletWithdrawal[]>([]);
+  const [historyCategory, setHistoryCategory] = useState<HistoryCategory>('all');
+  const [historyPage, setHistoryPage] = useState(1);
+  const [expandedWithdrawalId, setExpandedWithdrawalId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [walletLoadError, setWalletLoadError] = useState('');
   const [depositAmount, setDepositAmount] = useState<number>(100000);
@@ -456,30 +505,95 @@ export default function WalletPage() {
     }
   };
 
-  // Withdrawal rows are the source of truth for payout lifecycle. Suppress the
-  // legacy split withdrawal/fee/refund ledger rows and render one activity item
-  // per request instead.
+  // Withdrawal rows are the source of truth for payout lifecycle. Ledger rows
+  // are only shown when they map to a user-facing activity; every withdrawal
+  // sub-event stays consolidated into its request row.
   const visibleTransactions = transactions.filter((tx) => {
-    if (tx.type === 'withdrawal' || tx.type === 'platform_fee') return false;
+    if ([
+      'withdrawal',
+      'platform_fee',
+      'withdrawal_hold',
+      'withdrawal_hold_release',
+      'withdrawal_net_outflow',
+      'withdrawal_fee',
+    ].includes(tx.type)) return false;
     if (tx.type === 'refund' && tx.description?.startsWith('Hoàn tiền do yêu cầu rút')) return false;
-    return true;
+    return [
+      'deposit',
+      'marketplace_sale',
+      'sale_revenue',
+      'refund',
+      'escrow_hold',
+      'escrow_release',
+      'marketplace_buy',
+      'purchase',
+      'scan_purchase',
+      'vip_subscription',
+      'withdrawal_return_net',
+    ].includes(tx.type);
   });
+  const incomeTransactionTypes = new Set([
+    'deposit', 'marketplace_sale', 'sale_revenue', 'refund', 'escrow_release', 'withdrawal_return_net',
+  ]);
   const walletActivities = [
     ...visibleTransactions.map((transaction) => ({
       kind: 'transaction' as const,
       id: `transaction-${transaction.id}`,
       createdAt: transaction.created_at,
+      category: incomeTransactionTypes.has(transaction.type) ? 'income' as const : 'expense' as const,
       transaction,
     })),
     ...withdrawals.map((withdrawal) => ({
       kind: 'withdrawal' as const,
       id: `withdrawal-${withdrawal.id}`,
       createdAt: withdrawal.processed_at || withdrawal.created_at,
+      category: 'withdrawal' as const,
       withdrawal,
     })),
   ]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 20);
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const filteredActivities = walletActivities.filter((activity) => (
+    historyCategory === 'all' || activity.category === historyCategory
+  ));
+  const historyTotalPages = Math.max(1, Math.ceil(filteredActivities.length / HISTORY_PAGE_SIZE));
+  const currentHistoryPage = Math.min(historyPage, historyTotalPages);
+  const paginatedActivities = filteredActivities.slice(
+    (currentHistoryPage - 1) * HISTORY_PAGE_SIZE,
+    currentHistoryPage * HISTORY_PAGE_SIZE,
+  );
+  const historyPageStart = Math.min(
+    Math.max(1, currentHistoryPage - 1),
+    Math.max(1, historyTotalPages - 2),
+  );
+  const historyPageNumbers = Array.from(
+    { length: Math.min(3, historyTotalPages) },
+    (_, index) => historyPageStart + index,
+  );
+  const dateLabel = (dateValue: string) => {
+    const date = new Date(dateValue);
+    const today = new Date();
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+    if (startOfDate === startOfToday) return copy.today;
+    if (startOfDate === startOfToday - 24 * 60 * 60 * 1000) return copy.yesterday;
+    return date.toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
+  };
+  const historyGroups = paginatedActivities.reduce<Array<{ label: string; activities: typeof paginatedActivities }>>(
+    (groups, activity) => {
+      const label = dateLabel(activity.createdAt);
+      const group = groups[groups.length - 1];
+      if (group?.label === label) group.activities.push(activity);
+      else groups.push({ label, activities: [activity] });
+      return groups;
+    },
+    [],
+  );
+  const historyTabs: Array<{ id: HistoryCategory; label: string }> = [
+    { id: 'all', label: copy.historyAll },
+    { id: 'income', label: copy.historyIncome },
+    { id: 'expense', label: copy.historyExpense },
+    { id: 'withdrawal', label: copy.historyWithdrawal },
+  ];
 
   if (authLoading || isLoading) {
     return (
@@ -754,83 +868,127 @@ export default function WalletPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {walletActivities.length === 0 ? (
+              <div className="mb-5 flex flex-wrap gap-2" role="tablist" aria-label={copy.historyTitle}>
+                {historyTabs.map((tab) => (
+                  <Button
+                    key={tab.id}
+                    type="button"
+                    size="sm"
+                    variant={historyCategory === tab.id ? 'default' : 'outline'}
+                    onClick={() => {
+                      setHistoryCategory(tab.id);
+                      setHistoryPage(1);
+                      setExpandedWithdrawalId(null);
+                    }}
+                  >
+                    {tab.label}
+                  </Button>
+                ))}
+              </div>
+
+              {filteredActivities.length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">{copy.noTransactions}</p>
               ) : (
                 <div className="space-y-3">
-                  {walletActivities.map((activity) => {
-                    if (activity.kind === 'withdrawal') {
-                      const withdrawal = activity.withdrawal;
-                      const statusInfo = {
-                        pending: { label: copy.withdrawalPending, color: 'text-yellow-400' },
-                        processing: { label: copy.withdrawalProcessing, color: 'text-blue-400' },
-                        completed: { label: copy.withdrawalCompleted, color: 'text-red-400' },
-                        rejected: { label: copy.withdrawalRejected, color: 'text-muted-foreground' },
-                      }[withdrawal.status];
-                      const isCompleted = withdrawal.status === 'completed';
-                      const isRejected = withdrawal.status === 'rejected';
-                      return (
-                        <div key={activity.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
-                          <div className="flex items-center gap-3 min-w-0">
-                            {isCompleted ? (
-                              <ArrowDownCircle className="h-5 w-5 text-red-500 shrink-0" />
-                            ) : isRejected ? (
-                              <AlertTriangle className="h-5 w-5 text-zinc-500 shrink-0" />
-                            ) : (
-                              <Clock className="h-5 w-5 text-yellow-500 shrink-0" />
-                            )}
-                            <div className="min-w-0">
-                              <p className={`font-medium text-sm ${statusInfo.color}`}>{statusInfo.label}</p>
-                              <p className="text-xs text-muted-foreground truncate">
-                                {copy.withdrawAmount}: {formatVND(withdrawal.amount_requested)} · {copy.fee5}: {formatVND(withdrawal.fee)} · {copy.netAmount}: {formatVND(withdrawal.amount_net)}
-                              </p>
-                              {isRejected && withdrawal.rejection_reason && (
-                                <p className="text-xs text-red-400 truncate">{withdrawal.rejection_reason}</p>
+                  {historyGroups.map((group) => (
+                    <section key={group.label} className="space-y-2">
+                      <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        {group.label}
+                      </p>
+                      {group.activities.map((activity) => {
+                        if (activity.kind === 'withdrawal') {
+                          const withdrawal = activity.withdrawal;
+                          const expanded = expandedWithdrawalId === withdrawal.id;
+                          const statusInfo = {
+                            pending: { label: copy.withdrawalPending, badge: 'bg-yellow-500/15 text-yellow-400' },
+                            processing: { label: copy.withdrawalProcessing, badge: 'bg-blue-500/15 text-blue-400' },
+                            completed: { label: copy.withdrawalCompleted, badge: 'bg-green-500/15 text-green-400' },
+                            rejected: { label: copy.withdrawalRejected, badge: 'bg-red-500/15 text-red-400' },
+                          }[withdrawal.status];
+                          return (
+                            <div key={activity.id} className="rounded-lg border bg-card transition-colors hover:bg-accent/50">
+                              <button
+                                type="button"
+                                className="flex w-full items-center justify-between p-3 text-left"
+                                onClick={() => setExpandedWithdrawalId(expanded ? null : withdrawal.id)}
+                                aria-expanded={expanded}
+                              >
+                                <div className="flex min-w-0 items-center gap-3">
+                                  <ArrowDownCircle className="h-5 w-5 shrink-0 text-red-500" />
+                                  <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <p className="text-sm font-medium">{copy.withdrawTitle}</p>
+                                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusInfo.badge}`}>
+                                        {statusInfo.label}
+                                      </span>
+                                    </div>
+                                    <p className="truncate text-xs text-muted-foreground">
+                                      {copy.transferTo}: {withdrawal.bank_name} · {withdrawal.bank_account_masked}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="shrink-0 pl-3 text-right">
+                                  <p className="text-sm font-semibold text-red-500">−{formatVND(withdrawal.amount_requested)}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {new Date(activity.createdAt).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                  </p>
+                                </div>
+                              </button>
+                              {expanded && (
+                                <div className="border-t px-3 py-2 text-xs text-muted-foreground">
+                                  <p>{copy.withdrawAmount}: {formatVND(withdrawal.amount_requested)} · {copy.fee5}: {formatVND(withdrawal.fee)} · {copy.netAmount}: {formatVND(withdrawal.amount_net)}</p>
+                                  {withdrawal.rejection_reason && <p className="mt-1 text-red-400">{withdrawal.rejection_reason}</p>}
+                                </div>
                               )}
                             </div>
-                          </div>
-                          <div className="text-right shrink-0 pl-3">
-                            <p className={`font-semibold text-sm ${isCompleted ? 'text-red-500' : isRejected ? 'text-muted-foreground' : 'text-yellow-500'}`}>
-                              {isCompleted ? '-' : ''}{formatVND(withdrawal.amount_requested)}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(activity.createdAt).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    }
+                          );
+                        }
 
-                    const tx = activity.transaction;
-                    const typeInfo = txTypeLabels[tx.type] || { label: tx.type, color: 'text-muted-foreground' };
-                    const isPositive = tx.amount > 0;
-                    return (
-                      <div key={activity.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
-                        <div className="flex items-center gap-3">
-                          {isPositive ? (
-                            <ArrowUpCircle className="h-5 w-5 text-green-500" />
-                          ) : (
-                            <ArrowDownCircle className="h-5 w-5 text-red-500" />
-                          )}
-                          <div>
-                            <p className={`font-medium text-sm ${typeInfo.color}`}>{typeInfo.label}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {tx.description || copy.noDescription}
-                            </p>
+                        const tx = activity.transaction;
+                        const typeInfo = txTypeLabels[tx.type];
+                        const isPositive = tx.amount > 0;
+                        return (
+                          <div key={activity.id} className="flex items-center justify-between rounded-lg border bg-card p-3 transition-colors hover:bg-accent/50">
+                            <div className="flex min-w-0 items-center gap-3">
+                              {isPositive ? (
+                                <ArrowUpCircle className="h-5 w-5 shrink-0 text-green-500" />
+                              ) : (
+                                <ArrowDownCircle className="h-5 w-5 shrink-0 text-red-500" />
+                              )}
+                              <div className="min-w-0">
+                                <p className={`text-sm font-medium ${typeInfo.color}`}>{typeInfo.label}</p>
+                                <p className="truncate text-xs text-muted-foreground">{tx.description || copy.noDescription}</p>
+                              </div>
+                            </div>
+                            <div className="shrink-0 pl-3 text-right">
+                              <p className={`text-sm font-semibold ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
+                                {isPositive ? '+' : '−'}{formatVND(Math.abs(tx.amount))}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(activity.createdAt).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                        <div className="text-right">
-                          <p className={`font-semibold text-sm ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
-                            {isPositive ? '+' : ''}{formatVND(tx.amount)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(tx.created_at).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
+                        );
+                      })}
+                    </section>
+                  ))}
                 </div>
+              )}
+              {filteredActivities.length > HISTORY_PAGE_SIZE && (
+                <nav className="mt-6 flex items-center justify-center gap-1" aria-label={copy.historyTitle}>
+                  <Button type="button" size="sm" variant="outline" disabled={currentHistoryPage === 1} onClick={() => setHistoryPage(currentHistoryPage - 1)}>
+                    « {copy.historyPrevious}
+                  </Button>
+                  {historyPageNumbers.map((page) => (
+                    <Button key={page} type="button" size="sm" variant={page === currentHistoryPage ? 'default' : 'outline'} onClick={() => setHistoryPage(page)}>
+                      {page}
+                    </Button>
+                  ))}
+                  <Button type="button" size="sm" variant="outline" disabled={currentHistoryPage === historyTotalPages} onClick={() => setHistoryPage(currentHistoryPage + 1)}>
+                    {copy.historyNext}
+                  </Button>
+                </nav>
               )}
             </CardContent>
           </Card>
