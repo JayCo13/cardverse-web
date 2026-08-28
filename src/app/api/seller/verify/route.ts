@@ -6,7 +6,7 @@ import {
     sendKYCSubmittedToUser,
     sendKYCSubmittedToAdmin,
 } from '@/lib/mail';
-import { findKycDuplicates } from '@/lib/kyc-duplicate';
+import { findKycDuplicates, type KycDuplicateAxis } from '@/lib/kyc-duplicate';
 import { getAdminNotificationEmails } from '@/lib/admin-recipients';
 import { checkNameConsistency, evaluateIdentity, type KycIdentity } from '@/lib/kyc';
 import { verifyBankAccount, checkBankAccountHolder } from '@/lib/bank-verification';
@@ -40,6 +40,44 @@ async function notifySubmission(userEmail: string, fullName: string, locale: Sup
     const deliveries: Promise<void>[] = [sendKYCSubmittedToAdmin(fullName, userEmail, adminEmails)];
     if (userEmail) deliveries.push(sendKYCSubmittedToUser(userEmail, fullName, locale));
     await Promise.allSettled(deliveries);
+}
+
+/**
+ * The one refusal a user cannot work around. Deliberately vague about *whose*
+ * account was matched — that is someone else's identity, and naming it would
+ * turn this endpoint into a lookup oracle for CCCDs and bank accounts.
+ */
+function duplicateResponse(axis: KycDuplicateAxis) {
+    const reason = axis === 'document'
+        ? 'Giấy tờ tùy thân này đã được liên kết với một tài khoản CardVerse khác.'
+        : axis === 'bank'
+            ? 'Số tài khoản ngân hàng này đã được liên kết với một tài khoản CardVerse khác.'
+            : 'Giấy tờ tùy thân và số tài khoản ngân hàng này đã được liên kết với một tài khoản CardVerse khác.';
+
+    return NextResponse.json({
+        code: 'duplicate_identity',
+        matched_axis: axis,
+        error: `${reason} Mỗi người chỉ được đăng ký một tài khoản người bán.`,
+    }, { status: 409 });
+}
+
+/**
+ * Map a finalize failure onto a duplicate axis, or null if it was some other
+ * error. Covers both the explicit guard inside the RPC and the partial unique
+ * indexes that catch a genuine race (SQLSTATE 23505).
+ */
+function duplicateAxisFromError(error: { code?: string; message?: string; details?: string }): KycDuplicateAxis | null {
+    const message = error.message || '';
+    if (message.includes('seller_duplicate_identity')) {
+        const detail = (error.details || '').trim();
+        if (detail === 'document' || detail === 'bank' || detail === 'both') return detail;
+        return 'document';
+    }
+    if (error.code === '23505') {
+        if (message.includes('seller_verifications_active_document_unique')) return 'document';
+        if (message.includes('seller_verifications_active_bank_unique')) return 'bank';
+    }
+    return null;
 }
 
 /** Rebuild the provider-agnostic identity view from the stored session row. */
@@ -98,6 +136,11 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Số điện thoại không đúng định dạng Việt Nam.' }, { status: 400 });
         }
 
+        // One canonical spelling from here on: the bank ignores the spaces a
+        // user types, and so must the duplicate check and the stored payout
+        // destination.
+        const normalizedAccountNumber = String(bank_account_number).replace(/\D/g, '');
+
         // All trust decisions read through the service client. The user has no
         // write access to either table, so nothing here can be self-asserted.
         const service = createServiceSupabaseClient();
@@ -130,17 +173,57 @@ export async function POST(request: NextRequest) {
 
         const identity = identityFromSession(session);
 
-        // Everything that could send this to manual review, collected together.
-        const reviewFlags: string[] = [
-            ...evaluateIdentity(identity, undefined, {
-                hasDocumentNumberHash: !!session.document_number_hash,
-            }),
+        // Three outcomes, never a fourth. Every submission either becomes a
+        // seller on the spot, is refused outright, or comes back with something
+        // the user can fix and re-submit. Nothing is parked in a review queue.
+        const retryFlags: string[] = [];      // 422 — user can fix this
+        const advisoryFlags: string[] = [];   // recorded only, never blocks
+
+        const evaluation = evaluateIdentity(identity, undefined, {
+            hasDocumentNumberHash: !!session.document_number_hash,
+        });
+        retryFlags.push(...evaluation.retry);
+        advisoryFlags.push(...evaluation.advisory);
+
+        // Duplicate check runs before anything is written. A reused document or
+        // payout account is refused outright: no row, no review queue, and no
+        // hint about whose account it collided with.
+        try {
+            const dup = await findKycDuplicates(service, {
+                userId: user.id,
+                documentNumberHash: session.document_number_hash,
+                bankAccountNumber: normalizedAccountNumber,
+            });
+
+            if (dup.axis) {
+                await service.from('seller_verification_blocks').insert({
+                    user_id: user.id,
+                    matched_axis: dup.axis,
+                    document_number_hash: session.document_number_hash,
+                    bank_account_number: normalizedAccountNumber,
+                    matched_user_ids: dup.matchedUserIds,
+                } as never);
+                return duplicateResponse(dup.axis);
+            }
+        } catch (dupErr) {
+            // Fail closed-but-recoverable: we cannot prove this identity is
+            // unused, so we must not approve it — but a broken query is no
+            // reason to permanently brand a legitimate seller a duplicate.
+            console.error('[KYC] Duplicate check failed on submit:', dupErr);
+            return NextResponse.json({
+                code: 'retry',
+                error: 'Hệ thống đang bận, vui lòng thử lại sau ít phút.',
+                retry_flags: ['Không kiểm tra được trùng lặp.'],
+            }, { status: 422 });
+        }
+
+        retryFlags.push(
             ...checkNameConsistency({
                 verifiedName: session.verified_full_name,
                 submittedName: full_name,
                 bankAccountName: bank_account_name,
-            }).flags,
-        ];
+            }).flags
+        );
 
         // Authoritative bank check. The form already ran a preview lookup, but
         // that ran on the client's behalf — this is the one that counts.
@@ -151,7 +234,7 @@ export async function POST(request: NextRequest) {
             const lookup = await verifyBankAccount(service, {
                 userId: user.id,
                 bin: String(bank_bin),
-                accountNumber: String(bank_account_number),
+                accountNumber: normalizedAccountNumber,
             });
             const bankCheck = checkBankAccountHolder({
                 lookup,
@@ -160,27 +243,23 @@ export async function POST(request: NextRequest) {
 
             verifiedAccountName = bankCheck.verifiedAccountName;
             if (bankCheck.matches) bankVerifiedAt = new Date().toISOString();
-            reviewFlags.push(...bankCheck.flags);
+            retryFlags.push(...bankCheck.flags);
         } else {
-            // Deliberately not silent: without a lookup the payout account is
-            // self-asserted, and an admin needs to know that.
-            reviewFlags.push('Chưa bật tra cứu ngân hàng — tên chủ tài khoản chưa được đối chiếu tự động.');
+            // Without a lookup the payout account is self-asserted, and
+            // request_withdrawal requires bank_verified_at before money can
+            // move — so approving here would create a seller who can never
+            // withdraw. Better to say so now and let them try again.
+            retryFlags.push(
+                'Hệ thống tra cứu ngân hàng đang bận, vui lòng thử lại sau vài phút.'
+            );
         }
 
-        let isDuplicate = false;
-        let duplicateNotes: string | null = null;
-        try {
-            const dup = await findKycDuplicates(service, {
-                userId: user.id,
-                documentNumberHash: session.document_number_hash,
-                bankAccountNumber: bank_account_number,
-            });
-            isDuplicate = dup.cccdDuplicate || dup.bankDuplicate;
-            duplicateNotes = dup.notes;
-            if (dup.notes) reviewFlags.push(dup.notes);
-        } catch (dupErr) {
-            console.error('[KYC] Duplicate check failed on submit:', dupErr);
-            reviewFlags.push('Không kiểm tra được trùng lặp — cần soát thủ công.');
+        if (retryFlags.length > 0) {
+            return NextResponse.json({
+                code: 'retry',
+                error: retryFlags[0],
+                retry_flags: retryFlags,
+            }, { status: 422 });
         }
 
         const { data: existing } = await service
@@ -197,21 +276,15 @@ export async function POST(request: NextRequest) {
         }
 
         // Kill switch. Auto-approval grants seller rights and fixes the payout
-        // account with no human in the loop, so a rollout can hold everything
-        // for review until the provider config is proven in production.
-        // Set KYC_AUTO_APPROVE=false to force manual review.
-        const autoApproveEnabled = process.env.KYC_AUTO_APPROVE !== 'false';
-        if (!autoApproveEnabled) {
-            reviewFlags.push('Tự động duyệt đang tắt (KYC_AUTO_APPROVE=false) — mọi hồ sơ đều chờ admin.');
-        }
+        // account with no human in the loop, so an incident can be contained by
+        // sending everything back to the admin queue without a deploy.
+        const autoApproved = process.env.KYC_AUTO_APPROVE !== 'false';
 
-        // Clean identity + matching names + no duplicate => no human needed.
-        const autoApproved = autoApproveEnabled && reviewFlags.length === 0;
         const verificationPayload = {
             full_name,
             bank_name,
             bank_bin: bank_bin ? String(bank_bin) : null,
-            bank_account_number,
+            bank_account_number: normalizedAccountNumber,
             // Store what the network said when we have it: this is the name a
             // payout will actually land on.
             bank_account_name: verifiedAccountName || bank_account_name,
@@ -219,22 +292,37 @@ export async function POST(request: NextRequest) {
             bank_verified_at: bankVerifiedAt,
             bank_screenshot_url: bank_screenshot_url || null,
             phone_number,
-            ai_name_match: reviewFlags.length === 0,
-            is_duplicate: isDuplicate,
-            duplicate_notes: duplicateNotes,
-            review_flags: reviewFlags.length > 0 ? reviewFlags : null,
+            ai_name_match: true,
+            review_flags: advisoryFlags.length > 0 ? advisoryFlags : null,
         };
 
         // Lock + consume the provider session, write the verification and grant
-        // seller rights (when clean) in one transaction. A double-submit can no
-        // longer redeem the same identity twice or leave a half-written result.
+        // seller rights in one transaction. A double-submit can no longer redeem
+        // the same identity twice or leave a half-written result.
         const { error: finalizeError } = await service.rpc('finalize_seller_verification' as never, {
             p_user_id: user.id,
             p_session_id: session.id,
             p_verification: verificationPayload,
             p_auto_approved: autoApproved,
         } as never);
-        if (finalizeError) throw finalizeError;
+
+        if (finalizeError) {
+            // Two submissions can pass the check above concurrently and race to
+            // the partial unique indexes. Whoever loses gets the same refusal
+            // the check would have given them.
+            const axis = duplicateAxisFromError(finalizeError);
+            if (axis) {
+                await service.from('seller_verification_blocks').insert({
+                    user_id: user.id,
+                    matched_axis: axis,
+                    document_number_hash: session.document_number_hash,
+                    bank_account_number: normalizedAccountNumber,
+                    matched_user_ids: [],
+                } as never);
+                return duplicateResponse(axis);
+            }
+            throw finalizeError;
+        }
 
         const userEmail = user.email || '';
         const locale = toSupportedLocale(session.locale);
@@ -252,13 +340,13 @@ export async function POST(request: NextRequest) {
             });
         }
 
+        // Only reachable with KYC_AUTO_APPROVE=false.
         await notifySubmission(userEmail, full_name, locale);
 
         return NextResponse.json({
             success: true,
             status: 'pending',
             auto_approved: false,
-            review_flags: reviewFlags,
             message: 'Verification submitted for review',
         });
     } catch (error: unknown) {

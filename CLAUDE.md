@@ -51,10 +51,20 @@ Global context is composed in the root layout, nested in this order: `SupabaseAu
 `src/lib/i18n.ts` maps languages to dictionaries in `src/lib/i18n/{en,ja,vi}.ts`. `TranslationKey` is keyed off the English dictionary, so **every key added to `en.ts` must also exist in `ja.ts` and `vi.ts`**. `localization-context.tsx` falls back to `en-US` when a key is missing in the active locale. Note many domain `types.ts` unions include both English and Vietnamese variants (e.g. `CardCondition`).
 
 ### AI features (two providers)
-- **Groq** (`groq-sdk`) — vision/LLM for seller KYC verification (`/api/seller/ai-check` cross-checks Vietnamese CCCD ID front/back against a bank screenshot; prompts and user-facing messages are in Vietnamese) and soccer card identification (`/api/identify-soccer`). Route handlers do in-memory per-IP rate limiting.
+- **Groq** (`groq-sdk`) — vision/LLM for soccer card identification (`/api/identify-soccer`). Route handlers do in-memory per-IP rate limiting. (Groq no longer does KYC: `/api/seller/ai-check` was removed when identity moved to Didit — see below.)
 - **Genkit + Google Gemini** (`src/ai/genkit.ts`, model `googleai/gemini-2.5-flash`) — flows under `src/ai/flows/` (e.g. `suggest-similar-sales.ts`). `src/ai/dev.ts` is the Genkit dev entry.
 
 The card **scan** feature is credit-gated: `/api/scan/decrement-credit` plus `device-fingerprint.ts` track per-device usage (see `device_scan_usage` migration), and credits/passes are sold via PayOS (`PACKAGES` in `src/lib/payos.ts`).
+
+### Seller onboarding & KYC
+Identity is established by **Didit** (`src/lib/kyc/`, `/api/seller/kyc/{session,webhook}`) and
+the payout account by **VietQR/NAPAS** (`src/lib/vietqr.ts`, `src/lib/bank-verification.ts`).
+`/api/seller/verify` binds the two and has exactly three outcomes — approved on the spot,
+**409 hard-block** for a document or bank account already used by another account, or 422 for
+anything the user can fix and re-submit. Nothing waits in an admin queue unless
+`KYC_AUTO_APPROVE=false`. Uniqueness is enforced by partial unique indexes on
+`seller_verifications`, not just by the route. Full detail in **`docs/kyc-didit.md`** — read it
+before touching the seller flow.
 
 ### Payments & shipping (Vietnam-specific)
 - **PayOS** (`src/lib/payos.ts`, `/api/payos/*`) — payment links, `webhook` and `return` handlers, credit/day-pass packages.

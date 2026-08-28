@@ -48,43 +48,60 @@ export const DEFAULT_ACCEPTANCE_POLICY: KycAcceptancePolicy = {
 };
 
 /**
- * Reasons a decision cannot be auto-approved. Empty array means the submission
- * may skip manual review. Anything returned here is shown to the admin.
+ * Split of an identity decision into the two things a caller can do about it.
+ *
+ * `retry` means the submission cannot be evaluated at all — the provider gave
+ * us neither a name nor a document number to work with, so neither the bank
+ * name comparison nor the cross-account duplicate check can run. The user has
+ * to redo the identity session.
+ *
+ * `advisory` means the provider approved the session but attached a risk
+ * signal. These are recorded on the verification row for later forensics and
+ * deliberately do NOT block: the acceptance policy lives in the provider
+ * workflow, which already had its say when it returned `Approved`. Tighten
+ * thresholds there — not here — if fake documents start getting through.
  */
+export interface IdentityEvaluation {
+    retry: string[];
+    advisory: string[];
+}
+
 export function evaluateIdentity(
     identity: KycIdentity,
     policy: KycAcceptancePolicy = DEFAULT_ACCEPTANCE_POLICY,
     evidence?: { hasDocumentNumberHash?: boolean }
-): string[] {
-    const flags: string[] = [];
+): IdentityEvaluation {
+    const retry: string[] = [];
+    const advisory: string[] = [];
 
     if (!identity.fullName) {
-        flags.push('Nhà cung cấp không đọc được họ tên trên giấy tờ.');
+        retry.push('Nhà cung cấp không đọc được họ tên trên giấy tờ. Vui lòng xác minh lại.');
     }
     // Provider-backed sessions deliberately discard the raw document number
     // after hashing it. A keyed hash proves the provider read a document
-    // number without retaining the national identifier itself.
+    // number without retaining the national identifier itself — and it is the
+    // only thing duplicate detection has to work with, so a submission without
+    // one cannot be allowed through.
     if (!identity.documentNumber && !evidence?.hasDocumentNumberHash) {
-        flags.push('Nhà cung cấp không đọc được số giấy tờ.');
+        retry.push('Nhà cung cấp không đọc được số giấy tờ. Vui lòng xác minh lại.');
     }
 
     // Scores are optional: a workflow without a liveness node returns null, and
-    // that is a configuration question, not a fraud signal. Only an explicit
-    // low score blocks auto-approval.
+    // that is a configuration question, not a fraud signal.
     if (identity.livenessScore !== null && identity.livenessScore < policy.minLivenessScore) {
-        flags.push(`Điểm liveness thấp (${identity.livenessScore}/${policy.minLivenessScore}).`);
+        advisory.push(`Điểm liveness thấp (${identity.livenessScore}/${policy.minLivenessScore}).`);
     }
     if (identity.faceMatchScore !== null && identity.faceMatchScore < policy.minFaceMatchScore) {
-        flags.push(`Điểm khớp khuôn mặt thấp (${identity.faceMatchScore}/${policy.minFaceMatchScore}).`);
+        advisory.push(`Điểm khớp khuôn mặt thấp (${identity.faceMatchScore}/${policy.minFaceMatchScore}).`);
     }
 
     for (const warning of identity.warnings) {
         if (warning.logType === 'warning') {
-            flags.push(warning.shortDescription || warning.risk || 'Cảnh báo rủi ro từ nhà cung cấp.');
+            advisory.push(warning.shortDescription || warning.risk || 'Cảnh báo rủi ro từ nhà cung cấp.');
         }
     }
 
-    return flags;
+    return { retry, advisory };
 }
 
 /**

@@ -55,32 +55,91 @@ client's claim is never carried over. `bank_account_name` is then stored as the
 name the *network* returned, which is what `request_withdrawal` reads at payout
 time.
 
+The phone number is a contact detail only: it is format-checked (`0[3-9]` +
+8 digits) and never used as an identity signal.
+
 `bank_account_lookups` backs three things at once: a per-user hourly rate limit
 that survives serverless cold starts, a 7-day cache so resubmitting the same
 account does not burn quota, and an audit trail for payout disputes. Like
 `kyc_sessions`, it is service-role only.
 
-If VietQR is unconfigured, rate-limited, or down, the submission is **not
-blocked** — it is flagged for manual review, because a lookup outage must not
-lock out a legitimate seller.
+If VietQR is unconfigured, rate-limited, or down, the submission comes back as
+a **retry**, not a block and not an admin review: `request_withdrawal` requires
+`bank_verified_at`, so approving without a lookup would create a seller who can
+never be paid.
 
-## Auto-approval
+## Submission outcomes
 
-`/api/seller/verify` approves without a human when **all** hold:
+`/api/seller/verify` has exactly three answers. There is no review queue in the
+normal flow — nothing is parked waiting for a human.
+
+**approved (200)** — the user becomes a seller on the spot. Requires all of:
 
 - the session status is `Approved` and has not been consumed;
-- the provider read a name and a document number;
-- liveness and face-match scores clear the configured thresholds (a `null`
-  score means the workflow has no such node and does not block);
-- no provider warning has `log_type: "warning"`;
+- the provider read a name and a document number (the latter as a keyed hash);
 - the document name, the typed name, and the bank account holder all match
   after diacritic/case normalisation;
 - NAPAS resolved the account number and its holder matches the document;
 - neither the document nor the bank account is already used by another
   approved/pending account.
 
-Anything else lands in `seller_verifications` as `pending` with `review_flags`
-listing exactly why, which the admin dashboard renders at the top of the card.
+Liveness and face-match scores and provider risk warnings are recorded in
+`review_flags` but **do not block**. The acceptance policy lives in the Didit
+workflow, which already had its say by returning `Approved` — tighten the
+thresholds there, not in this codebase, if forged documents start getting
+through.
+
+**blocked (409, `code: duplicate_identity`)** — see "Duplicate identities".
+
+**retry (422, `code: retry`)** — something the user can fix: names that do not
+match, an account number NAPAS cannot resolve, a VietQR outage, or a session
+that came back without a name or document number. No row is written; the form
+lists the reasons and the user submits again. A VietQR outage deliberately
+lands here rather than in an admin queue, so a lookup failure costs the user a
+retry instead of a wait.
+
+`KYC_AUTO_APPROVE=false` overrides all of this and sends every submission to
+`pending` for admin review. It is a kill switch for incidents, not a mode the
+product runs in.
+
+## Duplicate identities are hard-blocked
+
+A document number or bank account already bound to another `approved`/`pending`
+verification is refused outright: 409, no `seller_verifications` row, and no
+hint about which account it collided with. Re-submitting returns the same
+refusal, so the UI shows a modal rather than a dismissible toast.
+
+Three layers, because the first alone is not enough:
+
+1. `findKycDuplicates()` in the route — the check that produces the friendly
+   error and the `seller_verification_blocks` audit row.
+2. A guard inside `finalize_seller_verification` — catches anything that
+   reaches the RPC by another path.
+3. Partial unique indexes on `seller_verifications` over
+   `status in ('approved','pending')` — the only layer that survives two
+   submissions racing, since neither transaction can see the other's uncommitted
+   row. A loser surfaces as SQLSTATE 23505 and is mapped to the same 409.
+
+The bank account is compared **digits-only**, through the generated column
+`bank_account_number_normalized`. `verifyBankAccount()` already strips non-digits
+before calling NAPAS, so without this a single space would make
+`1907 5664 8370 14` a different account from `19075664837014` and buy a second
+seller account. Production contained both spellings of the same account before
+this was added.
+
+`rejected` rows are deliberately excluded from all three: someone who mistyped a
+stranger's account number must not lock that stranger out forever.
+
+**Unblocking** needs no special tooling. Reject the verification that currently
+holds the identity — in the admin panel, the normal Reject button — and the row
+leaves `approved|pending`, the partial index releases, and the new account can
+submit. Rejecting also clears `profiles.seller_verified`, so the old account
+stops being able to list.
+
+`seller_verification_blocks` records every refusal (who, which axis, which
+accounts it matched). Without it a blocked user is invisible to support, since
+the block leaves no verification row. It is service-role write, admin-JWT read,
+and surfaced in the admin panel's "Bị chặn" tab.
 
 ## Data retention
 
