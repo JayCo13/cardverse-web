@@ -4,7 +4,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { hashFinancialRequest, stableFinancialUuid } from '@/lib/financial-idempotency';
 import { getPayOS } from '@/lib/payos';
-import { quoteVerifiedShipping } from '@/lib/verified-shipping';
+import { quoteCheapestConfiguredShipping } from '@/lib/verified-shipping';
 import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link-claim';
 import { translateRequest } from '@/lib/request-localization';
 import { walletCheckoutError } from '@/lib/wallet-checkout-error';
@@ -286,13 +286,22 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // The checkout page displays the seller-configured lowest carrier rate,
+    // charged once per seller. Recompute that same trusted value here instead
+    // of accepting a browser fee or substituting a live GHN quote.
+    const sellersChargedShipping = new Set<string>();
     for (const item of checkoutItems) {
-      item.shippingFee = await quoteVerifiedShipping({
-        sellerId: item.card.seller_id,
-        toDistrictId: Number(body.to_district_id),
-        toWardCode: String(body.to_ward_code),
-        insuranceValue: item.amount,
+      const sellerId = item.card.seller_id;
+      if (sellersChargedShipping.has(sellerId)) {
+        item.shippingFee = 0;
+        continue;
+      }
+      item.shippingFee = await quoteCheapestConfiguredShipping({
+        sellerId,
+        toProvinceId: Number(body.to_province_id),
+        toProvinceName: String(body.to_province_name),
       });
+      sellersChargedShipping.add(sellerId);
     }
 
     const totalPaid = checkoutItems.reduce((sum, item) => sum + item.amount + item.shippingFee, 0);

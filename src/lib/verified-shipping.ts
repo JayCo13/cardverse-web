@@ -1,6 +1,6 @@
 import 'server-only';
 import { calculateShippingFee, CARD_DEFAULTS } from '@/lib/ghn';
-import { resolveShippingTier, type ShopShippingFees } from '@/lib/shipping-fee';
+import { cheapestTierFee, resolveShippingTier, type ShopShippingFees } from '@/lib/shipping-fee';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
 type ShippingQuoteInput = {
@@ -17,6 +17,8 @@ type ConfiguredShippingQuoteInput = {
   toProvinceId: number;
   toProvinceName: string;
 };
+
+type CheapestConfiguredShippingQuoteInput = Omit<ConfiguredShippingQuoteInput, 'carrier'>;
 
 type SellerShippingProfile = {
   shipping_carriers: string[] | null;
@@ -65,6 +67,45 @@ export async function quoteConfiguredShipping(input: ConfiguredShippingQuoteInpu
   if (typeof fee !== 'number' || !Number.isSafeInteger(fee) || fee < 0) {
     throw new Error('shipping_fee_not_configured');
   }
+
+  return fee;
+}
+
+/**
+ * Quote the checkout-page default: the cheapest enabled carrier configured by
+ * the seller for the buyer's delivery tier. This deliberately does not use a
+ * live GHN quote; the seller's saved shipping table is the buyer's charge.
+ */
+export async function quoteCheapestConfiguredShipping(input: CheapestConfiguredShippingQuoteInput): Promise<number> {
+  const service = createServiceSupabaseClient();
+  const { data, error } = await service
+    .from('profiles')
+    .select('shipping_carriers, shipping_fees, address_province_id, address_province_name')
+    .eq('id', input.sellerId)
+    .single<SellerShippingProfile>();
+
+  if (error || !data) throw new Error('seller_shipping_configuration_missing');
+
+  const toProvinceId = Number(input.toProvinceId);
+  if (!Number.isSafeInteger(toProvinceId) || !input.toProvinceName
+      || !Number.isSafeInteger(data.address_province_id) || !data.address_province_name) {
+    throw new Error('seller_shipping_configuration_missing');
+  }
+
+  const tier = resolveShippingTier(
+    {
+      provinceId: data.address_province_id,
+      provinceName: data.address_province_name,
+    },
+    {
+      provinceId: toProvinceId,
+      provinceName: input.toProvinceName,
+    },
+  );
+  const carriers = (Array.isArray(data.shipping_carriers) ? data.shipping_carriers : [])
+    .filter((carrier): carrier is string => typeof carrier === 'string' && carrier !== 'self');
+  const fee = cheapestTierFee(data.shipping_fees, carriers, tier);
+  if (fee === null) throw new Error('shipping_fee_not_configured');
 
   return fee;
 }

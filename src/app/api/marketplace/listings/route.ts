@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
         if (!imageUrl) {
             return NextResponse.json({ error: 'Cần ít nhất một ảnh.' }, { status: 400 });
         }
-        const quantity = Number(body.quantity ?? 1);
+        let quantity = Number(body.quantity ?? 1);
         if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 100) {
             return NextResponse.json({ error: 'Số lượng phải từ 1 đến 100.' }, { status: 400 });
         }
@@ -103,8 +103,23 @@ export async function POST(request: NextRequest) {
         };
 
         if (body.is_bundle === true) {
+            const bundleItems = Array.isArray(body.bundle_items) ? body.bundle_items : [];
+            if (bundleItems.length < 1 || bundleItems.length > 100 || bundleItems.some((item: unknown) => {
+                if (!item || typeof item !== 'object') return true;
+                const value = item as { title?: unknown; price?: unknown };
+                return typeof value.title !== 'string'
+                    || !value.title.trim()
+                    || !Number.isSafeInteger(Number(value.price))
+                    || Number(value.price) < MIN_MARKETPLACE_PRICE_VND;
+            })) {
+                return NextResponse.json({ error: 'Bundle phải có 1-100 thẻ với tên và giá hợp lệ.' }, { status: 400 });
+            }
+            // A bundle's availability is its physical item count, never a
+            // browser-supplied quantity.
+            quantity = bundleItems.length;
+            cardData.quantity = quantity;
             cardData.is_bundle = true;
-            cardData.bundle_items = Array.isArray(body.bundle_items) ? body.bundle_items : [];
+            cardData.bundle_items = bundleItems;
         }
 
         if (listingType === 'sale') {

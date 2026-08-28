@@ -260,7 +260,14 @@ export async function POST(request: NextRequest) {
             total_paid: totalPaid,
             metadata: {
                 api_request_hash: apiRequestHash,
-                ...(isBundle ? { bundle_selection: canonicalBundleSelection } : {}),
+                // Keep the immutable inventory snapshot on the order itself.
+                // A later refund may restore this selection only after the
+                // database has recorded that this exact order subtracted it.
+                ...(isBundle ? {
+                    bundle_selection: canonicalBundleSelection,
+                    bundle_items_before: card.bundle_items || [],
+                    bundle_inventory_state: 'reserved',
+                } : {}),
                 ...(clientCarrier ? { shipping_carrier: String(clientCarrier) } : {}),
             },
             ...(isBundle ? { bundle_items_before: card.bundle_items || [] } : {}),

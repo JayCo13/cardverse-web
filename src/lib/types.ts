@@ -126,7 +126,7 @@ export interface Notification {
   type:
     | 'offer_received' | 'offer_accepted' | 'offer_rejected' | 'card_sold' | 'message_received'
     | 'order_new' | 'order_shipped' | 'order_completed' | 'order_refunded' | 'order_cancelled' | 'order_disputed'
-    | 'shipping_update' | 'dispute_resolved' | 'withdrawal_completed'
+    | 'shipping_update' | 'dispute_resolved' | 'withdrawal_completed' | 'withdrawal_rejected'
     | 'kyc_identity_approved' | 'kyc_approved' | 'kyc_rejected';
   title: string;
   message: string;
