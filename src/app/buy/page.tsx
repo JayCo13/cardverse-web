@@ -10,6 +10,18 @@ import { useLocalization } from '@/context/localization-context';
 import { FilterSidebar } from '@/components/filter-sidebar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+
+/**
+ * Listings per page.
+ *
+ * Paginated on the client, not in the query: the filters and the sort both run
+ * over the whole result set, so asking the database for a range would page
+ * through unfiltered rows and show the wrong ones. Rendering is what costs on a
+ * phone — every card mounts an image, a price and three buttons — so capping
+ * what is mounted is where the saving is.
+ */
+const PAGE_SIZE = 15;
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { ListFilter } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -66,6 +78,7 @@ export default function BuyPage() {
   });
   const [sort, setSort] = useState<SortOption>('newest');
   const [isSidebarOpen, setSidebarOpen] = useState(false);
+  const [page, setPage] = useState(1);
   const supabase = useSupabase();
   const { user } = useAuth();
   const { setOpen: setAuthOpen } = useAuthModal();
@@ -282,6 +295,27 @@ export default function BuyPage() {
     });
   }, [filters, locale, sort, saleCards]);
 
+  const pageCount = Math.max(1, Math.ceil(filteredAndSortedCards.length / PAGE_SIZE));
+  // Clamped rather than trusted: narrowing a filter can shrink the result set
+  // below the page the reader is standing on, which would otherwise render an
+  // empty list under a "12 results" heading.
+  const currentPage = Math.min(page, pageCount);
+
+  const visibleCards = useMemo(
+    () => filteredAndSortedCards.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [filteredAndSortedCards, currentPage],
+  );
+
+  // Any change to what is being listed sends the reader back to the first page.
+  useEffect(() => { setPage(1); }, [filters, sort]);
+
+  const goToPage = (next: number) => {
+    setPage(Math.min(Math.max(1, next), pageCount));
+    // On a phone the list is taller than the screen, so paging without this
+    // leaves the reader in the middle of a page they have not seen the top of.
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const renderCardList = () => {
     if (isLoading) {
       return (
@@ -309,7 +343,7 @@ export default function BuyPage() {
     if (filteredAndSortedCards.length > 0) {
       return (
         <div className="flex flex-col gap-2 md:gap-4">
-          {filteredAndSortedCards.map((card) => (
+          {visibleCards.map((card) => (
             <CardItem key={card.id} card={card} layout="list" showGhnReadiness={false} onAddToCart={async (c) => {
               if (!user) {
                 setAuthOpen(true);
@@ -356,6 +390,72 @@ export default function BuyPage() {
     );
   };
 
+  /**
+   * Page control.
+   *
+   * Numbers are windowed to five so the row never wraps on a phone, and the
+   * window slides to keep the current page inside it. Below `sm` only the arrows
+   * and a "3 / 12" counter remain, which is all that fits at 360px.
+   */
+  const renderPagination = () => {
+    if (pageCount <= 1) return null;
+
+    const windowSize = 5;
+    const start = Math.max(1, Math.min(currentPage - Math.floor(windowSize / 2), pageCount - windowSize + 1));
+    const pages = Array.from(
+      { length: Math.min(windowSize, pageCount) },
+      (_, index) => start + index,
+    );
+
+    const prevLabel = locale === 'vi-VN' ? 'Trước' : locale === 'ja-JP' ? '前へ' : 'Prev';
+    const nextLabel = locale === 'vi-VN' ? 'Sau' : locale === 'ja-JP' ? '次へ' : 'Next';
+
+    return (
+      <nav className="flex items-center justify-center gap-1.5 mt-8" aria-label={prevLabel}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => goToPage(currentPage - 1)}
+          disabled={currentPage === 1}
+          aria-label={prevLabel}
+        >
+          <ChevronLeft className="h-4 w-4" />
+          <span className="hidden sm:inline ml-1">{prevLabel}</span>
+        </Button>
+
+        <div className="hidden sm:flex items-center gap-1.5">
+          {pages.map((pageNumber) => (
+            <Button
+              key={pageNumber}
+              variant={pageNumber === currentPage ? 'default' : 'outline'}
+              size="sm"
+              className="w-9 tabular-nums"
+              onClick={() => goToPage(pageNumber)}
+              aria-current={pageNumber === currentPage ? 'page' : undefined}
+            >
+              {pageNumber}
+            </Button>
+          ))}
+        </div>
+
+        <span className="sm:hidden px-3 text-sm text-muted-foreground tabular-nums">
+          {currentPage} / {pageCount}
+        </span>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => goToPage(currentPage + 1)}
+          disabled={currentPage === pageCount}
+          aria-label={nextLabel}
+        >
+          <span className="hidden sm:inline mr-1">{nextLabel}</span>
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </nav>
+    );
+  };
+
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -372,7 +472,14 @@ export default function BuyPage() {
           <div className="w-full md:w-3/4">
             <div className="flex justify-between items-center mb-6">
               <p className="text-sm text-muted-foreground">
-                {t('showing_cards_for_sale').replace('{count}', filteredAndSortedCards.length.toString()).replace('{total}', (saleCards || []).length.toString())}
+                {t('showing_cards_for_sale')
+                  .replace('{count}', filteredAndSortedCards.length.toString())
+                  .replace('{total}', (saleCards || []).length.toString())}
+                {pageCount > 1 && (
+                  <span className="ml-1 tabular-nums">
+                    · {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filteredAndSortedCards.length)}
+                  </span>
+                )}
               </p>
               <div className='flex items-center gap-4'>
                 <div className="md:hidden">
@@ -400,6 +507,7 @@ export default function BuyPage() {
               </div>
             </div>
             {renderCardList()}
+            {!isLoading && renderPagination()}
           </div>
         </div>
       </main>
