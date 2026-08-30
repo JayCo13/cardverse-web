@@ -726,17 +726,38 @@ export default function CreateListingPage() {
           quantity: v.quantity,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || data.error || 'AI failed');
+      const data = await res.json().catch(() => ({}));
+      // Carry the code, not the prose. The previous version threw
+      // `data.message || data.error`, so whenever the server sent a message the
+      // thrown text was that sentence — never the code the branch below tests
+      // for. Every failure therefore fell through to "please try again",
+      // including the two the seller can actually act on.
+      if (!res.ok) throw new Error(String(data.error || `http_${res.status}`));
       form.setValue('description', data.description, { shouldValidate: true, shouldDirty: true });
       toast({ title: locale === 'vi-VN' ? 'Đã tạo mô tả bằng AI' : locale === 'ja-JP' ? 'AIが説明を生成しました' : 'AI description generated' });
     } catch (err: any) {
       toast({
         variant: 'destructive',
         title: locale === 'vi-VN' ? 'Không tạo được mô tả' : locale === 'ja-JP' ? '説明を生成できません' : 'Could not generate description',
-        description: err?.message === 'no_facts'
-          ? (locale === 'vi-VN' ? 'Vui lòng điền thông tin thẻ trước.' : locale === 'ja-JP' ? '先にカード情報を入力してください。' : 'Fill in the card details first.')
-          : (locale === 'vi-VN' ? 'Vui lòng thử lại.' : locale === 'ja-JP' ? 'もう一度お試しください。' : 'Please try again.'),
+        description: (() => {
+          const code = String(err?.message || '');
+          if (code === 'no_facts') {
+            return locale === 'vi-VN' ? 'Vui lòng điền thông tin thẻ trước.'
+              : locale === 'ja-JP' ? '先にカード情報を入力してください。'
+                : 'Fill in the card details first.';
+          }
+          // A form left open past the token's lifetime is the most common
+          // failure here, and reloading fixes it — worth saying so rather than
+          // inviting the seller to retry something that cannot succeed.
+          if (code === 'Unauthorized' || code === 'http_401') {
+            return locale === 'vi-VN' ? 'Phiên đăng nhập đã hết hạn. Vui lòng tải lại trang.'
+              : locale === 'ja-JP' ? 'セッションの有効期限が切れました。ページを再読み込みしてください。'
+                : 'Your session expired. Please reload the page.';
+          }
+          return locale === 'vi-VN' ? 'Vui lòng thử lại.'
+            : locale === 'ja-JP' ? 'もう一度お試しください。'
+              : 'Please try again.';
+        })(),
       });
     } finally {
       setIsGeneratingDesc(false);
