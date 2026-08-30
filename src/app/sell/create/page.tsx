@@ -1419,7 +1419,10 @@ export default function CreateListingPage() {
                     {copy.cardIdentityDesc}
                   </p>
                 </div>
-                <div className="flex gap-2">
+                {/* Stacked and full-width on a phone: both labels are long in
+                    Vietnamese, and side by side in a row that cannot wrap they
+                    pushed past the edge of the card. */}
+                <div className="flex flex-col gap-2 sm:flex-row [&>button]:w-full sm:[&>button]:w-auto">
                   <CatalogCardPicker onSelect={handleCatalogPicked} />
                   <CardPickerDialog onSelect={handleCardPicked} />
                 </div>
@@ -1427,22 +1430,33 @@ export default function CreateListingPage() {
 
               {catalogPick && (
                 <div className="space-y-2 rounded-lg border border-orange-500/40 bg-background/60 p-3">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-start gap-3 sm:items-center">
                     {catalogPick.imageUrl && (
                       <div className="relative h-14 w-10 shrink-0 overflow-hidden rounded">
                         <Image src={catalogPick.imageUrl} alt="" fill className="object-contain" sizes="40px" />
                       </div>
                     )}
                     <div className="min-w-0 flex-1 text-sm">
-                      <p className="truncate font-semibold">{catalogPick.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">
+                      <p className="break-words font-semibold sm:truncate">{catalogPick.name}</p>
+                      <p className="break-words text-xs text-muted-foreground sm:truncate">
                         {catalogPick.setName}
                         {catalogPick.number ? ` · #${catalogPick.number}` : ''}
                         {catalogPick.language ? ` · ${catalogPick.language.toUpperCase()}` : ''}
                       </p>
                     </div>
-                    <Button type="button" variant="ghost" size="sm" onClick={clearCatalogPick} className="shrink-0 text-muted-foreground">
-                      <X className="mr-1 h-3.5 w-3.5" /> {copy.clearSelection}
+                    {/* Icon only on a phone. The label costs about a third of a
+                        360px row, and it was taking that width from the card
+                        name — the one thing the row exists to show. */}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearCatalogPick}
+                      aria-label={copy.clearSelection}
+                      className="shrink-0 px-2 text-muted-foreground sm:px-3"
+                    >
+                      <X className="h-3.5 w-3.5 sm:mr-1" />
+                      <span className="hidden sm:inline">{copy.clearSelection}</span>
                     </Button>
                   </div>
 
