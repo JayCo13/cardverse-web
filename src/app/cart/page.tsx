@@ -50,6 +50,12 @@ type CartItem = {
   } | null;
 };
 
+/** What the confirmation dialog is currently asking about. */
+type PendingRemoval =
+  | { kind: "one"; id: string; name: string }
+  | { kind: "selected" }
+  | { kind: "all" };
+
 type SellerGroup = {
   id: string;
   name: string;
@@ -57,7 +63,9 @@ type SellerGroup = {
   items: CartItem[];
 };
 
-const formatVND = (amount: number) => new Intl.NumberFormat("vi-VN").format(amount) + " đ";
+const formatVND = (amount: number) =>
+  // Non-breaking space: the currency mark must never wrap away from its number.
+  new Intl.NumberFormat("vi-VN").format(amount) + "\u00A0đ";
 
 export default function CartPage() {
   const router = useRouter();
@@ -104,6 +112,7 @@ export default function CartPage() {
       removeSelected: "Xóa mục đã chọn",
       emptyCart: "Xóa tất cả",
       removedCount: "Đã xóa khỏi giỏ:",
+      confirmRemoveOneTitle: "Xóa thẻ này khỏi giỏ?",
       confirmRemoveSelectedTitle: "Xóa các mục đã chọn?",
       confirmEmptyCartTitle: "Xóa toàn bộ giỏ hàng?",
       confirmRemoveBody: "Thao tác này không hoàn tác được. Thẻ vẫn còn trên chợ, bạn có thể thêm lại sau.",
@@ -149,6 +158,7 @@ export default function CartPage() {
         removeSelected: "選択した商品を削除",
         emptyCart: "すべて削除",
         removedCount: "カートから削除しました:",
+        confirmRemoveOneTitle: "このカードをカートから削除しますか？",
         confirmRemoveSelectedTitle: "選択した商品を削除しますか？",
         confirmEmptyCartTitle: "カートを空にしますか？",
         confirmRemoveBody: "この操作は取り消せません。カードは出品されたままなので、後で追加し直せます。",
@@ -193,6 +203,7 @@ export default function CartPage() {
         removeSelected: "Remove selected",
         emptyCart: "Empty cart",
         removedCount: "Removed from cart:",
+        confirmRemoveOneTitle: "Remove this card from your cart?",
         confirmRemoveSelectedTitle: "Remove the selected cards?",
         confirmEmptyCartTitle: "Empty your cart?",
         confirmRemoveBody: "This cannot be undone. The cards stay listed on the marketplace, so you can add them back later.",
@@ -201,10 +212,10 @@ export default function CartPage() {
       };
   const [items, setItems] = useState<CartItem[]>([]);
   const [isLoadingCart, setIsLoadingCart] = useState(true);
-  const [removingId, setRemovingId] = useState<string | null>(null);
+
   // Shopee/TikTok-style selection: only checked items go to checkout.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [pendingRemoval, setPendingRemoval] = useState<"selected" | "all" | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval | null>(null);
   const [isBulkRemoving, setIsBulkRemoving] = useState(false);
 
   const fetchCart = useCallback(async () => {
@@ -269,9 +280,11 @@ export default function CartPage() {
   };
 
   /**
-   * Removing more than one card at a time is not undoable, so both entry points
-   * route through a confirmation instead of firing on the tap itself.
-   * `pendingRemoval` holds which one is being confirmed.
+   * Every removal — one card, the selection, or the whole cart — is confirmed
+   * first and then runs through here. Taking a card out is not undoable, and a
+   * mis-tap on a phone is cheap to make and annoying to recover from.
+   *
+   * `null` means "empty the cart"; anything else is an explicit id list.
    */
   const removeMany = async (ids: string[] | null) => {
     setIsBulkRemoving(true);
@@ -298,26 +311,6 @@ export default function CartPage() {
     } finally {
       setIsBulkRemoving(false);
       setPendingRemoval(null);
-    }
-  };
-
-  const removeItem = async (id: string) => {
-    setRemovingId(id);
-    try {
-      const res = await fetch(`/api/cart/${id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || copy.removeError);
-      setItems(prev => prev.filter(item => item.id !== id));
-      setSelectedIds(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-      window.dispatchEvent(new Event("cardverse:cart-updated"));
-    } catch (error: any) {
-      toast({ variant: "destructive", title: copy.errorTitle, description: error.message });
-    } finally {
-      setRemovingId(null);
     }
   };
 
@@ -412,7 +405,7 @@ export default function CartPage() {
                     size="sm"
                     className="h-8 px-2 text-xs text-muted-foreground hover:text-red-400"
                     disabled={selectedItems.length === 0 || isBulkRemoving}
-                    onClick={() => setPendingRemoval("selected")}
+                    onClick={() => setPendingRemoval({ kind: "selected" })}
                   >
                     <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                     {copy.removeSelected} ({selectedItems.length})
@@ -423,7 +416,7 @@ export default function CartPage() {
                     size="sm"
                     className="h-8 px-2 text-xs text-muted-foreground hover:text-red-400"
                     disabled={items.length === 0 || isBulkRemoving}
-                    onClick={() => setPendingRemoval("all")}
+                    onClick={() => setPendingRemoval({ kind: "all" })}
                   >
                     {copy.emptyCart}
                   </Button>
@@ -473,15 +466,45 @@ export default function CartPage() {
                                 className="h-5 w-5"
                               />
                             </div>
-                            <div className="relative w-24 shrink-0 self-start overflow-hidden rounded-lg bg-zinc-900 aspect-[3/4]">
+                            {/* Image and title open the card, the way a listing row
+                                behaves everywhere else. That retires the "view
+                                detail" text link, which read as body copy. */}
+                            <button
+                              type="button"
+                              disabled={!card}
+                              onClick={() => card && router.push(`/cards/${card.id}`)}
+                              className="relative aspect-[3/4] w-24 shrink-0 self-start overflow-hidden rounded-lg bg-zinc-900 disabled:cursor-default"
+                              aria-label={card ? `${copy.viewDetail}: ${card.name}` : copy.missingCard}
+                            >
                               {card?.image_url ? (
                                 <Image src={optimizeCloudinaryUrl(card.image_url, 420)} alt={card.name} fill className="object-cover" />
                               ) : null}
-                            </div>
+                            </button>
                             <div className="flex min-w-0 flex-1 flex-col">
-                              <h2 className="line-clamp-2 text-sm font-semibold tracking-normal text-foreground">
-                                {card?.name || copy.missingCard}
-                              </h2>
+                              <div className="flex items-start gap-2">
+                                <button
+                                  type="button"
+                                  disabled={!card}
+                                  onClick={() => card && router.push(`/cards/${card.id}`)}
+                                  className="min-w-0 flex-1 text-left disabled:cursor-default"
+                                >
+                                  <h2 className="line-clamp-3 text-sm font-semibold leading-snug tracking-normal text-foreground">
+                                    {card?.name || copy.missingCard}
+                                  </h2>
+                                </button>
+                                {/* Destructive, so it keeps a full 44px target of
+                                    its own in the corner, away from the tap that
+                                    opens the card. */}
+                                <button
+                                  type="button"
+                                  disabled={isBulkRemoving}
+                                  onClick={() => setPendingRemoval({ kind: "one", id: item.id, name: card?.name || copy.missingCard })}
+                                  aria-label={copy.removeFromCart}
+                                  className="-mr-1.5 -mt-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-red-400 active:bg-red-500/10 disabled:opacity-50"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
                               <div className="mt-1.5 flex flex-wrap gap-1">
                                 <span className="rounded bg-orange-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{getCategoryCode(card?.category)}</span>
                                 {card?.condition && (
@@ -492,25 +515,10 @@ export default function CartPage() {
                                 </span>
                               </div>
                               <p className="mt-2 text-base font-bold text-orange-500">{formatVND(Number(card?.price || 0))}</p>
-                              <div className="mt-2 flex items-center gap-3">
-                                {card && (
-                                  <button type="button" className="text-xs text-orange-300 hover:text-orange-200" onClick={() => router.push(`/cards/${card.id}`)}>
-                                    {copy.viewDetail}
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  className="text-xs text-muted-foreground hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
-                                  disabled={removingId === item.id}
-                                  onClick={() => removeItem(item.id)}
-                                >
-                                  {copy.removeFromCart}
-                                </button>
-                              </div>
-                              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
-                                <span className="inline-flex items-center gap-1"><Truck className="h-3 w-3 text-orange-300" />{estShippingLabel}: {shipText(shipRange)}</span>
-                                <span className="inline-flex items-center gap-1"><ShieldCheck className="h-3 w-3 text-emerald-400" />{copy.protected}</span>
-                                <span className="inline-flex items-center gap-1"><CreditCard className="h-3 w-3 text-orange-300" />{copy.walletPayos}</span>
+                              <div className="mt-2 flex flex-wrap items-start gap-x-2 gap-y-1 text-[10px] leading-4 text-muted-foreground">
+                                <span className="inline-flex items-start gap-1"><Truck className="mt-0.5 h-3 w-3 shrink-0 text-orange-300" />{estShippingLabel}: {shipText(shipRange)}</span>
+                                <span className="inline-flex items-start gap-1"><ShieldCheck className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />{copy.protected}</span>
+                                <span className="inline-flex items-start gap-1"><CreditCard className="mt-0.5 h-3 w-3 shrink-0 text-orange-300" />{copy.walletPayos}</span>
                               </div>
                             </div>
                           </article>
@@ -536,7 +544,7 @@ export default function CartPage() {
                       size="sm"
                       className="text-muted-foreground hover:text-red-400"
                       disabled={selectedItems.length === 0 || isBulkRemoving}
-                      onClick={() => setPendingRemoval("selected")}
+                      onClick={() => setPendingRemoval({ kind: "selected" })}
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
                       {copy.removeSelected} ({selectedItems.length})
@@ -547,7 +555,7 @@ export default function CartPage() {
                       size="sm"
                       className="text-muted-foreground hover:text-red-400"
                       disabled={items.length === 0 || isBulkRemoving}
-                      onClick={() => setPendingRemoval("all")}
+                      onClick={() => setPendingRemoval({ kind: "all" })}
                     >
                       {copy.emptyCart}
                     </Button>
@@ -616,7 +624,7 @@ export default function CartPage() {
                         <div className="space-y-2.5"><div><p className="text-xs text-muted-foreground">{copy.itemPrice}</p><p className="text-2xl font-bold tracking-normal text-orange-400">{formatVND(Number(card?.price || 0))}</p></div><div className="rounded-lg border border-orange-500/20 bg-orange-500/5 px-3 py-2"><p className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Truck className="h-3.5 w-3.5 text-orange-300" />{estShippingLabel}</p><p className="mt-0.5 text-sm font-semibold text-foreground">{shipText(shipRange)}</p></div></div>
                         <div className="grid gap-2">
                           {card && <Button variant="outline" size="sm" className="justify-center gap-2 border-orange-500/35 bg-orange-500/10 text-orange-200 hover:bg-orange-500/20" onClick={() => router.push(`/cards/${card.id}`)}><Eye className="h-4 w-4" />{copy.viewDetail}</Button>}
-                          <Button variant="ghost" size="sm" className="justify-center gap-2 text-muted-foreground hover:text-red-300" disabled={removingId === item.id} onClick={() => removeItem(item.id)}><Trash2 className="h-4 w-4" />{copy.removeFromCart}</Button>
+                          <Button variant="ghost" size="sm" className="justify-center gap-2 text-muted-foreground hover:text-red-300" disabled={isBulkRemoving} onClick={() => setPendingRemoval({ kind: "one", id: item.id, name: card?.name || copy.missingCard })}><Trash2 className="h-4 w-4" />{copy.removeFromCart}</Button>
                         </div>
                       </div>
                     </article>
@@ -696,9 +704,16 @@ export default function CartPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {pendingRemoval === "all" ? copy.confirmEmptyCartTitle : copy.confirmRemoveSelectedTitle}
+              {pendingRemoval?.kind === "all"
+                ? copy.confirmEmptyCartTitle
+                : pendingRemoval?.kind === "one"
+                  ? copy.confirmRemoveOneTitle
+                  : copy.confirmRemoveSelectedTitle}
             </AlertDialogTitle>
-            <AlertDialogDescription>{copy.confirmRemoveBody}</AlertDialogDescription>
+            <AlertDialogDescription>
+              {pendingRemoval?.kind === "one" ? `${pendingRemoval.name} — ` : ""}
+              {copy.confirmRemoveBody}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isBulkRemoving}>{copy.cancel}</AlertDialogCancel>
@@ -708,11 +723,16 @@ export default function CartPage() {
               onClick={event => {
                 // Keep the dialog up while the request runs; removeMany closes it.
                 event.preventDefault();
-                void removeMany(pendingRemoval === "all" ? null : selectedItems.map(item => item.id));
+                if (!pendingRemoval) return;
+                void removeMany(
+                  pendingRemoval.kind === "all" ? null
+                    : pendingRemoval.kind === "one" ? [pendingRemoval.id]
+                      : selectedItems.map(item => item.id),
+                );
               }}
             >
               {copy.confirmRemove}
-              {pendingRemoval === "selected" ? ` (${selectedItems.length})` : ""}
+              {pendingRemoval?.kind === "selected" ? ` (${selectedItems.length})` : ""}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
