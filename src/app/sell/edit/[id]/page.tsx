@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowLeft, FileText, HandCoins, Loader2, Lock, Pencil, Save } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ChevronDown, FileText, HandCoins, Loader2, Lock, Pencil, Save } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { Button } from "@/components/ui/button";
@@ -65,6 +65,8 @@ export default function EditListingPage() {
     const [hasOpenOffers, setHasOpenOffers] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
+    // Only the phone layout uses this; the desktop sidebar shows the list outright.
+    const [showLockedIdentity, setShowLockedIdentity] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const copy = locale === "vi-VN"
@@ -235,6 +237,23 @@ export default function EditListingPage() {
         { label: copy.quantity, value: String(listing.quantity || 1) },
     ] : [];
 
+    // The same rows serve the desktop sidebar and the collapsed panel a phone
+    // gets, so the locked list is only described once.
+    const identityRows = identityItems.map(item => (
+        <div key={item.label} className="flex items-start justify-between gap-3 py-2.5 text-xs first:pt-0 last:pb-0">
+            <dt className="text-muted-foreground">{item.label}</dt>
+            <dd className="max-w-[58%] text-right font-medium leading-relaxed text-foreground/90">{item.value || copy.unknown}</dd>
+        </div>
+    ));
+
+    // Enough of the card's identity to recognise it at a glance, for the strip
+    // that stands in for the full sidebar on a phone.
+    const identitySummary = identityItems
+        .filter(item => item.value)
+        .slice(0, 3)
+        .map(item => item.value)
+        .join(" · ");
+
     return (
         <div className="flex min-h-screen flex-col bg-background">
             <Header />
@@ -263,7 +282,7 @@ export default function EditListingPage() {
                         ) : !editable ? (
                             <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-amber-300">{copy.unavailable}</p>
                         ) : (
-                            <form className="grid gap-7 lg:grid-cols-[300px_minmax(0,1fr)]" onSubmit={handleSubmit}>
+                            <form className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-7" onSubmit={handleSubmit}>
                                 <div className="space-y-3 lg:col-span-2">
                                     <div className="flex gap-3 rounded-xl border border-amber-500/30 bg-gradient-to-r from-amber-500/12 to-amber-500/5 p-4 text-sm text-amber-100 shadow-sm">
                                         <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
@@ -277,7 +296,47 @@ export default function EditListingPage() {
                                     )}
                                 </div>
 
-                                <aside className="space-y-4 self-start lg:sticky lg:top-24">
+                                {/* On a phone this stack collapses into one column, which
+                                    put a 421px card image and eleven locked rows between
+                                    the seller and the two fields they came to change. The
+                                    strip below carries the same identity in 96px and keeps
+                                    the full list one tap away; the sidebar it replaces
+                                    still runs unchanged from lg up. */}
+                                <div className="space-y-3 lg:hidden">
+                                    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-muted/15 p-3 shadow-sm">
+                                        <div className="relative h-20 w-16 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-black/30">
+                                            {listing.image_url && (
+                                                <Image
+                                                    src={optimizeCloudinaryUrl(listing.image_url, 200)}
+                                                    alt={listing.name}
+                                                    fill
+                                                    sizes="64px"
+                                                    className="object-contain p-1"
+                                                />
+                                            )}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="truncate text-sm font-semibold">{listing.name}</p>
+                                            <p className="mt-0.5 truncate text-xs text-muted-foreground">{identitySummary}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-white/10 bg-muted/15 shadow-sm">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowLockedIdentity(open => !open)}
+                                            aria-expanded={showLockedIdentity}
+                                            className="flex w-full items-center gap-2 p-4 text-left text-sm font-semibold"
+                                        >
+                                            <Lock className="h-4 w-4 shrink-0 text-amber-400" />
+                                            <span className="min-w-0 flex-1 truncate">{copy.identityTitle}</span>
+                                            <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${showLockedIdentity ? "rotate-180" : ""}`} />
+                                        </button>
+                                        {showLockedIdentity && <dl className="divide-y divide-white/5 px-4 pb-4">{identityRows}</dl>}
+                                    </div>
+                                </div>
+
+                                <aside className="hidden space-y-4 self-start lg:block lg:sticky lg:top-24">
                                     <div className="relative aspect-[3/4] overflow-hidden rounded-2xl border border-white/10 bg-black/30 shadow-xl shadow-black/25">
                                         {listing.image_url && (
                                             <Image
@@ -295,14 +354,7 @@ export default function EditListingPage() {
                                             <Lock className="h-4 w-4 text-amber-400" />
                                             {copy.identityTitle}
                                         </h3>
-                                        <dl className="divide-y divide-white/5">
-                                            {identityItems.map(item => (
-                                                <div key={item.label} className="flex items-start justify-between gap-3 py-2.5 text-xs first:pt-0 last:pb-0">
-                                                    <dt className="text-muted-foreground">{item.label}</dt>
-                                                    <dd className="max-w-[58%] text-right font-medium leading-relaxed text-foreground/90">{item.value || copy.unknown}</dd>
-                                                </div>
-                                            ))}
-                                        </dl>
+                                        <dl className="divide-y divide-white/5">{identityRows}</dl>
                                     </div>
                                 </aside>
 

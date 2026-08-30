@@ -1953,7 +1953,12 @@ export default function CreateListingPage() {
                     <p className='mt-4 text-muted-foreground'>
                       {isProcessingImages ? copy.processingImages : t('images_description')}
                     </p>
-                    <Input
+                    {/* A plain input, not the styled <Input>: that component's own
+                        `h-10 w-full` survives tailwind-merge alongside `sr-only`
+                        (different merge groups) and wins, leaving an absolutely
+                        positioned box as wide as the viewport that pushed the whole
+                        page sideways on mobile. */}
+                    <input
                       type="file"
                       className='sr-only'
                       id="image-upload"
