@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/supabase";
 import { useAuthModal } from "@/components/auth-modal";
+import { OrderTotalRow } from "@/components/order-total-row";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowRight, CreditCard, Eye, PackageCheck, ShieldCheck, ShoppingCart, Store, Trash2, Truck } from "lucide-react";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
@@ -536,12 +537,7 @@ export default function CartPage() {
                   <div className="rounded-lg border border-orange-500/20 bg-orange-500/10 p-3 text-xs text-orange-200">
                     {copy.shippingNote}
                   </div>
-                  <div className="border-t pt-3">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-sm font-medium text-muted-foreground">{copy.total}</span>
-                      <span className="overflow-x-auto whitespace-nowrap text-lg font-bold text-orange-400 sm:text-xl">{totalText}</span>
-                    </div>
-                  </div>
+                  <OrderTotalRow className="border-t pt-3" label={copy.total} amount={totalText} />
                 </div>
                 <Button
                   className="mt-5 h-12 w-full bg-orange-500 font-bold text-white hover:bg-orange-600"

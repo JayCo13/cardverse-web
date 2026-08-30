@@ -768,9 +768,11 @@ export default function OrdersPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="flex flex-col gap-3 rounded-xl border bg-card/60 p-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="-mx-1 flex min-w-0 gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:pb-0">
-                      {filterOptions.map(option => {
+                  {/* One wrapping row for chips and sort together: on a phone the
+                      six chips take three lines and the sort control tucks into the
+                      end of the last one instead of claiming a fourth. */}
+                  <div className="flex flex-wrap items-center gap-1.5 rounded-xl border bg-card/60 p-3 sm:gap-2">
+                    {filterOptions.map(option => {
                         const statuses = STATUS_FILTERS[option.value];
                         const count = statuses ? orders.filter(order => statuses.includes(order.status)).length : orders.length;
                         const isActive = activeViewState.filter === option.value;
@@ -780,17 +782,27 @@ export default function OrdersPage() {
                             key={option.value}
                             type="button"
                             onClick={() => updateActiveViewState({ filter: option.value }, true)}
-                            className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${isActive ? 'border-orange-500 bg-orange-500/10 text-orange-300' : 'border-border/60 text-muted-foreground hover:border-orange-500/40 hover:text-foreground'}`}
+                            className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors sm:px-3 sm:py-1.5 ${isActive ? 'border-orange-500 bg-orange-500/10 text-orange-300' : 'border-border/60 text-muted-foreground hover:border-orange-500/40 hover:text-foreground'}`}
                           >
                             {option.label} ({count})
                           </button>
                         );
                       })}
-                    </div>
+                  </div>
+
+                  {/* The sort control rides the summary line, which has room to
+                      spare, rather than costing the filter card a whole row of its
+                      own on a narrow screen. */}
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm text-muted-foreground">{showingSummary}</p>
                     <Select value={activeViewState.sort} onValueChange={value => updateActiveViewState({ sort: value as OrderSort }, true)}>
-                      <SelectTrigger className="h-9 w-14 shrink-0 px-2 sm:w-[180px] sm:px-3" aria-label={copy.newest}>
+                      <SelectTrigger className="h-8 w-14 shrink-0 px-2 sm:h-9 sm:w-[180px] sm:px-3" aria-label={copy.newest}>
                         <ArrowDownUp className="h-4 w-4 sm:hidden" />
-                        <span className="hidden sm:block"><SelectValue /></span>
+                        {/* SelectTrigger carries `[&>span]:line-clamp-1`, which is a
+                            more specific selector than `hidden` and so re-displays
+                            this span — the label leaked into the 56px mobile trigger
+                            as clipped text. `!` restores the intent. */}
+                        <span className="!hidden sm:!block"><SelectValue /></span>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="newest">{copy.newest}</SelectItem>
@@ -799,8 +811,6 @@ export default function OrdersPage() {
                       </SelectContent>
                     </Select>
                   </div>
-
-                  <p className="text-sm text-muted-foreground">{showingSummary}</p>
 
                   {filteredOrders.length === 0 ? (
                     <div className="rounded-xl border border-dashed py-12 text-center text-muted-foreground">

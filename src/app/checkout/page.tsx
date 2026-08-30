@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/supabase";
 import { useSupabase } from "@/lib/supabase";
 import { useAuthModal } from "@/components/auth-modal";
+import { OrderTotalRow } from "@/components/order-total-row";
 import { useToast } from "@/hooks/use-toast";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { getCategoryCode } from "@/lib/category-code";
@@ -625,12 +626,11 @@ export default function CheckoutPage() {
                     <span className="shrink-0 text-muted-foreground">{copy.shipping}</span>
                     <span className="whitespace-nowrap font-semibold">{hasMissingFee ? "--" : formatVND(shippingTotal)}</span>
                   </div>
-                  <div className="border-t pt-3">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-sm font-medium text-muted-foreground">{copy.total}</span>
-                      <span className="overflow-x-auto whitespace-nowrap text-lg font-bold text-orange-400 sm:text-xl">{hasMissingFee ? "--" : formatVND(total)}</span>
-                    </div>
-                  </div>
+                  <OrderTotalRow
+                    className="border-t pt-3"
+                    label={copy.total}
+                    amount={hasMissingFee ? "--" : formatVND(total)}
+                  />
                   {insufficient && (
                     <p className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-red-300">
                       {copy.insufficient}
