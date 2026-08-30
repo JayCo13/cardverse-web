@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import type { Card, CardCategory, ListingType, CardCondition } from '@/lib/types';
 import { useLocalization } from '@/context/localization-context';
-import type { Filters as BaseFilters } from '@/app/buy/page';
+import type { Filters as BaseFilters } from '@/app/buy/buy-client';
 import { getCategories } from '@/lib/card-catalog';
 
 // The sidebar may or may not have listingTypes in its filters
