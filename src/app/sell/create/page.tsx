@@ -843,6 +843,15 @@ export default function CreateListingPage() {
   const singlePublisher = selectedCategory ? isSinglePublisher(selectedCategory) : false;
   const freeTextMode = selectedCategory ? isFreeText(selectedCategory) : false;
 
+  /**
+   * Whether the season column exists at all.
+   *
+   * Read by both the bundle pool grid's column count and the column itself, so
+   * the grid cannot reserve a third of the row for something it is not going to
+   * render.
+   */
+  const showSeasonPool = freeTextMode || !!categoryConfig?.hasSeasons;
+
   useEffect(() => {
     if (!user) {
       setOpen(true);
@@ -1643,7 +1652,11 @@ export default function CreateListingPage() {
                 /* ─── Bundle: multi-select pools, assigned per card below ─── */
                 <div className="space-y-4">
                   <p className="text-xs text-muted-foreground">{copy.bundleAttrsHint}</p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Three columns only when there are three. The season pool
+                      is absent for categories without seasons — Pokémon and One
+                      Piece — and a fixed three-column grid then left the last
+                      third of the row empty. */}
+                  <div className={`grid grid-cols-1 gap-4 ${showSeasonPool ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
                     {/* Publisher pool */}
                     <div className="space-y-1.5">
                       <FormLabel>{copy.publisher}</FormLabel>
@@ -1671,7 +1684,7 @@ export default function CreateListingPage() {
                       )}
                     </div>
                     {/* Season pool */}
-                    {(freeTextMode || categoryConfig?.hasSeasons) && (
+                    {showSeasonPool && (
                       <div className="space-y-1.5">
                         <FormLabel>{copy.season}</FormLabel>
                         {freeTextMode
