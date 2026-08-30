@@ -43,8 +43,8 @@ export async function POST(req: NextRequest) {
     const prompt = `You write product descriptions for a trading-card marketplace. Using ONLY the facts below, write ONE listing description in ENGLISH.
 
 Rules:
-- About 100 characters. Never more than 160.
-- One sentence, plain text. No markdown, no headings, no bullets, no emojis, no quotes.
+- Between 120 and 200 characters. Never fewer than 120.
+- One or two sentences, plain text. No markdown, no headings, no bullets, no emojis, no quotes.
 - Use only plain ASCII hyphens and apostrophes.
 - Name what it is and what stands out: the player or title, the set, the season, the condition or grade.
 - Do NOT invent any fact that is not listed. Do NOT mention or guess a price.
@@ -77,12 +77,13 @@ ${facts}`;
                     model,
                     messages: [{ role: 'user', content: prompt }],
                     temperature: 0.6,
-                    // Generous next to a ~100-character answer on purpose. These
-                    // are reasoning models: they spend tokens thinking before
-                    // they write, and a budget sized to the answer is consumed
-                    // entirely by the thinking, returning finish_reason
-                    // "length" with an empty message.
-                    max_tokens: 400,
+                    // Far larger than the answer on purpose. These are reasoning
+                    // models: they spend tokens thinking before they write, and
+                    // a budget sized to the answer is consumed entirely by the
+                    // thinking, returning finish_reason "length" with an empty
+                    // message. At 400 that happened on two runs in three; at 700
+                    // it stopped, across four runs of each model.
+                    max_tokens: 700,
                     reasoning_effort: 'low',
                 }),
                 signal: AbortSignal.timeout(8_000),

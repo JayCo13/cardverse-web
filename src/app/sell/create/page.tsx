@@ -2,6 +2,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { DESCRIPTION_MIN } from '@/lib/listing-description';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -172,7 +173,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       minSalePrice: `最低販売価格は${MIN_MARKETPLACE_PRICE_VND.toLocaleString('ja-JP')} VNDです。`,
       minStartingBid: `最低開始価格は${MIN_MARKETPLACE_PRICE_VND.toLocaleString('ja-JP')} VNDです。`,
       minTicketPrice: `最低チケット価格は${MIN_MARKETPLACE_PRICE_VND.toLocaleString('ja-JP')} VNDです。`,
-      descriptionMin: '説明は50文字以上必要です。',
+      descriptionMin: '説明は100文字以上必要です。',
       minImages: '画像を1枚以上アップロードしてください。',
       maxImages: '画像は最大4枚までです。',
       enterPrice: '販売価格を入力してください。',
@@ -283,7 +284,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       minSalePrice: `Giá bán tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.`,
       minStartingBid: `Giá khởi điểm tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.`,
       minTicketPrice: `Giá vé tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.`,
-      descriptionMin: 'Mô tả cần ít nhất 50 ký tự.',
+      descriptionMin: 'Mô tả cần ít nhất 100 ký tự.',
       minImages: 'Vui lòng tải lên ít nhất 1 ảnh.',
       maxImages: 'Tối đa 4 ảnh.',
       enterPrice: 'Vui lòng nhập giá bán.',
@@ -393,7 +394,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
     minSalePrice: `Minimum sale price is ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('en-US')} VND.`,
     minStartingBid: `Minimum starting bid is ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('en-US')} VND.`,
     minTicketPrice: `Minimum ticket price is ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('en-US')} VND.`,
-    descriptionMin: 'Description must be at least 50 characters.',
+    descriptionMin: 'Description must be at least 100 characters.',
     minImages: 'Please upload at least 1 image.',
     maxImages: 'Maximum 4 images.',
     enterPrice: 'Please enter a sale price.',
@@ -579,7 +580,7 @@ const getFormSchema = (copy: LocaleCopy) => z.object({
     (a) => a ? parseInt(z.string().parse(a), 10) : undefined,
     z.number().positive().optional()
   ),
-  description: z.string().min(50, { message: copy.descriptionMin }),
+  description: z.string().min(DESCRIPTION_MIN, { message: copy.descriptionMin }),
   images: z.array(z.instanceof(File)).min(1, copy.minImages).max(4, copy.maxImages),
   // Offer settings
   acceptOffers: z.boolean().default(false),
@@ -2421,7 +2422,7 @@ export default function CreateListingPage() {
                 <div className="flex items-center justify-between">
                   <FormMessage />
                   <span className={`ml-auto text-xs ${(field.value?.length || 0) < 300 ? 'text-muted-foreground' : 'text-green-500'}`}>
-                    {field.value?.length || 0}/300
+                    {field.value?.length || 0}/{DESCRIPTION_MIN}
                   </span>
                 </div>
               </FormItem>

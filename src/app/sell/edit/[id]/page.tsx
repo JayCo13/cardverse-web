@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { DESCRIPTION_MIN } from '@/lib/listing-description';
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, FileText, HandCoins, Loader2, Lock, Pencil, Save } from "lucide-react";
@@ -50,14 +51,9 @@ const formatPrice = (value: string) => {
     return price > 0 ? new Intl.NumberFormat("vi-VN").format(price) : "";
 };
 
-/**
- * Shortest description a seller may save.
- *
- * Matches /sell/create. It used to be 300 here and nowhere else once the
- * generator was shortened, so an AI description was long enough to create a
- * listing but too short to edit one.
- */
-const DESCRIPTION_MIN = 50;
+// Imported rather than repeated: this page and /sell/create held different
+// numbers once already, which left a description long enough to publish a
+// listing and too short to edit it.
 
 export default function EditListingPage() {
     const { id } = useParams<{ id: string }>();
@@ -92,13 +88,13 @@ export default function EditListingPage() {
             saveFailed: "Không thể lưu thay đổi.",
             saved: "Đã cập nhật listing",
             unavailable: "Chỉ listing bán ngay đang hoạt động mới có thể chỉnh sửa.",
-            descriptionMin: "Mô tả cần ít nhất 50 ký tự.",
+            descriptionMin: "Mô tả cần ít nhất 100 ký tự.",
             identityTitle: "Thông tin nhận dạng (chỉ đọc)",
             contentSection: "Nội dung bài đăng",
             commercialSection: "Giá và offer",
             lockedWarning: "Để bảo vệ buyer, ảnh và thông tin nhận dạng thẻ không thể thay đổi sau khi đăng. Nếu thông tin này sai, hãy đóng listing và đăng lại.",
             openOfferWarning: "Listing đang có offer chờ xử lý. Giá và cài đặt offer được khóa cho đến khi offer được xử lý.",
-            legacyDescription: "Mô tả cũ ngắn hơn vẫn được giữ nguyên. Nếu thay đổi, mô tả mới phải đủ 50 ký tự.",
+            legacyDescription: "Mô tả cũ ngắn hơn vẫn được giữ nguyên. Nếu thay đổi, mô tả mới phải đủ 100 ký tự.",
             category: "Danh mục", condition: "Tình trạng", publisher: "Nhà phát hành", set: "Set / Bộ thẻ",
             season: "Mùa", grading: "Grading", finish: "Biến thể / Finish", cardNumber: "Số thẻ",
             language: "Ngôn ngữ", quantity: "Số lượng", listingType: "Loại listing", unknown: "Chưa có",
@@ -119,13 +115,13 @@ export default function EditListingPage() {
                 saveFailed: "変更を保存できません。",
                 saved: "出品を更新しました",
                 unavailable: "有効な即時販売の出品のみ編集できます。",
-                descriptionMin: "説明は50文字以上必要です。",
+                descriptionMin: "説明は100文字以上必要です。",
                 identityTitle: "カード識別情報（読み取り専用）",
                 contentSection: "出品内容",
                 commercialSection: "価格とオファー",
                 lockedWarning: "購入者保護のため、出品後は画像とカード識別情報を変更できません。誤りがある場合は出品を終了し、再出品してください。",
                 openOfferWarning: "未処理のオファーがあるため、価格とオファー設定は処理完了までロックされます。",
-                legacyDescription: "短い旧説明はそのまま保存できます。変更する場合は50文字以上が必要です。",
+                legacyDescription: "短い旧説明はそのまま保存できます。変更する場合は100文字以上が必要です。",
                 category: "カテゴリー", condition: "状態", publisher: "メーカー", set: "セット",
                 season: "シーズン", grading: "グレーディング", finish: "バリエーション / Finish", cardNumber: "カード番号",
                 language: "言語", quantity: "数量", listingType: "出品タイプ", unknown: "未設定",
@@ -145,13 +141,13 @@ export default function EditListingPage() {
                 saveFailed: "Unable to save changes.",
                 saved: "Listing updated",
                 unavailable: "Only active Buy Now listings can be edited.",
-                descriptionMin: "Description must be at least 50 characters.",
+                descriptionMin: "Description must be at least 100 characters.",
                 identityTitle: "Card identity (read-only)",
                 contentSection: "Listing content",
                 commercialSection: "Price and offers",
                 lockedWarning: "To protect buyers, images and card identity cannot be changed after publishing. If these details are wrong, close the listing and create a new one.",
                 openOfferWarning: "This listing has an open offer. Price and offer settings are locked until the offer is resolved.",
-                legacyDescription: "A shorter legacy description may remain unchanged. If edited, the new description must contain at least 50 characters.",
+                legacyDescription: "A shorter legacy description may remain unchanged. If edited, the new description must contain at least 100 characters.",
                 category: "Category", condition: "Condition", publisher: "Publisher", set: "Set",
                 season: "Season", grading: "Grading", finish: "Variant / Finish", cardNumber: "Card number",
                 language: "Language", quantity: "Quantity", listingType: "Listing type", unknown: "Not specified",
@@ -334,7 +330,7 @@ export default function EditListingPage() {
                                                         <p className="leading-relaxed text-amber-300">{copy.legacyDescription}</p>
                                                     ) : <span />}
                                                     <p className={`shrink-0 rounded-full px-2 py-0.5 ${description.trim().length < DESCRIPTION_MIN ? 'bg-white/5 text-muted-foreground' : 'bg-green-500/10 text-green-400'}`}>
-                                                        {description.trim().length}/300
+                                                        {description.trim().length}/{DESCRIPTION_MIN}
                                                     </p>
                                                 </div>
                                             </div>
