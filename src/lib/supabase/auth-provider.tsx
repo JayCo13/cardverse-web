@@ -98,6 +98,24 @@ function readStoredSession(): Session | null {
     }
 }
 
+/**
+ * True when two user objects describe the same person in the same state.
+ *
+ * Supabase hands back a freshly built object on every read — the seeded cookie
+ * session, getSession, and each auth event all produce distinct objects for one
+ * unchanged user. React compares dependencies by reference, so storing each new
+ * object told every `useEffect([user])` in the app that the user had changed,
+ * and pages re-ran their queries on every navigation and tab focus.
+ *
+ * Compared on the fields consumers actually read. Anything deeper lives in the
+ * `profiles` row, which has its own state.
+ */
+function sameUser(a: User | null, b: User | null) {
+    if (a === b) return true;
+    if (!a || !b) return false;
+    return a.id === b.id && a.email === b.email && a.updated_at === b.updated_at;
+}
+
 export function SupabaseAuthProvider({ children }: AuthProviderProps) {
     // Seed from storage so the first paint already knows who is looking. Both
     // states are corrected by initAuth and onAuthStateChange below.
@@ -107,6 +125,11 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
     const [session, setSession] = useState<Session | null>(stored ?? null);
     const [isLoading, setIsLoading] = useState(true);
     const currentUserIdRef = useRef<string | null>(stored?.user?.id ?? null);
+
+    /** Keeps the object identity stable while the person behind it is unchanged. */
+    const applyUser = useCallback((next: User | null) => {
+        setUser((previous) => (sameUser(previous, next) ? previous : next));
+    }, []);
 
     // Initialize auth state - run once on mount
     useEffect(() => {
@@ -189,7 +212,7 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
                         // This opens the AuthReady gate so the page renders fast
                         currentUserIdRef.current = currentSession.user.id;
                         setSession(currentSession);
-                        setUser(currentSession.user);
+                        applyUser(currentSession.user);
                         setIsLoading(false);
 
                         // Fetch profile in background — only updates avatar, no cascade
@@ -209,7 +232,7 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
                     // a signed-in shell.
                     currentUserIdRef.current = null;
                     setSession(null);
-                    setUser(null);
+                    applyUser(null);
                     setProfile(null);
                     setIsLoading(false);
                 }
@@ -244,7 +267,7 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
                         // Set state IMMEDIATELY — don't block on profile
                         currentUserIdRef.current = currentSession.user.id;
                         setSession(currentSession);
-                        setUser(currentSession.user);
+                        applyUser(currentSession.user);
                         setIsLoading(false);
 
                         // Profile in background (non-blocking)
@@ -264,14 +287,14 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
                         }
                     } else {
                         setSession(null);
-                        setUser(null);
+                        applyUser(null);
                         setProfile(null);
                         currentUserIdRef.current = null;
                         setIsLoading(false);
                     }
                 } else {
                     setSession(null);
-                    setUser(null);
+                    applyUser(null);
                     setProfile(null);
                     currentUserIdRef.current = null;
                     setIsLoading(false);
@@ -283,7 +306,7 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
             mounted = false;
             subscription.unsubscribe();
         };
-    }, [stored]); // `stored` is read once and never reassigned
+    }, [stored, applyUser]); // both are created once and never reassigned
 
     // Memoized auth functions to prevent re-renders
     const signInWithGoogle = useCallback(async () => {
