@@ -95,3 +95,51 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ item: data, count: count || 0 });
 }
+
+/**
+ * Remove several rows in one call: `{ ids: [...] }` clears a selection, and a
+ * request with no ids empties the cart.
+ *
+ * Every variant is scoped to the caller's own rows, so an id belonging to
+ * someone else's cart simply matches nothing rather than deleting it. The
+ * removed ids come back so the client can reconcile without refetching.
+ */
+export async function DELETE(request: NextRequest) {
+  const supabase = await createServerSupabaseClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  let ids: string[] | null = null;
+  try {
+    const body = await request.json();
+    if (Array.isArray(body?.ids)) {
+      ids = body.ids.filter((id: unknown): id is string => typeof id === 'string');
+    }
+  } catch {
+    // No body at all is the "empty the cart" case.
+  }
+
+  // An explicit but empty list is a caller bug; letting it through would wipe
+  // the whole cart, which is the opposite of what was asked.
+  if (ids && ids.length === 0) {
+    return NextResponse.json({ error: 'No cart items given' }, { status: 400 });
+  }
+
+  let query = supabase.from('cart_items').delete().eq('user_id', user.id);
+  if (ids) query = query.in('id', ids);
+
+  // The generated row type for a delete().select() narrows to `never`, so the
+  // shape is asserted here rather than threaded through database.types.ts.
+  const { data, error } = await query.select('id');
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  const removed = ((data || []) as unknown as { id: string }[]).map(row => row.id);
+
+  return NextResponse.json({ success: true, removed });
+}

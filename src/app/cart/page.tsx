@@ -6,6 +6,16 @@ import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/supabase";
@@ -91,6 +101,14 @@ export default function CartPage() {
       shippingNote: "Phí ship tạm tính theo bảng giá của shop. Số chính xác được tính ở checkout theo địa chỉ nhận hàng.",
       total: "Thành tiền",
       checkout: "Thanh toán",
+      removeSelected: "Xóa mục đã chọn",
+      emptyCart: "Xóa tất cả",
+      removedCount: "Đã xóa khỏi giỏ:",
+      confirmRemoveSelectedTitle: "Xóa các mục đã chọn?",
+      confirmEmptyCartTitle: "Xóa toàn bộ giỏ hàng?",
+      confirmRemoveBody: "Thao tác này không hoàn tác được. Thẻ vẫn còn trên chợ, bạn có thể thêm lại sau.",
+      confirmRemove: "Xóa",
+      cancel: "Hủy",
     }
     : locale === "ja-JP"
       ? {
@@ -128,6 +146,14 @@ export default function CartPage() {
         shippingNote: "送料はショップの料金表に基づく目安です。正確な金額はチェックアウトで配送先住所に基づき計算されます。",
         total: "合計",
         checkout: "支払う",
+        removeSelected: "選択した商品を削除",
+        emptyCart: "すべて削除",
+        removedCount: "カートから削除しました:",
+        confirmRemoveSelectedTitle: "選択した商品を削除しますか？",
+        confirmEmptyCartTitle: "カートを空にしますか？",
+        confirmRemoveBody: "この操作は取り消せません。カードは出品されたままなので、後で追加し直せます。",
+        confirmRemove: "削除",
+        cancel: "キャンセル",
       }
       : {
         loadCartError: "Unable to load cart",
@@ -164,12 +190,22 @@ export default function CartPage() {
         shippingNote: "Shipping is an estimate from the shop's rate table. The exact fee is calculated at checkout based on your delivery address.",
         total: "Total",
         checkout: "Checkout",
+        removeSelected: "Remove selected",
+        emptyCart: "Empty cart",
+        removedCount: "Removed from cart:",
+        confirmRemoveSelectedTitle: "Remove the selected cards?",
+        confirmEmptyCartTitle: "Empty your cart?",
+        confirmRemoveBody: "This cannot be undone. The cards stay listed on the marketplace, so you can add them back later.",
+        confirmRemove: "Remove",
+        cancel: "Cancel",
       };
   const [items, setItems] = useState<CartItem[]>([]);
   const [isLoadingCart, setIsLoadingCart] = useState(true);
   const [removingId, setRemovingId] = useState<string | null>(null);
   // Shopee/TikTok-style selection: only checked items go to checkout.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [pendingRemoval, setPendingRemoval] = useState<"selected" | "all" | null>(null);
+  const [isBulkRemoving, setIsBulkRemoving] = useState(false);
 
   const fetchCart = useCallback(async () => {
     if (!user) return;
@@ -180,12 +216,9 @@ export default function CartPage() {
       if (!res.ok) throw new Error(data.error || copy.loadCartError);
       const nextItems: CartItem[] = data.items || [];
       setItems(nextItems);
-      // Default: pre-select every available item so one-click checkout still works.
-      setSelectedIds(new Set(
-        nextItems
-          .filter(item => item.cards?.status === "active" && item.cards?.listing_type === "sale")
-          .map(item => item.id),
-      ));
+      // Nothing is pre-selected: the buyer says what they are paying for, so a
+      // stray tap on Checkout cannot sweep in cards they had parked for later.
+      setSelectedIds(new Set());
     } catch (error: any) {
       toast({ variant: "destructive", title: copy.cartErrorTitle, description: error.message });
     } finally {
@@ -233,6 +266,39 @@ export default function CartPage() {
 
   const toggleAll = () => {
     setSelectedIds(allSelected ? new Set() : new Set(availableItems.map(item => item.id)));
+  };
+
+  /**
+   * Removing more than one card at a time is not undoable, so both entry points
+   * route through a confirmation instead of firing on the tap itself.
+   * `pendingRemoval` holds which one is being confirmed.
+   */
+  const removeMany = async (ids: string[] | null) => {
+    setIsBulkRemoving(true);
+    try {
+      const res = await fetch("/api/cart", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(ids ? { ids } : {}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || copy.removeError);
+
+      const removed = new Set<string>(data.removed || []);
+      setItems(prev => prev.filter(item => !removed.has(item.id)));
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        removed.forEach(id => next.delete(id));
+        return next;
+      });
+      window.dispatchEvent(new Event("cardverse:cart-updated"));
+      toast({ description: `${copy.removedCount} ${removed.size}` });
+    } catch (error: any) {
+      toast({ variant: "destructive", title: copy.errorTitle, description: error.message });
+    } finally {
+      setIsBulkRemoving(false);
+      setPendingRemoval(null);
+    }
   };
 
   const removeItem = async (id: string) => {
@@ -335,6 +401,33 @@ export default function CartPage() {
           <>
             <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
               <section className="space-y-4 sm:hidden">
+                {/* The sticky bar at the bottom already carries select-all and the
+                    total, with no room left, so the destructive pair lives above
+                    the list where it cannot be hit by accident on the way to
+                    Checkout. */}
+                <div className="flex items-center justify-end gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-xs text-muted-foreground hover:text-red-400"
+                    disabled={selectedItems.length === 0 || isBulkRemoving}
+                    onClick={() => setPendingRemoval("selected")}
+                  >
+                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                    {copy.removeSelected} ({selectedItems.length})
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-xs text-muted-foreground hover:text-red-400"
+                    disabled={items.length === 0 || isBulkRemoving}
+                    onClick={() => setPendingRemoval("all")}
+                  >
+                    {copy.emptyCart}
+                  </Button>
+                </div>
                 {sellerGroups.map(group => {
                   const groupAvailable = group.items.filter(item => item.cards?.status === "active" && item.cards?.listing_type === "sale");
                   const groupSelectedCount = groupAvailable.filter(item => selectedIds.has(item.id)).length;
@@ -429,12 +522,37 @@ export default function CartPage() {
               </section>
 
               <section className="hidden space-y-4 sm:block">
-                {availableItems.length > 0 && (
-                  <label className="flex w-fit cursor-pointer items-center gap-3 rounded-lg border bg-card/70 px-4 py-2.5 text-sm font-medium transition hover:border-orange-500/40">
-                    <Checkbox checked={allSelected} onCheckedChange={toggleAll} />
-                    {copy.selectAll} ({selectedItems.length}/{availableItems.length})
-                  </label>
-                )}
+                <div className="flex flex-wrap items-center gap-3">
+                  {availableItems.length > 0 && (
+                    <label className="flex cursor-pointer items-center gap-3 rounded-lg border bg-card/70 px-4 py-2.5 text-sm font-medium transition hover:border-orange-500/40">
+                      <Checkbox checked={allSelected} onCheckedChange={toggleAll} />
+                      {copy.selectAll} ({selectedItems.length}/{availableItems.length})
+                    </label>
+                  )}
+                  <div className="ml-auto flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground hover:text-red-400"
+                      disabled={selectedItems.length === 0 || isBulkRemoving}
+                      onClick={() => setPendingRemoval("selected")}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      {copy.removeSelected} ({selectedItems.length})
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground hover:text-red-400"
+                      disabled={items.length === 0 || isBulkRemoving}
+                      onClick={() => setPendingRemoval("all")}
+                    >
+                      {copy.emptyCart}
+                    </Button>
+                  </div>
+                </div>
                 {sellerGroups.map(group => {
                   const groupAvailable = group.items.filter(item => item.cards?.status === "active" && item.cards?.listing_type === "sale");
                   const groupSelected = groupAvailable.length > 0 && groupAvailable.every(item => selectedIds.has(item.id));
@@ -573,6 +691,33 @@ export default function CartPage() {
           </>
         )}
       </main>
+
+      <AlertDialog open={pendingRemoval !== null} onOpenChange={open => !open && setPendingRemoval(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingRemoval === "all" ? copy.confirmEmptyCartTitle : copy.confirmRemoveSelectedTitle}
+            </AlertDialogTitle>
+            <AlertDialogDescription>{copy.confirmRemoveBody}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBulkRemoving}>{copy.cancel}</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isBulkRemoving}
+              className="bg-red-500 text-white hover:bg-red-600"
+              onClick={event => {
+                // Keep the dialog up while the request runs; removeMany closes it.
+                event.preventDefault();
+                void removeMany(pendingRemoval === "all" ? null : selectedItems.map(item => item.id));
+              }}
+            >
+              {copy.confirmRemove}
+              {pendingRemoval === "selected" ? ` (${selectedItems.length})` : ""}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Footer />
     </div>
   );
