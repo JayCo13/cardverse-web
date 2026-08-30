@@ -2447,7 +2447,7 @@ export default function CreateListingPage() {
           </div>
 
           <div className="flex justify-end pt-4">
-            <Button size="lg" type="submit" disabled={isSubmitting || isProcessingImages}>
+            <Button size="lg" type="submit" loading={isSubmitting || isProcessingImages}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {t('create_listing_button')}
             </Button>

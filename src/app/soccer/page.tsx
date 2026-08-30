@@ -409,7 +409,7 @@ export default function SoccerPage() {
                                     className="pl-10 bg-white/5 border-white/10 h-12"
                                 />
                             </div>
-                            <Button type="submit" className="h-12 px-6 bg-green-600 hover:bg-green-700 font-bold tracking-wide">
+                            <Button type="submit" loading={loading} className="h-12 px-6 bg-green-600 hover:bg-green-700 font-bold tracking-wide">
                                 {t('search_button')}
                             </Button>
                         </form>

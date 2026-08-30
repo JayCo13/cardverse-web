@@ -428,7 +428,7 @@ export default function EditListingPage() {
 
                                     <div className="flex flex-col-reverse gap-3 rounded-2xl border border-white/10 bg-background/35 p-4 sm:flex-row sm:items-center sm:justify-end">
                                         <Button type="button" variant="outline" className="min-w-28" onClick={() => router.back()}>{copy.cancel}</Button>
-                                        <Button type="submit" disabled={isSaving} className="min-w-40 bg-orange-500 text-white shadow-lg shadow-orange-500/15 hover:bg-orange-600">
+                                        <Button type="submit" loading={isSaving} className="min-w-40 bg-orange-500 text-white shadow-lg shadow-orange-500/15 hover:bg-orange-600">
                                             {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                                             {copy.save}
                                         </Button>

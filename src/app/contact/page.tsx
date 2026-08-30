@@ -183,7 +183,7 @@ export default function ContactPage() {
                             : t('contact_submit_error')}
                       </p>
                     )}
-                    <Button type="submit" className="w-full text-lg h-12 mt-4" disabled={isSubmitting}>
+                    <Button type="submit" className="w-full text-lg h-12 mt-4" loading={isSubmitting}>
                       {isSubmitting ? t('contact_sending') : t('contact_send')}
                     </Button>
                   </form>

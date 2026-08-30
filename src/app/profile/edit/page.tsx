@@ -547,7 +547,7 @@ export default function EditProfilePage() {
                                         )}
                                         
                                         <div className="flex justify-end pt-4 border-t border-border">
-                                            <Button type="submit" disabled={isSaving} className="min-w-[140px]">
+                                            <Button type="submit" loading={isSaving} className="min-w-[140px]">
                                                 {isSaving ? (
                                                     <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> {copy.saving}</>
                                                 ) : (

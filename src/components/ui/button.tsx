@@ -1,6 +1,9 @@
+"use client"
+
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
+import { Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -37,17 +40,99 @@ export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
   asChild?: boolean
+  /**
+   * Force the busy state.
+   *
+   * Only needed when the work is not the click handler's own promise — a form
+   * submit, or a handler that fires and forgets. A handler that returns a
+   * promise is tracked without this.
+   */
+  loading?: boolean
 }
 
+/**
+ * The button also guards against being pressed twice.
+ *
+ * Anything the user can press that starts network work can be pressed again
+ * before it finishes, and on a phone a slow response invites exactly that — a
+ * second order, a second listing, a second withdrawal. Guarding it at every one
+ * of the app's ~120 call sites means guarding it at 119 of them and finding the
+ * last one in production, so it is guarded here instead, once, including for
+ * buttons written later.
+ *
+ * When the click handler returns a promise the button disables itself and shows
+ * a spinner until that promise settles, and ignores further presses in the
+ * meantime. Handlers that manage their own state keep working: an explicit
+ * `disabled` or `loading` still wins.
+ */
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({ className, variant, size, asChild = false, loading, disabled, onClick, children, ...props }, ref) => {
     const Comp = asChild ? Slot : "button"
+    const [pending, setPending] = React.useState(false)
+
+    // A promise can settle after the button has gone — a dialog that closes on
+    // success, a row that disappears. Writing state then is a no-op React warns
+    // about, so stop tracking once unmounted.
+    const mounted = React.useRef(true)
+    React.useEffect(() => () => { mounted.current = false }, [])
+
+    const busy = loading ?? pending
+
+    const handleClick = React.useCallback(
+      (event: React.MouseEvent<HTMLButtonElement>) => {
+        // The second press of a double-tap never reaches the handler.
+        if (busy) {
+          event.preventDefault()
+          return
+        }
+
+        const result = onClick?.(event) as unknown
+        if (result instanceof Promise) {
+          setPending(true)
+          result.finally(() => {
+            if (mounted.current) setPending(false)
+          })
+        }
+      },
+      [busy, onClick],
+    )
+
+    // Slot renders the child element itself and accepts exactly one child, so a
+    // spinner cannot be added around it. The press guard still applies.
+    //
+    // `disabled` is deliberately not forwarded here: asChild is overwhelmingly
+    // used to wrap a Link, and `disabled` is not a valid attribute on an anchor
+    // — React warns, and it would do nothing anyway. `aria-disabled` states it
+    // for assistive tech and the click guard is what actually stops the press.
+    if (asChild) {
+      return (
+        <Comp
+          className={cn(buttonVariants({ variant, size, className }), busy && "pointer-events-none opacity-50")}
+          ref={ref}
+          aria-busy={busy || undefined}
+          aria-disabled={disabled || busy || undefined}
+          onClick={handleClick}
+          {...props}
+        >
+          {children}
+        </Comp>
+      )
+    }
+
     return (
-      <Comp
+      <button
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
+        aria-busy={busy || undefined}
+        disabled={disabled || busy}
+        onClick={handleClick}
         {...props}
-      />
+      >
+        {/* An icon button is a single glyph in a 40px box: adding a spinner
+            beside it would crowd it, so the spinner takes its place. */}
+        {busy && <Loader2 className="animate-spin" aria-hidden />}
+        {busy && size === "icon" ? null : children}
+      </button>
     )
   }
 )
