@@ -43,25 +43,53 @@ const supabase = getSupabaseClient();
  * `isLoading` waits on that round trip, so a returning visitor's first sight of
  * the site was a spinner.
  *
- * Reading storage directly lets the app paint from what is already known while
- * the refresh happens behind it. The token here is unverified and possibly
- * stale, which is fine for deciding what to draw: row-level security decides
- * what data anyone actually gets, and `onAuthStateChange` corrects the UI within
- * the same second if the session turns out to be dead.
+ * Read from cookies, not localStorage. `createBrowserClient` from
+ * `@supabase/ssr` keeps the session in a cookie so the server can read it too;
+ * an earlier version of this looked in localStorage, found nothing, and quietly
+ * did nothing at all.
+ *
+ * The token here is unverified and possibly stale, which is fine for deciding
+ * what to draw: row-level security decides what data anyone actually gets, and
+ * `onAuthStateChange` corrects the UI within the same second if the session
+ * turns out to be dead.
  */
+function decodeBase64Url(value: string) {
+    const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    const binary = atob(padded);
+    // The payload carries display names, so it must be decoded as UTF-8 rather
+    // than treated as latin-1 the way atob leaves it.
+    return new TextDecoder().decode(Uint8Array.from(binary, (ch) => ch.charCodeAt(0)));
+}
+
 function readStoredSession(): Session | null {
-    if (typeof window === 'undefined') return null;
+    if (typeof document === 'undefined') return null;
     try {
         const ref = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).hostname.split('.')[0];
-        const raw = window.localStorage.getItem(`sb-${ref}-auth-token`);
-        if (!raw) return null;
+        const key = `sb-${ref}-auth-token`;
 
-        // supabase-js has written both a bare JSON object and a "base64-" prefixed
-        // form; accept either rather than guessing at the installed version.
-        const decoded = raw.startsWith('base64-')
-            ? atob(raw.slice('base64-'.length))
-            : raw;
-        const parsed = JSON.parse(decoded) as Session | null;
+        const jar = new Map<string, string>();
+        for (const pair of document.cookie.split(';')) {
+            const separator = pair.indexOf('=');
+            if (separator < 0) continue;
+            jar.set(pair.slice(0, separator).trim(), pair.slice(separator + 1));
+        }
+
+        // A session larger than the cookie size limit is split across
+        // `<key>.0`, `<key>.1`, … and has to be rejoined in order.
+        let raw = jar.get(key);
+        if (raw === undefined) {
+            const chunks: string[] = [];
+            for (let index = 0; jar.has(`${key}.${index}`); index += 1) {
+                chunks.push(jar.get(`${key}.${index}`)!);
+            }
+            if (chunks.length === 0) return null;
+            raw = chunks.join('');
+        }
+
+        raw = decodeURIComponent(raw);
+        const json = raw.startsWith('base64-') ? decodeBase64Url(raw.slice('base64-'.length)) : raw;
+        const parsed = JSON.parse(json) as Session | null;
         return parsed?.access_token && parsed?.user ? parsed : null;
     } catch {
         // A shape we do not recognise is not worth a broken page: fall back to
