@@ -8,6 +8,26 @@
   --font-quantico: 'Quantico', sans-serif;
 }
 
+/*
+ * A responsive page must never scroll sideways.
+ *
+ * One element wider than the viewport drags the whole document with it: the
+ * header shifts, every heading loses its first characters, and the extra width
+ * shows as a blank band down the right — which is what the create-listing form
+ * was doing on a phone. Anything that genuinely needs to be wider than the
+ * screen should scroll inside its own container, never the page.
+ *
+ * `clip` rather than `hidden` on purpose. The header is `sticky top-0`, and
+ * `hidden` on an ancestor makes it the scroll container, which silently breaks
+ * sticky positioning. `clip` is the one value that leaves the other axis
+ * `visible`. Browsers without it simply behave as before, so this cannot make
+ * anything worse.
+ */
+html,
+body {
+  overflow-x: clip;
+}
+
 body {
   font-family: var(--font-inter), Arial, Helvetica, sans-serif;
   text-rendering: optimizeLegibility;
