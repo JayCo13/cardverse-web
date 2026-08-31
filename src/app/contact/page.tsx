@@ -10,6 +10,24 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Mail, MapPin, Phone } from "lucide-react";
 
+/**
+ * These mirror the checks in `src/app/api/contact/route.ts` exactly. Keep the
+ * two in step: the server trims first and then measures, so the client has to
+ * trim before measuring too, or " a " looks like two characters here and one
+ * character there.
+ */
+const LIMITS = {
+  name: { min: 2, max: 100 },
+  subject: { min: 3, max: 160 },
+  message: { min: 10, max: 4000 },
+  email: { max: 254 },
+} as const;
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type FieldName = 'name' | 'email' | 'subject' | 'message';
+type FieldErrors = Partial<Record<FieldName, string>>;
+
 export default function ContactPage() {
   const { t, locale } = useLocalization();
   const [formData, setFormData] = useState({
@@ -18,15 +36,78 @@ export default function ContactPage() {
     subject: '',
     message: ''
   });
-  const [submitState, setSubmitState] = useState<'idle' | 'success' | 'error' | 'rate_limited'>('idle');
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const [submitState, setSubmitState] = useState<'idle' | 'success' | 'error' | 'rate_limited' | 'invalid'>('idle');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const validate = (data: typeof formData): FieldErrors => {
+    const next: FieldErrors = {};
+    const name = data.name.trim();
+    const email = data.email.trim().toLowerCase();
+    const subject = data.subject.trim();
+    const message = data.message.trim();
+
+    if (/[\r\n]/.test(name)) {
+      next.name = t('contact_error_no_newline');
+    } else if (name.length < LIMITS.name.min || name.length > LIMITS.name.max) {
+      next.name = t('contact_error_name', { min: String(LIMITS.name.min), max: String(LIMITS.name.max) });
+    }
+
+    if (!EMAIL_PATTERN.test(email) || email.length > LIMITS.email.max) {
+      next.email = t('contact_error_email');
+    }
+
+    if (/[\r\n]/.test(subject)) {
+      next.subject = t('contact_error_no_newline');
+    } else if (subject.length < LIMITS.subject.min || subject.length > LIMITS.subject.max) {
+      next.subject = t('contact_error_subject', { min: String(LIMITS.subject.min), max: String(LIMITS.subject.max) });
+    }
+
+    if (message.length < LIMITS.message.min || message.length > LIMITS.message.max) {
+      next.message = t('contact_error_message', { min: String(LIMITS.message.min), max: String(LIMITS.message.max) });
+    }
+
+    return next;
+  };
+
+  const updateField = (field: FieldName, value: string) => {
+    const nextData = { ...formData, [field]: value };
+    setFormData(nextData);
+    // Only correct a message already on screen; do not start scolding someone
+    // who is still typing their first character.
+    if (errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: validate(nextData)[field] }));
+    }
+  };
+
+  const blurField = (field: FieldName) => {
+    setErrors(prev => ({ ...prev, [field]: validate(formData)[field] }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
 
+    const found = validate(formData);
+    const firstInvalid = (Object.keys(found) as FieldName[]).find(field => found[field]);
+    if (firstInvalid) {
+      setErrors(found);
+      setSubmitState('invalid');
+      document.getElementById(`contact-${firstInvalid}`)?.focus();
+      return;
+    }
+
+    setErrors({});
     setIsSubmitting(true);
     setSubmitState('idle');
+    // Send exactly what was validated, so trailing spaces cannot turn a valid
+    // field into a rejected one on the way over.
+    const payload = {
+      name: formData.name.trim(),
+      email: formData.email.trim().toLowerCase(),
+      subject: formData.subject.trim(),
+      message: formData.message.trim(),
+    };
     try {
       const response = await fetch('/api/contact', {
         method: 'POST',
@@ -34,11 +115,17 @@ export default function ContactPage() {
           'Content-Type': 'application/json',
           'x-cardverse-locale': locale,
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       if (response.status === 429) {
         setSubmitState('rate_limited');
+        return;
+      }
+      // A 400 here means the two rule sets have drifted apart. Say something the
+      // user can act on rather than the generic "try again later".
+      if (response.status === 400) {
+        setSubmitState('invalid');
         return;
       }
       if (!response.ok) throw new Error('Contact request failed');
@@ -129,47 +216,98 @@ export default function ContactPage() {
                   <form className="space-y-6" onSubmit={handleSubmit}>
                     <div className="grid sm:grid-cols-2 gap-6">
                       <div className="space-y-2">
-                        <label className="text-sm font-medium">{t('contact_name')}</label>
-                        <Input 
-                          placeholder="John Doe" 
+                        <label htmlFor="contact-name" className="text-sm font-medium">{t('contact_name')}</label>
+                        <Input
+                          id="contact-name"
+                          name="name"
+                          autoComplete="name"
+                          placeholder="John Doe"
                           required
+                          maxLength={LIMITS.name.max}
                           disabled={isSubmitting}
+                          aria-invalid={!!errors.name}
+                          aria-describedby={errors.name ? 'contact-name-error' : undefined}
+                          className={errors.name ? 'border-destructive focus-visible:ring-destructive' : undefined}
                           value={formData.name}
-                          onChange={(e) => setFormData({...formData, name: e.target.value})}
+                          onChange={(e) => updateField('name', e.target.value)}
+                          onBlur={() => blurField('name')}
                         />
+                        {errors.name && (
+                          <p id="contact-name-error" className="text-xs text-destructive">{errors.name}</p>
+                        )}
                       </div>
                       <div className="space-y-2">
-                        <label className="text-sm font-medium">{t('contact_email')}</label>
-                        <Input 
-                          type="email" 
-                          placeholder="john@example.com" 
+                        <label htmlFor="contact-email" className="text-sm font-medium">{t('contact_email')}</label>
+                        <Input
+                          id="contact-email"
+                          name="email"
+                          type="email"
+                          inputMode="email"
+                          autoComplete="email"
+                          placeholder="john@example.com"
                           required
+                          maxLength={LIMITS.email.max}
                           disabled={isSubmitting}
+                          aria-invalid={!!errors.email}
+                          aria-describedby={errors.email ? 'contact-email-error' : undefined}
+                          className={errors.email ? 'border-destructive focus-visible:ring-destructive' : undefined}
                           value={formData.email}
-                          onChange={(e) => setFormData({...formData, email: e.target.value})}
+                          onChange={(e) => updateField('email', e.target.value)}
+                          onBlur={() => blurField('email')}
                         />
+                        {errors.email && (
+                          <p id="contact-email-error" className="text-xs text-destructive">{errors.email}</p>
+                        )}
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">{t('contact_subject')}</label>
-                      <Input 
-                        placeholder="How can we help?" 
+                      <label htmlFor="contact-subject" className="text-sm font-medium">{t('contact_subject')}</label>
+                      <Input
+                        id="contact-subject"
+                        name="subject"
+                        placeholder="How can we help?"
                         required
+                        maxLength={LIMITS.subject.max}
                         disabled={isSubmitting}
+                        aria-invalid={!!errors.subject}
+                        aria-describedby={errors.subject ? 'contact-subject-error' : undefined}
+                        className={errors.subject ? 'border-destructive focus-visible:ring-destructive' : undefined}
                         value={formData.subject}
-                        onChange={(e) => setFormData({...formData, subject: e.target.value})}
+                        onChange={(e) => updateField('subject', e.target.value)}
+                        onBlur={() => blurField('subject')}
                       />
+                      {errors.subject && (
+                        <p id="contact-subject-error" className="text-xs text-destructive">{errors.subject}</p>
+                      )}
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">{t('contact_message')}</label>
-                      <Textarea 
-                        placeholder="Type your message here..." 
-                        className="min-h-[220px] resize-y" 
+                      <label htmlFor="contact-message" className="text-sm font-medium">{t('contact_message')}</label>
+                      <Textarea
+                        id="contact-message"
+                        name="message"
+                        placeholder="Type your message here..."
+                        className={`min-h-[220px] resize-y ${errors.message ? 'border-destructive focus-visible:ring-destructive' : ''}`}
                         required
+                        maxLength={LIMITS.message.max}
                         disabled={isSubmitting}
+                        aria-invalid={!!errors.message}
+                        aria-describedby={errors.message ? 'contact-message-error' : 'contact-message-hint'}
                         value={formData.message}
-                        onChange={(e) => setFormData({...formData, message: e.target.value})}
+                        onChange={(e) => updateField('message', e.target.value)}
+                        onBlur={() => blurField('message')}
                       />
+                      <div className="flex items-start justify-between gap-3">
+                        {errors.message ? (
+                          <p id="contact-message-error" className="text-xs text-destructive">{errors.message}</p>
+                        ) : (
+                          <p id="contact-message-hint" className="text-xs text-muted-foreground">
+                            {t('contact_message_hint', { min: String(LIMITS.message.min) })}
+                          </p>
+                        )}
+                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                          {formData.message.trim().length}/{LIMITS.message.max}
+                        </span>
+                      </div>
                     </div>
                     {submitState !== 'idle' && (
                       <p
@@ -180,7 +318,9 @@ export default function ContactPage() {
                           ? t('contact_submit_success')
                           : submitState === 'rate_limited'
                             ? t('contact_submit_rate_limited')
-                            : t('contact_submit_error')}
+                            : submitState === 'invalid'
+                              ? t('contact_submit_check_fields')
+                              : t('contact_submit_error')}
                       </p>
                     )}
                     <Button type="submit" className="w-full text-lg h-12 mt-4" loading={isSubmitting}>
