@@ -1459,6 +1459,16 @@ export function ChatInboxButton() {
     const [open, setOpen] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
     const [requestedConversationId, setRequestedConversationId] = useState<string | null>(null);
+    // The server renders this signed out — the auth provider only finds the
+    // session cookie in the browser — so `disabled` differs between the server
+    // HTML and the client's first render. React leaves an attribute mismatch on
+    // a hydrated element alone, which left the button permanently unclickable.
+    // Match the server on the first pass and enable it on the update after.
+    const [hydrated, setHydrated] = useState(false);
+
+    useEffect(() => {
+        setHydrated(true);
+    }, []);
 
     // Allow any part of the app (e.g. a notification click) to open the inbox
     // on a specific conversation via a window event.
@@ -1526,7 +1536,7 @@ export function ChatInboxButton() {
 
     return (
         <>
-            <Button variant="ghost" size="icon" className="relative" onClick={() => setOpen(true)} disabled={!user}>
+            <Button variant="ghost" size="icon" className="relative" onClick={() => setOpen(true)} disabled={!user || !hydrated}>
                 <MessageCircle className="h-4 w-4" />
                 {unreadCount > 0 && (
                     <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-bold text-white">

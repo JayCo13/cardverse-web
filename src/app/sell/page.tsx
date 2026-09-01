@@ -1116,15 +1116,6 @@ export default function SellPage() {
                 <p className="text-muted-foreground mt-1">{copy.dashboardDesc}</p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                {/* The primary action, opposite the title where a dashboard's
-                    main action belongs. Desktop only: the phone keeps the
-                    floating button, which sits under the thumb. */}
-                <Button className="hidden bg-orange-500 hover:bg-orange-600 md:inline-flex" asChild>
-                  <Link href="/sell/create" className="whitespace-nowrap">
-                    <Plus className="mr-1 h-4 w-4" />
-                    {copy.listCard}
-                  </Link>
-                </Button>
                 {!pickupAddress && !isLoadingAddress && (
                   <Button
                     className="hidden bg-orange-500 hover:bg-orange-600 md:inline-flex"
@@ -1137,6 +1128,23 @@ export default function SellPage() {
                     {copy.addPickupAddress}
                   </Button>
                 )}
+                {/* The primary action, opposite the title where a dashboard's
+                    main action belongs. Desktop only: the phone keeps the
+                    floating button, which sits under the thumb. A real link, so
+                    it can be opened in a new tab like any other. */}
+                <Button
+                  asChild
+                  className="hidden h-11 gap-2 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 px-6 text-[15px] font-semibold text-white shadow-lg shadow-orange-500/25 transition-all hover:from-orange-600 hover:to-amber-600 hover:shadow-xl hover:shadow-orange-500/40 active:scale-95 md:inline-flex"
+                >
+                  <Link href="/sell/create" className="whitespace-nowrap">
+                    {/* The Button base pins any svg it contains to 16px, so the
+                        ring around it is sized off that rather than the icon. */}
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20">
+                      <Plus strokeWidth={3} />
+                    </span>
+                    {copy.listCard}
+                  </Link>
+                </Button>
               </div>
             </div>
 
