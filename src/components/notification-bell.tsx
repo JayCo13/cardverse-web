@@ -55,6 +55,16 @@ export function NotificationBell() {
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [isOpen, setIsOpen] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
+    // The auth provider reads the session synchronously out of the cookie, so
+    // the browser's very first render already knows the user while the server's
+    // render did not. React does not repair attribute differences on an element
+    // it successfully hydrated: the signed-out shell's `disabled` and its
+    // missing `relative` stayed welded to the DOM node, which left the bell
+    // unclickable and its badge with no positioned ancestor — it fell back to
+    // the sticky, full-width <header> and landed in the top-right corner of the
+    // viewport. Draw the signed-out shell on the first client pass too, so the
+    // signed-in one arrives as an ordinary update that React does apply.
+    const [hydrated, setHydrated] = useState(false);
     const [previousUnreadCount, setPreviousUnreadCount] = useState(0);
     const [isRinging, setIsRinging] = useState(false);
     const [browserPermission, setBrowserPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
@@ -69,6 +79,10 @@ export function NotificationBell() {
     useEffect(() => {
         translateRef.current = t;
     }, [t]);
+
+    useEffect(() => {
+        setHydrated(true);
+    }, []);
 
     useEffect(() => {
         const mediaQuery = window.matchMedia('(max-width: 639px)');
@@ -445,9 +459,12 @@ export function NotificationBell() {
         }
     };
 
-    if (!user) {
+    if (!user || !hydrated) {
+        // Same classes as the signed-in trigger, `relative` included: whichever
+        // of the two the DOM node ends up carrying, the badge still has a
+        // positioned ancestor to sit on.
         return (
-            <Button variant="ghost" size="icon" disabled>
+            <Button variant="ghost" size="icon" className="relative" disabled aria-label={copy.title}>
                 <Bell className="h-4 w-4" />
             </Button>
         );
