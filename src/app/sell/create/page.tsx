@@ -701,8 +701,8 @@ export default function CreateListingPage() {
   const watchedPrice = form.watch('price');
   const isBundle = form.watch('isBundle');
 
-  // AI description generator: build an English description from the fields the
-  // seller has already filled in.
+  // AI description generator: use the language currently selected in the UI
+  // and the fields the seller has already filled in.
   const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
   const handleGenerateDescription = async () => {
     const v = form.getValues();
@@ -710,7 +710,10 @@ export default function CreateListingPage() {
     try {
       const res = await fetch('/api/ai/generate-description', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-cardverse-locale': locale,
+        },
         body: JSON.stringify({
           name: v.name,
           category: v.category,
@@ -2410,7 +2413,7 @@ export default function CreateListingPage() {
                     disabled={isGeneratingDesc}
                     className="gap-1.5 border-orange-500/40 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20"
                   >
-                    {isGeneratingDesc ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                    {!isGeneratingDesc && <Sparkles className="h-3.5 w-3.5" />}
                     {locale === 'vi-VN' ? 'Tạo bằng AI' : locale === 'ja-JP' ? 'AIで生成' : 'Generate with AI'}
                   </Button>
                 </div>
@@ -2419,9 +2422,9 @@ export default function CreateListingPage() {
                 </FormControl>
                 <p className="text-xs text-muted-foreground">
                   {locale === 'vi-VN'
-                    ? 'AI sẽ tạo mô tả tiếng Anh dựa trên thông tin thẻ bạn đã nhập.'
+                    ? 'AI sẽ tạo mô tả tiếng Việt dựa trên thông tin thẻ bạn đã nhập.'
                     : locale === 'ja-JP'
-                      ? 'AIが入力済みのカード情報から英語の説明を生成します。'
+                      ? 'AIが入力済みのカード情報から日本語の説明を生成します。'
                       : 'AI writes an English description from the card details above.'}
                 </p>
                 <div className="flex items-center justify-between">

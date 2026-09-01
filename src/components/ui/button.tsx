@@ -74,7 +74,13 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     // success, a row that disappears. Writing state then is a no-op React warns
     // about, so stop tracking once unmounted.
     const mounted = React.useRef(true)
-    React.useEffect(() => () => { mounted.current = false }, [])
+    React.useEffect(() => {
+      // Strict Mode runs an extra setup -> cleanup -> setup cycle in
+      // development. Reset the flag during setup so the simulated cleanup
+      // cannot leave a still-mounted button permanently pending.
+      mounted.current = true
+      return () => { mounted.current = false }
+    }, [])
 
     const busy = loading ?? pending
 

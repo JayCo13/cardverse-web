@@ -1632,10 +1632,7 @@ export default function SellPage() {
                       className="w-full border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
                     >
                       {isLookingUpBank ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                          {tx('Đang tra cứu tài khoản...', 'Looking up account...', '口座を照会中...')}
-                        </>
+                        tx('Đang tra cứu tài khoản...', 'Looking up account...', '口座を照会中...')
                       ) : isBankVerified ? (
                         <>
                           <CheckCircle className="h-4 w-4 mr-2" />

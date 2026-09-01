@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getRequestLocale } from '@/lib/request-localization';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 
-// Generate an English marketplace description for a card listing from the
-// attributes the seller already filled in. Groq (OpenAI-compatible) text model.
+// Generate a marketplace description in the seller's selected UI language
+// from the attributes they already filled in. Groq (OpenAI-compatible) model.
 export async function POST(req: NextRequest) {
     const groqApiKey = process.env.GROQ_API_KEY;
     if (!groqApiKey) {
@@ -17,6 +18,12 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}));
+    const locale = getRequestLocale(req);
+    const outputLanguage = locale === 'vi-VN'
+        ? 'Vietnamese'
+        : locale === 'ja-JP'
+            ? 'Japanese'
+            : 'English';
     const {
         name, category, publisher, setName, season, condition, cardNumber,
         language, gradingCompany, grade, finish, isBundle, quantity,
@@ -40,12 +47,13 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'no_facts', message: 'Fill in the card details first.' }, { status: 400 });
     }
 
-    const prompt = `You write product descriptions for a trading-card marketplace. Using ONLY the facts below, write ONE listing description in ENGLISH.
+    const prompt = `You write product descriptions for a trading-card marketplace. Using ONLY the facts below, write ONE listing description in ${outputLanguage}.
 
 Rules:
 - Between 120 and 200 characters. Never fewer than 120.
 - One or two sentences, plain text. No markdown, no headings, no bullets, no emojis, no quotes.
 - Use only plain ASCII hyphens and apostrophes.
+- Write naturally and fluently in ${outputLanguage}. Keep card names, player names, set names, and other proper nouns unchanged.
 - Name what it is and what stands out: the player or title, the set, the season, the condition or grade.
 - Do NOT invent any fact that is not listed. Do NOT mention or guess a price.
 
