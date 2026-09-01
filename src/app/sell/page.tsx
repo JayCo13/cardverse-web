@@ -1110,6 +1110,20 @@ export default function SellPage() {
                     {copy.addPickupAddress}
                   </Button>
                 )}
+                {/* Desktop only: on a phone the same action is the floating
+                    button at the bottom of the page, and a second copy up here
+                    would crowd the title out of its row. */}
+                <Button
+                  onClick={goToNewListing}
+                  className="hidden h-11 gap-2 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 px-6 text-[15px] font-semibold text-white shadow-lg shadow-orange-500/25 transition-all hover:from-orange-600 hover:to-amber-600 hover:shadow-xl hover:shadow-orange-500/40 active:scale-95 md:inline-flex"
+                >
+                  {/* The Button base pins any svg it contains to 16px, so the
+                      ring around it is sized off that rather than the icon. */}
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20">
+                    <Plus strokeWidth={3} />
+                  </span>
+                  {copy.listCard}
+                </Button>
               </div>
             </div>
 
