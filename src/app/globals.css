@@ -20,11 +20,18 @@
  * `clip` rather than `hidden` on purpose. The header is `sticky top-0`, and
  * `hidden` on an ancestor makes it the scroll container, which silently breaks
  * sticky positioning. `clip` is the one value that leaves the other axis
- * `visible`. Browsers without it simply behave as before, so this cannot make
- * anything worse.
+ * `visible`. Browsers without it simply behave as before.
+ *
+ * On `html` only, never `body`. Radix portals its dialogs, sheets and popovers
+ * into `document.body`, and WebKit clips fixed children against a `body` that
+ * carries an overflow value — which took the notification sheet with it on iOS,
+ * leaving a dimmed screen with nothing on it.
+ *
+ * This is now a backstop rather than a fix: the overflow it was added for was
+ * the header being 44px too wide on a 360px screen while auth resolved, and
+ * that is fixed at source in header.tsx.
  */
-html,
-body {
+html {
   overflow-x: clip;
 }
 
