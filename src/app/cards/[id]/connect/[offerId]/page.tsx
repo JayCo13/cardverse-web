@@ -134,18 +134,18 @@ export default function ConnectPage() {
 
                     // A Zalo link is the account's phone number, so the buttons
                     // need both parties' numbers or they have nowhere to point.
-                    const partyIds = [(cardData as any)?.seller_id, o.buyer_id].filter(Boolean);
-                    if (partyIds.length > 0) {
-                        const { data: partyProfiles } = await supabase
-                            .from('profiles')
-                            .select('id, phone_number')
-                            .in('id', partyIds as string[]);
-                        const byId: Record<string, string | null> = {};
-                        for (const row of (partyProfiles || []) as { id: string; phone_number: string | null }[]) {
-                            byId[row.id] = row.phone_number;
-                        }
-                        setPhones(byId);
+                    // Through a definer function, not the table: a phone number
+                    // is only disclosed to the person on the other side of this
+                    // trade, and the function makes that check itself. An
+                    // outsider gets an empty set and the page shows no contact
+                    // details rather than an error.
+                    const { data: contacts } = await supabase
+                        .rpc('get_trade_contact' as never, { p_offer_id: offerId } as never);
+                    const byId: Record<string, string | null> = {};
+                    for (const row of (contacts || []) as { user_id: string; phone_number: string | null }[]) {
+                        byId[row.user_id] = row.phone_number;
                     }
+                    setPhones(byId);
                 }
             } catch (error) {
                 console.error("Error fetching data:", error);

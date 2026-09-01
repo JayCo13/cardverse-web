@@ -143,11 +143,11 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
 
             try {
                 // First try to fetch existing profile
+                // Read through the definer function rather than the table: the
+                // owner's own row is the one case that needs columns the table
+                // is about to stop exposing publicly — email, phone, address.
                 const { data: existingProfile, error: fetchError } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', authUser.id)
-                    .single();
+                    .rpc('get_my_profile' as never) as { data: Profile | null; error: unknown };
 
                 if (existingProfile) {
                     isProcessingProfile = false;
@@ -175,10 +175,7 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
 
                 // Fetch the newly created profile
                 const { data: newProfile } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', authUser.id)
-                    .single();
+                    .rpc('get_my_profile' as never) as { data: Profile | null };
 
                 isProcessingProfile = false;
                 return newProfile;
@@ -404,10 +401,7 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
     const refreshProfile = useCallback(async () => {
         if (!user) return;
         const { data } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', user.id)
-            .single();
+            .rpc('get_my_profile' as never) as { data: Profile | null };
         setProfile(data);
     }, [user]);
 
