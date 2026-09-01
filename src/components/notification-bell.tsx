@@ -54,7 +54,21 @@ export function NotificationBell() {
     const distanceLocale = locale === 'ja-JP' ? ja : locale === 'vi-VN' ? vi : enUS;
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [isOpen, setIsOpen] = useState(false);
-    const [isMobile, setIsMobile] = useState(false);
+    /**
+     * Read before the first paint, not after it.
+     *
+     * Starting `false` and correcting in an effect meant the mobile layout swapped
+     * the whole trigger from a Popover to a Sheet one frame in — React unmounts
+     * one tree and mounts the other, so the bell visibly jumped and a tap landing
+     * in that window hit a button that no longer existed.
+     *
+     * The server always renders the signed-out branch (auth resolves on the
+     * client), so reading the media query here costs no hydration correctness
+     * that was not already the case.
+     */
+    const [isMobile, setIsMobile] = useState(
+        () => typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches,
+    );
     const [previousUnreadCount, setPreviousUnreadCount] = useState(0);
     const [isRinging, setIsRinging] = useState(false);
     const [browserPermission, setBrowserPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
