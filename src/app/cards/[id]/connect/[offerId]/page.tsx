@@ -32,6 +32,7 @@ export default function ConnectPage() {
             successTitle: "Giao dịch thành công!",
             successDesc: "Đề xuất giá đã được chấp nhận. Vui lòng liên hệ để hoàn tất giao dịch.",
             contactInfo: "Thông tin liên hệ",
+            noContact: "Người dùng này chưa cập nhật số điện thoại.",
             seller: "Người bán",
             buyer: "Người mua",
             you: "Bạn",
@@ -50,6 +51,7 @@ export default function ConnectPage() {
                 successTitle: "取引が成立しました！",
                 successDesc: "価格オファーが承認されました。取引完了のため相手に連絡してください。",
                 contactInfo: "連絡先情報",
+                noContact: "このユーザーは電話番号を登録していません。",
                 seller: "販売者",
                 buyer: "購入者",
                 you: "あなた",
@@ -67,6 +69,7 @@ export default function ConnectPage() {
                 successTitle: "Transaction successful!",
                 successDesc: "The offer has been accepted. Please contact the other party to complete the deal.",
                 contactInfo: "Contact information",
+                noContact: "This user has not added a phone number.",
                 seller: "Seller",
                 buyer: "Buyer",
                 you: "You",
@@ -79,6 +82,8 @@ export default function ConnectPage() {
     const [card, setCard] = useState<Card | null>(null);
     const [offer, setOffer] = useState<Offer | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    /** user id -> phone number, for the Zalo links below. */
+    const [phones, setPhones] = useState<Record<string, string | null>>({});
 
     useEffect(() => {
         const fetchData = async () => {
@@ -126,6 +131,21 @@ export default function ConnectPage() {
                         status: o.status,
                         createdAt: o.created_at,
                     });
+
+                    // A Zalo link is the account's phone number, so the buttons
+                    // need both parties' numbers or they have nowhere to point.
+                    const partyIds = [(cardData as any)?.seller_id, o.buyer_id].filter(Boolean);
+                    if (partyIds.length > 0) {
+                        const { data: partyProfiles } = await supabase
+                            .from('profiles')
+                            .select('id, phone_number')
+                            .in('id', partyIds as string[]);
+                        const byId: Record<string, string | null> = {};
+                        for (const row of (partyProfiles || []) as { id: string; phone_number: string | null }[]) {
+                            byId[row.id] = row.phone_number;
+                        }
+                        setPhones(byId);
+                    }
                 }
             } catch (error) {
                 console.error("Error fetching data:", error);
@@ -135,6 +155,48 @@ export default function ConnectPage() {
         };
         fetchData();
     }, [cardId, offerId]); // supabase is stable singleton
+
+    /**
+     * Contact controls for one party.
+     *
+     * Both buttons here used to point at `https://zalo.me/` and
+     * `https://facebook.com/` with nothing on the end, so tapping either landed
+     * on a login page — in the middle of a trade, where the two people most need
+     * to reach each other.
+     *
+     * Zalo works because a Zalo link is the account's phone number, which the
+     * profile carries. Facebook is gone: nothing in the schema records a
+     * Facebook account and none can be derived from what does, so the button
+     * could never have led anywhere.
+     *
+     * Nothing renders when the party has no number on file. A control that
+     * cannot work is worse than its absence — that is what this page was.
+     */
+    const renderContact = (userId?: string | null) => {
+        const phone = userId ? phones[userId] : null;
+        if (!phone) {
+            return <p className="text-xs text-muted-foreground">{copy.noContact}</p>;
+        }
+        // Zalo keys on the local form: 0812334511, not +84812334511.
+        const local = phone.replace(/\s+/g, '').replace(/^\+84/, '0');
+        return (
+            <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" asChild className="flex-1 min-w-[120px]">
+                    <a href={`https://zalo.me/${local}`} target="_blank" rel="noopener noreferrer">
+                        <MessageCircle className="h-4 w-4 mr-1" />
+                        Zalo
+                        <ExternalLink className="h-3 w-3 ml-1" />
+                    </a>
+                </Button>
+                <Button variant="outline" size="sm" asChild className="flex-1 min-w-[120px]">
+                    <a href={`tel:${local}`}>
+                        <Phone className="h-4 w-4 mr-1" />
+                        {local}
+                    </a>
+                </Button>
+            </div>
+        );
+    };
 
     // Check if user is authorized (either buyer or seller)
     const isSeller = user?.id === card?.sellerId;
@@ -221,22 +283,7 @@ export default function ConnectPage() {
                             {isSeller && <Badge>{copy.you}</Badge>}
                         </div>
                         <p className="font-medium mb-3">{card.author}</p>
-                        <div className="flex gap-2">
-                            <Button variant="outline" size="sm" asChild className="flex-1">
-                                <a href={`https://zalo.me/`} target="_blank" rel="noopener noreferrer">
-                                    <MessageCircle className="h-4 w-4 mr-1" />
-                                    Zalo
-                                    <ExternalLink className="h-3 w-3 ml-1" />
-                                </a>
-                            </Button>
-                            <Button variant="outline" size="sm" asChild className="flex-1">
-                                <a href={`https://facebook.com/`} target="_blank" rel="noopener noreferrer">
-                                    <MessageCircle className="h-4 w-4 mr-1" />
-                                    Facebook
-                                    <ExternalLink className="h-3 w-3 ml-1" />
-                                </a>
-                            </Button>
-                        </div>
+                        {renderContact(card.sellerId)}
                     </div>
 
                     {/* Buyer Info */}
@@ -246,22 +293,7 @@ export default function ConnectPage() {
                             {isBuyer && <Badge>{copy.you}</Badge>}
                         </div>
                         <p className="font-medium mb-3">{offer.buyerEmail}</p>
-                        <div className="flex gap-2">
-                            <Button variant="outline" size="sm" asChild className="flex-1">
-                                <a href={`https://zalo.me/`} target="_blank" rel="noopener noreferrer">
-                                    <MessageCircle className="h-4 w-4 mr-1" />
-                                    Zalo
-                                    <ExternalLink className="h-3 w-3 ml-1" />
-                                </a>
-                            </Button>
-                            <Button variant="outline" size="sm" asChild className="flex-1">
-                                <a href={`https://facebook.com/`} target="_blank" rel="noopener noreferrer">
-                                    <MessageCircle className="h-4 w-4 mr-1" />
-                                    Facebook
-                                    <ExternalLink className="h-3 w-3 ml-1" />
-                                </a>
-                            </Button>
-                        </div>
+                        {renderContact(offer.buyerId)}
                     </div>
 
                     {/* Instructions */}
