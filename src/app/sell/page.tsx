@@ -1229,9 +1229,22 @@ export default function SellPage() {
                       </p>
                     )}
                   </div>
-                  <Button variant="outline" size="sm" className="shrink-0" asChild>
-                    <Link href="/buy" className="whitespace-nowrap">{copy.viewMarketplace}</Link>
-                  </Button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {/* The only way to start a listing used to be a floating
+                        button marked `md:hidden`, so a seller who already had
+                        listings had no way to add one from a desktop browser —
+                        the empty-state button below is the only other entry and
+                        it disappears with the first card. */}
+                    <Button size="sm" className="hidden bg-orange-500 hover:bg-orange-600 md:inline-flex" asChild>
+                      <Link href="/sell/create" className="whitespace-nowrap">
+                        <Plus className="mr-1 h-4 w-4" />
+                        {copy.listCard}
+                      </Link>
+                    </Button>
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href="/buy" className="whitespace-nowrap">{copy.viewMarketplace}</Link>
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
