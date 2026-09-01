@@ -8,33 +8,6 @@
   --font-quantico: 'Quantico', sans-serif;
 }
 
-/*
- * A responsive page must never scroll sideways.
- *
- * One element wider than the viewport drags the whole document with it: the
- * header shifts, every heading loses its first characters, and the extra width
- * shows as a blank band down the right — which is what the create-listing form
- * was doing on a phone. Anything that genuinely needs to be wider than the
- * screen should scroll inside its own container, never the page.
- *
- * `clip` rather than `hidden` on purpose. The header is `sticky top-0`, and
- * `hidden` on an ancestor makes it the scroll container, which silently breaks
- * sticky positioning. `clip` is the one value that leaves the other axis
- * `visible`. Browsers without it simply behave as before.
- *
- * On `html` only, never `body`. Radix portals its dialogs, sheets and popovers
- * into `document.body`, and WebKit clips fixed children against a `body` that
- * carries an overflow value — which took the notification sheet with it on iOS,
- * leaving a dimmed screen with nothing on it.
- *
- * This is now a backstop rather than a fix: the overflow it was added for was
- * the header being 44px too wide on a 360px screen while auth resolved, and
- * that is fixed at source in header.tsx.
- */
-html {
-  overflow-x: clip;
-}
-
 body {
   font-family: var(--font-inter), Arial, Helvetica, sans-serif;
   text-rendering: optimizeLegibility;
