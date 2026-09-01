@@ -964,6 +964,17 @@ export default function WalletPage() {
                               <p className={`text-sm font-semibold ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
                                 {isPositive ? '+' : '−'}{formatVND(Math.abs(tx.amount))}
                               </p>
+                              {/* What the balance actually did. The amount alone
+                                  says how much moved but not what it moved from,
+                                  so a row could not be checked against the
+                                  balance the reader remembers. Derived rather
+                                  than stored: `amount` is signed, so the balance
+                                  before a row is its balance_after minus it. */}
+                              <p className="text-xs tabular-nums text-muted-foreground">
+                                {formatVND(tx.balance_after - tx.amount)}
+                                <span className="mx-1 opacity-60">→</span>
+                                <span className="font-medium text-foreground">{formatVND(tx.balance_after)}</span>
+                              </p>
                               <p className="text-xs text-muted-foreground">
                                 {new Date(activity.createdAt).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                               </p>

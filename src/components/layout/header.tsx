@@ -149,7 +149,11 @@ export function Header() {
 
   const renderUserAuth = () => {
     if (isLoading) {
-      return <Skeleton className="h-8 w-24" />;
+      // Sized to the avatar button that replaces it. A 96px placeholder giving
+      // way to a 44px control moved the whole row, and on a 360px screen the
+      // difference was enough to push the header past the edge for as long as
+      // auth took to resolve.
+      return <Skeleton className="h-9 w-11 rounded-md" />;
     }
 
     if (user) {
@@ -275,16 +279,20 @@ export function Header() {
             <span>+84 812 334 511</span>
           </div>
 
-          <div className="flex-1 flex justify-start lg:justify-center">
+          {/* The logo yields space; the controls keep theirs. Both were `flex-1`
+              before, so each was handed an equal third of the row and the
+              controls — three 40px buttons and an avatar — had to overflow their
+              share to fit at all. */}
+          <div className="min-w-0 flex-1 flex justify-start lg:justify-center">
             <Link
               href="/"
-              className="flex items-center gap-2 text-lg font-semibold lg:text-base"
+              className="flex min-w-0 items-center gap-2 text-lg font-semibold lg:text-base"
             >
-              <Image src="/assets/logo-verse.png" width={160} height={40} className="w-[150px] lg:w-[170px] h-auto" alt="CardVerseHub logo" />
+              <Image src="/assets/logo-verse.png" width={160} height={40} className="h-auto w-[116px] max-w-full sm:w-[150px] lg:w-[170px]" alt="CardVerseHub logo" />
             </Link>
           </div>
 
-          <div className="flex-1 flex items-center justify-end gap-1 lg:gap-2 text-sm font-medium">
+          <div className="flex shrink-0 items-center justify-end gap-0.5 text-sm font-medium sm:gap-1 lg:flex-1 lg:gap-2">
             <div className="hidden lg:flex items-center gap-2">
               {!isVndOnlyMarketplace && <CurrencySelector />}
               <LanguageSelector />

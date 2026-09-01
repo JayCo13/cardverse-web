@@ -2,7 +2,12 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { lookupBankAccountName, type BankLookupResult } from './bank-lookup';
 import { namesMatch, normalizeVietnameseName } from './kyc-verification';
 
-/** Lookups a single user may trigger per hour. Each successful one is billed. */
+/**
+ * Lookups a single user may trigger per hour.
+ *
+ * The limit exists because each call that reaches NAPAS is billed. Calls that
+ * never got there are not counted — see the query below.
+ */
 const MAX_LOOKUPS_PER_HOUR = 15;
 
 /** How long a successful lookup stands in for a fresh call. */
@@ -43,11 +48,20 @@ export async function verifyBankAccount(
         return { status: 'ok', accountName: cached.account_name, cached: true };
     }
 
+    // Count only the attempts that actually reached the network.
+    //
+    // Every outcome is logged, including `unavailable` — our own failures: no
+    // credit on the provider account, a missing key, a timeout. Counting those
+    // against the seller meant an outage spent their hourly allowance on calls
+    // that were never billed and never answered, and then locked them out of
+    // retrying once it was fixed. Ten of the fifteen lookups on record are that
+    // kind of failure.
     const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     const { count } = await service
         .from('bank_account_lookups')
         .select('id', { count: 'exact', head: true })
         .eq('user_id', params.userId)
+        .neq('status', 'unavailable')
         .gte('created_at', hourAgo);
 
     if ((count ?? 0) >= MAX_LOOKUPS_PER_HOUR) {
