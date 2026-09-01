@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useCurrency } from "@/contexts/currency-context";
 import { useLocalization } from "@/context/localization-context";
 
@@ -73,6 +74,27 @@ export default function CollectionPage() {
     // Use centralized currency formatting
     const { formatPrice } = useCurrency();
     const { t } = useLocalization();
+
+    /**
+     * Where a card is actually added from.
+     *
+     * A collection row carries catalogue data — market, low, mid and high price,
+     * rarity, image — and those come from a different source per category
+     * (tcgcsv for Pokemon and One Piece, soccer_cards for soccer). The existing
+     * "add to collection" button lives on each card's detail page, where that
+     * data is already loaded. Sending the reader there keeps one path into the
+     * collection rather than a second one that would drift from it.
+     */
+    const addCardMenu = (trigger: React.ReactNode) => (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+                <DropdownMenuItem asChild><Link href="/pokemon">{t('nav_pokemon')}</Link></DropdownMenuItem>
+                <DropdownMenuItem asChild><Link href="/onepiece">{t('nav_onepiece')}</Link></DropdownMenuItem>
+                <DropdownMenuItem asChild><Link href="/soccer">{t('nav_soccer')}</Link></DropdownMenuItem>
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
 
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [cardToDelete, setCardToDelete] = useState<string | null>(null);
@@ -259,10 +281,12 @@ export default function CollectionPage() {
                                 {t('coll_subtitle')}
                             </p>
                         </div>
-                        <Button className="gap-2 shrink-0">
-                            <Plus className="h-4 w-4" />
-                            {t('coll_add_card')}
-                        </Button>
+                        {addCardMenu(
+                            <Button className="gap-2 shrink-0">
+                                <Plus className="h-4 w-4" />
+                                {t('coll_add_card')}
+                            </Button>
+                        )}
                     </div>
 
                     {/* Stats Grid */}
@@ -507,10 +531,12 @@ export default function CollectionPage() {
                                 <p className="text-muted-foreground mb-6 max-w-md mx-auto">
                                     {t('coll_start_desc')}
                                 </p>
-                                <Button className="gap-2">
-                                    <Plus className="h-4 w-4" />
-                                    {t('coll_add_first_card')}
-                                </Button>
+                                {addCardMenu(
+                                    <Button className="gap-2">
+                                        <Plus className="h-4 w-4" />
+                                        {t('coll_add_first_card')}
+                                    </Button>
+                                )}
                             </>
                         ) : (
                             <>
