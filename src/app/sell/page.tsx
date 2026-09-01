@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckCircle, XCircle, Phone, FileCheck, ChevronRight, ChevronLeft, Sparkles, AlertTriangle, MapPin, Truck } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckCircle, XCircle, Phone, FileCheck, ChevronRight, ChevronLeft, ChevronDown, Sparkles, AlertTriangle, MapPin, Truck } from 'lucide-react';
 import { SHIPPING_CARRIERS } from '@/lib/shipping-carriers';
 import { useAuth, useSupabase } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
@@ -203,6 +203,16 @@ export default function SellPage() {
   const [shipFees, setShipFees] = useState<Record<string, { intra: string; inter: string; region: string }>>({});
   const [savingShipping, setSavingShipping] = useState(false);
   const [shippingConfigOpen, setShippingConfigOpen] = useState(false);
+  const [shippingSectionOpen, setShippingSectionOpen] = useState(false);
+
+  /**
+   * Whether the desktop floating action has taken over from the header one.
+   *
+   * The button in the title row scrolls away with the title. Rather than pin the
+   * header, the action reappears at the corner once it is gone, so it is never
+   * more than a glance away no matter how long the listing grid runs.
+   */
+  const [showFloatingListing, setShowFloatingListing] = useState(false);
   const [showAllListings, setShowAllListings] = useState<Record<string, boolean>>({});
 
   // Wizard step
@@ -358,6 +368,14 @@ export default function SellPage() {
           step3: 'Review and submit',
         };
   const tx = (vi: string, en: string, ja: string) => (locale === 'ja-JP' ? ja : locale === 'vi-VN' ? vi : en);
+  useEffect(() => {
+    // Reads on scroll only — no layout is measured, so this cannot thrash.
+    const onScroll = () => setShowFloatingListing(window.scrollY > 220);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   const goToNewListing = () => router.push('/sell/create');
 
   const handleFileChange = async (type: 'bank', file: File | null) => {
@@ -1098,6 +1116,15 @@ export default function SellPage() {
                 <p className="text-muted-foreground mt-1">{copy.dashboardDesc}</p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                {/* The primary action, opposite the title where a dashboard's
+                    main action belongs. Desktop only: the phone keeps the
+                    floating button, which sits under the thumb. */}
+                <Button className="hidden bg-orange-500 hover:bg-orange-600 md:inline-flex" asChild>
+                  <Link href="/sell/create" className="whitespace-nowrap">
+                    <Plus className="mr-1 h-4 w-4" />
+                    {copy.listCard}
+                  </Link>
+                </Button>
                 {!pickupAddress && !isLoadingAddress && (
                   <Button
                     className="hidden bg-orange-500 hover:bg-orange-600 md:inline-flex"
@@ -1194,19 +1221,40 @@ export default function SellPage() {
               <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
             </button>
 
+            {/* Collapsed by default. Shipping is set once and rarely revisited,
+                but the form is long enough to push the listing grid — the thing
+                a seller actually came for — below the fold on every visit. */}
             <Card className="hidden md:block">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Truck className="h-5 w-5 text-orange-400" />
-                  {tx('Vận chuyển của shop', 'Shop shipping', 'ショップ配送')}
-                </CardTitle>
-                <CardDescription>
-                  {tx('Chọn đơn vị vận chuyển và khoảng phí ship. Thông tin này hiển thị trên mọi bài đăng; người mua trả mức phí tối đa khi thanh toán.', 'Pick your carriers and a fee range. It shows on all your listings; buyers are charged the maximum at checkout.', '配送業者と料金範囲を選択します。全出品に表示され、購入者は上限額を支払います。')}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {renderShippingConfigForm()}
-              </CardContent>
+              <button
+                type="button"
+                onClick={() => setShippingSectionOpen(open => !open)}
+                aria-expanded={shippingSectionOpen}
+                aria-controls="shop-shipping-panel"
+                className="w-full rounded-lg text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <CardHeader>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <CardTitle className="flex items-center gap-2">
+                        <Truck className="h-5 w-5 shrink-0 text-orange-400" />
+                        {tx('Vận chuyển của shop', 'Shop shipping', 'ショップ配送')}
+                      </CardTitle>
+                      <CardDescription className="mt-1.5">
+                        {tx('Chọn đơn vị vận chuyển và khoảng phí ship. Thông tin này hiển thị trên mọi bài đăng; người mua trả mức phí tối đa khi thanh toán.', 'Pick your carriers and a fee range. It shows on all your listings; buyers are charged the maximum at checkout.', '配送業者と料金範囲を選択します。全出品に表示され、購入者は上限額を支払います。')}
+                      </CardDescription>
+                    </div>
+                    <ChevronDown
+                      className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-200 ${shippingSectionOpen ? 'rotate-180' : ''}`}
+                      aria-hidden
+                    />
+                  </div>
+                </CardHeader>
+              </button>
+              {shippingSectionOpen && (
+                <CardContent id="shop-shipping-panel">
+                  {renderShippingConfigForm()}
+                </CardContent>
+              )}
             </Card>
 
             {/* My Listings */}
@@ -1229,22 +1277,9 @@ export default function SellPage() {
                       </p>
                     )}
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {/* The only way to start a listing used to be a floating
-                        button marked `md:hidden`, so a seller who already had
-                        listings had no way to add one from a desktop browser —
-                        the empty-state button below is the only other entry and
-                        it disappears with the first card. */}
-                    <Button size="sm" className="hidden bg-orange-500 hover:bg-orange-600 md:inline-flex" asChild>
-                      <Link href="/sell/create" className="whitespace-nowrap">
-                        <Plus className="mr-1 h-4 w-4" />
-                        {copy.listCard}
-                      </Link>
-                    </Button>
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href="/buy" className="whitespace-nowrap">{copy.viewMarketplace}</Link>
-                    </Button>
-                  </div>
+                  <Button variant="outline" size="sm" className="shrink-0" asChild>
+                    <Link href="/buy" className="whitespace-nowrap">{copy.viewMarketplace}</Link>
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent>
@@ -1388,6 +1423,25 @@ export default function SellPage() {
           className="fixed bottom-5 right-4 z-50 flex h-12 items-center gap-2 rounded-full bg-primary px-5 pb-[env(safe-area-inset-bottom)] text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition hover:scale-105 active:scale-95 md:hidden"
         >
           <Plus className="h-5 w-5" />
+          <span>{copy.listCard}</span>
+        </button>
+
+        {/* Desktop counterpart. Larger than the phone's, because a pointer has
+            the whole screen to cross and the corner is a long way from the
+            reading position. Kept out of the tab order and hidden from assistive
+            tech while off-screen: it duplicates the header action rather than
+            adding anything, so announcing it twice would only be noise. */}
+        <button
+          type="button"
+          onClick={goToNewListing}
+          aria-label={copy.listCard}
+          aria-hidden={!showFloatingListing}
+          tabIndex={showFloatingListing ? 0 : -1}
+          className={`fixed bottom-8 right-8 z-50 hidden h-14 items-center gap-2.5 rounded-full bg-orange-500 px-7 text-base font-semibold text-white shadow-xl shadow-orange-500/30 transition-all duration-300 hover:scale-105 hover:bg-orange-600 active:scale-95 md:flex ${
+            showFloatingListing ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'
+          }`}
+        >
+          <Plus className="h-6 w-6" />
           <span>{copy.listCard}</span>
         </button>
         <Drawer open={shippingConfigOpen} onOpenChange={setShippingConfigOpen}>
