@@ -545,13 +545,10 @@ export default function SellPage() {
     if (!user) return;
     setIsLoadingAddress(true);
     try {
-      const { data } = await supabase
-        .from('profiles')
-        .select(
-          'address_province_name, address_district_name, address_ward_name, address_detail, address_district_id, address_ward_code, shipping_carriers, shipping_fees'
-        )
-        .eq('id', user.id)
-        .single();
+      // Own profile, and it reads address_detail — a street address, which the
+      // table is not going to keep handing out. The definer function makes the
+      // owner check itself.
+      const { data } = await supabase.rpc('get_my_profile' as never);
       const p = data as Record<string, any> | null;
       setShipCarriers(p?.shipping_carriers || []);
       const savedFees = (p?.shipping_fees || {}) as Record<string, any>;

@@ -69,13 +69,9 @@ export function SellerAddressForm({ onSaved, submitLabel }: SellerAddressFormPro
     if (!user) return;
     let active = true;
     (async () => {
-      const { data } = await supabase
-        .from('profiles')
-        .select(
-          'address_province_id, address_province_name, address_district_id, address_district_name, address_ward_code, address_ward_name, address_detail'
-        )
-        .eq('id', user.id)
-        .single();
+      // Own profile, including the street address, so it goes through the
+      // definer function rather than the table.
+      const { data } = await supabase.rpc('get_my_profile' as never);
       if (!active) return;
       const p = data as Record<string, any> | null;
       if (p?.address_district_id && p?.address_ward_code) {
