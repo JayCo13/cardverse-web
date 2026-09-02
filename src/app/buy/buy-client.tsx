@@ -426,7 +426,8 @@ export default function BuyClient({ initialCards }: { initialCards: Card[] }) {
       <main className="flex-1 container mx-auto px-4 py-8">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold" style={{ fontFamily: "'Orbitron', sans-serif" }}>{t('buy_title')}</h1>
-          <p className="text-muted-foreground">{t('buy_description')}</p>
+          {/* The subtitle sat flush against a 4xl heading with no gap at all. */}
+          <p className="mt-2 text-muted-foreground md:mt-3">{t('buy_description')}</p>
         </div>
         <div className="flex gap-8">
           <div className="hidden md:block w-1/4">

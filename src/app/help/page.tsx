@@ -55,6 +55,10 @@ export default function HelpCenterPage() {
       answer: t('help_faq_9_a'),
     },
     {
+      question: t('help_faq_10_q'),
+      answer: t('help_faq_10_a'),
+    },
+    {
       question: t('help_faq_11_q'),
       answer: t('help_faq_11_a'),
     },
