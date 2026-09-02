@@ -221,7 +221,7 @@ export default function ContactPage() {
                           id="contact-name"
                           name="name"
                           autoComplete="name"
-                          placeholder="John Doe"
+                          placeholder={t('contact_name_placeholder')}
                           required
                           maxLength={LIMITS.name.max}
                           disabled={isSubmitting}
@@ -244,7 +244,7 @@ export default function ContactPage() {
                           type="email"
                           inputMode="email"
                           autoComplete="email"
-                          placeholder="john@example.com"
+                          placeholder={t('contact_email_placeholder')}
                           required
                           maxLength={LIMITS.email.max}
                           disabled={isSubmitting}
@@ -265,7 +265,7 @@ export default function ContactPage() {
                       <Input
                         id="contact-subject"
                         name="subject"
-                        placeholder="How can we help?"
+                        placeholder={t('contact_subject_placeholder')}
                         required
                         maxLength={LIMITS.subject.max}
                         disabled={isSubmitting}
@@ -285,7 +285,7 @@ export default function ContactPage() {
                       <Textarea
                         id="contact-message"
                         name="message"
-                        placeholder="Type your message here..."
+                        placeholder={t('contact_message_placeholder')}
                         className={`min-h-[220px] resize-y ${errors.message ? 'border-destructive focus-visible:ring-destructive' : ''}`}
                         required
                         maxLength={LIMITS.message.max}

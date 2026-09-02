@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
+import { hasUsableShipping, type ShopShippingFees } from '@/lib/shipping-fee';
 
 const MIN_MARKETPLACE_PRICE_VND = 1000;
 
@@ -22,19 +24,32 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Seller verification required' }, { status: 403 });
         }
 
-        // A pickup address is required before listing so shipping fees can be
-        // calculated for buyers. Enforced here (not just in the UI) so it can't
-        // be bypassed by calling the API directly.
+        // A pickup address AND a usable shipping table are both required before
+        // listing, because checkout quotes the buyer's fee from them. Enforced
+        // here (not just in the UI) so it can't be bypassed by calling the API
+        // directly. Without this a listing goes live that no buyer can pay for:
+        // the client would show 0đ and the checkout route would then refuse.
         const { data: profile } = await authClient
             .from('profiles')
-            .select('address_district_id, address_ward_code')
+            .select('address_district_id, address_ward_code, shipping_carriers, shipping_fees')
             .eq('id', user.id)
             .single();
-        const sellerProfile = profile as { address_district_id: number | null; address_ward_code: string | null } | null;
+        const sellerProfile = profile as {
+            address_district_id: number | null;
+            address_ward_code: string | null;
+            shipping_carriers: string[] | null;
+            shipping_fees: ShopShippingFees | null;
+        } | null;
         if (!sellerProfile?.address_district_id || !sellerProfile?.address_ward_code) {
             return NextResponse.json({
                 error: 'Vui lòng thiết lập địa chỉ lấy hàng trước khi đăng bán.',
                 code: 'MISSING_SELLER_ADDRESS',
+            }, { status: 400 });
+        }
+        if (!hasUsableShipping(sellerProfile.shipping_fees, sellerProfile.shipping_carriers)) {
+            return NextResponse.json({
+                error: 'Vui lòng thiết lập đơn vị vận chuyển và phí ship trước khi đăng bán.',
+                code: 'MISSING_SHIPPING_CONFIG',
             }, { status: 400 });
         }
 
@@ -56,8 +71,8 @@ export async function POST(request: NextRequest) {
         if (name.length < 5 || name.length > 200) {
             return NextResponse.json({ error: 'Tiêu đề cần 5-200 ký tự.' }, { status: 400 });
         }
-        if (description.length < 300 || description.length > 5000) {
-            return NextResponse.json({ error: 'Mô tả cần 300-5000 ký tự.' }, { status: 400 });
+        if (description.length < DESCRIPTION_MIN || description.length > DESCRIPTION_MAX) {
+            return NextResponse.json({ error: `Mô tả cần ${DESCRIPTION_MIN}-${DESCRIPTION_MAX} ký tự.` }, { status: 400 });
         }
         if (!['sale', 'auction', 'razz'].includes(listingType)) {
             return NextResponse.json({ error: 'listing_type không hợp lệ.' }, { status: 400 });

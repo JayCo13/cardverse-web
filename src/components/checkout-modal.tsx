@@ -8,7 +8,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Wallet, CreditCard, Loader2, CheckCircle, ShieldCheck, ExternalLink, Truck } from 'lucide-react';
 import { useAuth, useSupabase } from '@/lib/supabase';
-import { resolveShippingTier } from '@/lib/shipping-fee';
+import { resolveShippingTier, shippableCarriers } from '@/lib/shipping-fee';
 import { getCarrier } from '@/lib/shipping-carriers';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
@@ -54,6 +54,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
   const copy = locale === 'ja-JP'
     ? {
         feeError: '送料を計算できませんでした。もう一度お試しください。',
+        shippingNotConfigured: '販売者が配送業者と送料をまだ設定していません。購入前にご連絡ください。',
         unavailableTitle: 'カードは先に購入されました',
         unavailableDesc: 'このカードは現在利用できません。別のカードを選んでください。',
         redirecting: 'リダイレクト中...',
@@ -90,6 +91,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
     : locale === 'vi-VN'
       ? {
           feeError: 'Không thể tính phí ship. Vui lòng thử lại.',
+          shippingNotConfigured: 'Người bán chưa chọn đơn vị vận chuyển và phí ship nên chưa đặt đơn được. Bạn thử nhắn cho người bán xem sao.',
           unavailableTitle: 'Thẻ đã có người mua trước',
           unavailableDesc: 'Thẻ này không còn khả dụng. Vui lòng chọn thẻ khác.',
           redirecting: 'Đang chuyển hướng...',
@@ -125,6 +127,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
         }
       : {
           feeError: 'Could not calculate shipping fee. Please try again.',
+          shippingNotConfigured: 'This seller has not set up carriers and shipping fees yet, so the order cannot be placed. You can message them.',
           unavailableTitle: 'Card already taken',
           unavailableDesc: 'This card is no longer available. Please choose another card.',
           redirecting: 'Redirecting...',
@@ -241,22 +244,37 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
         { provinceId: p?.address_province_id, provinceName: p?.address_province_name },
         { provinceId: address.province_id, provinceName: address.province_name },
       );
-      const carriers = (p?.shipping_carriers || []).filter((c: string) => c !== 'self');
-      const options = carriers.map((code: string) => ({ code, fee: Number(p?.shipping_fees?.[code]?.[tier] ?? 0) }));
+      // Only carriers with a fee actually stored for this tier can be quoted.
+      // A missing key is the seller never having filled the form — it is not
+      // free shipping, and treating it as 0 is what used to walk the buyer all
+      // the way to a pay button the server would then refuse. A stored 0 is
+      // kept: that is a real configuration meaning free delivery.
+      const options = shippableCarriers(p?.shipping_carriers)
+        .map((code: string) => ({ code, fee: p?.shipping_fees?.[code]?.[tier] }))
+        .filter((o: { code: string; fee: unknown }): o is { code: string; fee: number } => typeof o.fee === 'number');
       setShipOptions(options);
+
+      if (options.length === 0) {
+        selectedCarrierRef.current = '';
+        setSelectedCarrier('');
+        setShippingFee(null);
+        setFeeError(copy.shippingNotConfigured);
+        return;
+      }
+
       // Keep the buyer's carrier if still valid; otherwise default to the first
       // (single carrier → automatic default, multiple → buyer can change it).
-      const preferred = options.find((o: { code: string }) => o.code === selectedCarrierRef.current) || options[0] || null;
-      selectedCarrierRef.current = preferred?.code || '';
-      setSelectedCarrier(preferred?.code || '');
-      setShippingFee(preferred ? preferred.fee : 0);
+      const preferred = options.find((o: { code: string }) => o.code === selectedCarrierRef.current) || options[0];
+      selectedCarrierRef.current = preferred.code;
+      setSelectedCarrier(preferred.code);
+      setShippingFee(preferred.fee);
     } catch (err: any) {
       console.error('Fee calculation error:', err);
       setFeeError(copy.feeError);
     } finally {
       setLoadingFee(false);
     }
-  }, [card, supabase, copy.feeError]);
+  }, [card, supabase, copy.feeError, copy.shippingNotConfigured]);
 
   const handleSelectAddress = useCallback((address: SavedAddress | null) => {
     setSelectedAddress(address);
@@ -579,11 +597,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
             disabled={isPurchasing || !canPurchase || (paymentMethod === 'wallet' && insufficientBalance)}
             className="bg-orange-500 hover:bg-orange-600 text-white font-bold"
           >
-            {isPurchasing ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            ) : (
-              <CheckCircle className="h-4 w-4 mr-2" />
-            )}
+            {isPurchasing ? null : <CheckCircle className="h-4 w-4 mr-2" />}
             {shippingFee !== null
               ? copy.payAmount.replace('{amount}', formatVND(totalAmount))
               : paymentMethod === 'wallet'

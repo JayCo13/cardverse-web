@@ -1,6 +1,6 @@
 import 'server-only';
 import { calculateShippingFee, CARD_DEFAULTS } from '@/lib/ghn';
-import { cheapestTierFee, resolveShippingTier, type ShopShippingFees } from '@/lib/shipping-fee';
+import { cheapestTierFee, isValidShippingFee, resolveShippingTier, type ShopShippingFees } from '@/lib/shipping-fee';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
 type ShippingQuoteInput = {
@@ -64,7 +64,9 @@ export async function quoteConfiguredShipping(input: ConfiguredShippingQuoteInpu
     },
   );
   const fee = data.shipping_fees?.[carrier]?.[tier];
-  if (typeof fee !== 'number' || !Number.isSafeInteger(fee) || fee < 0) {
+  // Same bounds the shop form enforces. A row outside them predates the rule
+  // (or was written around the form) and must not become a buyer's charge.
+  if (!isValidShippingFee(fee)) {
     throw new Error('shipping_fee_not_configured');
   }
 

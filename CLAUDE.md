@@ -79,6 +79,25 @@ Images go through Cloudinary (`src/lib/cloudinary.ts`, `cloudinary-url.ts`) and/
 ### UI
 shadcn/ui pattern: primitives in `src/components/ui` (Radix + `class-variance-authority` + `tailwind-merge` via `cn()` in `src/lib/utils.ts`). `components.json` configures the shadcn generator. Dark theme is forced (`<html className="dark">`). Custom fonts: Inter (body), Orbitron & Quantico (display).
 
+**`Button` draws its own spinner — never add one yourself.** `src/components/ui/button.tsx` renders a
+`<Loader2 className="animate-spin">` before the children whenever it is busy, and it becomes busy in
+**two** ways: an explicit `loading={...}` prop, *or* — the easy one to miss — an `onClick` that returns
+a promise, which is every `onClick={someAsyncHandler}`. So putting a `<Loader2 …animate-spin>` (or a
+phosphor `SpinnerGap`) inside `<Button>` children gives the user **two spinners side by side**. That
+bug reached production on the checkout button and 23 other call sites; they were all cleaned up.
+
+Rules for call sites:
+- Just render the label. Let the Button spin. The label stays visible while busy, which is intended.
+- A leading icon (`<Save/>`, `<Truck/>`, `<CheckCircle/>`) should hide while busy: `{busy ? null : <Save …/>}`.
+- Pass `loading` **only** for `type="submit"` buttons, where the work belongs to `onSubmit`, not to the click.
+- `size="icon"` replaces the children with the spinner (`button.tsx:140`), so an icon button needs no
+  conditional of its own.
+- `asChild` injects no spinner at all (Slot takes exactly one child) — it only dims and blocks the press.
+
+Two idioms currently suppress the duplicate **by accident**, not by design — `onClick={() => void fn()}`
+(the `void` discards the promise, used in `chat-drawer.tsx` and a few offer buttons) and `size="icon"`.
+Removing a `void`, or giving an icon button a text label, silently reintroduces the double spinner.
+
 **Category badge codes:** compact category badges/chips must display the standardized short code (e.g. "Bóng đá"/"Soccer"/"Football" → `SOC`; Pokémon → `POK`; One Piece → `OP`; Yu-Gi-Oh → `YGO`; Basketball → `NBA`; F1 → `F1`; Other/Khác → `OTH`). The single source of truth is `getCategoryCode()` in `src/lib/category-code.ts` — always import it (used by `card-item.tsx` and the product-detail related-cards rail) rather than re-deriving codes, so they stay consistent. Never render the raw localized category name inside a code-style badge.
 
 **Category badge colors** mirror the navbar's per-category palette: **POK → yellow** (`bg-yellow-400` / dark text), **OP → red** (`bg-red-500`), **SOC → green** (`bg-green-500`), everything else → neutral (`bg-zinc-800`), each with a matching colored glow. The mapping lives in `categoryBadgeClass()` inside `src/app/cards/[id]/page.tsx` (NOT in `src/lib`, because Tailwind only scans `src/{app,components,pages}` for class names — color classes placed in `src/lib` won't be generated). Reuse/extend that mapping when adding category badges elsewhere.

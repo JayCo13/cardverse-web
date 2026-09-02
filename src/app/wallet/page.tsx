@@ -682,12 +682,8 @@ export default function WalletPage() {
             disabled={isDepositing}
             className="bg-green-600 hover:bg-green-700 text-white whitespace-nowrap px-6"
           >
-            {isDepositing ? <Loader2 className="h-4 w-4 animate-spin" /> : (
-              <>
-                <ArrowUpCircle className="h-4 w-4 mr-2" />
-                {copy.deposit}
-              </>
-            )}
+            {isDepositing ? null : <ArrowUpCircle className="h-4 w-4 mr-2" />}
+            {copy.deposit}
           </Button>
         </div>
       </CardContent>

@@ -291,7 +291,6 @@ export default function CardDetailsPage() {
             similarFrom: "Tìm các mặt hàng tương tự từ",
             itemsSold: "đã bán",
             positive: "uy tín",
-            aboutSeller: "Về người bán",
             relatedItems: "Sản phẩm liên quan",
             condLabel: "Tình trạng",
             priceLabel: "Giá",
@@ -318,7 +317,6 @@ export default function CardDetailsPage() {
             buyNow: "Mua ngay",
             makeOffer: "Trả giá",
             viewOfferHistory: "Lịch sử offer",
-            messageSeller: "Nhắn người bán",
             addToWatchlist: "Thêm vào theo dõi",
             addToCart: "Thêm vào giỏ hàng",
             addToCartSuccess: "Thêm vào giỏ hàng thành công",
@@ -392,7 +390,6 @@ export default function CardDetailsPage() {
                 similarFrom: "この販売者の類似商品",
                 itemsSold: "販売",
                 positive: "高評価",
-                aboutSeller: "販売者について",
                 relatedItems: "関連商品",
                 condLabel: "状態",
                 priceLabel: "価格",
@@ -419,7 +416,6 @@ export default function CardDetailsPage() {
                 buyNow: "今すぐ購入",
                 makeOffer: "オファーする",
                 viewOfferHistory: "提案履歴",
-                messageSeller: "販売者に連絡",
                 addToWatchlist: "ウォッチリストに追加",
                 addToCart: "カートに追加",
                 addToCartSuccess: "カートに追加しました",
@@ -492,7 +488,6 @@ export default function CardDetailsPage() {
                 similarFrom: "Find similar items from",
                 itemsSold: "sold",
                 positive: "positive",
-                aboutSeller: "About the seller",
                 relatedItems: "Related items",
                 condLabel: "Cond",
                 priceLabel: "Price",
@@ -519,7 +514,6 @@ export default function CardDetailsPage() {
                 buyNow: "Buy It Now",
                 makeOffer: "Make Offer",
                 viewOfferHistory: "Offer history",
-                messageSeller: "Message seller",
                 addToWatchlist: "Add to Watchlist",
                 addToCart: "Add to cart",
                 addToCartSuccess: "Added to cart successfully",
@@ -929,17 +923,10 @@ export default function CardDetailsPage() {
                                     onClick={() => handleRejectOffer(offer)}
                                     disabled={!!acceptingOfferId || !!rejectingOfferId}
                                 >
-                                    {rejectingOfferId === offer.id ? (
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    ) : null}
                                     {copy.reject}
                                 </Button>
                                 <Button size="sm" onClick={() => handleAcceptOffer(offer)} disabled={!!acceptingOfferId || !!rejectingOfferId}>
-                                    {acceptingOfferId === offer.id ? (
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    ) : (
-                                        <CheckCircle className="mr-2 h-4 w-4" />
-                                    )}
+                                    {acceptingOfferId === offer.id ? null : <CheckCircle className="mr-2 h-4 w-4" />}
                                     {copy.accept}
                                 </Button>
                             </>
@@ -1359,39 +1346,6 @@ export default function CardDetailsPage() {
                             </section>
                         </>
                     )}
-
-                    <section className="hidden space-y-4 rounded-xl border bg-card p-3 md:p-5 xl:block xl:p-6">
-                        <h2 className="text-xl font-semibold">{copy.aboutSeller}</h2>
-                        <div className="flex flex-wrap items-center gap-4">
-                            {seller?.profile_image_url ? (
-                                <Image src={seller.profile_image_url} alt="" width={72} height={72} className="h-16 w-16 rounded-full object-cover" />
-                            ) : (
-                                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-500 text-2xl font-bold text-white">
-                                    {(seller?.display_name || "C").charAt(0).toUpperCase()}
-                                </div>
-                            )}
-                            <div className="min-w-0">
-                                <p className="flex items-center gap-1.5 text-lg font-semibold">
-                                    <span className="truncate">{seller?.display_name || card.sellerName || copy.seller}</span>
-                                    {seller?.seller_verified && <BadgeCheck className="h-4 w-4 shrink-0 text-orange-500" />}
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                    {seller?.seller_rating ? `${Number(seller.seller_rating).toFixed(1)}% ${copy.positive}` : copy.newSeller} · {formatCompactCount(seller?.seller_review_count || 0, locale)} {copy.itemsSold}
-                                </p>
-                            </div>
-                            {!isOwner && (
-                                <Button
-                                    variant="outline"
-                                    className="rounded-full border-orange-500 font-bold text-orange-500 hover:bg-orange-500/10 hover:text-orange-400 sm:ml-auto"
-                                    onClick={() => void handleStartChat()}
-                                    disabled={startingChatOfferId === "listing"}
-                                >
-                                    {startingChatOfferId === "listing" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageCircle className="mr-2 h-4 w-4" />}
-                                    {copy.messageSeller}
-                                </Button>
-                            )}
-                        </div>
-                    </section>
 
                     <RelatedRail title={copy.relatedItems} cards={displayRelatedCards} labels={{ cond: copy.condLabel, price: copy.priceLabel, sold: copy.sold, preOwned: copy.preOwned, contact: copy.contact }} />
                 </div>

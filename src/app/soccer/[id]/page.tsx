@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ShopeeAffiliate } from "@/components/shopee-affiliate";
 import {
     ArrowLeft, Plus, Check,
-    Package, Tag, Star, Loader2, Trophy, Medal, ExternalLink
+    Package, Tag, Star, Trophy, Medal, ExternalLink
 } from "lucide-react";
 import Image from "next/image";
 import { useCurrency } from "@/contexts/currency-context";
@@ -270,7 +270,7 @@ export default function SoccerCardDetailsPage() {
                                         className={`w-full gap-2 h-14 text-lg transition-all ${addedToCollection ? 'bg-green-600 hover:bg-green-700' : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500'}`}
                                     >
                                         {isAddingToCollection ? (
-                                            <><Loader2 className="h-5 w-5 animate-spin" /> {t('adding_to_collection')}</>
+                                            <>{t('adding_to_collection')}</>
                                         ) : addedToCollection ? (
                                             <><Check className="h-5 w-5" /> {t('added_to_collection')}</>
                                         ) : (

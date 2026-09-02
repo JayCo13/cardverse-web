@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { DESCRIPTION_MIN } from '@/lib/listing-description';
+import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, ChevronDown, FileText, HandCoins, Loader2, Lock, Pencil, Save } from "lucide-react";
@@ -90,13 +90,14 @@ export default function EditListingPage() {
             saveFailed: "Không thể lưu thay đổi.",
             saved: "Đã cập nhật listing",
             unavailable: "Chỉ listing bán ngay đang hoạt động mới có thể chỉnh sửa.",
-            descriptionMin: "Mô tả cần ít nhất 100 ký tự.",
+            descriptionMin: `Mô tả cần ít nhất ${DESCRIPTION_MIN} ký tự.`,
+            descriptionMax: `Mô tả không được quá ${DESCRIPTION_MAX} ký tự.`,
             identityTitle: "Thông tin nhận dạng (chỉ đọc)",
             contentSection: "Nội dung bài đăng",
             commercialSection: "Giá và offer",
             lockedWarning: "Để bảo vệ buyer, ảnh và thông tin nhận dạng thẻ không thể thay đổi sau khi đăng. Nếu thông tin này sai, hãy đóng listing và đăng lại.",
             openOfferWarning: "Listing đang có offer chờ xử lý. Giá và cài đặt offer được khóa cho đến khi offer được xử lý.",
-            legacyDescription: "Mô tả cũ ngắn hơn vẫn được giữ nguyên. Nếu thay đổi, mô tả mới phải đủ 100 ký tự.",
+            legacyDescription: `Mô tả cũ ngắn hơn vẫn được giữ nguyên. Nếu thay đổi, mô tả mới phải đủ ${DESCRIPTION_MIN} ký tự.`,
             category: "Danh mục", condition: "Tình trạng", publisher: "Nhà phát hành", set: "Set / Bộ thẻ",
             season: "Mùa", grading: "Grading", finish: "Biến thể / Finish", cardNumber: "Số thẻ",
             language: "Ngôn ngữ", quantity: "Số lượng", listingType: "Loại listing", unknown: "Chưa có",
@@ -117,13 +118,14 @@ export default function EditListingPage() {
                 saveFailed: "変更を保存できません。",
                 saved: "出品を更新しました",
                 unavailable: "有効な即時販売の出品のみ編集できます。",
-                descriptionMin: "説明は100文字以上必要です。",
+                descriptionMin: `説明は${DESCRIPTION_MIN}文字以上必要です。`,
+                descriptionMax: `説明は${DESCRIPTION_MAX}文字以内にしてください。`,
                 identityTitle: "カード識別情報（読み取り専用）",
                 contentSection: "出品内容",
                 commercialSection: "価格とオファー",
                 lockedWarning: "購入者保護のため、出品後は画像とカード識別情報を変更できません。誤りがある場合は出品を終了し、再出品してください。",
                 openOfferWarning: "未処理のオファーがあるため、価格とオファー設定は処理完了までロックされます。",
-                legacyDescription: "短い旧説明はそのまま保存できます。変更する場合は100文字以上が必要です。",
+                legacyDescription: `短い旧説明はそのまま保存できます。変更する場合は${DESCRIPTION_MIN}文字以上が必要です。`,
                 category: "カテゴリー", condition: "状態", publisher: "メーカー", set: "セット",
                 season: "シーズン", grading: "グレーディング", finish: "バリエーション / Finish", cardNumber: "カード番号",
                 language: "言語", quantity: "数量", listingType: "出品タイプ", unknown: "未設定",
@@ -143,13 +145,14 @@ export default function EditListingPage() {
                 saveFailed: "Unable to save changes.",
                 saved: "Listing updated",
                 unavailable: "Only active Buy Now listings can be edited.",
-                descriptionMin: "Description must be at least 100 characters.",
+                descriptionMin: `Description must be at least ${DESCRIPTION_MIN} characters.`,
+                descriptionMax: `Description must be at most ${DESCRIPTION_MAX} characters.`,
                 identityTitle: "Card identity (read-only)",
                 contentSection: "Listing content",
                 commercialSection: "Price and offers",
                 lockedWarning: "To protect buyers, images and card identity cannot be changed after publishing. If these details are wrong, close the listing and create a new one.",
                 openOfferWarning: "This listing has an open offer. Price and offer settings are locked until the offer is resolved.",
-                legacyDescription: "A shorter legacy description may remain unchanged. If edited, the new description must contain at least 100 characters.",
+                legacyDescription: `A shorter legacy description may remain unchanged. If edited, the new description must contain at least ${DESCRIPTION_MIN} characters.`,
                 category: "Category", condition: "Condition", publisher: "Publisher", set: "Set",
                 season: "Season", grading: "Grading", finish: "Variant / Finish", cardNumber: "Card number",
                 language: "Language", quantity: "Quantity", listingType: "Listing type", unknown: "Not specified",
@@ -191,6 +194,10 @@ export default function EditListingPage() {
         const descriptionChanged = description.trim() !== originalDescription.trim();
         if (descriptionChanged && description.trim().length < DESCRIPTION_MIN) {
             toast({ variant: "destructive", title: copy.saveFailed, description: copy.descriptionMin });
+            return;
+        }
+        if (description.trim().length > DESCRIPTION_MAX) {
+            toast({ variant: "destructive", title: copy.saveFailed, description: copy.descriptionMax });
             return;
         }
         setIsSaving(true);
@@ -376,13 +383,13 @@ export default function EditListingPage() {
                                             </div>
                                             <div className="space-y-2">
                                                 <Label htmlFor="listing-description" className="text-sm font-medium">{copy.description}</Label>
-                                                <Textarea id="listing-description" value={description} onChange={event => setDescription(event.target.value)} maxLength={5000} required className="min-h-44 resize-y bg-background/60" />
+                                                <Textarea id="listing-description" value={description} onChange={event => setDescription(event.target.value)} maxLength={DESCRIPTION_MAX} required className="min-h-44 resize-y bg-background/60" />
                                                 <div className="flex items-start justify-between gap-3 text-xs">
                                                     {originalDescription.trim().length < DESCRIPTION_MIN && description.trim() === originalDescription.trim() ? (
                                                         <p className="leading-relaxed text-amber-300">{copy.legacyDescription}</p>
                                                     ) : <span />}
                                                     <p className={`shrink-0 rounded-full px-2 py-0.5 ${description.trim().length < DESCRIPTION_MIN ? 'bg-white/5 text-muted-foreground' : 'bg-green-500/10 text-green-400'}`}>
-                                                        {description.trim().length}/{DESCRIPTION_MIN}
+                                                        {description.trim().length}/{DESCRIPTION_MAX}
                                                     </p>
                                                 </div>
                                             </div>
@@ -429,7 +436,7 @@ export default function EditListingPage() {
                                     <div className="flex flex-col-reverse gap-3 rounded-2xl border border-white/10 bg-background/35 p-4 sm:flex-row sm:items-center sm:justify-end">
                                         <Button type="button" variant="outline" className="min-w-28" onClick={() => router.back()}>{copy.cancel}</Button>
                                         <Button type="submit" loading={isSaving} className="min-w-40 bg-orange-500 text-white shadow-lg shadow-orange-500/15 hover:bg-orange-600">
-                                            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                                            {isSaving ? null : <Save className="mr-2 h-4 w-4" />}
                                             {copy.save}
                                         </Button>
                                     </div>

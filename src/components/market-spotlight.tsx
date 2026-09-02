@@ -2397,7 +2397,7 @@ export function MarketSpotlight() {
                                     onClick={() => fetchFeaturedProduct()}
                                     className="h-6 px-2 text-gray-400 hover:text-white"
                                 >
-                                    <ArrowsClockwise className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
+                                    <ArrowsClockwise className="w-3 h-3" />
                                 </Button>
                             </div>
 
@@ -2555,7 +2555,6 @@ export function MarketSpotlight() {
                                 >
                                     {isAddingToCollection ? (
                                         <>
-                                            <SpinnerGap className="h-5 w-5 animate-spin" weight="bold" />
                                             {t('adding_to_collection')}
                                         </>
                                     ) : addedToCollection ? (

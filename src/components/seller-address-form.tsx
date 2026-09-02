@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useSupabase, useUser } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { useLocalization } from '@/context/localization-context';
-import { Loader2, Save } from 'lucide-react';
+import { Save } from 'lucide-react';
 
 type SellerAddressFormProps = {
   /** Called after the address is successfully saved to the seller's profile. */
@@ -146,7 +146,7 @@ export function SellerAddressForm({ onSaved, submitLabel }: SellerAddressFormPro
         disabled={isSaving || !address}
         className="bg-orange-500 hover:bg-orange-600 text-white"
       >
-        {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+        {isSaving ? null : <Save className="h-4 w-4 mr-2" />}
         {submitLabel ?? copy.submit}
       </Button>
     </div>

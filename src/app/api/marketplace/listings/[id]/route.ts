@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
 
 type ListingRow = {
     id: string;
@@ -83,8 +84,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     // Grandfather legacy listings with short descriptions. They may update
     // other safe fields, but once the description itself changes it must meet
     // the current create-listing rule.
-    if (description.length > 5000 || (descriptionChanged && description.length < 300)) {
-        return NextResponse.json({ error: 'A changed description must contain 300-5000 characters' }, { status: 400 });
+    if (description.length > DESCRIPTION_MAX || (descriptionChanged && description.length < DESCRIPTION_MIN)) {
+        return NextResponse.json({ error: `A changed description must contain ${DESCRIPTION_MIN}-${DESCRIPTION_MAX} characters` }, { status: 400 });
     }
     if (!Number.isSafeInteger(price) || price < 1000) {
         return NextResponse.json({ error: 'Price must be at least 1.000đ' }, { status: 400 });
