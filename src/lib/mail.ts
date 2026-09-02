@@ -383,7 +383,7 @@ export async function sendWithdrawalSubmittedToAdmin(input: {
                 <div style="background:rgba(249,115,22,0.1); border:1px solid rgba(249,115,22,0.2); border-radius:8px; padding:16px; margin:20px 0;">
                     <p style="margin:0 0 8px; color:#fb923c;"><strong>Seller:</strong> ${input.sellerName} (${input.sellerEmail})</p>
                     <p style="margin:0 0 8px; color:#e4e4e7;"><strong>Yêu cầu:</strong> ${formatVND(input.amountRequested)}</p>
-                    <p style="margin:0 0 8px; color:#a1a1aa;"><strong>Phí 5%:</strong> ${formatVND(input.fee)}</p>
+                    <p style="margin:0 0 8px; color:#a1a1aa;"><strong>Phí nền tảng:</strong> ${formatVND(input.fee)}</p>
                     <p style="margin:0 0 8px; color:#4ade80;"><strong>Thực chuyển:</strong> ${formatVND(input.amountNet)}</p>
                     <p style="margin:0; color:#a1a1aa;"><strong>Tài khoản:</strong> ${input.bankName} ••••${input.bankAccountNumber.slice(-4)}</p>
                 </div>

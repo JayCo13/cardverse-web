@@ -263,7 +263,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       acceptAllOffers: 'すべてのオファーを受ける',
       nearOriginalPrice: '元値に近いオファーのみ',
       payoutNote: '売上に関する注意',
-      payoutNoteDesc: 'カードが売れると、売上はCardVerseHubウォレットに入ります。銀行口座への出金ごとに5%のプラットフォーム手数料が差し引かれます。',
+      payoutNoteDesc: 'カードが売れると、売上はCardVerseHubウォレットに入ります。銀行口座への出金ごとに8%のプラットフォーム手数料が差し引かれます。',
       usdConfirmTitle: '販売価格を確認 (VND換算)',
       usdConfirmDesc: 'USDで入力した価格は、換算後にVNDで出品されます:',
       editPrice: '価格を修正',
@@ -374,7 +374,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       acceptAllOffers: 'Nhận mọi offer',
       nearOriginalPrice: 'Chỉ nhận gần giá gốc',
       payoutNote: 'Lưu ý về tiền bán',
-      payoutNoteDesc: 'Khi bán được thẻ, tiền sẽ vào ví CardVerseHub của bạn. Mỗi lần rút tiền về tài khoản ngân hàng sẽ bị trừ 5% phí nền tảng. Bạn có thể cân nhắc mức giá để bù phần phí này.',
+      payoutNoteDesc: 'Khi bán được thẻ, tiền sẽ vào ví CardVerseHub của bạn. Mỗi lần rút tiền về tài khoản ngân hàng sẽ bị trừ 8% phí nền tảng. Bạn có thể cân nhắc mức giá để bù phần phí này.',
       usdConfirmTitle: 'Xác nhận giá bán (quy đổi sang VND)',
       usdConfirmDesc: 'Bạn nhập giá bằng USD. Thẻ sẽ được đăng bán với giá VND sau quy đổi:',
       editPrice: 'Sửa lại giá',
@@ -484,7 +484,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
     acceptAllOffers: 'Accept all offers',
     nearOriginalPrice: 'Only near original price',
     payoutNote: 'Seller payout note',
-    payoutNoteDesc: 'When a card sells, the money goes to your CardVerseHub wallet. Each withdrawal to a bank account has a 5% platform fee.',
+    payoutNoteDesc: 'When a card sells, the money goes to your CardVerseHub wallet. Each withdrawal to a bank account has an 8% platform fee.',
     usdConfirmTitle: 'Confirm sale price (converted to VND)',
     usdConfirmDesc: 'You entered a USD price. The card will be listed in VND after conversion:',
     editPrice: 'Edit price',
@@ -2438,7 +2438,7 @@ export default function CreateListingPage() {
           />
 
           {/* Seller payout fee notice — shown right before posting so the seller
-              factors the 5% withdrawal fee into their price. */}
+              factors the 8% withdrawal fee into their price. */}
           <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
             <div className="flex items-start gap-3">
               <HandCoins className="h-5 w-5 text-amber-400 mt-0.5 shrink-0" />

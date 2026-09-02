@@ -74,7 +74,10 @@ type HistoryCategory = 'all' | 'income' | 'expense' | 'withdrawal';
 const HISTORY_PAGE_SIZE = 10;
 
 const PRESET_AMOUNTS = [50000, 100000, 200000, 500000, 1000000, 2000000];
-const WITHDRAW_FEE_RATE = 0.05;
+// Mirrors request_wallet_withdrawal_impl in the database, which is what
+// actually charges the fee — this copy only previews it before submitting.
+// Both move together; see 20260902000200_withdrawal_fee_8_percent.sql.
+const WITHDRAW_FEE_RATE = 0.08;
 const MIN_WITHDRAW = 50000;
 
 type SellerBank = {
@@ -118,7 +121,7 @@ export default function WalletPage() {
       deposit: 'Nạp tiền',
       withdrawTitle: 'Rút tiền về ngân hàng',
       withdrawDesc: 'Dành cho người bán đã được duyệt KYC',
-      feeWarning: 'Mỗi lần rút bị trừ 5% phí nền tảng (trừ thẳng vào số tiền rút). Số tối thiểu mỗi lần rút là {amount}.',
+      feeWarning: 'Mỗi lần rút bị trừ 8% phí nền tảng (trừ thẳng vào số tiền rút). Số tối thiểu mỗi lần rút là {amount}.',
       bankAccount: 'Tài khoản nhận (theo KYC — không thể thay đổi)',
       bankAccountHint: 'Tiền chỉ được rút về đúng tài khoản ngân hàng bạn đã đăng ký KYC.',
       bankVerificationRequired: 'Tài khoản ngân hàng chưa được xác minh nên chưa thể rút tiền.',
@@ -126,7 +129,7 @@ export default function WalletPage() {
       withdrawPlaceholder: 'Nhập số tiền muốn rút (VND)...',
       withdraw: 'Rút tiền',
       withdrawAmount: 'Số tiền rút',
-      fee5: 'Phí 5%',
+      feeRate: 'Phí 8%',
       netAmount: 'Thực nhận',
       exceededBalance: 'Vượt quá số dư khả dụng.',
       insufficientVerifiedBalance: 'Số tiền này chưa được xác minh nguồn nên chưa thể rút.',
@@ -193,7 +196,7 @@ export default function WalletPage() {
         deposit: '入金する',
         withdrawTitle: '銀行口座へ出金',
         withdrawDesc: 'KYC承認済みの販売者向け',
-        feeWarning: '出金ごとに5%のプラットフォーム手数料が差し引かれます。最低出金額は{amount}です。',
+        feeWarning: '出金ごとに8%のプラットフォーム手数料が差し引かれます。最低出金額は{amount}です。',
         bankAccount: '受取口座（KYC登録口座・変更不可）',
         bankAccountHint: '出金先はKYCで登録した銀行口座に限定されます。',
         bankVerificationRequired: '銀行口座が未確認のため、まだ出金できません。',
@@ -201,7 +204,7 @@ export default function WalletPage() {
         withdrawPlaceholder: '出金金額を入力 (VND)...',
         withdraw: '出金する',
         withdrawAmount: '出金額',
-        fee5: '5%手数料',
+        feeRate: '8%手数料',
         netAmount: '受取額',
         exceededBalance: '利用可能残高を超えています。',
         insufficientVerifiedBalance: '資金源が未確認のため、この金額はまだ出金できません。',
@@ -267,7 +270,7 @@ export default function WalletPage() {
         deposit: 'Deposit',
         withdrawTitle: 'Withdraw to bank account',
         withdrawDesc: 'For KYC-approved sellers',
-        feeWarning: 'Each withdrawal is charged a 5% platform fee. The minimum withdrawal per request is {amount}.',
+        feeWarning: 'Each withdrawal is charged an 8% platform fee. The minimum withdrawal per request is {amount}.',
         bankAccount: 'Receiving account (from KYC — cannot be changed)',
         bankAccountHint: 'Funds can only be withdrawn to the bank account you registered during KYC.',
         bankVerificationRequired: 'Your bank account must be verified before you can withdraw.',
@@ -275,7 +278,7 @@ export default function WalletPage() {
         withdrawPlaceholder: 'Enter withdrawal amount (VND)...',
         withdraw: 'Withdraw',
         withdrawAmount: 'Withdrawal amount',
-        fee5: '5% fee',
+        feeRate: '8% fee',
         netAmount: 'Net received',
         exceededBalance: 'Exceeds available balance.',
         insufficientVerifiedBalance: 'This amount cannot be withdrawn until its funding source is verified.',
@@ -789,7 +792,7 @@ export default function WalletPage() {
           {withdrawNum > 0 && (
             <div className="rounded-lg border bg-accent/30 p-3 text-sm space-y-1">
               <div className="flex justify-between"><span className="text-muted-foreground">{copy.withdrawAmount}</span><span>{formatVND(withdrawNum)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">{copy.fee5}</span><span className="text-red-400">- {formatVND(withdrawFee)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">{copy.feeRate}</span><span className="text-red-400">- {formatVND(withdrawFee)}</span></div>
               <div className="flex justify-between border-t border-border/50 pt-1 font-semibold"><span>{copy.netAmount}</span><span className="text-green-400">{formatVND(withdrawNet)}</span></div>
               {withdrawNum > available && (
                 <p className="text-xs text-red-400 pt-1">{copy.exceededBalance}</p>
@@ -936,7 +939,7 @@ export default function WalletPage() {
                               </button>
                               {expanded && (
                                 <div className="border-t px-3 py-2 text-xs text-muted-foreground">
-                                  <p>{copy.withdrawAmount}: {formatVND(withdrawal.amount_requested)} · {copy.fee5}: {formatVND(withdrawal.fee)} · {copy.netAmount}: {formatVND(withdrawal.amount_net)}</p>
+                                  <p>{copy.withdrawAmount}: {formatVND(withdrawal.amount_requested)} · {copy.feeRate}: {formatVND(withdrawal.fee)} · {copy.netAmount}: {formatVND(withdrawal.amount_net)}</p>
                                   {withdrawal.rejection_reason && <p className="mt-1 text-red-400">{withdrawal.rejection_reason}</p>}
                                 </div>
                               )}
@@ -1016,7 +1019,7 @@ export default function WalletPage() {
                 <p>{copy.confirmWithdrawDesc}</p>
                 <div className="rounded-lg border bg-accent/40 p-3 text-foreground text-sm space-y-1">
                   <div className="flex justify-between"><span className="text-muted-foreground">{copy.withdrawAmount}</span><span>{formatVND(withdrawNum)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">{copy.fee5}</span><span className="text-red-400">- {formatVND(withdrawFee)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">{copy.feeRate}</span><span className="text-red-400">- {formatVND(withdrawFee)}</span></div>
                   <div className="flex justify-between border-t border-border/50 pt-1 font-semibold"><span>{copy.netAmount}</span><span className="text-green-400">{formatVND(withdrawNet)}</span></div>
                   {sellerBank && (
                     <p className="pt-2 text-xs text-muted-foreground">

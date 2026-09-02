@@ -11,7 +11,7 @@ import { translateRequest } from '@/lib/request-localization';
 import { walletCheckoutError } from '@/lib/wallet-checkout-error';
 import { sendOrderPlacedToBuyer, sendOrderPlacedToSeller } from '@/lib/mail';
 
-// Fee model: the 5% platform fee is charged once, at withdrawal — orders carry
+// Fee model: the 8% platform fee is charged once, at withdrawal — orders carry
 // platform_fee = 0 and the seller is credited the full amount on completion.
 const RESERVATION_MINUTES = 15; // How long a QR/PayOS checkout holds the card
 

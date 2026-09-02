@@ -9,7 +9,7 @@ import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link
 import { translateRequest } from '@/lib/request-localization';
 import { walletCheckoutError } from '@/lib/wallet-checkout-error';
 
-// Fee model: the 5% platform fee is charged ONCE, at withdrawal
+// Fee model: the 8% platform fee is charged ONCE, at withdrawal
 // (src/app/api/wallet/withdraw/route.ts). Orders carry platform_fee = 0; the
 // seller is credited the full amount when the order completes.
 // How long a card is held for an unpaid checkout before it self-releases back
