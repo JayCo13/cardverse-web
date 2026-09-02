@@ -4,7 +4,7 @@ import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, Tag, Ticket, Lightning } from '@phosphor-icons/react';
+import { ArrowRight, Storefront, Handshake, ShieldCheck } from '@phosphor-icons/react';
 import { useLocalization } from '@/context/localization-context';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 
@@ -89,29 +89,41 @@ export function HeroSection() {
             <div className="space-y-2 text-base md:text-lg text-white/80 uppercase tracking-widest">
               <p>{t('hero_subtitle_1')}</p>
               <p className="flex items-center gap-2">
-                <Tag className="h-5 w-5 text-highlight" />
+                <Storefront className="h-5 w-5 text-highlight" />
                 <span className="text-highlight">{t('hero_subtitle_2')}</span>
               </p>
               <p className="flex items-center gap-2">
-                <Ticket className="h-5 w-5 text-highlight" />
+                <Handshake className="h-5 w-5 text-highlight" />
                 <span className="text-highlight">{t('hero_subtitle_3')}</span>
               </p>
               <p className="flex items-center gap-2">
-                <Lightning className="h-5 w-5 text-highlight" weight="fill" />
+                <ShieldCheck className="h-5 w-5 text-highlight" weight="fill" />
                 <span className="text-highlight">{t('hero_subtitle_4')}</span>
               </p>
               <p>{t('hero_subtitle_5')}</p>
             </div>
-            <div className="pt-4 flex gap-4">
-              <Link href="/collection">
+            {/* The marketplace is the primary action now; the collection keeps
+                a place beside it because that page works for every visitor,
+                where /buy is still behind the beta curtain in middleware. */}
+            <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:gap-4">
+              <Link href="/buy" className="w-full sm:w-auto">
                 <Button
                   size="lg"
-                  className="bg-orange-500 hover:bg-orange-600 text-white border-none font-bold text-lg px-8 py-6 h-auto shadow-[0_0_15px_rgba(249,115,22,0.5)] hover:shadow-[0_0_25px_rgba(249,115,22,0.7)] transition-all duration-300 transform hover:scale-105 rounded-full"
+                  className="w-full bg-orange-500 hover:bg-orange-600 text-white border-none font-bold text-lg px-8 py-6 h-auto shadow-[0_0_15px_rgba(249,115,22,0.5)] hover:shadow-[0_0_25px_rgba(249,115,22,0.7)] transition-all duration-300 transform hover:scale-105 rounded-full sm:w-auto"
                 >
                   {t('explore_community')}
                   <div className="ml-2 bg-white/20 text-white rounded-full p-1">
                     <ArrowRight className="h-4 w-4" />
                   </div>
+                </Button>
+              </Link>
+              <Link href="/collection" className="w-full sm:w-auto">
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="w-full border-white/25 bg-white/5 text-white font-semibold text-lg px-8 py-6 h-auto rounded-full transition-all duration-300 hover:bg-white/10 hover:text-white sm:w-auto"
+                >
+                  {t('hero_secondary_cta')}
                 </Button>
               </Link>
             </div>
