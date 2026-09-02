@@ -40,7 +40,7 @@ export interface Card {
   sellerVerified?: boolean;
   sellerRating?: number | null;
   sellerReviewCount?: number | null;
-  buyerOfferStatus?: 'pending' | 'accepted' | 'rejected' | 'chosen' | null;
+  buyerOfferStatus?: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired' | null;
   isBundle?: boolean;
   bundleItems?: { title: string; price: number; publisher?: string; setName?: string; season?: string }[];
   acceptOffers?: boolean;

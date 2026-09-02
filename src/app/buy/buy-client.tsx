@@ -174,7 +174,7 @@ export default function BuyClient({ initialCards }: { initialCards: Card[] }) {
         if (user && cards.length > 0) {
           const offers = offersResult.data;
 
-          const latestOfferByCard = new Map<string, 'pending' | 'accepted' | 'rejected' | 'chosen'>();
+          const latestOfferByCard = new Map<string, 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired'>();
           (offers || []).forEach((offer: any) => {
             if (!latestOfferByCard.has(offer.card_id)) {
               latestOfferByCard.set(offer.card_id, offer.status);

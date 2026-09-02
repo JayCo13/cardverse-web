@@ -1,0 +1,38 @@
+# The scheduled half of two mechanisms that had none.
+#
+# Both endpoints already existed and both fail closed without CRON_SECRET, which
+# was never set — so neither had ever run. Reservations only lapsed when somebody
+# happened to load the buy page, and unshipped paid orders were never cancelled
+# at all.
+#
+# GitHub Actions rather than a Netlify scheduled function because this repo
+# already runs daily-sync.yml this way, so the mechanism is proven here.
+name: Marketplace cron
+
+on:
+  schedule:
+    # Every 30 minutes. The payment window is 24h and the reminder fires in the
+    # last 4, so half an hour of slack is well inside both.
+    # Avoids minute 0 — top-of-hour schedules are heavily delayed on Actions.
+    - cron: '13,43 * * * *'
+  workflow_dispatch:
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Accepted-offer payment window
+        run: |
+          curl -sS -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            --max-time 60 --fail-with-body \
+            https://cardversehub.com/api/cron/offer-payment-lifecycle
+          echo
+
+      - name: Paid orders the seller never shipped
+        run: |
+          curl -sS -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            --max-time 60 --fail-with-body \
+            https://cardversehub.com/api/cron/expire-unshipped-orders
+          echo

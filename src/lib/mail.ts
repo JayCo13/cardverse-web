@@ -304,6 +304,53 @@ export async function sendKycManualReviewToAdmin(input: {
     }
 }
 
+/**
+ * Tell a buyer their accepted offer is about to lose its card.
+ *
+ * Sent once, four hours before the window closes, and the penalty for missing
+ * the deadline only applies to buyers who got this — a deadline nobody was told
+ * about is not one they knowingly missed.
+ */
+export async function sendOfferPaymentReminder(input: {
+    to: string;
+    cardName: string;
+    offerId: string;
+    price: number;
+    deadline: string | null;
+}): Promise<boolean> {
+    try {
+        const transporter = createMailTransporter();
+        const from = getFromAddress();
+        const appUrl = getAppUrl();
+        const amount = `${new Intl.NumberFormat('vi-VN').format(Math.round(input.price))}đ`;
+        const closes = input.deadline
+            ? new Date(input.deadline).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+            : null;
+
+        await transporter.sendMail({
+            from,
+            to: input.to,
+            subject: `⏰ Sắp hết hạn thanh toán: ${input.cardName || 'thẻ bạn đã trả giá'}`,
+            html: buildTemplate(
+                '⏰ Thẻ của bạn sắp được trả lại chợ',
+                `<p style="color:#e4e4e7;">Người bán đã chấp nhận lời trả giá của bạn và đang giữ thẻ này. Nếu chưa thanh toán trước hạn, thẻ sẽ được đăng bán lại và điểm uy tín của bạn bị trừ.</p>
+                <div style="background:rgba(249,115,22,0.1);border:1px solid rgba(249,115,22,0.2);border-radius:8px;padding:16px;margin:20px 0;">
+                    <p style="margin:0;color:#fb923c;">🃏 <strong>Thẻ:</strong> ${escapeHtml(input.cardName || '')}</p>
+                    <p style="margin:8px 0 0;color:#e4e4e7;">💰 <strong>Số tiền:</strong> ${amount}</p>
+                    ${closes ? `<p style="margin:8px 0 0;color:#a1a1aa;">⏳ <strong>Hạn thanh toán:</strong> ${closes}</p>` : ''}
+                </div>
+                <div style="text-align:center;margin:24px 0;">
+                    <a href="${appUrl}/checkout?offerId=${encodeURIComponent(input.offerId)}" style="display:inline-block;background:#f97316;color:#fff;padding:12px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Thanh toán ngay →</a>
+                </div>`
+            ),
+        });
+        return true;
+    } catch (error) {
+        console.error('[Mail] Failed to send offer payment reminder:', error);
+        return false;
+    }
+}
+
 export async function sendWithdrawalSubmittedToAdmin(input: {
     sellerName: string;
     sellerEmail: string;

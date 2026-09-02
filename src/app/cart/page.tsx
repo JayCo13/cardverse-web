@@ -18,11 +18,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAuth } from "@/lib/supabase";
+import { useAuth, useSupabase } from "@/lib/supabase";
 import { useAuthModal } from "@/components/auth-modal";
 import { OrderTotalRow } from "@/components/order-total-row";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowRight, CreditCard, Eye, PackageCheck, ShieldCheck, ShoppingCart, Store, Trash2, Truck } from "lucide-react";
+import { ArrowRight, Clock, CreditCard, Eye, PackageCheck, ShieldCheck, ShoppingCart, Store, Trash2, Truck } from "lucide-react";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { getCategoryCode } from "@/lib/category-code";
 import { shopShippingRange, type ShopShippingFees } from "@/lib/shipping-fee";
@@ -70,6 +70,7 @@ const formatVND = (amount: number) =>
 export default function CartPage() {
   const router = useRouter();
   const { user, isLoading } = useAuth();
+  const supabase = useSupabase();
   const { setOpen: setAuthOpen } = useAuthModal();
   const { toast } = useToast();
   const { locale } = useLocalization();
@@ -79,6 +80,10 @@ export default function CartPage() {
       cartErrorTitle: "Lỗi giỏ hàng",
       removeError: "Không thể xóa sản phẩm",
       errorTitle: "Lỗi",
+      awaitingTitle: "Chờ thanh toán",
+      awaitingHint: "Người bán đã chấp nhận lời trả giá của bạn. Thẻ được giữ đến hạn dưới đây; quá hạn thẻ sẽ trở lại chợ và điểm uy tín của bạn bị trừ.",
+      awaitingPay: "Thanh toán ngay",
+      awaitingDeadline: "Giữ đến {when}",
       title: "Giỏ hàng",
       subtitle: "Kiểm tra thẻ trước khi thanh toán an toàn trên CardVerseHub.",
       continueShopping: "Tiếp tục mua",
@@ -125,6 +130,10 @@ export default function CartPage() {
         cartErrorTitle: "カートエラー",
         removeError: "商品を削除できません",
         errorTitle: "エラー",
+        awaitingTitle: "支払い待ち",
+        awaitingHint: "販売者があなたのオファーを承諾しました。下記の期限までカードを確保しています。期限を過ぎるとカードは出品に戻り、信頼スコアが下がります。",
+        awaitingPay: "今すぐ支払う",
+        awaitingDeadline: "{when} まで確保",
         title: "ショッピングカート",
         subtitle: "CardVerseHubで安全に支払う前にカードを確認してください。",
         continueShopping: "買い物を続ける",
@@ -170,6 +179,10 @@ export default function CartPage() {
         cartErrorTitle: "Cart error",
         removeError: "Unable to remove item",
         errorTitle: "Error",
+        awaitingTitle: "Awaiting payment",
+        awaitingHint: "The seller accepted your offer. The card is held until the deadline below; after that it returns to the marketplace and your trust score takes a hit.",
+        awaitingPay: "Pay now",
+        awaitingDeadline: "Held until {when}",
         title: "Shopping cart",
         subtitle: "Review your cards before paying safely on CardVerseHub.",
         continueShopping: "Continue shopping",
@@ -211,6 +224,21 @@ export default function CartPage() {
         cancel: "Cancel",
       };
   const [items, setItems] = useState<CartItem[]>([]);
+
+  /**
+   * Offers the seller accepted, which are not cart items and never were.
+   *
+   * Accepting an offer takes the card off the marketplace and reserves it, but
+   * the only route to paying was a button inside the chat drawer — so a buyer
+   * who closed the chat had nowhere to find it. This is the page they look on.
+   */
+  const [awaitingPayment, setAwaitingPayment] = useState<Array<{
+    id: string;
+    price: number;
+    cardName: string;
+    cardImage: string | null;
+    deadline: string | null;
+  }>>([]);
   const [isLoadingCart, setIsLoadingCart] = useState(true);
 
   // Shopee/TikTok-style selection: only checked items go to checkout.
@@ -246,6 +274,36 @@ export default function CartPage() {
     }
     void fetchCart();
   }, [fetchCart, isLoading, setAuthOpen, user]);
+
+  useEffect(() => {
+    if (!user) { setAwaitingPayment([]); return; }
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from('offers')
+        .select('id, price, cards!inner(name, image_url, reserved_until, status)')
+        .eq('buyer_id', user.id)
+        .eq('status', 'chosen')
+        .order('created_at', { ascending: false });
+      if (cancelled) return;
+      setAwaitingPayment(((data || []) as unknown as Array<{
+        id: string; price: number;
+        cards: { name: string; image_url: string | null; reserved_until: string | null; status: string } | null;
+      }>)
+        // A card the seller has since sold or delisted is not payable, and the
+        // sweep will close the offer shortly — showing it would invite a click
+        // into a checkout that cannot complete.
+        .filter((row) => row.cards?.status === 'in_transaction')
+        .map((row) => ({
+          id: row.id,
+          price: row.price,
+          cardName: row.cards?.name || '',
+          cardImage: row.cards?.image_url || null,
+          deadline: row.cards?.reserved_until || null,
+        })));
+    })();
+    return () => { cancelled = true; };
+  }, [user, supabase]);
 
   const availableItems = items.filter(item => item.cards?.status === "active" && item.cards?.listing_type === "sale");
   const unavailableItems = items.filter(item => !item.cards || item.cards.status !== "active" || item.cards.listing_type !== "sale");
@@ -373,6 +431,60 @@ export default function CartPage() {
           </div>
           <Button variant="outline" onClick={() => router.push("/buy")}>{copy.continueShopping}</Button>
         </div>
+
+        {/* Above the cart and outside its empty state on purpose: an accepted
+            offer is the most urgent thing on this page — it has a deadline the
+            cart items do not — and the case that sent buyers looking here was an
+            empty cart with a card held somewhere they could not see. */}
+        {awaitingPayment.length > 0 && (
+          <section className="mb-8 rounded-xl border border-orange-500/30 bg-orange-500/5 p-4 sm:p-5">
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-orange-400">
+              <Clock className="h-5 w-5 shrink-0" />
+              {copy.awaitingTitle}
+              <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-xs font-medium tabular-nums">
+                {awaitingPayment.length}
+              </span>
+            </h2>
+            <p className="mt-1.5 text-sm text-muted-foreground">{copy.awaitingHint}</p>
+
+            <div className="mt-4 space-y-3">
+              {awaitingPayment.map((offer) => (
+                <div
+                  key={offer.id}
+                  className="flex flex-col gap-3 rounded-lg border bg-card p-3 sm:flex-row sm:items-center"
+                >
+                  <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded bg-muted">
+                    {offer.cardImage && (
+                      <Image src={offer.cardImage} alt="" fill sizes="48px" className="object-cover" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">{offer.cardName}</p>
+                    <p className="text-sm font-semibold text-orange-400 tabular-nums">
+                      {new Intl.NumberFormat("vi-VN").format(offer.price)}đ
+                    </p>
+                    {offer.deadline && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {copy.awaitingDeadline.replace(
+                          "{when}",
+                          new Date(offer.deadline).toLocaleString(locale, {
+                            day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+                          }),
+                        )}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    className="w-full shrink-0 bg-orange-500 text-white hover:bg-orange-600 sm:w-auto"
+                    onClick={() => router.push(`/checkout?offerId=${offer.id}`)}
+                  >
+                    {copy.awaitingPay}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {isLoadingCart ? (
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">

@@ -13,7 +13,7 @@ type OfferRow = {
     buyer_id: string;
     price: number;
     message: string | null;
-    status: 'pending' | 'accepted' | 'rejected' | 'chosen';
+    status: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired';
     transaction_id: string | null;
     created_at: string;
 };
