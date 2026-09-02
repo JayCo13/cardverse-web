@@ -116,7 +116,7 @@ collection and has no catalog key). Two ways to identify the card:
 - **Back-compat**: on submit, `condition` is still set to a `"PSA 10"`-style string when graded, so any
   older UI that reads `condition` keeps working while the structured fields carry the truth.
 
-**Parts 3 & 4 — unchanged:** the price section (incl. the USD/VND toggle + 5% withdrawal-fee notice
+**Parts 3 & 4 — unchanged:** the price section (incl. the USD/VND toggle + 8% withdrawal-fee notice
 added earlier) and the images/description section are untouched.
 
 **Zod schema (`getFormSchema`)** — added `catalogProductId`, `catalogSoccerId`, `cardNumber`,
@@ -205,7 +205,7 @@ real agreed offer price.
    shows nothing (no error).
 5. Soccer: pick from the Soccer tab → `catalog_soccer_id` stored; completed order → `vn_card_sales` row
    with `catalog_soccer_id`.
-6. Regression: USD/VND toggle + confirm dialog + 5% withdrawal notice still work; bundles skip
+6. Regression: USD/VND toggle + confirm dialog + 8% withdrawal notice still work; bundles skip
    standardization.
 
 ## 6. Notes / follow-ups

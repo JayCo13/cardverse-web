@@ -29,6 +29,8 @@ const FINANCIAL_ERROR_KEYS: Record<string, TranslationKey> = {
   no_bundle_selection: 'financial_bundle_selection_required',
   bundle_item_unavailable: 'financial_bundle_item_unavailable',
   invalid_carrier: 'financial_invalid_carrier',
+  shipping_fee_not_configured: 'financial_shipping_fee_not_configured',
+  seller_shipping_configuration_missing: 'financial_shipping_fee_not_configured',
   missing_tracking: 'financial_missing_tracking',
   cancel_requires_provider_confirmation: 'financial_cancel_requires_provider_confirmation',
   transaction_not_found: 'financial_transaction_not_found',

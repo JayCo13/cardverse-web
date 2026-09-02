@@ -77,18 +77,62 @@ export const feeForTier = (tier: ShippingTier, fees: ShippingTierFees): number =
 /** Per-carrier tiered fees as stored on the shop: { "<carrier>": { intra, inter, region } }. */
 export type ShopShippingFees = Record<string, Partial<ShippingTierFees>>;
 
-/** Cheapest fee across the shop's carriers for a tier; null if none is set. */
+/**
+ * The bounds a seller-declared shipping fee must fall within.
+ *
+ * Strictly above zero: free shipping is not offered, and a stored 0 used to be
+ * indistinguishable from a seller who never filled the form — which is how a
+ * buyer reached a pay button the checkout route would then refuse. Strictly
+ * below 100.000đ because a card envelope never costs that much to send in
+ * Vietnam, so a larger number is a typo (a missed decimal, usually) rather than
+ * a price, and the buyer is the one who would pay for it.
+ *
+ * Every layer reads these: the shop form, the listing guard, and the server
+ * quote. Do not re-type the numbers.
+ */
+export const SHIPPING_FEE_MIN = 1;
+export const SHIPPING_FEE_MAX = 99_999;
+
+export const isValidShippingFee = (value: unknown): value is number =>
+  typeof value === 'number'
+  && Number.isSafeInteger(value)
+  && value >= SHIPPING_FEE_MIN
+  && value <= SHIPPING_FEE_MAX;
+
+/** Cheapest valid fee across the shop's carriers for a tier; null if none is set. */
 export const cheapestTierFee = (
   fees: ShopShippingFees | null | undefined,
   carriers: string[],
   tier: ShippingTier,
 ): number | null => {
   if (!fees) return null;
-  const values = carriers
-    .map((c) => fees[c]?.[tier])
-    .filter((v): v is number => typeof v === 'number' && v >= 0);
+  const values = carriers.map((c) => fees[c]?.[tier]).filter(isValidShippingFee);
   return values.length ? Math.min(...values) : null;
 };
+
+/**
+ * The carriers that can actually be quoted. 'self' is hand delivery: it has no
+ * fee table and `quoteConfiguredShipping` refuses it outright, so a shop that
+ * offers only 'self' is a shop nobody can check out from.
+ */
+export const shippableCarriers = (carriers: string[] | null | undefined): string[] =>
+  (carriers || []).filter((c) => typeof c === 'string' && c !== 'self');
+
+/**
+ * Can this shop be bought from at all?
+ *
+ * True only when a quotable carrier is enabled AND all three of its tier fees
+ * are present and inside the allowed range. A shop failing this cannot list,
+ * and its existing listings cannot be checked out — which is the honest answer,
+ * since the server would refuse to quote them anyway.
+ */
+export const hasUsableShipping = (
+  fees: ShopShippingFees | null | undefined,
+  carriers: string[] | null | undefined,
+): boolean =>
+  shippableCarriers(carriers).some((carrier) =>
+    (['intra', 'inter', 'region'] as const).every((tier) => isValidShippingFee(fees?.[carrier]?.[tier])),
+  );
 
 /** Full min–max span of the three tiers — used when the buyer's province is unknown. */
 export const shippingFeeRange = (fees: ShippingTierFees): { min: number; max: number } => {
@@ -106,7 +150,7 @@ export const shopShippingRange = (
     const f = fees?.[c];
     if (!f) return;
     [f.intra, f.inter, f.region].forEach((v) => {
-      if (typeof v === 'number' && v >= 0) values.push(v);
+      if (isValidShippingFee(v)) values.push(v);
     });
   });
   if (!values.length) return null;

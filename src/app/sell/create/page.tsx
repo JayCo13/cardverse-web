@@ -2,7 +2,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { DESCRIPTION_MIN } from '@/lib/listing-description';
+import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
+import { hasUsableShipping } from '@/lib/shipping-fee';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -14,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useLocalization } from '@/context/localization-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Upload, ShieldAlert, X, Loader2, Info, HandCoins, Plus, Trash2, Layers, MapPin, Sparkles } from 'lucide-react';
+import { Upload, ShieldAlert, X, Loader2, Info, HandCoins, Plus, Trash2, Layers, MapPin, Sparkles, Truck } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useSupabase, useUser } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
@@ -63,6 +64,7 @@ type LocaleCopy = {
   minStartingBid: string;
   minTicketPrice: string;
   descriptionMin: string;
+  descriptionMax: string;
   minImages: string;
   maxImages: string;
   enterPrice: string;
@@ -78,12 +80,16 @@ type LocaleCopy = {
   createdDesc: string;
   createErrorTitle: string;
   createErrorDesc: string;
+  shippingConfigTitle: string;
+  shippingConfigDesc: string;
   checkingSeller: string;
   checkingSellerDesc: string;
   kycNeeded: string;
   kycNeededDesc: string;
   addPickup: string;
   addPickupDesc: string;
+  addShipping: string;
+  addShippingDesc: string;
   saveAndContinue: string;
   missingTitle: string;
   missingDesc: string;
@@ -173,7 +179,8 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       minSalePrice: `最低販売価格は${MIN_MARKETPLACE_PRICE_VND.toLocaleString('ja-JP')} VNDです。`,
       minStartingBid: `最低開始価格は${MIN_MARKETPLACE_PRICE_VND.toLocaleString('ja-JP')} VNDです。`,
       minTicketPrice: `最低チケット価格は${MIN_MARKETPLACE_PRICE_VND.toLocaleString('ja-JP')} VNDです。`,
-      descriptionMin: '説明は100文字以上必要です。',
+      descriptionMin: `説明は${DESCRIPTION_MIN}文字以上必要です。`,
+      descriptionMax: `説明は${DESCRIPTION_MAX}文字以内にしてください。`,
       minImages: '画像を1枚以上アップロードしてください。',
       maxImages: '画像は最大4枚までです。',
       enterPrice: '販売価格を入力してください。',
@@ -189,10 +196,14 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       createdDesc: 'カードがマーケットに掲載されました。',
       createErrorTitle: 'エラー',
       createErrorDesc: '出品の作成中に問題が発生しました。',
+      shippingConfigTitle: '配送設定が未完了です',
+      shippingConfigDesc: '出品前に「出品」ページで配送業者と送料を設定してください。設定がないと購入者は決済できません。入力内容はこのまま残ります。',
       checkingSeller: '販売者権限を確認中',
       checkingSellerDesc: 'しばらくお待ちください。',
       kycNeeded: 'KYCが未承認です',
       kycNeededDesc: '出品する前にSellerページで本人確認を完了してください。',
+      addShipping: '配送設定を追加',
+      addShippingDesc: '出品ページで配送業者と送料を設定してください。設定がないと購入者は決済できません。手渡しのみでは足りず、配送業者が1つ以上必要です。',
       addPickup: '集荷住所を追加',
       addPickupDesc: '出品前に集荷住所を設定してください。購入者向けの送料計算に必要です。',
       saveAndContinue: '住所を保存して続行',
@@ -284,7 +295,8 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       minSalePrice: `Giá bán tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.`,
       minStartingBid: `Giá khởi điểm tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.`,
       minTicketPrice: `Giá vé tối thiểu là ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('vi-VN')}đ.`,
-      descriptionMin: 'Mô tả cần ít nhất 100 ký tự.',
+      descriptionMin: `Mô tả cần ít nhất ${DESCRIPTION_MIN} ký tự.`,
+      descriptionMax: `Mô tả không được quá ${DESCRIPTION_MAX} ký tự.`,
       minImages: 'Vui lòng tải lên ít nhất 1 ảnh.',
       maxImages: 'Tối đa 4 ảnh.',
       enterPrice: 'Vui lòng nhập giá bán.',
@@ -300,10 +312,14 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       createdDesc: 'Thẻ của bạn đã được đăng trên chợ.',
       createErrorTitle: 'Lỗi',
       createErrorDesc: 'Có lỗi khi tạo bài đăng.',
+      shippingConfigTitle: 'Chưa thiết lập vận chuyển',
+      shippingConfigDesc: 'Vào trang Bán chọn đơn vị vận chuyển và điền phí ship trước đã. Chưa có thì người mua không thanh toán được. Nội dung bạn vừa nhập vẫn còn nguyên.',
       checkingSeller: 'Đang kiểm tra quyền người bán',
       checkingSellerDesc: 'Vui lòng đợi trong giây lát.',
       kycNeeded: 'Bạn chưa được duyệt KYC',
       kycNeededDesc: 'Hoàn tất xác minh ở trang Seller để bắt đầu đăng bán.',
+      addShipping: 'Thiết lập vận chuyển',
+      addShippingDesc: 'Vào trang Bán chọn đơn vị vận chuyển và điền phí ship trước đã. Chưa có thì người mua không thanh toán được. Chọn mỗi Tự giao / Gặp mặt là chưa đủ, cần ít nhất 1 đơn vị vận chuyển.',
       addPickup: 'Thêm địa chỉ lấy hàng',
       addPickupDesc: 'Trước khi đăng bán, vui lòng thiết lập địa chỉ lấy hàng của bạn. Chúng tôi cần địa chỉ này để tính cước phí vận chuyển cho người mua.',
       saveAndContinue: 'Lưu địa chỉ & tiếp tục',
@@ -394,7 +410,8 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
     minSalePrice: `Minimum sale price is ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('en-US')} VND.`,
     minStartingBid: `Minimum starting bid is ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('en-US')} VND.`,
     minTicketPrice: `Minimum ticket price is ${MIN_MARKETPLACE_PRICE_VND.toLocaleString('en-US')} VND.`,
-    descriptionMin: 'Description must be at least 100 characters.',
+    descriptionMin: `Description must be at least ${DESCRIPTION_MIN} characters.`,
+    descriptionMax: `Description must be at most ${DESCRIPTION_MAX} characters.`,
     minImages: 'Please upload at least 1 image.',
     maxImages: 'Maximum 4 images.',
     enterPrice: 'Please enter a sale price.',
@@ -410,10 +427,14 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
     createdDesc: 'Your card has been listed on the marketplace.',
     createErrorTitle: 'Error',
     createErrorDesc: 'There was a problem creating your listing.',
+    shippingConfigTitle: 'Shipping is not set up',
+    shippingConfigDesc: 'Set your carriers and fees on the Sell page first. Without them buyers cannot check out. What you have entered here is kept.',
     checkingSeller: 'Checking seller access',
     checkingSellerDesc: 'Please wait a moment.',
     kycNeeded: 'KYC has not been approved',
     kycNeededDesc: 'Complete verification on the Seller page before listing cards.',
+    addShipping: 'Set up shipping',
+    addShippingDesc: 'Go to the Sell page and pick your carriers and fees first. Without them buyers cannot check out. Hand delivery on its own is not enough; you need at least one carrier.',
     addPickup: 'Add pickup address',
     addPickupDesc: 'Before listing, set your pickup address. We need it to calculate shipping fees for buyers.',
     saveAndContinue: 'Save address & continue',
@@ -580,7 +601,7 @@ const getFormSchema = (copy: LocaleCopy) => z.object({
     (a) => a ? parseInt(z.string().parse(a), 10) : undefined,
     z.number().positive().optional()
   ),
-  description: z.string().min(DESCRIPTION_MIN, { message: copy.descriptionMin }),
+  description: z.string().min(DESCRIPTION_MIN, { message: copy.descriptionMin }).max(DESCRIPTION_MAX, { message: copy.descriptionMax }),
   images: z.array(z.instanceof(File)).min(1, copy.minImages).max(4, copy.maxImages),
   // Offer settings
   acceptOffers: z.boolean().default(false),
@@ -653,6 +674,7 @@ export default function CreateListingPage() {
   const [isCheckingSellerAccess, setIsCheckingSellerAccess] = useState(true);
   const [hasSellerAccess, setHasSellerAccess] = useState(false);
   const [hasPickupAddress, setHasPickupAddress] = useState(false);
+  const [hasShippingConfig, setHasShippingConfig] = useState(false);
   const supabase = useSupabase();
 
   const copy = getLocaleCopy(locale);
@@ -887,13 +909,18 @@ export default function CreateListingPage() {
 
         // Approved sellers must have a pickup address on file before listing,
         // otherwise we can't calculate shipping fees for buyers.
+        // Both halves of shipping are required before listing: where the
+        // parcel is collected, and what the buyer is charged to receive it.
+        // The API enforces the same two, so failing here saves the seller
+        // filling in the whole form only to be refused at the end.
         const { data: profile } = await supabase
           .from('profiles')
-          .select('address_district_id, address_ward_code')
+          .select('address_district_id, address_ward_code, shipping_carriers, shipping_fees')
           .eq('id', user.id)
           .single();
         const p = profile as Record<string, any> | null;
         setHasPickupAddress(!!(p?.address_district_id && p?.address_ward_code));
+        setHasShippingConfig(hasUsableShipping(p?.shipping_fees, p?.shipping_carriers));
       } catch {
         setHasSellerAccess(false);
         router.replace('/sell');
@@ -1327,6 +1354,13 @@ export default function CreateListingPage() {
       });
       const data = await res.json();
       if (!res.ok) {
+        // Shipping is configured on /sell, not here, and the form the seller
+        // just filled in is worth keeping — say what is missing and leave them
+        // on the page rather than redirecting away from their work.
+        if (data.code === 'MISSING_SHIPPING_CONFIG') {
+          toast({ variant: 'destructive', title: copy.shippingConfigTitle, description: copy.shippingConfigDesc });
+          return;
+        }
         throw new Error(data.error || 'Failed to create listing');
       }
 
@@ -1399,6 +1433,24 @@ export default function CreateListingPage() {
               submitLabel={copy.saveAndContinue}
               onSaved={() => setHasPickupAddress(true)}
             />
+          </div>
+        </div>
+      );
+    }
+
+    // Carriers and fees are the other half. The form is long, so refusing here
+    // beats letting a seller fill all of it and rejecting the submit — which is
+    // what the API would otherwise do. Configured on /sell, not inline, because
+    // it is a shop-wide setting rather than a per-listing one.
+    if (!hasShippingConfig) {
+      return (
+        <div className="space-y-6 py-4">
+          <div className="flex flex-col items-center text-center">
+            <div className="h-14 w-14 rounded-full bg-orange-500/10 flex items-center justify-center mb-3">
+              <Truck className="h-7 w-7 text-orange-500" />
+            </div>
+            <h2 className="text-2xl font-semibold mb-1">{copy.addShipping}</h2>
+            <p className="text-muted-foreground max-w-md">{copy.addShippingDesc}</p>
           </div>
         </div>
       );
@@ -2418,7 +2470,7 @@ export default function CreateListingPage() {
                   </Button>
                 </div>
                 <FormControl>
-                  <Textarea placeholder={t('description_placeholder')} rows={6} {...field} />
+                  <Textarea placeholder={t('description_placeholder')} rows={6} maxLength={DESCRIPTION_MAX} {...field} />
                 </FormControl>
                 <p className="text-xs text-muted-foreground">
                   {locale === 'vi-VN'
@@ -2429,8 +2481,8 @@ export default function CreateListingPage() {
                 </p>
                 <div className="flex items-center justify-between">
                   <FormMessage />
-                  <span className={`ml-auto text-xs ${(field.value?.length || 0) < 300 ? 'text-muted-foreground' : 'text-green-500'}`}>
-                    {field.value?.length || 0}/{DESCRIPTION_MIN}
+                  <span className={`ml-auto text-xs ${(field.value?.length || 0) < DESCRIPTION_MIN ? 'text-muted-foreground' : 'text-green-500'}`}>
+                    {field.value?.length || 0}/{DESCRIPTION_MAX}
                   </span>
                 </div>
               </FormItem>
@@ -2451,7 +2503,6 @@ export default function CreateListingPage() {
 
           <div className="flex justify-end pt-4">
             <Button size="lg" type="submit" loading={isSubmitting || isProcessingImages}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {t('create_listing_button')}
             </Button>
           </div>

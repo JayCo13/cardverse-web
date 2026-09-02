@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { ArrowLeft, Truck, MapPin, CreditCard, Clock, Package, User, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import { ArrowLeft, Truck, MapPin, CreditCard, Clock, Package, User, CheckCircle, AlertTriangle } from 'lucide-react';
 import { useLocalization } from '@/context/localization-context';
 import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { useToast } from '@/hooks/use-toast';
@@ -342,7 +342,7 @@ export default function OrderDetailsPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirm(null)} disabled={acting}>{tx('Huỷ', 'Cancel', 'キャンセル')}</Button>
             <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => confirm && runAction(confirm.action, confirm.extra)} disabled={acting}>
-              {acting ? <Loader2 className="h-4 w-4 animate-spin" /> : tx('Xác nhận', 'Confirm', '確認')}
+              {tx('Xác nhận', 'Confirm', '確認')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -375,7 +375,7 @@ export default function OrderDetailsPage() {
               disabled={acting || (order?.metadata?.shipping_carrier !== 'self' && !trackingInput.trim())}
               onClick={() => runAction('ship', { shipping_provider: order?.metadata?.shipping_carrier, tracking_number: trackingInput.trim() })}
             >
-              {acting ? <Loader2 className="h-4 w-4 animate-spin" /> : tx('Giao hàng', 'Ship', '発送')}
+              {tx('Giao hàng', 'Ship', '発送')}
             </Button>
           </DialogFooter>
         </DialogContent>

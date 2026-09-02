@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { User, Camera, Save, ArrowLeft, Lock, Crown, MapPin, Activity, Zap, Truck, Phone, CheckCircle, Loader2, Package } from "lucide-react";
+import { User, Camera, Save, ArrowLeft, Lock, Crown, MapPin, Activity, Zap, Truck, Phone, CheckCircle, Package } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useAuthModal } from "@/components/auth-modal";
@@ -549,7 +549,7 @@ export default function EditProfilePage() {
                                         <div className="flex justify-end pt-4 border-t border-border">
                                             <Button type="submit" loading={isSaving} className="min-w-[140px]">
                                                 {isSaving ? (
-                                                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> {copy.saving}</>
+                                                    <>{copy.saving}</>
                                                 ) : (
                                                     <><Save className="w-4 h-4 mr-2" /> {copy.saveChanges}</>
                                                 )}

@@ -978,7 +978,7 @@ export default function OrdersPage() {
               onClick={() => handleAction(shipDialog.orderId, 'ship', { shipping_provider: shipCarrier, tracking_number: shipTracking.trim() })}
               disabled={!shipCarrier || (shipCarrier !== 'self' && !shipTracking.trim()) || actionLoading === shipDialog.orderId}
             >
-              {actionLoading === shipDialog.orderId ? <Loader2 className="h-4 w-4 animate-spin" /> : copy.shipOrder}
+              {copy.shipOrder}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1003,7 +1003,7 @@ export default function OrdersPage() {
               onClick={() => handleAction(disputeDialog.orderId, 'dispute', { dispute_reason: disputeReason })}
               disabled={!disputeReason || actionLoading === disputeDialog.orderId}
             >
-              {actionLoading === disputeDialog.orderId ? <Loader2 className="h-4 w-4 animate-spin" /> : copy.submitDispute}
+              {copy.submitDispute}
             </Button>
           </DialogFooter>
         </DialogContent>

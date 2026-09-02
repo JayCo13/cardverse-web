@@ -296,11 +296,26 @@ export async function POST(request: NextRequest) {
         item.shippingFee = 0;
         continue;
       }
-      item.shippingFee = await quoteCheapestConfiguredShipping({
-        sellerId,
-        toProvinceId: Number(body.to_province_id),
-        toProvinceName: String(body.to_province_name),
-      });
+      // A seller who never configured shipping is a caller-visible condition,
+      // not a server fault: let it out as a 409 with a code the buyer's UI can
+      // translate, the way /api/marketplace/buy already does. Left uncaught it
+      // reached the outer handler with no `status` and surfaced as a bare 500.
+      try {
+        item.shippingFee = await quoteCheapestConfiguredShipping({
+          sellerId,
+          toProvinceId: Number(body.to_province_id),
+          toProvinceName: String(body.to_province_name),
+        });
+      } catch (shippingError) {
+        const code = shippingError instanceof Error ? shippingError.message : 'shipping_fee_not_configured';
+        return NextResponse.json(
+          {
+            error: 'The seller shipping fee is not configured for this address.',
+            code: code === 'seller_shipping_configuration_missing' ? code : 'shipping_fee_not_configured',
+          },
+          { status: 409 },
+        );
+      }
       sellersChargedShipping.add(sellerId);
     }
 

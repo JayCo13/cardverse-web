@@ -369,11 +369,7 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
               disabled={!canSubmit}
               className="bg-amber-500 font-bold text-white hover:bg-amber-600"
             >
-              {isSubmitting ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <CheckCircle className="mr-2 h-4 w-4" />
-              )}
+              {isSubmitting ? null : <CheckCircle className="mr-2 h-4 w-4" />}
               {latestRejectedOffer ? copy.resend : copy.send}
             </Button>
           )}

@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { AddressBook, type SavedAddress } from "@/components/address-book";
-import { resolveShippingTier, cheapestTierFee } from "@/lib/shipping-fee";
+import { resolveShippingTier, cheapestTierFee, shippableCarriers } from "@/lib/shipping-fee";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -18,7 +18,7 @@ import { OrderTotalRow } from "@/components/order-total-row";
 import { useToast } from "@/hooks/use-toast";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { getCategoryCode } from "@/lib/category-code";
-import { CreditCard, Loader2, PackageCheck, ShieldCheck, Truck, Wallet } from "lucide-react";
+import { CreditCard, PackageCheck, ShieldCheck, Truck, Wallet } from "lucide-react";
 import { useLocalization } from "@/context/localization-context";
 import { localizeFinancialApiError } from "@/lib/financial-api-errors";
 
@@ -89,6 +89,8 @@ export default function CheckoutPage() {
       ship: "Ship",
       calculating: "Đang tính...",
       chooseAddressForFee: "Chọn địa chỉ để tính",
+      sellerShippingMissing: "Người bán chưa thiết lập vận chuyển",
+      sellerShippingMissingHint: "Người bán này chưa chọn đơn vị vận chuyển và phí ship nên chưa đặt được. Bỏ thẻ của họ ra để thanh toán phần còn lại, hoặc nhắn cho họ.",
       ghnReady: "GHN ready",
       payment: "Thanh toán",
       walletPayos: "Ví / PayOS",
@@ -135,6 +137,8 @@ export default function CheckoutPage() {
         ship: "配送",
         calculating: "計算中...",
         chooseAddressForFee: "住所を選択して計算",
+        sellerShippingMissing: "販売者が配送設定を未完了",
+        sellerShippingMissingHint: "この販売者は配送業者と送料をまだ設定していないため、注文できません。この販売者の商品を外すと残りは決済できます。",
         ghnReady: "GHN対応",
         payment: "支払い",
         walletPayos: "ウォレット / PayOS",
@@ -180,6 +184,8 @@ export default function CheckoutPage() {
         ship: "Ship",
         calculating: "Calculating...",
         chooseAddressForFee: "Choose an address to calculate",
+        sellerShippingMissing: "Seller has not set up shipping",
+        sellerShippingMissingHint: "This seller has not picked carriers or fees yet, so the order cannot be placed. Remove their cards to pay for the rest, or message them.",
         ghnReady: "GHN ready",
         payment: "Payment",
         walletPayos: "Wallet / PayOS",
@@ -358,22 +364,32 @@ export default function CheckoutPage() {
 
       // Resolve the tier from seller vs buyer province, then charge the cheapest
       // carrier's fee for that tier ('self' / hand delivery is excluded).
-      const feeBySeller = new Map<string, number>();
+      //
+      // A seller with no usable table stays null rather than falling back to 0.
+      // Zero is a fee a seller can legitimately set (free shipping); silently
+      // inventing it for a seller who set nothing showed the buyer a total the
+      // checkout route would then refuse to honour.
+      const feeBySeller = new Map<string, number | null>();
       (data || []).forEach((p: any) => {
         const tier = resolveShippingTier(
           { provinceId: p.address_province_id, provinceName: p.address_province_name },
           { provinceId: address.province_id, provinceName: address.province_name },
         );
-        const carriers = (p.shipping_carriers || []).filter((c: string) => c !== 'self');
-        feeBySeller.set(p.id, cheapestTierFee(p.shipping_fees, carriers, tier) ?? 0);
+        feeBySeller.set(p.id, cheapestTierFee(p.shipping_fees, shippableCarriers(p.shipping_carriers), tier));
       });
 
+      // Shipping is charged once per seller, so only the first item of each
+      // seller carries the fee — but an unconfigured seller poisons every one of
+      // their rows, so `hasMissingFee` blocks the whole order rather than
+      // charging a partial one.
       const seenSeller = new Set<string>();
       const nextItems = currentItems.map(item => {
         const sid = item.card.sellerId;
+        const fee = feeBySeller.get(sid) ?? null;
+        if (fee === null) return { ...item, shippingFee: null };
         if (seenSeller.has(sid)) return { ...item, shippingFee: 0 };
         seenSeller.add(sid);
-        return { ...item, shippingFee: feeBySeller.get(sid) ?? 0 };
+        return { ...item, shippingFee: fee };
       });
       setItems(nextItems);
     } catch (error: any) {
@@ -515,7 +531,10 @@ export default function CheckoutPage() {
               <div className="rounded-xl border bg-card p-3 sm:p-5">
                 <h2 className="mb-4 px-1 text-lg font-semibold sm:px-0">{copy.products}</h2>
                 <div className="space-y-4">
-                  {sellerGroups.map(group => (
+                  {sellerGroups.map(group => {
+                    const groupBlocked = !!selectedAddress && !isLoadingFee
+                      && group.items.some(item => item.shippingFee === null);
+                    return (
                     <section key={group.id} className="overflow-hidden rounded-xl border border-zinc-800 bg-background/50">
                       <header className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/70 px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
                         <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-orange-500/15 text-[10px] font-bold text-orange-300 sm:h-8 sm:w-8 sm:text-xs">
@@ -531,14 +550,25 @@ export default function CheckoutPage() {
                         </span>
                       </header>
 
+                      {groupBlocked && (
+                        <p className="border-b border-red-500/25 bg-red-500/10 px-3 py-2.5 text-xs leading-relaxed text-red-300 sm:px-4">
+                          {copy.sellerShippingMissingHint}
+                        </p>
+                      )}
+
                       {group.items.map(item => {
+                        // A null fee means one of two different things: no
+                        // address chosen yet, or an address chosen and the
+                        // seller having no shipping table to quote from.
                         const shippingLabel = isLoadingFee
                           ? copy.calculating
                           : item.shippingFee !== null
                             ? item.shippingFee === 0
                               ? `${formatVND(0)} · ${copy.combinedShipping}`
                               : formatVND(item.shippingFee)
-                            : copy.chooseAddressForFee;
+                            : selectedAddress
+                              ? copy.sellerShippingMissing
+                              : copy.chooseAddressForFee;
 
                         return (
                           <article key={item.cartItemId || item.offerId || item.card.id} className="group flex gap-3 border-b border-zinc-800 px-3 py-3 last:border-b-0 sm:gap-0 sm:px-0 sm:py-0">
@@ -584,7 +614,8 @@ export default function CheckoutPage() {
                         );
                       })}
                     </section>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
@@ -642,7 +673,6 @@ export default function CheckoutPage() {
                   disabled={!canPay}
                   onClick={handlePay}
                 >
-                  {isPaying && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   {paymentMethod === "direct_payos" ? copy.payWithPayos : copy.pay}
                 </Button>
               </div>

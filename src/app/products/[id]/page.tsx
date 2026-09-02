@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
     ArrowLeft, TrendingUp, TrendingDown, DollarSign, Plus, Check,
-    Package, Tag, Sparkles, Star, Loader2
+    Package, Tag, Sparkles, Star
 } from "lucide-react";
 import Image from "next/image";
 import {
@@ -266,7 +266,7 @@ export default function ProductDetailsPage() {
                                     className={`mt-4 w-full gap-2 transition-all ${addedToCollection ? 'bg-green-600 hover:bg-green-700' : ''}`}
                                 >
                                     {isAddingToCollection ? (
-                                        <><Loader2 className="h-4 w-4 animate-spin" /> {t('adding_to_collection')}</>
+                                        <>{t('adding_to_collection')}</>
                                     ) : addedToCollection ? (
                                         <><Check className="h-4 w-4" /> {t('added_to_collection')}</>
                                     ) : (
