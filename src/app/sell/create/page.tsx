@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
 import { hasUsableShipping } from '@/lib/shipping-fee';
 import { useForm } from 'react-hook-form';
@@ -142,6 +142,9 @@ type LocaleCopy = {
   poolAddBtn: string;
   attrAssignPlaceholder: string;
   processingImages: string;
+  validatingListing: string;
+  uploadingListingImages: string;
+  creatingListing: string;
   imageUploadHint: string;
   imageReorderHint: string;
   coverImageBadge: string;
@@ -258,6 +261,9 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       poolAddBtn: '追加',
       attrAssignPlaceholder: '選択',
       processingImages: '画像を処理中...',
+      validatingListing: '入力内容を確認中...',
+      uploadingListingImages: '画像をアップロード中...',
+      creatingListing: '出品を作成中...',
       imageUploadHint: 'カード全体が収まる縦向きの写真がおすすめです。',
       imageReorderHint: 'ドラッグして並べ替え。最初の写真がカバーになります。',
       coverImageBadge: 'カバー',
@@ -374,6 +380,9 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       poolAddBtn: 'Thêm',
       attrAssignPlaceholder: 'Chọn',
       processingImages: 'Đang xử lý ảnh...',
+      validatingListing: 'Đang kiểm tra thông tin...',
+      uploadingListingImages: 'Đang tải ảnh lên...',
+      creatingListing: 'Đang tạo listing...',
       imageUploadHint: 'Nên upload ảnh chiều dọc, chụp trọn 4 góc thẻ để hiển thị đẹp nhất.',
       imageReorderHint: 'Kéo để sắp xếp lại thứ tự. Ảnh đầu tiên là ảnh bìa.',
       coverImageBadge: 'Ảnh bìa',
@@ -489,6 +498,9 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
     poolAddBtn: 'Add',
     attrAssignPlaceholder: 'Select',
     processingImages: 'Processing images...',
+    validatingListing: 'Checking listing details...',
+    uploadingListingImages: 'Uploading images...',
+    creatingListing: 'Creating listing...',
     imageUploadHint: 'Upload portrait photos with all four card corners visible for the best display.',
     imageReorderHint: 'Drag to reorder. The first photo is the cover.',
     coverImageBadge: 'Cover',
@@ -518,6 +530,23 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
  * per card from that pool — so bundle data stays normalized (no free text). */
 const BUNDLE_ATTR_KEYS = ['publisher', 'setName', 'season'] as const;
 type BundleAttrKey = (typeof BUNDLE_ATTR_KEYS)[number];
+
+const submissionFingerprint = (
+  values: Record<string, unknown>,
+  bundleItems: unknown,
+  bundlePools: unknown,
+) => JSON.stringify({
+  values: {
+    ...values,
+    images: Array.isArray(values.images)
+      ? values.images.map((file) => file instanceof File
+        ? { name: file.name, size: file.size, type: file.type, lastModified: file.lastModified }
+        : file)
+      : [],
+  },
+  bundleItems,
+  bundlePools,
+});
 type BundleAttrPools = Record<BundleAttrKey, string[]>;
 const EMPTY_BUNDLE_POOLS: BundleAttrPools = { publisher: [], setName: [], season: [] };
 
@@ -670,7 +699,15 @@ export default function CreateListingPage() {
   const { setOpen } = useAuthModal();
   const router = useRouter();
   const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStage, setSubmitStage] = useState<'idle' | 'validating' | 'uploading' | 'saving'>('idle');
+  const submitLockRef = useRef(false);
+  const listingAttemptRef = useRef<{
+    fingerprint: string;
+    idempotencyKey: string;
+    uploadedUrls?: string[];
+  } | null>(null);
+  const listingCreatedRef = useRef(false);
+  const isSubmitting = submitStage !== 'idle';
   const [isCheckingSellerAccess, setIsCheckingSellerAccess] = useState(true);
   const [hasSellerAccess, setHasSellerAccess] = useState(false);
   const [hasPickupAddress, setHasPickupAddress] = useState(false);
@@ -1218,8 +1255,8 @@ export default function CreateListingPage() {
     form.setValue('images', currentFiles, { shouldValidate: true });
   };
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    void submitListing(values);
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    await submitListing(values);
   }
 
   async function submitListing(values: z.infer<typeof formSchema>) {
@@ -1250,18 +1287,34 @@ export default function CreateListingPage() {
       }
     }
 
-    setIsSubmitting(true);
-
     try {
+      const fingerprint = submissionFingerprint(
+        values as unknown as Record<string, unknown>,
+        bundleItems,
+        bundlePools,
+      );
+      if (listingAttemptRef.current?.fingerprint !== fingerprint) {
+        listingAttemptRef.current = {
+          fingerprint,
+          idempotencyKey: crypto.randomUUID(),
+        };
+      }
+      const attempt = listingAttemptRef.current;
+
       // Upload all images directly browser → Cloudinary, in parallel.
       // (HEIC conversion + compression already happened at selection time.)
-      const signature = await getCloudinarySignature('cardverse/cards');
-      const uploadedUrls = await Promise.all(
-        values.images.map(async (image) => {
-          const { secureUrl } = await uploadImageDirectToCloudinary(image, signature);
-          return secureUrl;
-        })
-      );
+      setSubmitStage('uploading');
+      const uploadedUrls = attempt.uploadedUrls ?? await (async () => {
+        const signature = await getCloudinarySignature('cardverse/cards');
+        const urls = await Promise.all(
+          values.images.map(async (image) => {
+            const { secureUrl } = await uploadImageDirectToCloudinary(image, signature);
+            return secureUrl;
+          })
+        );
+        attempt.uploadedUrls = urls;
+        return urls;
+      })();
 
       // Back-compat: old UI reads `condition`, so graded cards keep the
       // "PSA 10"-style string while the structured fields carry the truth.
@@ -1288,8 +1341,7 @@ export default function CreateListingPage() {
           ? (values.freeSeason || '')
           : (values.season || '');
 
-      const cardData: any = {
-        seller_id: user.id,
+      const cardData: Record<string, unknown> = {
         name: values.name,
         category: values.category,
         condition: finalCondition,
@@ -1301,7 +1353,6 @@ export default function CreateListingPage() {
         set_name: resolvedSetName,
         season: resolvedSeason,
         quantity: values.isBundle ? bundleItems.filter(i => i.title.trim()).length : (values.quantity || 1),
-        status: 'active',
         // Canonical card identity for VN market pricing (null on bundles).
         catalog_product_id: values.isBundle ? null : (values.catalogProductId ?? null),
         catalog_soccer_id: values.isBundle ? null : (values.catalogSoccerId ?? null),
@@ -1347,9 +1398,13 @@ export default function CreateListingPage() {
         cardData.razz_entries = 0;
       }
 
+      setSubmitStage('saving');
       const res = await fetch('/api/marketplace/listings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': attempt.idempotencyKey,
+        },
         body: JSON.stringify(cardData),
       });
       const data = await res.json();
@@ -1369,19 +1424,55 @@ export default function CreateListingPage() {
         description: copy.createdDesc,
       });
 
+      listingAttemptRef.current = null;
+      listingCreatedRef.current = true;
       router.push('/buy');
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error creating listing: ", error);
       toast({
         variant: "destructive",
         title: copy.createErrorTitle,
-        description: error.message || copy.createErrorDesc,
+        description: error instanceof Error ? error.message : copy.createErrorDesc,
       });
-    } finally {
-      setIsSubmitting(false);
     }
   }
+
+  const handleInvalidSubmit = (errors: typeof form.formState.errors) => {
+    const missing = Object.keys(errors)
+      .map((key) => copy.fieldLabels[key] || key);
+    toast({
+      variant: 'destructive',
+      title: copy.missingTitle,
+      description: missing.length
+        ? copy.missingDesc.replace('{fields}', missing.join(', '))
+        : copy.missingFallback,
+    });
+    // Radix Select does not accept focus, so scroll to the first invalid field.
+    setTimeout(() => {
+      const el = document.querySelector('[aria-invalid="true"]');
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
+  };
+
+  const handleCreateSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (submitLockRef.current) return;
+
+    submitLockRef.current = true;
+    setSubmitStage('validating');
+    try {
+      await form.handleSubmit(onSubmit, handleInvalidSubmit)(event);
+    } finally {
+      // Once the server confirms creation, stay locked until navigation
+      // unmounts this page. Unlocking during a slow route transition would
+      // allow the same completed form to start a brand-new submission key.
+      if (!listingCreatedRef.current) {
+        submitLockRef.current = false;
+        setSubmitStage('idle');
+      }
+    }
+  };
 
   const renderContent = () => {
     if (!user) {
@@ -1458,22 +1549,7 @@ export default function CreateListingPage() {
 
     return (
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
-          const missing = Object.keys(errors)
-            .map((key) => copy.fieldLabels[key] || key);
-          toast({
-            variant: 'destructive',
-            title: copy.missingTitle,
-            description: missing.length
-              ? copy.missingDesc.replace('{fields}', missing.join(', '))
-              : copy.missingFallback,
-          });
-          // Radix Select không nhận focus nên cuộn thủ công tới ô lỗi đầu tiên.
-          setTimeout(() => {
-            const el = document.querySelector('[aria-invalid="true"]');
-            el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }, 50);
-        })} className="space-y-8">
+        <form onSubmit={handleCreateSubmit} className="space-y-8">
 
           {showCatalogIdentity && (
             <div className="space-y-3 p-4 rounded-xl border border-dashed border-orange-500/30 bg-orange-500/5">
@@ -2503,7 +2579,13 @@ export default function CreateListingPage() {
 
           <div className="flex justify-end pt-4">
             <Button size="lg" type="submit" loading={isSubmitting || isProcessingImages}>
-              {t('create_listing_button')}
+              {isProcessingImages || submitStage === 'uploading'
+                ? copy.uploadingListingImages
+                : submitStage === 'validating'
+                  ? copy.validatingListing
+                  : submitStage === 'saving'
+                    ? copy.creatingListing
+                    : t('create_listing_button')}
             </Button>
           </div>
         </form>

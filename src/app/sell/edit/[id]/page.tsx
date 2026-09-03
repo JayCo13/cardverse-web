@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useLocalization } from "@/context/localization-context";
@@ -66,10 +67,12 @@ export default function EditListingPage() {
     const [originalDescription, setOriginalDescription] = useState("");
     const [price, setPrice] = useState("");
     const [acceptOffers, setAcceptOffers] = useState(false);
-    const [minOfferPercent, setMinOfferPercent] = useState("0");
+    const [minOfferPercent, setMinOfferPercent] = useState(0);
     const [hasOpenOffers, setHasOpenOffers] = useState(false);
+    const [openOfferCount, setOpenOfferCount] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
+    const saveLockRef = useRef(false);
     // Only the phone layout uses this; the desktop sidebar shows the list outright.
     const [showLockedIdentity, setShowLockedIdentity] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -82,9 +85,11 @@ export default function EditListingPage() {
             description: "Mô tả",
             price: "Giá bán (VND)",
             offers: "Cho phép người mua trả giá",
-            minOfferPercent: "Mức offer tối thiểu (%)",
-            minOfferHint: "Buyer phải offer ít nhất theo tỷ lệ này so với giá bán.",
+            minOfferPercent: "Không nhận offer dưới",
+            acceptAllOffers: "Nhận mọi offer",
+            nearOriginalPrice: "Chỉ nhận gần giá gốc",
             save: "Lưu thay đổi",
+            saving: "Đang lưu...",
             cancel: "Huỷ",
             loadFailed: "Không thể tải listing này.",
             saveFailed: "Không thể lưu thay đổi.",
@@ -96,7 +101,9 @@ export default function EditListingPage() {
             contentSection: "Nội dung bài đăng",
             commercialSection: "Giá và offer",
             lockedWarning: "Để bảo vệ buyer, ảnh và thông tin nhận dạng thẻ không thể thay đổi sau khi đăng. Nếu thông tin này sai, hãy đóng listing và đăng lại.",
-            openOfferWarning: "Listing đang có offer chờ xử lý. Giá và cài đặt offer được khóa cho đến khi offer được xử lý.",
+            openOfferTitle: "Giá và cài đặt offer đang bị khóa",
+            openOfferWarning: "Listing này đang có offer chờ xử lý. Bạn vẫn có thể sửa tiêu đề và mô tả. Nếu các offer được từ chối, hủy hoặc hết hạn, giá và cài đặt offer sẽ được mở lại; nếu một offer được chấp nhận, listing sẽ chuyển sang giao dịch.",
+            viewOffers: "Xem và xử lý offer ({count})",
             legacyDescription: `Mô tả cũ ngắn hơn vẫn được giữ nguyên. Nếu thay đổi, mô tả mới phải đủ ${DESCRIPTION_MIN} ký tự.`,
             category: "Danh mục", condition: "Tình trạng", publisher: "Nhà phát hành", set: "Set / Bộ thẻ",
             season: "Mùa", grading: "Grading", finish: "Biến thể / Finish", cardNumber: "Số thẻ",
@@ -110,9 +117,11 @@ export default function EditListingPage() {
                 description: "説明",
                 price: "販売価格（VND）",
                 offers: "購入者からの価格交渉を許可",
-                minOfferPercent: "最低オファー率（%）",
-                minOfferHint: "オファーは販売価格に対してこの割合以上である必要があります。",
+                minOfferPercent: "この割合未満のオファーを受け付けない",
+                acceptAllOffers: "すべてのオファーを受け付ける",
+                nearOriginalPrice: "販売価格に近いオファーのみ",
                 save: "変更を保存",
+                saving: "保存中...",
                 cancel: "キャンセル",
                 loadFailed: "出品を読み込めません。",
                 saveFailed: "変更を保存できません。",
@@ -124,7 +133,9 @@ export default function EditListingPage() {
                 contentSection: "出品内容",
                 commercialSection: "価格とオファー",
                 lockedWarning: "購入者保護のため、出品後は画像とカード識別情報を変更できません。誤りがある場合は出品を終了し、再出品してください。",
-                openOfferWarning: "未処理のオファーがあるため、価格とオファー設定は処理完了までロックされます。",
+                openOfferTitle: "価格とオファー設定はロックされています",
+                openOfferWarning: "この出品には処理待ちのオファーがあります。タイトルと説明は引き続き編集できます。オファーが拒否、キャンセル、または期限切れになると設定が再び編集可能になり、承認された場合は取引に進みます。",
+                viewOffers: "オファーを確認・管理 ({count})",
                 legacyDescription: `短い旧説明はそのまま保存できます。変更する場合は${DESCRIPTION_MIN}文字以上が必要です。`,
                 category: "カテゴリー", condition: "状態", publisher: "メーカー", set: "セット",
                 season: "シーズン", grading: "グレーディング", finish: "バリエーション / Finish", cardNumber: "カード番号",
@@ -137,9 +148,11 @@ export default function EditListingPage() {
                 description: "Description",
                 price: "Sale price (VND)",
                 offers: "Allow buyers to make offers",
-                minOfferPercent: "Minimum offer (%)",
-                minOfferHint: "Buyers must offer at least this percentage of the sale price.",
+                minOfferPercent: "Do not accept offers below",
+                acceptAllOffers: "Accept all offers",
+                nearOriginalPrice: "Only near the asking price",
                 save: "Save changes",
+                saving: "Saving...",
                 cancel: "Cancel",
                 loadFailed: "Unable to load this listing.",
                 saveFailed: "Unable to save changes.",
@@ -151,7 +164,9 @@ export default function EditListingPage() {
                 contentSection: "Listing content",
                 commercialSection: "Price and offers",
                 lockedWarning: "To protect buyers, images and card identity cannot be changed after publishing. If these details are wrong, close the listing and create a new one.",
-                openOfferWarning: "This listing has an open offer. Price and offer settings are locked until the offer is resolved.",
+                openOfferTitle: "Price and offer settings are locked",
+                openOfferWarning: "This listing has an offer awaiting resolution. You can still edit its title and description. Price and offer settings unlock if the offers are rejected, cancelled, or expire; accepting one moves the listing into a transaction.",
+                viewOffers: "View and manage offers ({count})",
                 legacyDescription: `A shorter legacy description may remain unchanged. If edited, the new description must contain at least ${DESCRIPTION_MIN} characters.`,
                 category: "Category", condition: "Condition", publisher: "Publisher", set: "Set",
                 season: "Season", grading: "Grading", finish: "Variant / Finish", cardNumber: "Card number",
@@ -174,8 +189,9 @@ export default function EditListingPage() {
                 setOriginalDescription(nextDescription);
                 setPrice(String(next.price || ""));
                 setAcceptOffers(!!next.accept_offers);
-                setMinOfferPercent(String(next.min_offer_percent || 0));
+                setMinOfferPercent(Math.min(99, Math.max(0, next.min_offer_percent || 0)));
                 setHasOpenOffers(Boolean(payload.hasOpenOffers));
+                setOpenOfferCount(Number(payload.openOfferCount) || 0);
             } catch (loadError) {
                 if (!cancelled) setError(loadError instanceof Error ? loadError.message : copy.loadFailed);
             } finally {
@@ -190,7 +206,7 @@ export default function EditListingPage() {
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
-        if (!listing || isSaving) return;
+        if (!listing || saveLockRef.current) return;
         const descriptionChanged = description.trim() !== originalDescription.trim();
         if (descriptionChanged && description.trim().length < DESCRIPTION_MIN) {
             toast({ variant: "destructive", title: copy.saveFailed, description: copy.descriptionMin });
@@ -200,7 +216,9 @@ export default function EditListingPage() {
             toast({ variant: "destructive", title: copy.saveFailed, description: copy.descriptionMax });
             return;
         }
+        saveLockRef.current = true;
         setIsSaving(true);
+        let saved = false;
         try {
             const response = await fetch(`/api/marketplace/listings/${id}`, {
                 method: "PATCH",
@@ -210,12 +228,13 @@ export default function EditListingPage() {
                     description,
                     price: parsePrice(price),
                     acceptOffers,
-                    minOfferPercent: Number.parseFloat(minOfferPercent) || 0,
+                    minOfferPercent,
                 }),
             });
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || copy.saveFailed);
             toast({ title: copy.saved });
+            saved = true;
             router.push(`/cards/${id}`);
             router.refresh();
         } catch (saveError) {
@@ -225,7 +244,10 @@ export default function EditListingPage() {
                 description: saveError instanceof Error ? saveError.message : copy.saveFailed,
             });
         } finally {
-            setIsSaving(false);
+            if (!saved) {
+                saveLockRef.current = false;
+                setIsSaving(false);
+            }
         }
     };
 
@@ -300,12 +322,6 @@ export default function EditListingPage() {
                                         <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
                                         <p className="leading-relaxed">{copy.lockedWarning}</p>
                                     </div>
-                                    {hasOpenOffers && (
-                                        <div className="flex gap-3 rounded-xl border border-orange-500/30 bg-gradient-to-r from-orange-500/15 to-orange-500/5 p-4 text-sm text-orange-100 shadow-sm">
-                                            <Lock className="mt-0.5 h-5 w-5 shrink-0 text-orange-400" />
-                                            <p className="leading-relaxed">{copy.openOfferWarning}</p>
-                                        </div>
-                                    )}
                                 </div>
 
                                 {/* On a phone this stack collapses into one column, which
@@ -402,6 +418,25 @@ export default function EditListingPage() {
                                             {copy.commercialSection}
                                         </h3>
                                         <div className="space-y-4">
+                                            {hasOpenOffers && (
+                                                <div className="flex gap-3 rounded-xl border border-orange-500/35 bg-orange-500/10 p-4 text-sm shadow-sm" role="status">
+                                                    <Lock className="mt-0.5 h-5 w-5 shrink-0 text-orange-400" />
+                                                    <div className="space-y-1">
+                                                        <p className="font-semibold text-orange-200">{copy.openOfferTitle}</p>
+                                                        <p className="leading-relaxed text-muted-foreground">{copy.openOfferWarning}</p>
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => router.push(`/offers?view=received&cardId=${id}`)}
+                                                            className="mt-3 min-h-10 border-orange-500/40 text-orange-300 hover:bg-orange-500/10 hover:text-orange-200"
+                                                        >
+                                                            <HandCoins className="mr-1.5 h-4 w-4" />
+                                                            {copy.viewOffers.replace("{count}", String(openOfferCount))}
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            )}
                                             <div className="space-y-2">
                                                 <Label htmlFor="listing-price" className="text-sm font-medium">{copy.price}</Label>
                                                 <Input id="listing-price" value={formatPrice(price)} onChange={event => setPrice(event.target.value)} inputMode="numeric" disabled={hasOpenOffers} required className="h-12 bg-background/60 text-lg font-semibold" />
@@ -411,23 +446,29 @@ export default function EditListingPage() {
                                                 <Switch id="listing-offers" checked={acceptOffers} onCheckedChange={setAcceptOffers} disabled={hasOpenOffers} />
                                             </div>
                                             {acceptOffers && (
-                                                <div className="space-y-2 rounded-xl border border-orange-500/20 bg-orange-500/5 p-4">
-                                                    <Label htmlFor="listing-min-offer">{copy.minOfferPercent}</Label>
-                                                    <div className="relative">
-                                                        <Input
-                                                            id="listing-min-offer"
-                                                            type="number"
-                                                            min={0}
-                                                            max={100}
-                                                            step={1}
-                                                            value={minOfferPercent}
-                                                            onChange={event => setMinOfferPercent(event.target.value)}
-                                                            disabled={hasOpenOffers}
-                                                            className="h-11 bg-background/60 pr-10 font-semibold"
-                                                        />
-                                                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                                                <div className="space-y-3 rounded-xl border border-orange-500/20 bg-orange-500/5 p-4">
+                                                    <div className="flex items-center justify-between gap-4">
+                                                        <Label htmlFor="listing-min-offer" className="text-sm font-medium">{copy.minOfferPercent}</Label>
+                                                        <div className="flex items-center gap-1.5" aria-live="polite">
+                                                            <span className="text-2xl font-bold tabular-nums text-amber-500">{minOfferPercent}</span>
+                                                            <span className="text-sm font-semibold text-muted-foreground">%</span>
+                                                        </div>
                                                     </div>
-                                                    <p className="text-xs leading-relaxed text-muted-foreground">{copy.minOfferHint}</p>
+                                                    <Slider
+                                                        id="listing-min-offer"
+                                                        min={0}
+                                                        max={99}
+                                                        step={5}
+                                                        value={[minOfferPercent]}
+                                                        onValueChange={value => setMinOfferPercent(value[0])}
+                                                        disabled={hasOpenOffers}
+                                                        aria-label={copy.minOfferPercent}
+                                                        className="py-1 [&_[role=slider]]:border-amber-600 [&_[role=slider]]:bg-amber-500"
+                                                    />
+                                                    <div className="flex justify-between gap-4 text-[11px] text-muted-foreground">
+                                                        <span>{copy.acceptAllOffers}</span>
+                                                        <span className="text-right">{copy.nearOriginalPrice}</span>
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
@@ -437,7 +478,7 @@ export default function EditListingPage() {
                                         <Button type="button" variant="outline" className="min-w-28" onClick={() => router.back()}>{copy.cancel}</Button>
                                         <Button type="submit" loading={isSaving} className="min-w-40 bg-orange-500 text-white shadow-lg shadow-orange-500/15 hover:bg-orange-600">
                                             {isSaving ? null : <Save className="mr-2 h-4 w-4" />}
-                                            {copy.save}
+                                            {isSaving ? copy.saving : copy.save}
                                         </Button>
                                     </div>
                                 </div>

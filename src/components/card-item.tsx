@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Clock, Tag, Ticket, Hammer, Zap, Sparkles, Target, Trophy, Star, Gem, Crown, Pencil, User, HandCoins, ShoppingCart, ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
+import { Clock, Tag, Ticket, Hammer, Zap, Sparkles, Target, Trophy, Star, Gem, Crown, Pencil, User, HandCoins, ShoppingCart, ChevronLeft, ChevronRight, MoreHorizontal, BadgeCheck } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useLocalization } from "@/context/localization-context";
 import { useCurrency } from "@/contexts/currency-context";
@@ -610,7 +610,10 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                 </div>
               )}
               <div className="flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden text-[11px] md:block md:text-sm">
-                <p className="truncate font-semibold text-foreground">{card.sellerName || card.author}</p>
+                <p className="flex min-w-0 items-center gap-1 font-semibold text-foreground">
+                  <span className="truncate">{card.sellerName || card.author}</span>
+                  {card.sellerVerified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-orange-500 md:h-4 md:w-4" />}
+                </p>
                 <span className="text-muted-foreground md:hidden">·</span>
                 <p className="truncate text-muted-foreground md:text-xs">{sellerStatsText}</p>
               </div>

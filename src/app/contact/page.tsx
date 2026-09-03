@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 
 import { useLocalization } from "@/context/localization-context";
 import { Footer } from "@/components/layout/footer";
@@ -39,6 +39,7 @@ export default function ContactPage() {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitState, setSubmitState] = useState<'idle' | 'success' | 'error' | 'rate_limited' | 'invalid'>('idle');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitLockRef = useRef(false);
 
   const validate = (data: typeof formData): FieldErrors => {
     const next: FieldErrors = {};
@@ -86,7 +87,7 @@ export default function ContactPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmitting) return;
+    if (submitLockRef.current) return;
 
     const found = validate(formData);
     const firstInvalid = (Object.keys(found) as FieldName[]).find(field => found[field]);
@@ -98,6 +99,7 @@ export default function ContactPage() {
     }
 
     setErrors({});
+    submitLockRef.current = true;
     setIsSubmitting(true);
     setSubmitState('idle');
     // Send exactly what was validated, so trailing spaces cannot turn a valid
@@ -135,6 +137,7 @@ export default function ContactPage() {
     } catch {
       setSubmitState('error');
     } finally {
+      submitLockRef.current = false;
       setIsSubmitting(false);
     }
   };

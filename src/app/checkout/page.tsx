@@ -21,6 +21,7 @@ import { getCategoryCode } from "@/lib/category-code";
 import { CreditCard, PackageCheck, ShieldCheck, Truck, Wallet } from "lucide-react";
 import { useLocalization } from "@/context/localization-context";
 import { localizeFinancialApiError } from "@/lib/financial-api-errors";
+import { VerifiedSellerBadge } from "@/components/verified-seller-badge";
 
 type CheckoutItem = {
   cartItemId?: string;
@@ -35,6 +36,9 @@ type CheckoutItem = {
     sellerId: string;
     sellerName?: string | null;
     sellerAvatarUrl?: string | null;
+    sellerVerified?: boolean | null;
+  /** For a bundle offer: exactly which cards this payment buys. */
+  bundleSelection?: { title?: string; price?: number }[] | null;
     sellerPickup?: { districtId: number; wardCode: string } | null;
   };
   amount: number;
@@ -45,6 +49,7 @@ type CheckoutSellerGroup = {
   id: string;
   name: string;
   avatarUrl: string | null;
+  verified: boolean | null;
   items: CheckoutItem[];
 };
 
@@ -254,6 +259,7 @@ export default function CheckoutPage() {
           sellerId: item.cards.seller_id,
           sellerName: item.cards.profiles?.display_name,
           sellerAvatarUrl: item.cards.profiles?.profile_image_url || null,
+          sellerVerified: item.cards.profiles?.seller_verified ?? false,
           sellerPickup: item.cards.profiles?.address_district_id && item.cards.profiles?.address_ward_code
             ? {
               districtId: item.cards.profiles.address_district_id,
@@ -278,6 +284,7 @@ export default function CheckoutPage() {
         price,
         status,
         buyer_id,
+        bundle_selection,
         cards:card_id(
           id,
           name,
@@ -288,6 +295,7 @@ export default function CheckoutPage() {
           profiles:seller_id(
             display_name,
             profile_image_url,
+            seller_verified,
             address_district_id,
             address_ward_code
           )
@@ -314,6 +322,8 @@ export default function CheckoutPage() {
         sellerId: card.seller_id,
         sellerName: card.profiles?.display_name,
         sellerAvatarUrl: card.profiles?.profile_image_url || null,
+        sellerVerified: card.profiles?.seller_verified ?? false,
+        bundleSelection: Array.isArray(row.bundle_selection) ? row.bundle_selection : null,
         sellerPickup: card.profiles?.address_district_id && card.profiles?.address_ward_code
           ? {
             districtId: card.profiles.address_district_id,
@@ -425,6 +435,7 @@ export default function CheckoutPage() {
         id: item.card.sellerId,
         name: item.card.sellerName || copy.seller,
         avatarUrl: item.card.sellerAvatarUrl || null,
+        verified: item.card.sellerVerified ?? false,
         items: [item],
       });
     });
@@ -545,6 +556,7 @@ export default function CheckoutPage() {
                           )}
                         </div>
                         <span className="min-w-0 truncate text-sm font-medium sm:font-semibold">{group.name}</span>
+                        <VerifiedSellerBadge verified={group.verified} className="h-3.5 w-3.5" />
                         <span className="ml-auto shrink-0 rounded bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-medium text-orange-300 sm:rounded-md sm:px-2 sm:py-1 sm:text-xs">
                           {copy.cardVerseSeller}
                         </span>
@@ -590,6 +602,16 @@ export default function CheckoutPage() {
                                 <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300 sm:rounded-md sm:border sm:border-white/10 sm:bg-white/5 sm:text-xs sm:text-muted-foreground">Qty 1</span>
                                 {item.card.condition && <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300 sm:rounded-md sm:border sm:border-white/10 sm:bg-white/5 sm:text-xs sm:text-muted-foreground">{item.card.condition}</span>}
                               </div>
+                              {!!item.card.bundleSelection?.length && (
+                                <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+                                  {item.card.bundleSelection.map((bundleCard, i) => (
+                                    <li key={i} className="flex items-center justify-between gap-2">
+                                      <span className="truncate">{bundleCard.title || `#${i + 1}`}</span>
+                                      <span className="shrink-0">{formatVND(Number(bundleCard.price || 0))}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
                               <p className="mt-2 text-base font-bold text-orange-500 sm:hidden">{formatVND(item.amount)}</p>
                               <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground sm:mt-auto sm:gap-x-4 sm:pt-4 sm:text-xs">
                                 <span className="inline-flex items-center gap-1"><Truck className="h-3 w-3 text-orange-300 sm:h-3.5 sm:w-3.5" />{copy.shipping}: {shippingLabel}</span>

@@ -42,50 +42,47 @@ const getOwnListing = async (id: string) => {
     const listing = data as ListingRow;
     if (listing.seller_id !== user.id) return { error: 'Forbidden', status: 403 } as const;
 
-    const { count: openOfferCount, error: offerError } = await supabase
+    const { data: openOffers, error: offerError } = await supabase
         .from('offers')
-        .select('id', { count: 'exact', head: true })
+        .select('status')
         .eq('card_id', id)
         .in('status', ['pending', 'accepted', 'chosen']);
 
     if (offerError) return { error: 'Unable to check listing offers', status: 500 } as const;
 
-    return { supabase, listing, hasOpenOffers: (openOfferCount || 0) > 0 } as const;
+    const openOfferRows = (openOffers || []) as Array<{ status: string }>;
+    const openOfferCount = openOfferRows.length;
+    const pendingOfferCount = openOfferRows.filter(offer => offer.status === 'pending').length;
+    return { supabase, listing, hasOpenOffers: openOfferCount > 0, openOfferCount, pendingOfferCount } as const;
 };
 
 export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
     const { id } = await context.params;
     const result = await getOwnListing(id);
     if ('error' in result) return NextResponse.json({ error: result.error }, { status: result.status });
-    return NextResponse.json({ listing: result.listing, hasOpenOffers: result.hasOpenOffers });
+    return NextResponse.json({
+        listing: result.listing,
+        hasOpenOffers: result.hasOpenOffers,
+        openOfferCount: result.openOfferCount,
+        pendingOfferCount: result.pendingOfferCount,
+    });
 }
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+    const startedAt = performance.now();
     const { id } = await context.params;
-    const result = await getOwnListing(id);
-    if ('error' in result) return NextResponse.json({ error: result.error }, { status: result.status });
-
-    if (result.listing.status !== 'active' || result.listing.listing_type !== 'sale') {
-        return NextResponse.json({ error: 'Only active sale listings can be edited' }, { status: 409 });
-    }
-
     const body = await request.json();
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     const description = typeof body.description === 'string' ? body.description.trim() : '';
     const price = Number(body.price);
     const acceptOffers = body.acceptOffers;
     const minOfferPercent = Number(body.minOfferPercent ?? 0);
-    const originalDescription = (result.listing.description || '').trim();
-    const descriptionChanged = description !== originalDescription;
 
     if (name.length < 5 || name.length > 200) {
         return NextResponse.json({ error: 'Listing title must contain 5-200 characters' }, { status: 400 });
     }
-    // Grandfather legacy listings with short descriptions. They may update
-    // other safe fields, but once the description itself changes it must meet
-    // the current create-listing rule.
-    if (description.length > DESCRIPTION_MAX || (descriptionChanged && description.length < DESCRIPTION_MIN)) {
-        return NextResponse.json({ error: `A changed description must contain ${DESCRIPTION_MIN}-${DESCRIPTION_MAX} characters` }, { status: 400 });
+    if (description.length > DESCRIPTION_MAX) {
+        return NextResponse.json({ error: `Description must contain at most ${DESCRIPTION_MAX} characters` }, { status: 400 });
     }
     if (!Number.isSafeInteger(price) || price < 1000) {
         return NextResponse.json({ error: 'Price must be at least 1.000đ' }, { status: 400 });
@@ -93,42 +90,46 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     if (typeof acceptOffers !== 'boolean') {
         return NextResponse.json({ error: 'acceptOffers must be a boolean' }, { status: 400 });
     }
-    if (!Number.isFinite(minOfferPercent) || minOfferPercent < 0 || minOfferPercent > 100) {
+    if (!Number.isInteger(minOfferPercent) || minOfferPercent < 0 || minOfferPercent > 100) {
         return NextResponse.json({ error: 'minOfferPercent must be between 0 and 100' }, { status: 400 });
     }
 
-    const commercialTermsChanged =
-        price !== Number(result.listing.price || 0) ||
-        acceptOffers !== !!result.listing.accept_offers ||
-        (acceptOffers ? minOfferPercent : 0) !== Number(result.listing.min_offer_percent || 0);
+    const supabase = await createServerSupabaseClient();
+    const dbStartedAt = performance.now();
+    const { data, error } = await supabase.rpc('update_own_sale_listing' as never, {
+        p_listing_id: id,
+        p_name: name,
+        p_description: description,
+        p_price: price,
+        p_accept_offers: acceptOffers,
+        p_min_offer_percent: minOfferPercent,
+    } as never);
+    const dbDuration = performance.now() - dbStartedAt;
+    if (dbDuration >= 2000) {
+        console.warn('Slow listing update RPC', { dbDurationMs: Math.round(dbDuration) });
+    }
 
-    if (result.hasOpenOffers && commercialTermsChanged) {
-        return NextResponse.json(
-            { error: 'Price and offer settings cannot be changed while an offer is open', code: 'OPEN_OFFERS_LOCKED' },
-            { status: 409 },
+    if (error) {
+        const code = ['unauthorized', 'listing_not_found', 'listing_not_editable', 'open_offers_locked', 'invalid_listing_payload']
+            .find(value => error.message.includes(value));
+        const status = code === 'unauthorized' ? 401
+            : code === 'listing_not_found' ? 404
+                : code === 'listing_not_editable' || code === 'open_offers_locked' ? 409
+                    : 400;
+        const message = code === 'listing_not_editable' ? 'Only active sale listings can be edited'
+            : code === 'open_offers_locked' ? 'Price and offer settings cannot be changed while an offer is open'
+                : code === 'invalid_listing_payload'
+                    ? `A changed description must contain ${DESCRIPTION_MIN}-${DESCRIPTION_MAX} characters and all fields must be valid`
+                    : error.message || 'Unable to update listing';
+        const response = NextResponse.json(
+            { error: message, code: code === 'open_offers_locked' ? 'OPEN_OFFERS_LOCKED' : code },
+            { status },
         );
+        response.headers.set('Server-Timing', `listing-db;dur=${dbDuration.toFixed(1)}, total;dur=${(performance.now() - startedAt).toFixed(1)}`);
+        return response;
     }
 
-    const { data, error } = await result.supabase
-        .from('cards')
-        .update({
-            name,
-            description,
-            price,
-            accept_offers: acceptOffers,
-            min_offer_percent: acceptOffers ? minOfferPercent : 0,
-            updated_at: new Date().toISOString(),
-        } as never)
-        .eq('id', id)
-        .eq('seller_id', result.listing.seller_id)
-        .eq('status', 'active')
-        .eq('listing_type', 'sale')
-        .select('id, name, description, price, quantity, accept_offers, min_offer_percent')
-        .single();
-
-    if (error || !data) {
-        return NextResponse.json({ error: error?.message || 'Unable to update listing' }, { status: 400 });
-    }
-
-    return NextResponse.json({ listing: data });
+    const response = NextResponse.json(data);
+    response.headers.set('Server-Timing', `listing-db;dur=${dbDuration.toFixed(1)}, total;dur=${(performance.now() - startedAt).toFixed(1)}`);
+    return response;
 }

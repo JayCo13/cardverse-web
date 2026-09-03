@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, createContext, useContext } from 'react';
+import { useState, createContext, useContext, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -65,6 +65,8 @@ export function AuthModal() {
   const [otpCode, setOtpCode] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const loginSubmitLockRef = useRef(false);
+  const signupSubmitLockRef = useRef(false);
 
   // Dynamic schemas with translations
   const loginSchema = z.object({
@@ -152,6 +154,28 @@ export function AuthModal() {
     }
   };
 
+  const handleLoginFormSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (loginSubmitLockRef.current) return;
+    loginSubmitLockRef.current = true;
+    try {
+      await loginForm.handleSubmit(handleLogin)(event);
+    } finally {
+      loginSubmitLockRef.current = false;
+    }
+  };
+
+  const handleSignupFormSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (signupSubmitLockRef.current) return;
+    signupSubmitLockRef.current = true;
+    try {
+      await signupForm.handleSubmit(handleSignup)(event);
+    } finally {
+      signupSubmitLockRef.current = false;
+    }
+  };
+
   const handleVerifyOtp = async () => {
     if (!pendingVerificationEmail || otpCode.length !== 8) return;
     setError(null);
@@ -220,7 +244,7 @@ export function AuthModal() {
             <TabsTrigger value="signup">{t('auth_signup_tab')}</TabsTrigger>
           </TabsList>
           <TabsContent value="login">
-            <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-4 py-4">
+            <form onSubmit={handleLoginFormSubmit} className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label htmlFor="login-email">{t('auth_email_label')}</Label>
                 <Input id="login-email" type="email" placeholder="your@email.com" {...loginForm.register('email')} />
@@ -236,7 +260,7 @@ export function AuthModal() {
                 )}
               </div>
               {error && <p className="text-destructive text-sm">{error}</p>}
-              <Button type="submit" className="w-full bg-orange-500 hover:bg-orange-600" disabled={loginForm.formState.isSubmitting}>
+              <Button type="submit" className="w-full bg-orange-500 hover:bg-orange-600" loading={loginForm.formState.isSubmitting}>
                 {t('auth_login_button')}
               </Button>
               <div className="relative">
@@ -265,7 +289,7 @@ export function AuthModal() {
             </form>
           </TabsContent>
           <TabsContent value="signup">
-            <form onSubmit={signupForm.handleSubmit(handleSignup)} className="space-y-4 py-4">
+            <form onSubmit={handleSignupFormSubmit} className="space-y-4 py-4">
               {successMessage ? (
                 <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/30 text-center">
                   <p className="text-green-500 font-medium">{successMessage}</p>
@@ -350,7 +374,7 @@ export function AuthModal() {
                     )}
                   </div>
                   {error && <p className="text-destructive text-sm">{error}</p>}
-                  <Button type="submit" className="w-full bg-orange-500 hover:bg-orange-600" disabled={signupForm.formState.isSubmitting}>
+                  <Button type="submit" className="w-full bg-orange-500 hover:bg-orange-600" loading={signupForm.formState.isSubmitting}>
                     {t('auth_create_account')}
                   </Button>
                   <div className="relative">
@@ -385,4 +409,3 @@ export function AuthModal() {
     </Dialog>
   );
 }
-

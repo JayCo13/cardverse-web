@@ -12,6 +12,7 @@ import { ArrowLeft, MessageCircle, Phone, CheckCircle, ExternalLink } from "luci
 import Image from "next/image";
 import { useLocalization } from "@/context/localization-context";
 import { useCurrency } from "@/contexts/currency-context";
+import { VerifiedSellerBadge } from "@/components/verified-seller-badge";
 
 export default function ConnectPage() {
     const params = useParams();
@@ -91,7 +92,7 @@ export default function ConnectPage() {
                 // Fetch card
                 const { data: cardData } = await supabase
                     .from('cards')
-                    .select('*')
+                    .select('*, profiles:seller_id(display_name, seller_verified)')
                     .eq('id', cardId)
                     .single();
 
@@ -107,7 +108,10 @@ export default function ConnectPage() {
                         listingType: c.listing_type,
                         price: c.price,
                         sellerId: c.seller_id,
-                        author: c.seller_id,
+                        // Without the profiles join this fell back to the raw
+                        // seller UUID, which is what the page used to show.
+                        author: c.profiles?.display_name || c.seller_id,
+                        sellerVerified: c.profiles?.seller_verified || false,
                         description: c.description,
                         status: c.status,
                     });
@@ -282,7 +286,10 @@ export default function ConnectPage() {
                             <Badge variant="secondary">{copy.seller}</Badge>
                             {isSeller && <Badge>{copy.you}</Badge>}
                         </div>
-                        <p className="font-medium mb-3">{card.author}</p>
+                        <p className="mb-3 flex min-w-0 items-center gap-1 font-medium">
+                            <span className="truncate">{card.author}</span>
+                            <VerifiedSellerBadge verified={card.sellerVerified} />
+                        </p>
                         {renderContact(card.sellerId)}
                     </div>
 

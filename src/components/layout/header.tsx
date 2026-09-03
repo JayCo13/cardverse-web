@@ -4,7 +4,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import { useCallback, useEffect, useState } from "react"
-import { CircleUser, Menu, Headphones, Camera, Crown, Zap, Diamond, Wallet, Package, Settings, ShoppingCart } from "lucide-react"
+import { CircleUser, Menu, Headphones, Camera, Crown, Zap, Diamond, Wallet, Package, Settings, ShoppingCart, HandCoins } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { NotificationBell } from "@/components/notification-bell"
 import { ChatInboxButton } from "@/components/chat-drawer"
@@ -36,6 +36,7 @@ const VND_ONLY_MARKETPLACE_PATHS = [
   "/cart",
   "/checkout",
   "/orders",
+  "/offers",
   "/wallet",
   "/transaction",
 ];
@@ -49,11 +50,13 @@ export function Header() {
   const pathname = usePathname();
   const { isVipPro, isDayPass, hasCredits, subscription } = useSubscription();
   const [cartCount, setCartCount] = useState(0);
+  const [offerActionCount, setOfferActionCount] = useState(0);
   const copy = locale === "vi-VN"
     ? {
       account: "Tài khoản",
       collection: "Bộ sưu tập",
       orders: "Đơn hàng",
+      offers: "Offer",
       wallet: "Ví",
       choosePlan: "Chọn gói của bạn",
       toggleMenu: "Mở menu điều hướng",
@@ -63,6 +66,7 @@ export function Header() {
         account: "アカウント",
         collection: "コレクション",
         orders: "注文",
+        offers: "オファー",
         wallet: "ウォレット",
         choosePlan: "プランを選ぶ",
         toggleMenu: "ナビゲーションメニューを切り替え",
@@ -71,6 +75,7 @@ export function Header() {
         account: "Account",
         collection: "Collection",
         orders: "Orders",
+        offers: "Offers",
         wallet: "Wallet",
         choosePlan: "Choose Your Plan",
         toggleMenu: "Toggle navigation menu",
@@ -102,6 +107,33 @@ export function Header() {
     window.addEventListener("cardverse:cart-updated", handler);
     return () => window.removeEventListener("cardverse:cart-updated", handler);
   }, [fetchCartCount]);
+
+  const fetchOfferActionCount = useCallback(async () => {
+    if (!user) {
+      setOfferActionCount(0);
+      return;
+    }
+    try {
+      const response = await fetch("/api/offers/inbox?summary=account", { cache: "no-store" });
+      const payload = await response.json();
+      setOfferActionCount(response.ok && Number.isFinite(payload.actionCount) ? payload.actionCount : 0);
+    } catch {
+      setOfferActionCount(0);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    // Fetching here mirrors the existing cart badge lifecycle.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchOfferActionCount();
+    const handler = () => void fetchOfferActionCount();
+    window.addEventListener("cardverse:offers-updated", handler);
+    window.addEventListener("focus", handler);
+    return () => {
+      window.removeEventListener("cardverse:offers-updated", handler);
+      window.removeEventListener("focus", handler);
+    };
+  }, [fetchOfferActionCount]);
 
   const handleComingSoon = () => {
     toast({
@@ -219,20 +251,31 @@ export function Header() {
               </Link>
             </DropdownMenuItem>
             {isTester && (
-              <>
-                <DropdownMenuItem asChild>
-                  <Link href="/orders" className="flex items-center gap-2">
-                    <Package className="h-4 w-4" />
-                    {copy.orders}
-                  </Link>
-                </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/orders" className="flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  {copy.orders}
+                </Link>
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem asChild>
+              <Link href="/offers" className="flex items-center gap-2">
+                <HandCoins className="h-4 w-4" />
+                <span className="flex-1">{copy.offers}</span>
+                {offerActionCount > 0 && (
+                  <Badge className="h-5 min-w-5 justify-center rounded-full bg-orange-500 px-1.5 text-[10px] text-white">
+                    {offerActionCount > 99 ? "99+" : offerActionCount}
+                  </Badge>
+                )}
+              </Link>
+            </DropdownMenuItem>
+            {isTester && (
                 <DropdownMenuItem asChild>
                   <Link href="/wallet" className="flex items-center gap-2">
                     <Wallet className="h-4 w-4" />
                     {copy.wallet}
                   </Link>
                 </DropdownMenuItem>
-              </>
             )}
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>

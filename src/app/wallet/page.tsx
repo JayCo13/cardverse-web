@@ -54,6 +54,7 @@ type WalletTransaction = {
   balance_after: number;
   description: string | null;
   created_at: string;
+  reference_id?: string | null;
 };
 
 type WalletWithdrawal = {
@@ -67,6 +68,8 @@ type WalletWithdrawal = {
   rejection_reason: string | null;
   created_at: string;
   processed_at: string | null;
+  balance_before?: number | null;
+  balance_after?: number | null;
 };
 
 type HistoryCategory = 'all' | 'income' | 'expense' | 'withdrawal';
@@ -134,12 +137,13 @@ export default function WalletPage() {
       exceededBalance: 'Vượt quá số dư khả dụng.',
       insufficientVerifiedBalance: 'Số tiền này chưa được xác minh nguồn nên chưa thể rút.',
       minWithdraw: 'Tối thiểu {amount}.',
+      balanceEstimate: 'Số dư sau khi rút',
       walletTitle: 'Ví CardVerseHub',
       availableBalance: 'Số dư khả dụng',
       heldBalance: 'Đang tạm giữ',
       totalDeposited: 'Tổng đã nạp',
-      buyerTab: '👤 Người mua',
-      sellerTab: '🏪 Người bán',
+      depositTab: 'Nạp tiền',
+      withdrawTab: 'Rút tiền',
       historyTitle: 'Lịch sử giao dịch',
       historyAll: 'Tất cả',
       historyIncome: 'Tiền vào',
@@ -209,12 +213,13 @@ export default function WalletPage() {
         exceededBalance: '利用可能残高を超えています。',
         insufficientVerifiedBalance: '資金源が未確認のため、この金額はまだ出金できません。',
         minWithdraw: '最低 {amount}。',
+        balanceEstimate: '出金後の残高',
         walletTitle: 'CardVerseHubウォレット',
         availableBalance: '利用可能残高',
         heldBalance: '保留中',
         totalDeposited: '累計入金額',
-        buyerTab: '👤 購入者',
-        sellerTab: '🏪 販売者',
+        depositTab: '入金',
+        withdrawTab: '出金',
         historyTitle: '取引履歴',
         historyAll: 'すべて',
         historyIncome: '入金',
@@ -283,12 +288,13 @@ export default function WalletPage() {
         exceededBalance: 'Exceeds available balance.',
         insufficientVerifiedBalance: 'This amount cannot be withdrawn until its funding source is verified.',
         minWithdraw: 'Minimum {amount}.',
+        balanceEstimate: 'Balance after withdrawal',
         walletTitle: 'CardVerseHub Wallet',
         availableBalance: 'Available balance',
         heldBalance: 'Held balance',
         totalDeposited: 'Total deposited',
-        buyerTab: '👤 Buyer',
-        sellerTab: '🏪 Seller',
+        depositTab: 'Deposit',
+        withdrawTab: 'Withdraw',
         historyTitle: 'Transaction history',
         historyAll: 'All',
         historyIncome: 'Money in',
@@ -555,6 +561,46 @@ export default function WalletPage() {
     })),
   ]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const getWithdrawalBalances = useCallback((withdrawal: WalletWithdrawal) => {
+    if (typeof withdrawal.balance_after === 'number' && typeof withdrawal.balance_before === 'number') {
+      return { before: withdrawal.balance_before, after: withdrawal.balance_after };
+    }
+
+    const matchingTx = transactions.find(
+      (t) => t.reference_id === withdrawal.id &&
+        ['withdrawal_hold', 'withdrawal', 'withdrawal_net_outflow'].includes(t.type)
+    );
+
+    if (matchingTx && typeof matchingTx.balance_after === 'number') {
+      const after = matchingTx.balance_after;
+      const before = after + withdrawal.amount_requested;
+      return { before, after };
+    }
+
+    const wTime = new Date(withdrawal.created_at).getTime();
+    const prior = transactions
+      .filter((t) => new Date(t.created_at).getTime() <= wTime && !['withdrawal_hold', 'withdrawal_hold_release'].includes(t.type))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+
+    if (prior && typeof prior.balance_after === 'number') {
+      const before = prior.balance_after;
+      const after = Math.max(0, before - withdrawal.amount_requested);
+      return { before, after };
+    }
+
+    const next = transactions
+      .filter((t) => new Date(t.created_at).getTime() > wTime && !['withdrawal_hold', 'withdrawal_hold_release'].includes(t.type))
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0];
+
+    if (next && typeof next.balance_after === 'number') {
+      const after = next.balance_after - next.amount;
+      const before = after + withdrawal.amount_requested;
+      return { before, after };
+    }
+
+    return null;
+  }, [transactions]);
   const filteredActivities = walletActivities.filter((activity) => (
     historyCategory === 'all' || activity.category === historyCategory
   ));
@@ -790,6 +836,14 @@ export default function WalletPage() {
               <div className="flex justify-between"><span className="text-muted-foreground">{copy.withdrawAmount}</span><span>{formatVND(withdrawNum)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">{copy.feeRate}</span><span className="text-red-400">- {formatVND(withdrawFee)}</span></div>
               <div className="flex justify-between border-t border-border/50 pt-1 font-semibold"><span>{copy.netAmount}</span><span className="text-green-400">{formatVND(withdrawNet)}</span></div>
+              <div className="flex justify-between border-t border-border/50 pt-1 text-xs text-muted-foreground">
+                <span>{copy.balanceEstimate}</span>
+                <span className="tabular-nums">
+                  {formatVND(available)}
+                  <span className="mx-1 opacity-60">→</span>
+                  <span className="font-medium text-foreground">{formatVND(Math.max(0, available - withdrawNum))}</span>
+                </span>
+              </div>
               {withdrawNum > available && (
                 <p className="text-xs text-red-400 pt-1">{copy.exceededBalance}</p>
               )}
@@ -843,16 +897,22 @@ export default function WalletPage() {
             </CardContent>
           </Card>
 
-          {/* Buyer / Seller money actions. Approved sellers get tabs (Người mua /
-              Người bán); a buyer who isn't a seller only sees deposit. */}
+          {/* Deposit / Withdraw actions. Approved sellers get tabs (Nạp tiền /
+              Rút tiền); a buyer who isn't a seller only sees deposit. */}
           {isApprovedSeller ? (
-            <Tabs defaultValue="buyer" className="w-full">
+            <Tabs defaultValue="deposit" className="w-full">
               <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="buyer">{copy.buyerTab}</TabsTrigger>
-                <TabsTrigger value="seller">{copy.sellerTab}</TabsTrigger>
+                <TabsTrigger value="deposit" className="flex items-center gap-2">
+                  <CreditCard className="h-4 w-4" />
+                  {copy.depositTab}
+                </TabsTrigger>
+                <TabsTrigger value="withdraw" className="flex items-center gap-2">
+                  <Banknote className="h-4 w-4" />
+                  {copy.withdrawTab}
+                </TabsTrigger>
               </TabsList>
-              <TabsContent value="buyer" className="mt-4">{depositCard}</TabsContent>
-              <TabsContent value="seller" className="mt-4">{withdrawCard}</TabsContent>
+              <TabsContent value="deposit" className="mt-4">{depositCard}</TabsContent>
+              <TabsContent value="withdraw" className="mt-4">{withdrawCard}</TabsContent>
             </Tabs>
           ) : (
             depositCard
@@ -904,6 +964,7 @@ export default function WalletPage() {
                             completed: { label: copy.withdrawalCompleted, badge: 'bg-green-500/15 text-green-400' },
                             rejected: { label: copy.withdrawalRejected, badge: 'bg-red-500/15 text-red-400' },
                           }[withdrawal.status];
+                          const withdrawalBalances = getWithdrawalBalances(withdrawal);
                           return (
                             <div key={activity.id} className="rounded-lg border bg-card transition-colors hover:bg-accent/50">
                               <button
@@ -928,6 +989,13 @@ export default function WalletPage() {
                                 </div>
                                 <div className="shrink-0 pl-3 text-right">
                                   <p className="text-sm font-semibold text-red-500">−{formatVND(withdrawal.amount_requested)}</p>
+                                  {withdrawalBalances && (
+                                    <p className="text-xs tabular-nums text-muted-foreground">
+                                      {formatVND(withdrawalBalances.before)}
+                                      <span className="mx-1 opacity-60">→</span>
+                                      <span className="font-medium text-foreground">{formatVND(withdrawalBalances.after)}</span>
+                                    </p>
+                                  )}
                                   <p className="text-xs text-muted-foreground">
                                     {new Date(activity.createdAt).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                   </p>

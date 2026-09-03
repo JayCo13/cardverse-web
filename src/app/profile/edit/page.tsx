@@ -28,6 +28,7 @@ export default function EditProfilePage() {
     const { toast } = useToast();
     const { locale } = useLocalization();
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const saveLockRef = useRef(false);
     const copy = locale === "vi-VN"
         ? {
             imageTooLarge: "Ảnh phải nhỏ hơn 5MB",
@@ -327,8 +328,9 @@ export default function EditProfilePage() {
     // Save general profile info
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user) return;
+        if (!user || saveLockRef.current) return;
 
+        saveLockRef.current = true;
         setError(null);
         setSuccess(false);
         setIsSaving(true);
@@ -342,6 +344,7 @@ export default function EditProfilePage() {
                     newImageUrl = uploadedUrl;
                 } else {
                     setError(copy.uploadFailed);
+                    saveLockRef.current = false;
                     setIsSaving(false);
                     return;
                 }
@@ -375,6 +378,7 @@ export default function EditProfilePage() {
         } catch (err) {
             setError(copy.unexpectedError);
         } finally {
+            saveLockRef.current = false;
             setIsSaving(false);
         }
     };

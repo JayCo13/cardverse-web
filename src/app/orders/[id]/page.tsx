@@ -16,6 +16,7 @@ import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { useToast } from '@/hooks/use-toast';
 import { optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
 import { getCarrier, getTrackingUrl, getDeliveryDays } from '@/lib/shipping-carriers';
+import { VerifiedSellerBadge } from '@/components/verified-seller-badge';
 
 const STATUS_STYLE: Record<string, string> = {
   pending_payment: 'bg-gray-500/15 text-gray-300',
@@ -258,7 +259,10 @@ export default function OrderDetailsPage() {
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500 font-bold text-white">{(counterparty?.display_name || counterparty?.email || 'C').charAt(0).toUpperCase()}</div>
                 )}
                 <div>
-                  <p className="font-medium">{counterparty?.display_name || counterparty?.email || '—'}</p>
+                  <p className="flex items-center gap-1 font-medium">
+                    <span className="truncate">{counterparty?.display_name || counterparty?.email || '—'}</span>
+                    {isBuyer && <VerifiedSellerBadge verified={counterparty?.seller_verified} />}
+                  </p>
                   {isBuyer && counterparty?.seller_rating != null && (
                     <p className="text-xs text-muted-foreground">{Number(counterparty.seller_rating).toFixed(1)}% · {counterparty.seller_review_count || 0} {tx('đã bán', 'sold', '販売')}</p>
                   )}

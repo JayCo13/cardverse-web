@@ -27,6 +27,7 @@ import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { getCategoryCode } from "@/lib/category-code";
 import { shopShippingRange, type ShopShippingFees } from "@/lib/shipping-fee";
 import { useLocalization } from "@/context/localization-context";
+import { VerifiedSellerBadge } from "@/components/verified-seller-badge";
 
 type CartItem = {
   id: string;
@@ -44,6 +45,7 @@ type CartItem = {
     profiles?: {
       display_name?: string | null;
       profile_image_url?: string | null;
+      seller_verified?: boolean | null;
       shipping_carriers?: string[] | null;
       shipping_fees?: ShopShippingFees | null;
     } | null;
@@ -725,7 +727,7 @@ export default function CartPage() {
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-orange-500/15 text-sm font-bold text-orange-300">
                             {card?.profiles?.profile_image_url ? <Image src={card.profiles.profile_image_url} alt="" width={36} height={36} className="h-full w-full object-cover" /> : (card?.profiles?.display_name || "S").charAt(0).toUpperCase()}
                           </div>
-                          <div className="min-w-0"><p className="truncate text-sm font-semibold">{card?.profiles?.display_name || copy.sellerFallback}</p><p className="flex items-center gap-1 text-xs text-muted-foreground"><Store className="h-3 w-3" />{copy.cardVerseSeller}</p></div>
+                          <div className="min-w-0"><p className="flex min-w-0 items-center gap-1 text-sm font-semibold"><span className="truncate">{card?.profiles?.display_name || copy.sellerFallback}</span><VerifiedSellerBadge verified={card?.profiles?.seller_verified} className="h-3.5 w-3.5" /></p><p className="flex items-center gap-1 text-xs text-muted-foreground"><Store className="h-3 w-3" />{copy.cardVerseSeller}</p></div>
                         </div>
                         <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-4 text-xs text-muted-foreground">
                           <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />{copy.protected}</span>

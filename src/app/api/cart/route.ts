@@ -25,6 +25,7 @@ export async function GET() {
         profiles:seller_id(
           display_name,
           profile_image_url,
+          seller_verified,
           address_district_id,
           address_ward_code,
           shipping_carriers,

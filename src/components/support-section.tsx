@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useLocalization } from "@/context/localization-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ export function SupportSection() {
     const { toast } = useToast();
     const [email, setEmail] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const submitLockRef = useRef(false);
     const title = t('support_section_title');
     const copy = locale === "vi-VN"
         ? {
@@ -20,6 +21,7 @@ export function SupportSection() {
             errorTitle: "Lỗi",
             errorDesc: "Vui lòng thử lại sau.",
             footer: "Không spam • Bảo mật • Cập nhật hàng tuần",
+            submitting: "Đang đăng ký...",
         }
         : locale === "ja-JP"
             ? {
@@ -28,6 +30,7 @@ export function SupportSection() {
                 errorTitle: "エラー",
                 errorDesc: "しばらくしてからもう一度お試しください。",
                 footer: "スパムなし • 安全 • 毎週更新",
+                submitting: "登録中...",
             }
             : {
                 subscribeFailed: "Failed to subscribe",
@@ -35,13 +38,15 @@ export function SupportSection() {
                 errorTitle: "Error",
                 errorDesc: "Please try again later.",
                 footer: "No Spam • Secure • Weekly Updates",
+                submitting: "Subscribing...",
             };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!email.trim()) return;
+        if (!email.trim() || submitLockRef.current) return;
 
+        submitLockRef.current = true;
         setIsLoading(true);
 
         try {
@@ -74,6 +79,7 @@ export function SupportSection() {
                 description: copy.errorDesc,
             });
         } finally {
+            submitLockRef.current = false;
             setIsLoading(false);
         }
     };
@@ -106,12 +112,10 @@ export function SupportSection() {
                     </div>
                     <Button
                         type="submit"
-                        disabled={isLoading}
+                        loading={isLoading}
                         className="h-14 px-8 rounded-xl bg-orange-600 hover:bg-orange-500 text-black font-bold tracking-wide shadow-lg shadow-orange-900/20 transition-all duration-300 md:w-auto w-full transform hover:scale-[1.02] active:scale-[0.98]"
                     >
-                        {isLoading ? (
-                            <span className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                        ) : (
+                        {isLoading ? copy.submitting : (
                             <span className="flex items-center justify-center gap-2">
                                 {t('support_button_subscribe')}
                                 <PaperPlaneRight weight="bold" />

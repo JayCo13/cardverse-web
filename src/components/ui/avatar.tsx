@@ -26,6 +26,12 @@ const AvatarImage = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AvatarPrimitive.Image
     ref={ref}
+    // Most avatars here are Google account photos (lh3.googleusercontent.com),
+    // and Google answers 429 to a browser <img> that sends a Referer from an
+    // unrecognised origin. Radix then silently swaps in the initials fallback,
+    // so every Avatar looked avatar-less. next/image never hit this because it
+    // fetches server-side. Suppressing the Referer makes the request succeed.
+    referrerPolicy="no-referrer"
     className={cn("aspect-square h-full w-full", className)}
     {...props}
   />

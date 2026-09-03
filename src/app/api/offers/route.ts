@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
+import { getRequestLocale } from '@/lib/request-localization';
+import { getOfferEmailRecipient } from '@/lib/offer-email-recipient';
+import { sendOfferReceivedEmail } from '@/lib/mail';
+import { matchBundleSelection, type BundleItem, type BundleSelection } from '@/lib/bundle';
 
 const formatVND = (amount: number) =>
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
@@ -15,8 +19,22 @@ type OfferRow = {
     message: string | null;
     status: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired';
     transaction_id: string | null;
+    bundle_selection: BundleSelection[] | null;
     created_at: string;
 };
+
+const OFFER_COLUMNS = 'id, card_id, buyer_id, price, message, status, transaction_id, bundle_selection, created_at';
+const CARD_COLUMNS = 'id, seller_id, name, image_url, price, status, listing_type, accept_offers, min_offer_percent, is_bundle, bundle_items';
+
+/** Read a browser-supplied bundle selection into the shape `@/lib/bundle` matches on. */
+function readSelection(value: unknown): BundleSelection[] | null {
+    if (!Array.isArray(value)) return null;
+    const items = value
+        .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+        .map(item => ({ title: String(item.title ?? ''), price: Number(item.price ?? 0) }))
+        .filter(item => item.price > 0);
+    return items.length > 0 ? items : null;
+}
 
 const mapOffer = (offer: OfferRow) => ({
     id: offer.id,
@@ -26,6 +44,7 @@ const mapOffer = (offer: OfferRow) => ({
     message: offer.message,
     status: offer.status,
     transactionId: offer.transaction_id,
+    bundleSelection: Array.isArray(offer.bundle_selection) ? offer.bundle_selection : null,
     createdAt: offer.created_at,
 });
 
@@ -46,7 +65,7 @@ async function getUserAndCard(request: NextRequest) {
 
     const { data: card, error: cardError } = await supabase
         .from('cards')
-        .select('id, seller_id, name, image_url, price, status, listing_type, accept_offers, min_offer_percent')
+        .select(CARD_COLUMNS)
         .eq('id', cardId)
         .single();
 
@@ -66,7 +85,7 @@ export async function GET(request: NextRequest) {
 
     const { data, error: offersError } = await supabase
         .from('offers')
-        .select('id, card_id, buyer_id, price, message, status, transaction_id, created_at')
+        .select(OFFER_COLUMNS)
         .eq('card_id', card.id)
         .eq('buyer_id', user.id)
         .order('created_at', { ascending: false });
@@ -112,7 +131,7 @@ export async function POST(request: NextRequest) {
 
     const { data: card, error: cardError } = await supabase
         .from('cards')
-        .select('id, seller_id, name, image_url, price, status, listing_type, accept_offers, min_offer_percent')
+        .select(CARD_COLUMNS)
         .eq('id', cardId)
         .single();
 
@@ -129,7 +148,38 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Listing này hiện không nhận offer.' }, { status: 409 });
     }
 
-    const listedPrice = Number(cardRow.price || 0);
+    // ── Bundle: the offer is for the cards the buyer picked, not the listing ──
+    const isBundle = !!cardRow.is_bundle;
+    const bundleItems: BundleItem[] = Array.isArray(cardRow.bundle_items) ? cardRow.bundle_items : [];
+    let bundleSelection: BundleSelection[] | null = null;
+    let canonicalSelection: BundleItem[] | null = null;
+    let bundlePrice: number | null = null;
+
+    if (isBundle && bundleItems.length > 0) {
+        bundleSelection = readSelection(body.bundleSelection ?? body.bundle_selection);
+        if (!bundleSelection) {
+            return NextResponse.json(
+                { error: 'Chọn ít nhất một thẻ trong bài đăng để gửi offer.', code: 'no_bundle_selection' },
+                { status: 400 },
+            );
+        }
+        // Same multiset match the payment RPC will redo under a row lock, so a
+        // selection accepted here is one that can actually be paid for.
+        const matched = matchBundleSelection(bundleItems, bundleSelection);
+        if (!matched) {
+            return NextResponse.json(
+                { error: 'Một số thẻ bạn chọn không còn trong bài đăng. Vui lòng tải lại trang.', code: 'bundle_item_unavailable' },
+                { status: 409 },
+            );
+        }
+        // Store the listing's own items (publisher/set/season and all), not the
+        // browser's minimal { title, price } selectors: checkout subtracts these
+        // from bundle_items by exact JSONB equality.
+        canonicalSelection = matched.matched;
+        bundlePrice = matched.matchedTotal;
+    }
+
+    const listedPrice = bundlePrice ?? Number(cardRow.price || 0);
     const minOfferPercent = Number(cardRow.min_offer_percent || 0);
     const minOffer = minOfferPercent > 0 ? Math.ceil((listedPrice * minOfferPercent) / 100) : 0;
     if (minOffer > 0 && price < minOffer) {
@@ -141,7 +191,7 @@ export async function POST(request: NextRequest) {
 
     const { data: existingData, error: existingError } = await supabase
         .from('offers')
-        .select('id, card_id, buyer_id, price, message, status, transaction_id, created_at')
+        .select(OFFER_COLUMNS)
         .eq('card_id', cardId)
         .eq('buyer_id', user.id)
         .order('created_at', { ascending: false });
@@ -196,8 +246,9 @@ export async function POST(request: NextRequest) {
             price,
             message: message || null,
             status: 'pending',
+            bundle_selection: canonicalSelection,
         } as never)
-        .select('id, card_id, buyer_id, price, message, status, transaction_id, created_at')
+        .select(OFFER_COLUMNS)
         .single();
 
     if (insertError || !inserted) {
@@ -284,6 +335,21 @@ export async function POST(request: NextRequest) {
         conversation_id: conversationId,
         read: false,
     } as never);
+
+    // Email is supplementary to the durable in-app notification. A mail
+    // provider outage must not roll back an offer that was already committed.
+    try {
+        const recipient = await getOfferEmailRecipient(cardRow.seller_id, getRequestLocale(request));
+        await sendOfferReceivedEmail(recipient.email, {
+            recipientName: recipient.name,
+            cardName: cardRow.name,
+            offerPrice: price,
+            listingPrice: listedPrice,
+            cardId,
+        }, recipient.locale);
+    } catch (mailError) {
+        console.error('[Offers] Unable to prepare new-offer email:', mailError);
+    }
 
     return NextResponse.json({
         offer: mapOffer(offer),

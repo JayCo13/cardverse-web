@@ -1,57 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
-import { hasUsableShipping, type ShopShippingFees } from '@/lib/shipping-fee';
+import { hashFinancialRequest } from '@/lib/financial-idempotency';
 
 const MIN_MARKETPLACE_PRICE_VND = 1000;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function POST(request: NextRequest) {
+    const startedAt = performance.now();
     try {
         const authClient = await createServerSupabaseClient();
-        const { data: { user }, error: authError } = await authClient.auth.getUser();
-        if (authError || !user) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
-        const { data: verification, error: verificationError } = await authClient
-            .from('seller_verifications')
-            .select('status')
-            .eq('user_id', user.id)
-            .eq('status', 'approved')
-            .single();
-
-        if (verificationError || !verification) {
-            return NextResponse.json({ error: 'Seller verification required' }, { status: 403 });
-        }
-
-        // A pickup address AND a usable shipping table are both required before
-        // listing, because checkout quotes the buyer's fee from them. Enforced
-        // here (not just in the UI) so it can't be bypassed by calling the API
-        // directly. Without this a listing goes live that no buyer can pay for:
-        // the client would show 0đ and the checkout route would then refuse.
-        const { data: profile } = await authClient
-            .from('profiles')
-            .select('address_district_id, address_ward_code, shipping_carriers, shipping_fees')
-            .eq('id', user.id)
-            .single();
-        const sellerProfile = profile as {
-            address_district_id: number | null;
-            address_ward_code: string | null;
-            shipping_carriers: string[] | null;
-            shipping_fees: ShopShippingFees | null;
-        } | null;
-        if (!sellerProfile?.address_district_id || !sellerProfile?.address_ward_code) {
-            return NextResponse.json({
-                error: 'Vui lòng thiết lập địa chỉ lấy hàng trước khi đăng bán.',
-                code: 'MISSING_SELLER_ADDRESS',
-            }, { status: 400 });
-        }
-        if (!hasUsableShipping(sellerProfile.shipping_fees, sellerProfile.shipping_carriers)) {
-            return NextResponse.json({
-                error: 'Vui lòng thiết lập đơn vị vận chuyển và phí ship trước khi đăng bán.',
-                code: 'MISSING_SHIPPING_CONFIG',
-            }, { status: 400 });
-        }
 
         const body = await request.json();
 
@@ -86,13 +44,11 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Số lượng phải từ 1 đến 100.' }, { status: 400 });
         }
         const minOfferPercent = Number(body.min_offer_percent ?? 0);
-        if (!Number.isFinite(minOfferPercent) || minOfferPercent < 0 || minOfferPercent > 100) {
+        if (!Number.isInteger(minOfferPercent) || minOfferPercent < 0 || minOfferPercent > 100) {
             return NextResponse.json({ error: 'min_offer_percent phải từ 0 đến 100.' }, { status: 400 });
         }
 
         const cardData: Record<string, unknown> = {
-            seller_id: user.id,
-            status: 'active',
             name,
             description,
             listing_type: listingType,
@@ -111,7 +67,7 @@ export async function POST(request: NextRequest) {
             card_number: optionalString(body.card_number),
             language: optionalString(body.language),
             grading_company: optionalString(body.grading_company),
-            grade: optionalString(body.grade),
+            grade: typeof body.grade === 'number' && Number.isFinite(body.grade) ? body.grade : null,
             finish: optionalString(body.finish),
             accept_offers: body.accept_offers === true,
             min_offer_percent: body.accept_offers === true ? minOfferPercent : 0,
@@ -169,19 +125,55 @@ export async function POST(request: NextRequest) {
             cardData.razz_entries = 0;
         }
 
-        const { data: card, error: insertError } = await authClient
-            .from('cards')
-            .insert(cardData as never)
-            .select('id')
-            .single() as { data: { id: string } | null; error: { message?: string } | null };
-
-        if (insertError || !card) {
-            return NextResponse.json({ error: insertError?.message || 'Failed to create listing' }, { status: 400 });
+        const suppliedKey = request.headers.get('idempotency-key');
+        if (suppliedKey && !UUID_PATTERN.test(suppliedKey)) {
+            return NextResponse.json(
+                { error: 'Idempotency-Key must be a UUID.', code: 'invalid_idempotency_key' },
+                { status: 400 },
+            );
+        }
+        const idempotencyKey = suppliedKey || crypto.randomUUID();
+        const dbStartedAt = performance.now();
+        const { data, error: createError } = await authClient.rpc('create_marketplace_listing' as never, {
+            p_idempotency_key: idempotencyKey,
+            p_request_hash: hashFinancialRequest(cardData),
+            p_card: cardData,
+        } as never);
+        const dbDuration = performance.now() - dbStartedAt;
+        if (dbDuration >= 2000) {
+            console.warn('Slow listing create RPC', { dbDurationMs: Math.round(dbDuration) });
         }
 
-        return NextResponse.json({ success: true, cardId: card.id });
-    } catch (error: any) {
+        if (createError) {
+            const code = [
+                'unauthorized', 'seller_verification_required', 'missing_seller_address',
+                'missing_shipping_config', 'idempotency_conflict', 'invalid_listing_request',
+                'invalid_listing_payload', 'invalid_listing_price', 'invalid_listing_auction',
+                'invalid_listing_razz',
+            ].find(value => createError.message.includes(value));
+            const status = code === 'unauthorized' ? 401
+                : code === 'seller_verification_required' ? 403
+                    : code === 'idempotency_conflict' ? 409
+                        : 400;
+            const responseCode = code === 'missing_seller_address' ? 'MISSING_SELLER_ADDRESS'
+                : code === 'missing_shipping_config' ? 'MISSING_SHIPPING_CONFIG'
+                    : code;
+            const response = NextResponse.json(
+                { error: createError.message || 'Failed to create listing', code: responseCode },
+                { status },
+            );
+            response.headers.set('Server-Timing', `listing-db;dur=${dbDuration.toFixed(1)}, total;dur=${(performance.now() - startedAt).toFixed(1)}`);
+            return response;
+        }
+
+        const response = NextResponse.json(data);
+        response.headers.set('Server-Timing', `listing-db;dur=${dbDuration.toFixed(1)}, total;dur=${(performance.now() - startedAt).toFixed(1)}`);
+        return response;
+    } catch (error: unknown) {
         console.error('Create listing error:', error);
-        return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+        return NextResponse.json(
+            { error: error instanceof Error ? error.message : 'Internal server error' },
+            { status: 500 },
+        );
     }
 }

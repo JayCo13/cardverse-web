@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckCircle, XCircle, Phone, FileCheck, ChevronRight, ChevronLeft, ChevronDown, Sparkles, AlertTriangle, MapPin, Truck } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckCircle, XCircle, Phone, FileCheck, ChevronRight, ChevronLeft, ChevronDown, Sparkles, AlertTriangle, MapPin, Truck, HandCoins } from 'lucide-react';
 import { SHIPPING_CARRIERS, carrierShortLabels } from '@/lib/shipping-carriers';
 import { hasUsableShipping, isValidShippingFee, shippableCarriers, shopShippingRange, SHIPPING_FEE_MAX, SHIPPING_FEE_MIN, type ShopShippingFees } from '@/lib/shipping-fee';
 import { useAuth, useSupabase } from '@/lib/supabase';
@@ -67,22 +67,31 @@ function KpiCard({ label, value, tone }: { label: string; value: string | number
   );
 }
 
-function ListingRow({ listing, statusLabel, price }: { listing: MyListing; statusLabel: string; price: string }) {
+function ListingRow({ listing, statusLabel, price, pendingOffers, offerLabel }: { listing: MyListing; statusLabel: string; price: string; pendingOffers: number; offerLabel: string }) {
   return (
-    <Link href={`/cards/${listing.id}`} className="flex items-center gap-3 border-b py-2 last:border-b-0">
-      <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded bg-muted">
-        {listing.image_url ? (
-          <Image src={optimizeCloudinaryUrl(listing.image_url, 160)} alt="" fill sizes="56px" className="object-cover" />
-        ) : (
-          <Package className="m-auto h-full w-5 text-muted-foreground/40" />
-        )}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{listing.name}</p>
-        <p className="mt-0.5 text-sm font-semibold text-primary">{price}</p>
-      </div>
-      <Badge variant="outline" className="shrink-0 text-[10px]">{statusLabel}</Badge>
-    </Link>
+    <div className="flex items-center gap-2 border-b py-2 last:border-b-0">
+      <Link href={`/cards/${listing.id}`} className="flex min-w-0 flex-1 items-center gap-3">
+        <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded bg-muted">
+          {listing.image_url ? (
+            <Image src={optimizeCloudinaryUrl(listing.image_url, 160)} alt="" fill sizes="56px" className="object-cover" />
+          ) : (
+            <Package className="m-auto h-full w-5 text-muted-foreground/40" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{listing.name}</p>
+          <p className="mt-0.5 text-sm font-semibold text-primary">{price}</p>
+        </div>
+        <Badge variant="outline" className="shrink-0 text-[10px]">{statusLabel}</Badge>
+      </Link>
+      {pendingOffers > 0 && (
+        <Button variant="outline" size="sm" asChild className="h-9 shrink-0 border-orange-500/40 px-2 text-orange-400">
+          <Link href={`/offers?view=received&cardId=${listing.id}`} aria-label={`${pendingOffers} ${offerLabel}`}>
+            <HandCoins className="mr-1 h-3.5 w-3.5" />{pendingOffers}
+          </Link>
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -195,6 +204,8 @@ export default function SellPage() {
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [myListings, setMyListings] = useState<MyListing[]>([]);
   const [isLoadingListings, setIsLoadingListings] = useState(false);
+  const [pendingOfferCounts, setPendingOfferCounts] = useState<Record<string, number>>({});
+  const [pendingOffersTotal, setPendingOffersTotal] = useState(0);
   const [pickupAddress, setPickupAddress] = useState<{ line: string } | null>(null);
   const [isLoadingAddress, setIsLoadingAddress] = useState(false);
   const [editingAddress, setEditingAddress] = useState(false);
@@ -515,6 +526,7 @@ export default function SellPage() {
       if (data.verification?.status === 'approved') {
         fetchSellerOrders();
         fetchMyListings();
+        fetchOfferSummary();
         fetchPickupAddress();
       }
       setIsLoadingVerification(false);
@@ -559,6 +571,27 @@ export default function SellPage() {
       setIsLoadingListings(false);
     }
   };
+
+  const fetchOfferSummary = async () => {
+    if (!user) return;
+    try {
+      const response = await fetch('/api/offers/inbox?summary=account', { cache: 'no-store' });
+      const payload = await response.json();
+      if (!response.ok) return;
+      setPendingOffersTotal(Number(payload.receivedPending) || 0);
+      setPendingOfferCounts(payload.cardPendingCounts || {});
+    } catch (err) {
+      console.error('Failed to fetch offer summary:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    const refresh = () => void fetchOfferSummary();
+    window.addEventListener('cardverse:offers-updated', refresh);
+    return () => window.removeEventListener('cardverse:offers-updated', refresh);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const fetchPickupAddress = async () => {
     if (!user) return;
@@ -1090,8 +1123,8 @@ export default function SellPage() {
       )}
       {/* Disabled rather than pressable-then-rejected: the two conditions
           (a real carrier, and every fee filled) are visible right above it. */}
-      <Button onClick={() => void saveShippingOptions()} disabled={savingShipping || !shippingSaveable} className="bg-orange-500 hover:bg-orange-600">
-        {savingShipping ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Truck className="mr-2 h-4 w-4" />}
+      <Button onClick={saveShippingOptions} loading={savingShipping} disabled={!shippingSaveable} className="bg-orange-500 hover:bg-orange-600">
+        {savingShipping ? null : <Truck className="mr-2 h-4 w-4" />}
         {tx('Lưu vận chuyển', 'Save shipping', '配送を保存')}
       </Button>
     </div>
@@ -1107,7 +1140,7 @@ export default function SellPage() {
         ) : (
           <>
             <div>{visibleListings.map(listing => (
-              <ListingRow key={listing.id} listing={listing} statusLabel={listing.status === 'sold' ? copy.sold : statusLabel} price={listing.price ? formatVND(listing.price) : '—'} />
+              <ListingRow key={listing.id} listing={listing} statusLabel={listing.status === 'sold' ? copy.sold : statusLabel} price={listing.price ? formatVND(listing.price) : '—'} pendingOffers={pendingOfferCounts[listing.id] || 0} offerLabel={tx('offer đang chờ', 'pending offers', '件の保留中オファー')} />
             ))}</div>
             {listings.length > 5 && !showAllListings[key] && (
               <button type="button" onClick={() => setShowAllListings(prev => ({ ...prev, [key]: true }))} className="mt-3 w-full text-sm font-medium text-primary">
@@ -1450,9 +1483,18 @@ export default function SellPage() {
                       </p>
                     )}
                   </div>
-                  <Button variant="outline" size="sm" className="shrink-0" asChild>
-                    <Link href="/buy" className="whitespace-nowrap">{copy.viewMarketplace}</Link>
-                  </Button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button variant="outline" size="sm" asChild className="border-orange-500/40 text-orange-400">
+                      <Link href="/offers?view=received" className="whitespace-nowrap">
+                        <HandCoins className="mr-1.5 h-4 w-4" />
+                        <span className="hidden sm:inline">{tx('Offer đã nhận', 'Received offers', '受信オファー')}</span>
+                        {pendingOffersTotal > 0 && <Badge className="ml-1.5 bg-orange-500 px-1.5 text-[10px] text-white">{pendingOffersTotal > 99 ? '99+' : pendingOffersTotal}</Badge>}
+                      </Link>
+                    </Button>
+                    <Button variant="outline" size="sm" className="hidden shrink-0 sm:inline-flex" asChild>
+                      <Link href="/buy" className="whitespace-nowrap">{copy.viewMarketplace}</Link>
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -1487,11 +1529,11 @@ export default function SellPage() {
                       {myListings.map((listing) => {
                         const isSold = listing.status === 'sold';
                         return (
-                          <Link
+                          <div
                             key={listing.id}
-                            href={`/cards/${listing.id}`}
                             className="group relative flex flex-col overflow-hidden rounded-xl border bg-card transition-all hover:border-orange-500/40 hover:shadow-md"
                           >
+                            <Link href={`/cards/${listing.id}`} className="absolute inset-0 z-[1]" aria-label={listing.name} />
                             <div className="relative aspect-[3/4] w-full overflow-hidden bg-muted">
                               {listing.image_url ? (
                                 <Image
@@ -1509,12 +1551,17 @@ export default function SellPage() {
                               <span className={`absolute left-2 top-2 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isSold ? 'bg-muted text-muted-foreground' : 'bg-green-500/90 text-white'}`}>
                                 {isSold ? copy.sold : copy.active}
                               </span>
+                              {(pendingOfferCounts[listing.id] || 0) > 0 && (
+                                <Link href={`/offers?view=received&cardId=${listing.id}`} className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-md bg-orange-500 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-orange-600" aria-label={`${pendingOfferCounts[listing.id]} ${tx('offer đang chờ', 'pending offers', '件の保留中オファー')}`}>
+                                  <HandCoins className="h-3 w-3" />{pendingOfferCounts[listing.id]}
+                                </Link>
+                              )}
                             </div>
                             <div className="flex flex-1 flex-col p-2.5">
                               <p className="line-clamp-1 text-sm font-medium">{listing.name}</p>
                               <p className="mt-1 text-sm font-bold text-orange-400">{listing.price ? formatVND(listing.price) : '—'}</p>
                             </div>
-                          </Link>
+                          </div>
                         );
                       })}
                     </div>

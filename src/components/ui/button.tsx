@@ -69,6 +69,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, loading, disabled, onClick, children, ...props }, ref) => {
     const Comp = asChild ? Slot : "button"
     const [pending, setPending] = React.useState(false)
+    const pendingRef = React.useRef(false)
 
     // A promise can settle after the button has gone — a dialog that closes on
     // success, a row that disappears. Writing state then is a no-op React warns
@@ -82,25 +83,36 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       return () => { mounted.current = false }
     }, [])
 
-    const busy = loading ?? pending
+    const busy = Boolean(loading || pending)
+    const blocked = Boolean(disabled || busy)
 
     const handleClick = React.useCallback(
       (event: React.MouseEvent<HTMLButtonElement>) => {
         // The second press of a double-tap never reaches the handler.
-        if (busy) {
+        if (blocked || pendingRef.current) {
           event.preventDefault()
           return
         }
 
         const result = onClick?.(event) as unknown
-        if (result instanceof Promise) {
+        if (result && typeof (result as PromiseLike<unknown>).then === "function") {
+          // State drives the visuals, while the ref closes the smaller window
+          // before React commits that state and disables the DOM button.
+          pendingRef.current = true
           setPending(true)
-          result.finally(() => {
-            if (mounted.current) setPending(false)
-          })
+          Promise.resolve(result).then(
+            () => {
+              pendingRef.current = false
+              if (mounted.current) setPending(false)
+            },
+            () => {
+              pendingRef.current = false
+              if (mounted.current) setPending(false)
+            },
+          )
         }
       },
-      [busy, onClick],
+      [blocked, onClick],
     )
 
     // Slot renders the child element itself and accepts exactly one child, so a
@@ -113,10 +125,10 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     if (asChild) {
       return (
         <Comp
-          className={cn(buttonVariants({ variant, size, className }), busy && "pointer-events-none opacity-50")}
+          className={cn(buttonVariants({ variant, size, className }), blocked && "pointer-events-none opacity-50")}
           ref={ref}
           aria-busy={busy || undefined}
-          aria-disabled={disabled || busy || undefined}
+          aria-disabled={blocked || undefined}
           onClick={handleClick}
           {...props}
         >
@@ -130,7 +142,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
         aria-busy={busy || undefined}
-        disabled={disabled || busy}
+        disabled={blocked}
         onClick={handleClick}
         {...props}
       >
