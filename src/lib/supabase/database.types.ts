@@ -508,6 +508,11 @@ export interface Database {
                     updated_at?: string
                 }
             }
+            listing_create_requests: {
+                Row: { seller_id: string; idempotency_key: string; request_hash: string; card_id: string; created_at: string }
+                Insert: { seller_id: string; idempotency_key: string; request_hash: string; card_id: string; created_at?: string }
+                Update: { seller_id?: string; idempotency_key?: string; request_hash?: string; card_id?: string; created_at?: string }
+            }
             vn_card_sales: {
                 Row: {
                     id: string
@@ -667,8 +672,11 @@ export interface Database {
                     buyer_id: string
                     price: number
                     message: string | null
-                    status: 'pending' | 'accepted' | 'rejected' | 'chosen'
+                    status: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired'
                     transaction_id: string | null
+                    payment_reminder_sent_at: string | null
+                    bundle_selection: Json | null
+                    payment_deadline: string | null
                     created_at: string
                 }
                 Insert: {
@@ -677,8 +685,11 @@ export interface Database {
                     buyer_id: string
                     price: number
                     message?: string | null
-                    status?: 'pending' | 'accepted' | 'rejected' | 'chosen'
+                    status?: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired'
                     transaction_id?: string | null
+                    payment_reminder_sent_at?: string | null
+                    bundle_selection?: Json | null
+                    payment_deadline?: string | null
                     created_at?: string
                 }
                 Update: {
@@ -687,8 +698,11 @@ export interface Database {
                     buyer_id?: string
                     price?: number
                     message?: string | null
-                    status?: 'pending' | 'accepted' | 'rejected' | 'chosen'
+                    status?: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired'
                     transaction_id?: string | null
+                    payment_reminder_sent_at?: string | null
+                    bundle_selection?: Json | null
+                    payment_deadline?: string | null
                     created_at?: string
                 }
             }
@@ -1838,6 +1852,14 @@ export interface Database {
             replay_legacy_wallet_history: { Args: { p_user_id: string; p_events: Json; p_batch_id: string; p_actor: string }; Returns: Json }
             classify_open_financial_records: { Args: { p_cutoff_at: string }; Returns: Json }
             check_and_record_admin_login_attempt: { Args: { p_ip_hash: string; p_account_hash: string; p_credentials_valid: boolean }; Returns: Json }
+            create_marketplace_listing: {
+                Args: { p_idempotency_key: string; p_request_hash: string; p_card: Json }
+                Returns: Json
+            }
+            update_own_sale_listing: {
+                Args: { p_listing_id: string; p_name: string; p_description: string; p_price: number; p_accept_offers: boolean; p_min_offer_percent: number }
+                Returns: Json
+            }
             delete_forum_comment: {
                 Args: { comment_id_param: string }
                 Returns: undefined

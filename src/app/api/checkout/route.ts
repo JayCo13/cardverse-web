@@ -8,6 +8,7 @@ import { quoteCheapestConfiguredShipping } from '@/lib/verified-shipping';
 import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link-claim';
 import { translateRequest } from '@/lib/request-localization';
 import { walletCheckoutError } from '@/lib/wallet-checkout-error';
+import { matchBundleSelection, type BundleItem, type BundleSelection } from '@/lib/bundle';
 
 // Fee model: the 8% platform fee is charged ONCE, at withdrawal
 // (src/app/api/wallet/withdraw/route.ts). Orders carry platform_fee = 0; the
@@ -44,6 +45,7 @@ type CheckoutCard = {
   status: string;
   listing_type: string | null;
   is_bundle: boolean | null;
+  bundle_items: BundleItem[] | null;
 };
 
 type CreatedOrder = Record<string, unknown>;
@@ -174,6 +176,9 @@ export async function POST(request: NextRequest) {
       amount: number;
       shippingFee: number;
       offerBuyerId?: string;
+      /** Set only for a bundle offer: the cards this payment takes out of the listing. */
+      bundleSelection?: BundleItem[];
+      bundleRemaining?: BundleItem[];
     }> = [];
 
     if (mode === 'cart') {
@@ -200,7 +205,7 @@ export async function POST(request: NextRequest) {
 
         const { data: card, error: cardError } = await supabase
           .from('cards')
-          .select('id, name, seller_id, price, status, listing_type, is_bundle')
+          .select('id, name, seller_id, price, status, listing_type, is_bundle, bundle_items')
           .eq('id', cartItem.card_id)
           .single<CheckoutCard>();
 
@@ -234,9 +239,9 @@ export async function POST(request: NextRequest) {
 
       const { data: offer, error: offerError } = await supabase
         .from('offers')
-        .select('id, card_id, buyer_id, price, status')
+        .select('id, card_id, buyer_id, price, status, bundle_selection')
         .eq('id', offerId)
-        .single<{ id: string; card_id: string; buyer_id: string; price: number; status: string }>();
+        .single<{ id: string; card_id: string; buyer_id: string; price: number; status: string; bundle_selection: BundleItem[] | null }>();
 
       if (offerError || !offer) {
         return NextResponse.json({ error: 'Offer not found' }, { status: 404 });
@@ -263,26 +268,56 @@ export async function POST(request: NextRequest) {
 
       const { data: card, error: cardError } = await supabase
         .from('cards')
-        .select('id, name, seller_id, price, status, listing_type, is_bundle')
+        .select('id, name, seller_id, price, status, listing_type, is_bundle, bundle_items')
         .eq('id', offer.card_id)
         .single<CheckoutCard>();
 
       if (cardError || !card || card.status === 'sold') {
         return NextResponse.json({ error: 'This card is no longer available.', code: 'card_unavailable' }, { status: 409 });
       }
+      // ── Bundle offer: this payment takes only the cards the offer named ──
+      //
+      // The listing is not reserved for a partial bundle offer (see
+      // perform_offer_action), so the cards can be gone by now. Re-match them
+      // here and hand the RPC the same {selection, before, remaining} triple the
+      // buy path sends, which is what makes the inventory subtraction atomic.
+      let bundleSelection: BundleItem[] | undefined;
+      let bundleRemaining: BundleItem[] | undefined;
+
       if (card.is_bundle) {
-        return NextResponse.json({
-          error: 'Bundles cannot be purchased through an offer.',
-          code: 'bundle_offer_checkout_unsupported',
-        }, { status: 409 });
+        const stored = Array.isArray(offer.bundle_selection) ? offer.bundle_selection : [];
+        if (stored.length === 0) {
+          return NextResponse.json({
+            error: 'This bundle offer did not name any cards. Ask the seller to reject it and send a new one.',
+            code: 'bundle_offer_selection_missing',
+          }, { status: 409 });
+        }
+        const items = Array.isArray(card.bundle_items) ? card.bundle_items : [];
+        const selectors: BundleSelection[] = stored.map(item => ({
+          title: String(item?.title ?? ''),
+          price: Number(item?.price) || 0,
+        }));
+        const matched = matchBundleSelection(items, selectors);
+        if (!matched) {
+          return NextResponse.json({
+            error: 'Some cards in this offer are no longer in the listing.',
+            code: 'bundle_item_unavailable',
+          }, { status: 409 });
+        }
+        bundleSelection = matched.matched;
+        bundleRemaining = matched.remaining;
       }
 
       checkoutItems.push({
         offerId: offer.id,
         offerBuyerId: offer.buyer_id,
         card,
+        // The agreed offer price, not the sum of the cards: the discount is the
+        // whole point of an offer.
         amount: Number(offer.price),
         shippingFee: 0,
+        bundleSelection,
+        bundleRemaining,
       });
     }
 
@@ -337,7 +372,20 @@ export async function POST(request: NextRequest) {
         amount: item.amount,
         shipping_fee: item.shippingFee,
         total_paid: item.amount + item.shippingFee,
-        metadata: { api_request_hash: apiRequestHash },
+        metadata: {
+          api_request_hash: apiRequestHash,
+          // The immutable inventory snapshot a refund is allowed to restore,
+          // written the same way /api/marketplace/buy writes it.
+          ...(item.bundleSelection ? {
+            bundle_selection: item.bundleSelection,
+            bundle_items_before: item.card.bundle_items || [],
+            bundle_inventory_state: 'reserved',
+          } : {}),
+        },
+        ...(item.bundleSelection ? {
+          bundle_items_before: item.card.bundle_items || [],
+          bundle_remaining: item.bundleRemaining || [],
+        } : {}),
         ...shipping,
       }));
 
@@ -404,8 +452,16 @@ export async function POST(request: NextRequest) {
       };
       const paymentOrder = staged?.payment_order;
       const orders = staged?.orders || [];
-      if (stageError || !paymentOrder || orders.length !== checkoutItems.length) {
-        throw stageError || new Error('Could not stage PayOS checkout');
+      if (stageError) {
+        console.error('Atomic PayOS checkout staging failed:', stageError);
+        const mapped = walletCheckoutError(stageError);
+        return NextResponse.json(
+          { error: mapped.message, code: mapped.code },
+          { status: mapped.status },
+        );
+      }
+      if (!paymentOrder || orders.length !== checkoutItems.length) {
+        throw new Error('Could not stage PayOS checkout');
       }
       const persistedOrderCode = Number(paymentOrder.order_code);
 

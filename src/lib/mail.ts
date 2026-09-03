@@ -667,3 +667,99 @@ export async function sendContactSubmittedToAdmin(contact: ContactRequestEmail, 
         console.error('[Mail] Failed to send new-contact alert:', error);
     }
 }
+
+type OfferEmailParams = {
+    recipientName: string;
+    cardName: string;
+    offerPrice: number;
+    cardId: string;
+};
+
+export async function sendOfferReceivedEmail(
+    sellerEmail: string,
+    params: OfferEmailParams & { listingPrice: number },
+    locale: SupportedLocale,
+): Promise<boolean> {
+    try {
+        if (!sellerEmail) return false;
+        const transporter = createMailTransporter();
+        const appUrl = getAppUrl();
+        const safeName = escapeHtml(params.recipientName);
+        const safeCardName = escapeHtml(params.cardName);
+        const subjectCardName = params.cardName.replace(/[\r\n]+/g, ' ').trim();
+        const offerUrl = `${appUrl}/offers?view=received&cardId=${encodeURIComponent(params.cardId)}`;
+
+        await transporter.sendMail({
+            from: getFromAddress(),
+            to: sellerEmail,
+            subject: mailText(locale, 'email_offer_received_subject', { cardName: subjectCardName }),
+            html: buildTemplate(
+                mailText(locale, 'email_offer_received_title'),
+                `<p style="color:#e4e4e7;">${mailText(locale, 'email_offer_received_greeting', { name: safeName })}</p>
+                <p>${mailText(locale, 'email_offer_received_body')}</p>
+                <div style="background:rgba(249,115,22,0.1); border:1px solid rgba(249,115,22,0.2); border-radius:8px; padding:16px; margin:20px 0;">
+                    <p style="margin:0; color:#a1a1aa; font-size:13px;">${mailText(locale, 'email_offer_received_card')}</p>
+                    <p style="margin:3px 0 14px; color:#fff; font-weight:700;">${safeCardName}</p>
+                    <table role="presentation" style="width:100%; border-collapse:collapse; font-size:14px;">
+                        <tr><td style="color:#a1a1aa; padding:3px 0;">${mailText(locale, 'email_offer_received_listing')}</td><td align="right" style="color:#e4e4e7;">${formatVnd(params.listingPrice)}</td></tr>
+                        <tr><td style="color:#fff; font-weight:700; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1);">${mailText(locale, 'email_offer_received_offer')}</td><td align="right" style="color:#f97316; font-weight:700; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1);">${formatVnd(params.offerPrice)}</td></tr>
+                    </table>
+                </div>
+                <div style="text-align:center; margin:24px 0;">
+                    <a href="${offerUrl}" style="display:inline-block; background:#f97316; color:#fff; padding:12px 28px; border-radius:8px; text-decoration:none; font-weight:700; font-size:14px;">${mailText(locale, 'email_offer_received_cta')} →</a>
+                </div>
+                <p style="color:#71717a; font-size:13px;">${mailText(locale, 'email_offer_received_note')}</p>`,
+                locale,
+            ),
+        });
+        console.log(`[Mail] New offer notification sent to seller ${sellerEmail}`);
+        return true;
+    } catch (error) {
+        console.error('[Mail] Failed to send new offer email to seller:', error);
+        return false;
+    }
+}
+
+export async function sendOfferAcceptedEmail(
+    buyerEmail: string,
+    params: OfferEmailParams & { offerId: string },
+    locale: SupportedLocale,
+): Promise<boolean> {
+    try {
+        if (!buyerEmail) return false;
+        const transporter = createMailTransporter();
+        const appUrl = getAppUrl();
+        const safeName = escapeHtml(params.recipientName);
+        const safeCardName = escapeHtml(params.cardName);
+        const subjectCardName = params.cardName.replace(/[\r\n]+/g, ' ').trim();
+        const checkoutUrl = `${appUrl}/checkout?offerId=${encodeURIComponent(params.offerId)}`;
+
+        await transporter.sendMail({
+            from: getFromAddress(),
+            to: buyerEmail,
+            subject: mailText(locale, 'email_offer_accepted_subject', { cardName: subjectCardName }),
+            html: buildTemplate(
+                mailText(locale, 'email_offer_accepted_title'),
+                `<p style="color:#e4e4e7;">${mailText(locale, 'email_offer_accepted_greeting', { name: safeName })}</p>
+                <p>${mailText(locale, 'email_offer_accepted_body')}</p>
+                <div style="background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.25); border-radius:8px; padding:16px; margin:20px 0;">
+                    <p style="margin:0; color:#a1a1aa; font-size:13px;">${mailText(locale, 'email_offer_accepted_card')}</p>
+                    <p style="margin:3px 0 14px; color:#fff; font-weight:700;">${safeCardName}</p>
+                    <table role="presentation" style="width:100%; border-collapse:collapse; font-size:14px;">
+                        <tr><td style="color:#fff; font-weight:700;">${mailText(locale, 'email_offer_accepted_price')}</td><td align="right" style="color:#4ade80; font-weight:700;">${formatVnd(params.offerPrice)}</td></tr>
+                    </table>
+                </div>
+                <div style="text-align:center; margin:24px 0;">
+                    <a href="${checkoutUrl}" style="display:inline-block; background:#f97316; color:#fff; padding:12px 28px; border-radius:8px; text-decoration:none; font-weight:700; font-size:14px;">${mailText(locale, 'email_offer_accepted_cta')} →</a>
+                </div>
+                <p style="color:#71717a; font-size:13px;">${mailText(locale, 'email_offer_accepted_note')}</p>`,
+                locale,
+            ),
+        });
+        console.log(`[Mail] Accepted offer notification sent to buyer ${buyerEmail}`);
+        return true;
+    } catch (error) {
+        console.error('[Mail] Failed to send accepted offer email to buyer:', error);
+        return false;
+    }
+}

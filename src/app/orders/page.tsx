@@ -21,6 +21,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { SHIPPING_CARRIERS, getTrackingUrl, getCarrier } from '@/lib/shipping-carriers';
 import Image from 'next/image';
+import { VerifiedSellerBadge } from '@/components/verified-seller-badge';
 
 type Order = {
   id: string;
@@ -609,8 +610,15 @@ export default function OrdersPage() {
               )}
 
               {/* Counterparty info */}
-              <p className="text-xs text-muted-foreground mt-1">
-                {isBuyer ? `${copy.seller}: ${order.seller?.display_name || order.seller?.email || '—'}` : `${copy.buyer}: ${order.buyer?.display_name || order.buyer?.email || '—'}`}
+              <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                {isBuyer ? (
+                  <>
+                    <span>{`${copy.seller}: ${order.seller?.display_name || order.seller?.email || '—'}`}</span>
+                    <VerifiedSellerBadge verified={order.seller?.seller_verified} className="h-3.5 w-3.5" />
+                  </>
+                ) : (
+                  <span>{`${copy.buyer}: ${order.buyer?.display_name || order.buyer?.email || '—'}`}</span>
+                )}
               </p>
 
               {/* 24h ship-deadline countdown (paid, not yet shipped) */}

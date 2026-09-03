@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth, useUser } from "@/lib/supabase/auth-provider";
 import { Header } from "@/components/layout/header";
@@ -22,6 +22,7 @@ export default function UpdatePasswordPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
+    const submitLockRef = useRef(false);
 
     // Redirect if not authenticated (no recovery session)
     useEffect(() => {
@@ -32,6 +33,7 @@ export default function UpdatePasswordPage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (submitLockRef.current) return;
         setError(null);
 
         if (password.length < 6) {
@@ -44,6 +46,7 @@ export default function UpdatePasswordPage() {
             return;
         }
 
+        submitLockRef.current = true;
         setIsLoading(true);
 
         try {
@@ -60,6 +63,7 @@ export default function UpdatePasswordPage() {
         } catch (err) {
             setError("An unexpected error occurred");
         } finally {
+            submitLockRef.current = false;
             setIsLoading(false);
         }
     };
@@ -150,7 +154,8 @@ export default function UpdatePasswordPage() {
                                 <Button
                                     type="submit"
                                     className="w-full"
-                                    disabled={isLoading || !password || !confirmPassword}
+                                    loading={isLoading}
+                                    disabled={!password || !confirmPassword}
                                 >
                                     {isLoading ? "Updating..." : "Update Password"}
                                 </Button>

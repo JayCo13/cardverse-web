@@ -18,7 +18,6 @@ import {
     Gem,
     HandCoins,
     Heart,
-    Loader2,
     MessageCircle,
     PackageCheck,
     Pencil,
@@ -904,12 +903,11 @@ export default function CardDetailsPage() {
                             size="sm"
                             variant="outline"
                             className="border-orange-500 text-orange-500 hover:bg-orange-500/10 hover:text-orange-400"
-                            onClick={() => void handleStartChat(offer.id)}
+                            onClick={() => handleStartChat(offer.id)}
+                            loading={startingChatOfferId === offer.id}
                             disabled={startingChatOfferId === offer.id}
                         >
-                            {startingChatOfferId === offer.id ? (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
+                            {startingChatOfferId === offer.id ? null : (
                                 <MessageCircle className="mr-2 h-4 w-4" />
                             )}
                             {copy.chat}
@@ -1099,12 +1097,11 @@ export default function CardDetailsPage() {
                                             variant="outline"
                                             size="sm"
                                             className="h-8 shrink-0 rounded-full border-orange-500 px-3 text-xs text-orange-500 hover:bg-orange-500/10 hover:text-orange-400"
-                                            onClick={() => void handleStartChat()}
+                                            onClick={() => handleStartChat()}
+                                            loading={startingChatOfferId === "listing"}
                                             disabled={isOwner || startingChatOfferId === "listing"}
                                         >
-                                            {startingChatOfferId === "listing" ? (
-                                                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                                            ) : (
+                                            {startingChatOfferId === "listing" ? null : (
                                                 <MessageCircle className="mr-1.5 h-3.5 w-3.5" />
                                             )}
                                             {copy.message}
@@ -1372,6 +1369,8 @@ export default function CardDetailsPage() {
                     price: card.price ?? 0,
                     sellerId: card.sellerId,
                     minOfferPercent: card.minOfferPercent ?? 0,
+                    isBundle: card.isBundle,
+                    bundleItems: card.bundleItems,
                 } : null}
                 onSuccess={(conversationId) => {
                     setOfferOpen(false);

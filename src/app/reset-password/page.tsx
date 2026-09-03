@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useAuth } from "@/lib/supabase/auth-provider";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
@@ -17,9 +17,12 @@ export default function ResetPasswordPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
+    const submitLockRef = useRef(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (submitLockRef.current) return;
+        submitLockRef.current = true;
         setError(null);
         setIsLoading(true);
 
@@ -33,6 +36,7 @@ export default function ResetPasswordPage() {
         } catch (err) {
             setError("An unexpected error occurred");
         } finally {
+            submitLockRef.current = false;
             setIsLoading(false);
         }
     };
@@ -101,7 +105,8 @@ export default function ResetPasswordPage() {
                                 <Button
                                     type="submit"
                                     className="w-full"
-                                    disabled={isLoading || !email}
+                                    loading={isLoading}
+                                    disabled={!email}
                                 >
                                     {isLoading ? "Sending..." : "Send Reset Link"}
                                 </Button>

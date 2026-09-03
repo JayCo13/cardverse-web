@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
+import type { Tables } from '@/lib/supabase/database.types';
 
 // GET: Get wallet balance
 export async function GET() {
@@ -53,7 +54,7 @@ export async function GET() {
                 .select('*')
                 .eq('user_id', user.id)
                 .order('created_at', { ascending: false })
-                .limit(40),
+                .limit(100),
             supabase
                 .from('wallet_withdrawals')
                 .select(`
@@ -64,15 +65,51 @@ export async function GET() {
                 `)
                 .eq('user_id', user.id)
                 .order('created_at', { ascending: false })
-                .limit(20),
+                .limit(50),
             supabase.rpc('get_my_wallet_fund_statement' as never),
         ]);
         if (statementError) throw statementError;
 
+        const allTransactions = (transactions || []) as Tables<'wallet_transactions'>[];
+        const enrichedWithdrawals = (withdrawals || []).map((w: any) => {
+            const match = allTransactions.find((t) =>
+                t.reference_id === w.id &&
+                ['withdrawal_hold', 'withdrawal', 'withdrawal_net_outflow'].includes(t.type)
+            );
+            if (match && typeof match.balance_after === 'number') {
+                const after = Number(match.balance_after);
+                const before = after + Number(w.amount_requested);
+                return { ...w, balance_before: before, balance_after: after };
+            }
+
+            const wTime = new Date(w.created_at).getTime();
+            const prior = allTransactions
+                .filter((t) => new Date(t.created_at).getTime() <= wTime && !['withdrawal_hold', 'withdrawal_hold_release'].includes(t.type))
+                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+
+            if (prior && typeof prior.balance_after === 'number') {
+                const before = Number(prior.balance_after);
+                const after = Math.max(0, before - Number(w.amount_requested));
+                return { ...w, balance_before: before, balance_after: after };
+            }
+
+            const next = allTransactions
+                .filter((t) => new Date(t.created_at).getTime() > wTime && !['withdrawal_hold', 'withdrawal_hold_release'].includes(t.type))
+                .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0];
+
+            if (next && typeof next.balance_after === 'number') {
+                const after = Number(next.balance_after) - Number(next.amount);
+                const before = after + Number(w.amount_requested);
+                return { ...w, balance_before: before, balance_after: after };
+            }
+
+            return w;
+        });
+
         return NextResponse.json({
             wallet,
-            transactions: transactions || [],
-            withdrawals: withdrawals || [],
+            transactions: allTransactions,
+            withdrawals: enrichedWithdrawals,
             fund_statement: fundStatement,
         });
     } catch (error: any) {

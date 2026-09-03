@@ -567,6 +567,8 @@ export default function BuyClient({ initialCards }: { initialCards: Card[] }) {
             price: offerCard.price ?? 0,
             sellerId: offerCard.sellerId,
             minOfferPercent: offerCard.minOfferPercent ?? 0,
+            isBundle: offerCard.isBundle,
+            bundleItems: offerCard.bundleItems,
           }}
           onSuccess={(conversationId) => {
             setSaleCards(cards => cards.map(card => (

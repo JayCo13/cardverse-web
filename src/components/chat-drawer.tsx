@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { useSupabase, useUser } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
+import { VerifiedSellerBadge } from "@/components/verified-seller-badge";
 import { getCloudinarySignature, uploadImageDirectToCloudinary } from "@/lib/cloudinary-direct";
 import { useLocalization } from "@/context/localization-context";
 
@@ -873,8 +874,11 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                             </div>
                                             <div className="min-w-0 flex-1">
                                                 <div className="flex items-center justify-between gap-2">
-                                                    <p className="truncate text-sm font-semibold">
-                                                        {conversation.otherUser?.display_name || conversation.otherUser?.email || "CardVerseHub user"}
+                                                    <p className="flex min-w-0 items-center gap-1 text-sm font-semibold">
+                                                        <span className="truncate">
+                                                            {conversation.otherUser?.display_name || conversation.otherUser?.email || "CardVerseHub user"}
+                                                        </span>
+                                                        <VerifiedSellerBadge verified={conversation.otherUser?.seller_verified} className="h-3.5 w-3.5" />
                                                     </p>
                                                     <div className="flex items-center gap-1.5">
                                                         {conversation.muted && <BellOff className="h-3.5 w-3.5 text-muted-foreground" />}
@@ -927,24 +931,26 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                             </div>
                                             <div className="min-w-0 flex-1">
                                                 <p className="truncate font-semibold">{selectedConversation.card?.name || copy.marketplaceChat}</p>
-                                                <p className="truncate text-sm text-muted-foreground">
-                                                    {copy.withUser} {selectedConversation.otherUser?.display_name || selectedConversation.otherUser?.email || copy.cardVerseUser}
-                                                    {selectedConversation.card?.price ? ` · ${formatVND(selectedConversation.card.price)}` : ""}
+                                                <p className="flex min-w-0 items-center gap-1 text-sm text-muted-foreground">
+                                                    <span className="truncate">
+                                                        {copy.withUser} {selectedConversation.otherUser?.display_name || selectedConversation.otherUser?.email || copy.cardVerseUser}
+                                                    </span>
+                                                    <VerifiedSellerBadge verified={selectedConversation.otherUser?.seller_verified} className="h-3.5 w-3.5" />
+                                                    {selectedConversation.card?.price ? <span className="shrink-0">{` · ${formatVND(selectedConversation.card.price)}`}</span> : null}
                                                 </p>
                                             </div>
                                             <Button
                                                 type="button"
                                                 variant="ghost"
                                                 size="icon"
-                                                onClick={() => void handleToggleMute()}
+                                                onClick={handleToggleMute}
+                                                loading={isUpdatingMute}
                                                 disabled={isUpdatingMute}
                                                 aria-label={selectedConversation.muted ? copy.unmuteConversation : copy.muteConversation}
                                                 title={selectedConversation.muted ? copy.unmuteConversation : copy.muteConversation}
                                                 className="h-11 w-11 shrink-0 md:h-10 md:w-10"
                                             >
-                                                {isUpdatingMute ? (
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                ) : selectedConversation.muted ? (
+                                                {isUpdatingMute ? null : selectedConversation.muted ? (
                                                     <BellOff className="h-4 w-4" />
                                                 ) : (
                                                     <Bell className="h-4 w-4" />
@@ -995,13 +1001,12 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                         <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
                                                             <Button
                                                                 type="button"
-                                                                onClick={() => void handleAcceptOffer()}
+                                                                onClick={handleAcceptOffer}
+                                                                loading={isAcceptingOffer}
                                                                 disabled={isAcceptingOffer || isRejectingOffer}
                                                                 className="bg-orange-500 text-white hover:bg-orange-600"
                                                             >
-                                                                {isAcceptingOffer ? (
-                                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                                ) : (
+                                                                {isAcceptingOffer ? null : (
                                                                     <CheckCircle className="mr-1.5 h-4 w-4" />
                                                                 )}
                                                                 {copy.acceptOffer}
@@ -1009,13 +1014,12 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                             <Button
                                                                 type="button"
                                                                 variant="outline"
-                                                                onClick={() => void handleRejectOffer()}
+                                                                onClick={handleRejectOffer}
+                                                                loading={isRejectingOffer}
                                                                 disabled={isAcceptingOffer || isRejectingOffer}
                                                                 className="border-rose-500/50 text-rose-500 hover:bg-rose-500/10 hover:text-rose-500"
                                                             >
-                                                                {isRejectingOffer ? (
-                                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                                ) : (
+                                                                {isRejectingOffer ? null : (
                                                                     <X className="mr-1.5 h-4 w-4" />
                                                                 )}
                                                                 {copy.declineOffer}
@@ -1055,21 +1059,23 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                     <div className="flex shrink-0 gap-1.5">
                                                         <Button
                                                             type="button"
-                                                            onClick={() => void handleAcceptOffer()}
+                                                            onClick={handleAcceptOffer}
+                                                            loading={isAcceptingOffer}
                                                             disabled={isAcceptingOffer || isRejectingOffer}
                                                             className="h-11 bg-orange-500 px-3 text-white hover:bg-orange-600"
                                                         >
-                                                            {isAcceptingOffer ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                                                            {isAcceptingOffer ? null : <CheckCircle className="h-4 w-4" />}
                                                             <span className="sr-only">{copy.acceptOffer}</span>
                                                         </Button>
                                                         <Button
                                                             type="button"
                                                             variant="outline"
-                                                            onClick={() => void handleRejectOffer()}
+                                                            onClick={handleRejectOffer}
+                                                            loading={isRejectingOffer}
                                                             disabled={isAcceptingOffer || isRejectingOffer}
                                                             className="h-11 border-rose-500/50 px-3 text-rose-500 hover:bg-rose-500/10 hover:text-rose-500"
                                                         >
-                                                            {isRejectingOffer ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                                                            {isRejectingOffer ? null : <X className="h-4 w-4" />}
                                                             <span className="sr-only">{copy.declineOffer}</span>
                                                         </Button>
                                                     </div>
@@ -1354,12 +1360,13 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                             />
                                             <Button
                                                 type="button"
-                                                onClick={() => void sendMessage()}
+                                                onClick={sendMessage}
+                                                loading={isSending}
                                                 disabled={!draft.trim() || isSending}
                                                 aria-label={copy.sendMessage}
                                                 className="h-11 w-11 shrink-0 bg-orange-500 px-0 text-white hover:bg-orange-600"
                                             >
-                                                {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                                {isSending ? null : <Send className="h-4 w-4" />}
                                             </Button>
                                         </div>
                                     </div>
@@ -1435,11 +1442,12 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                             />
                                             <Button
                                                 type="button"
-                                                onClick={() => void sendMessage()}
+                                                onClick={sendMessage}
+                                                loading={isSending}
                                                 disabled={!draft.trim() || isSending}
                                                 className="h-11 bg-orange-500 text-white hover:bg-orange-600"
                                             >
-                                                {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                                {isSending ? null : <Send className="h-4 w-4" />}
                                             </Button>
                                         </div>
                                     </div>

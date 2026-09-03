@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getRequestLocale } from '@/lib/request-localization';
+import { getOfferEmailRecipient } from '@/lib/offer-email-recipient';
+import { sendOfferAcceptedEmail } from '@/lib/mail';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const formatVND = (amount: number) => new Intl.NumberFormat('en-US').format(amount) + ' VND';
@@ -9,6 +12,7 @@ type OfferActionResult = {
     replayed?: boolean;
     offer_id: string;
     card_id: string;
+    card_name: string;
     buyer_id: string;
     seller_id: string;
     price: number;
@@ -74,6 +78,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                 last_message_at: (message as { created_at: string }).created_at,
                 updated_at: new Date().toISOString(),
             } as never).eq('id', conversationId);
+        }
+    }
+
+    // The financial RPC is idempotent. Send this only for its first committed
+    // execution so retries/double-clicks cannot generate duplicate emails.
+    if (!result.replayed) {
+        try {
+            const recipient = await getOfferEmailRecipient(result.buyer_id, getRequestLocale(request));
+            await sendOfferAcceptedEmail(recipient.email, {
+                recipientName: recipient.name,
+                cardName: result.card_name,
+                offerPrice: Number(result.price),
+                cardId: result.card_id,
+                offerId: result.offer_id,
+            }, recipient.locale);
+        } catch (mailError) {
+            console.error('[Offers] Unable to prepare accepted-offer email:', mailError);
         }
     }
 

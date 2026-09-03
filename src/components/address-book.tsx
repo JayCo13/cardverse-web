@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AddressPicker, type AddressData } from '@/components/address-picker';
@@ -132,6 +132,8 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
     const [form, setForm] = useState<FormState>(emptyForm);
     const [saving, setSaving] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null);
+    const mutationLocksRef = useRef(new Set<string>());
 
     const emitList = useCallback((list: SavedAddress[]) => {
         setAddresses(list);
@@ -244,6 +246,9 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
     };
 
     const handleDelete = async (addr: SavedAddress) => {
+        const lockKey = `delete:${addr.id}`;
+        if (mutationLocksRef.current.has(lockKey)) return;
+        mutationLocksRef.current.add(lockKey);
         setDeletingId(addr.id);
         try {
             const res = await fetch(`/api/shipping-addresses/${addr.id}`, { method: 'DELETE' });
@@ -260,11 +265,16 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
             const message = err instanceof Error ? err.message : copy.deleteError;
             toast({ variant: 'destructive', title: copy.errorTitle, description: message });
         } finally {
+            mutationLocksRef.current.delete(lockKey);
             setDeletingId(null);
         }
     };
 
     const handleSetDefault = async (addr: SavedAddress) => {
+        const lockKey = `default:${addr.id}`;
+        if (mutationLocksRef.current.has(lockKey)) return;
+        mutationLocksRef.current.add(lockKey);
+        setSettingDefaultId(addr.id);
         try {
             const res = await fetch(`/api/shipping-addresses/${addr.id}`, {
                 method: 'PATCH',
@@ -278,6 +288,9 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : copy.defaultError;
             toast({ variant: 'destructive', title: copy.errorTitle, description: message });
+        } finally {
+            mutationLocksRef.current.delete(lockKey);
+            setSettingDefaultId(null);
         }
     };
 
@@ -398,9 +411,12 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                                             <button
                                                 type="button"
                                                 onClick={(e) => { e.stopPropagation(); handleSetDefault(addr); }}
+                                                disabled={settingDefaultId === addr.id}
                                                 className="inline-flex items-center gap-1 text-muted-foreground hover:text-orange-500"
                                             >
-                                                <Star className="h-3 w-3" /> {copy.setDefault}
+                                                {settingDefaultId === addr.id
+                                                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                                                    : <Star className="h-3 w-3" />} {copy.setDefault}
                                             </button>
                                         )}
                                         <button
