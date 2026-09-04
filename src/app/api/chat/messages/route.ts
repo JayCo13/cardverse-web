@@ -166,7 +166,15 @@ export async function POST(request: NextRequest) {
     const messageType = body.messageType || body.message_type || 'user';
     const metadata = body.metadata || {};
 
-    if (!['user', 'system', 'offer_auto', 'safety_warning', 'image'].includes(messageType)) {
+    // Only the two kinds a person can actually compose. `system`, `offer_auto` and
+    // `safety_warning` are app-generated verdicts — "the seller accepted", "the buyer
+    // paid" — that the UI renders with its own trusted wording and, below, exempts
+    // from content screening. Accepting them here would let either participant post
+    // a forged "the buyer paid" straight into the other's thread.
+    // Every genuine producer of those types inserts into `messages` directly
+    // (src/app/api/offers/route.ts, offers/[id]/accept, offers/[id]/reject,
+    // src/lib/order-paid-chat.ts) and never comes through this endpoint.
+    if (!['user', 'image'].includes(messageType)) {
         return NextResponse.json({ error: 'Invalid message type' }, { status: 400 });
     }
 
@@ -258,8 +266,12 @@ export async function POST(request: NextRequest) {
 
     const now = new Date().toISOString();
     const readColumn = conversationRow.buyer_id === user.id ? 'buyer_last_read_at' : 'seller_last_read_at';
+    // An uncaptioned image stores an empty preview rather than a Vietnamese
+    // placeholder: the inbox renders the label itself, in the reader's language,
+    // from `message_type`. Rows written before this still carry the old literal
+    // and the client special-cases them.
     const previewText = messageType === 'image'
-        ? (messageBody ? preview(messageBody) : '📷 Hình ảnh')
+        ? (messageBody ? preview(messageBody) : '')
         : preview(messageBody);
 
     const offerIdFromMetadata = typeof metadata?.offerId === 'string'
@@ -281,7 +293,13 @@ export async function POST(request: NextRequest) {
         .eq('id', conversationId);
 
     if (flaggedTerms.length > 0) {
-        await supabase.from('messages').insert({
+        // Service-role, because RLS now refuses app-generated types from an
+        // authenticated user. This warning is exactly such a type: the app
+        // telling both parties it spotted an off-platform scam pattern.
+        // It used to be written with the caller's own client and its error
+        // discarded, so the policy change would have deleted the anti-scam
+        // warning silently — the failure mode being that nobody notices.
+        const { error: warningError } = await createServiceSupabaseClient().from('messages').insert({
             conversation_id: conversationId,
             sender_id: user.id,
             body: SAFETY_WARNING,
@@ -289,6 +307,9 @@ export async function POST(request: NextRequest) {
             metadata: { flaggedTerms },
             flagged_terms: flaggedTerms,
         } as never);
+        if (warningError) {
+            console.error('[Chat] Safety warning insert failed:', warningError);
+        }
     }
 
     const recipientId = conversationRow.buyer_id === user.id ? conversationRow.seller_id : conversationRow.buyer_id;

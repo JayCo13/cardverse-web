@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { enUS, ja, vi } from "date-fns/locale";
-import { AlertTriangle, ArrowLeft, Bell, BellOff, CheckCircle, ChevronDown, CreditCard, HandCoins, Image as ImageIcon, Inbox, Loader2, MessageCircle, Plus, Send, ShieldAlert, Smile, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bell, BellOff, Check, CheckCircle, ChevronDown, Copy, CreditCard, HandCoins, Image as ImageIcon, Inbox, Loader2, MessageCircle, Plus, Send, ShieldAlert, Smile, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -17,6 +17,10 @@ import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { VerifiedSellerBadge } from "@/components/verified-seller-badge";
 import { getCloudinarySignature, uploadImageDirectToCloudinary } from "@/lib/cloudinary-direct";
 import { useLocalization } from "@/context/localization-context";
+
+// The Vietnamese placeholder uncaptioned images used to store in
+// `conversations.last_message_preview`, kept so old rows still read correctly.
+const LEGACY_IMAGE_PREVIEW = "📷 Hình ảnh";
 
 // Curated emoji set for the lightweight inline picker (no extra dependency).
 const CHAT_EMOJIS = [
@@ -34,6 +38,8 @@ type ConversationItem = {
     offerId: string | null;
     lastMessagePreview: string | null;
     lastMessageAt: string | null;
+    lastMessageType: string | null;
+    lastMessageMetadata: Record<string, unknown> | null;
     buyerLastReadAt: string | null;
     sellerLastReadAt: string | null;
     unread: boolean;
@@ -82,6 +88,82 @@ type ChatDrawerProps = {
 
 const formatVND = (amount: number | null | undefined) =>
     amount == null ? "" : `${new Intl.NumberFormat("vi-VN").format(amount)}đ`;
+
+/**
+ * Put `text` on the clipboard, returning whether it landed.
+ *
+ * The async Clipboard API is missing or blocked in the two places this feature
+ * matters most — Safari on a plain-http origin (a phone testing against a LAN
+ * dev server) and older in-app WebViews — so fall back to the selection trick,
+ * which those still honour.
+ */
+async function writeToClipboard(text: string): Promise<boolean> {
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+    } catch {
+        // Denied or unavailable; the fallback below may still work.
+    }
+    try {
+        const area = document.createElement("textarea");
+        area.value = text;
+        area.setAttribute("readonly", "");
+        // Keep it off-screen but still focusable: iOS refuses to copy from a
+        // `display: none` or zero-size node.
+        area.style.position = "fixed";
+        area.style.top = "0";
+        area.style.left = "0";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        area.setSelectionRange(0, text.length);
+        const copied = document.execCommand("copy");
+        document.body.removeChild(area);
+        return copied;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Explicit copy affordance on a message bubble.
+ *
+ * Long-pressing to select text inside the chat drawer does not work on a phone:
+ * the sheet and the scroll area both claim the gesture before the browser can
+ * start a selection, so an address or a code sent in chat was impossible to get
+ * out. Touch has no hover to reveal the control, so it stays visible there and
+ * only fades in on pointer devices.
+ */
+function CopyMessageButton({ text, copied, onCopy, onLight, label, copiedLabel }: {
+    text: string;
+    copied: boolean;
+    onCopy: (text: string) => void;
+    onLight?: boolean;
+    label: string;
+    copiedLabel: string;
+}) {
+    return (
+        <button
+            type="button"
+            aria-label={copied ? copiedLabel : label}
+            title={copied ? copiedLabel : label}
+            onClick={() => onCopy(text)}
+            // `after:` widens the touch target to ~44px without growing the
+            // painted button, which would push the bubble's layout around. A
+            // 28px tap target is a miss on a phone, and this control only exists
+            // for phones.
+            className={`relative -my-1 ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-opacity after:absolute after:-inset-2 after:content-[''] md:after:hidden md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100 ${
+                onLight
+                    ? "text-white/75 active:bg-white/25 hover:bg-white/20 hover:text-white"
+                    : "text-muted-foreground active:bg-foreground/15 hover:bg-foreground/10 hover:text-foreground"
+            }`}
+        >
+            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        </button>
+    );
+}
 
 export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDrawerProps) {
     const supabase = useSupabase();
@@ -136,7 +218,11 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             offerAcceptedToast: "Đã chấp nhận đề nghị",
             offerAcceptedToastDesc: "Người mua sẽ được thông báo để thanh toán.",
             goCheckout: "Vào checkout",
-            safetyWarningMsg: "⚠️ CardVerseHub phát hiện nội dung có thể đưa giao dịch ra ngoài nền tảng. Để tránh scam, hãy trao đổi và thanh toán trực tiếp trên CardVerseHub.",
+            orderPaidMsg: "Bạn đã thanh toán {price}. Đang chờ người bán gửi hàng.",
+            orderPaidMsgSeller: "Người mua đã thanh toán {price}. Hãy chuẩn bị gửi hàng.",
+            viewOrder: "Xem đơn hàng",
+            imagePreview: "📷 Hình ảnh",
+            safetyWarningMsg: "CardVerseHub phát hiện nội dung có thể đưa giao dịch ra ngoài nền tảng. Để tránh scam, hãy trao đổi và thanh toán trực tiếp trên CardVerseHub.",
             payNow: "Thanh toán ngay",
             loadingMessages: "Đang tải tin nhắn...",
             title: "Tin nhắn CardVerseHub",
@@ -145,7 +231,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             cardVerseUser: "Người dùng CardVerseHub",
             offerTag: "Đề nghị giá",
             messagePlaceholder: "Nhập tin nhắn... Không chia sẻ Zalo/Facebook/số điện thoại hoặc thanh toán ngoài.",
-            safetyBanner: "⚠️ Cảnh báo an toàn: Để tránh lừa đảo, chỉ giao dịch và thanh toán trực tiếp trên CardVerseHub. Hãy đặc biệt cẩn trọng nếu ai đó yêu cầu chuyển sang Facebook, Zalo hoặc chuyển khoản ngân hàng bên ngoài.",
+            safetyBanner: "Cảnh báo an toàn: Để tránh lừa đảo, chỉ giao dịch và thanh toán trực tiếp trên CardVerseHub. Hãy đặc biệt cẩn trọng nếu ai đó yêu cầu chuyển sang Facebook, Zalo hoặc chuyển khoản ngân hàng bên ngoài.",
             muteConversation: "Tắt thông báo đoạn chat",
             unmuteConversation: "Bật thông báo đoạn chat",
             muteUpdateFailed: "Không thể cập nhật thông báo đoạn chat",
@@ -156,6 +242,9 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             invalidImage: "Tệp không phải ảnh hợp lệ.",
             imageBlockedDescription: "Ảnh chứa số điện thoại bị chặn. Vui lòng giữ giao dịch trên CardVerseHub.",
             imageAlt: "Hình ảnh đính kèm",
+            copyMessage: "Sao chép tin nhắn",
+            messageCopied: "Đã sao chép",
+            copyFailed: "Không thể sao chép tin nhắn. Hãy thử lại.",
         }
         : locale === "ja-JP"
             ? {
@@ -203,7 +292,11 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 offerAcceptedToast: "オファーを承認しました",
                 offerAcceptedToastDesc: "購入者に支払いの通知が送られます。",
                 goCheckout: "チェックアウトへ",
-                safetyWarningMsg: "⚠️ 取引を外部に移す可能性のある内容を検出しました。詐欺防止のため、やり取りと支払いはCardVerseHub上で行ってください。",
+                orderPaidMsg: "{price} を支払いました。出荷をお待ちください。",
+                orderPaidMsgSeller: "購入者が {price} を支払いました。発送の準備をしてください。",
+                viewOrder: "注文を見る",
+                imagePreview: "📷 画像",
+                safetyWarningMsg: "取引を外部に移す可能性のある内容を検出しました。詐欺防止のため、やり取りと支払いはCardVerseHub上で行ってください。",
                 payNow: "今すぐ支払う",
                 loadingMessages: "メッセージを読み込み中...",
                 title: "CardVerseHubメッセージ",
@@ -212,7 +305,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 cardVerseUser: "CardVerseHubユーザー",
                 offerTag: "価格オファー",
                 messagePlaceholder: "メッセージを入力... Zalo/Facebook/電話番号や外部決済情報は共有しないでください。",
-                safetyBanner: "⚠️ 安全に関する警告: 詐欺防止のため、取引と支払いは必ずCardVerseHub上で行ってください。Facebook、Zalo、または外部銀行送金へ誘導された場合は特に注意してください。",
+                safetyBanner: "安全に関する警告: 詐欺防止のため、取引と支払いは必ずCardVerseHub上で行ってください。Facebook、Zalo、または外部銀行送金へ誘導された場合は特に注意してください。",
                 muteConversation: "このチャットの通知をオフにする",
                 unmuteConversation: "このチャットの通知をオンにする",
                 muteUpdateFailed: "チャット通知を更新できません",
@@ -223,6 +316,9 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 invalidImage: "有効な画像ファイルではありません。",
                 imageBlockedDescription: "画像に電話番号が含まれています。取引はCardVerseHub内で行ってください。",
                 imageAlt: "添付画像",
+                copyMessage: "メッセージをコピー",
+                messageCopied: "コピーしました",
+                copyFailed: "メッセージをコピーできませんでした。もう一度お試しください。",
             }
             : {
                 acceptOfferFailed: "Unable to accept offer",
@@ -269,7 +365,11 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 offerAcceptedToast: "Offer accepted",
                 offerAcceptedToastDesc: "The buyer will be notified to pay.",
                 goCheckout: "Go to checkout",
-                safetyWarningMsg: "⚠️ CardVerseHub detected content that may move the deal off-platform. Keep communication and payment on CardVerseHub to avoid scams.",
+                orderPaidMsg: "You paid {price}. Waiting for the seller to ship.",
+                orderPaidMsgSeller: "The buyer paid {price}. Please prepare the shipment.",
+                viewOrder: "View order",
+                imagePreview: "📷 Photo",
+                safetyWarningMsg: "CardVerseHub detected content that may move the deal off-platform. Keep communication and payment on CardVerseHub to avoid scams.",
                 payNow: "Pay now",
                 loadingMessages: "Loading messages...",
                 title: "CardVerseHub Messages",
@@ -278,7 +378,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 cardVerseUser: "CardVerseHub user",
                 offerTag: "Price offer",
                 messagePlaceholder: "Type a message... Do not share Zalo/Facebook/phone numbers or arrange off-platform payment.",
-                safetyBanner: "⚠️ Safety Warning: To protect yourself from scams, only conduct transactions and payments directly on CardVerseHub. Be highly cautious if asked to move the conversation to Facebook, Zalo, or direct external bank transfers.",
+                safetyBanner: "Safety Warning: To protect yourself from scams, only conduct transactions and payments directly on CardVerseHub. Be highly cautious if asked to move the conversation to Facebook, Zalo, or direct external bank transfers.",
                 muteConversation: "Mute this conversation",
                 unmuteConversation: "Unmute this conversation",
                 muteUpdateFailed: "Unable to update conversation notifications",
@@ -289,6 +389,9 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 invalidImage: "Not a valid image file.",
                 imageBlockedDescription: "The image contains a blocked phone number. Please keep the deal on CardVerseHub.",
                 imageAlt: "Attached image",
+                copyMessage: "Copy message",
+                messageCopied: "Copied",
+                copyFailed: "Unable to copy the message. Please try again.",
             };
     const [conversations, setConversations] = useState<ConversationItem[]>([]);
     const [selectedId, setSelectedId] = useState<string | null>(initialConversationId || null);
@@ -300,6 +403,9 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     const [isLoadingMessages, setIsLoadingMessages] = useState(false);
     const [isSending, setIsSending] = useState(false);
     const [isUploadingImage, setIsUploadingImage] = useState(false);
+    // Which bubble is currently showing its "copied" tick.
+    const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+    const copiedResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [showEmoji, setShowEmoji] = useState(false);
     const [showMobileActions, setShowMobileActions] = useState(false);
     const [isSafetyExpanded, setIsSafetyExpanded] = useState(false);
@@ -320,6 +426,22 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     const isComposingRef = useRef(false);
     const isSendingRef = useRef(false);
     const selectedIdRef = useRef<string | null>(selectedId);
+
+    const copyMessageText = useCallback(async (messageId: string, text: string) => {
+        if (!text) return;
+        const copied = await writeToClipboard(text);
+        if (!copied) {
+            toast({ variant: "destructive", title: copy.error, description: copy.copyFailed });
+            return;
+        }
+        setCopiedMessageId(messageId);
+        if (copiedResetRef.current) clearTimeout(copiedResetRef.current);
+        copiedResetRef.current = setTimeout(() => setCopiedMessageId(null), 1600);
+    }, [toast, copy.error, copy.copyFailed]);
+
+    useEffect(() => () => {
+        if (copiedResetRef.current) clearTimeout(copiedResetRef.current);
+    }, []);
 
     const resizeComposer = useCallback((element: HTMLTextAreaElement | null) => {
         if (!element) return;
@@ -388,6 +510,64 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             selectedConversation.sellerId === user.id ||
             selectedConversation.card?.seller_id === user.id
         );
+    /**
+     * The inbox line for a conversation, in the reader's language.
+     *
+     * `last_message_preview` is frozen at write time in whatever language the
+     * producing route was written in — Vietnamese from the offer routes, English
+     * from accept/reject — so a Japanese user reads a Vietnamese inbox next to a
+     * correctly translated thread. The structured facts travel on the message's
+     * `metadata`, the same source the open thread already renders from, so the
+     * line can simply be rebuilt here.
+     *
+     * Falls back to the stored string for anything a person actually typed, and
+     * for rows written before `kind` existed.
+     */
+    // A plain function, not useCallback: `copy` is a conditional object literal
+    // rebuilt on every render, so memoising on it would never hit anyway.
+    const conversationPreview = (conversation: ConversationItem) => {
+        const meta = (conversation.lastMessageMetadata || {}) as { kind?: string; price?: number };
+        // Role per row, not from the open conversation — this is a list.
+        const viewerIsSeller = !!user && conversation.sellerId === user.id;
+
+        if (typeof meta.price === "number") {
+            if (meta.kind === "order_paid") {
+                return (viewerIsSeller ? copy.orderPaidMsgSeller : copy.orderPaidMsg)
+                    .replace("{price}", formatVND(meta.price));
+            }
+            if (meta.kind === "offer_accepted") {
+                return (viewerIsSeller ? copy.offerAcceptedMsgSeller : copy.offerAcceptedMsg)
+                    .replace("{price}", formatVND(meta.price));
+            }
+            if (meta.kind === "offer_rejected") {
+                return copy.offerRejectedMsg.replace("{price}", formatVND(meta.price));
+            }
+        }
+        if (conversation.lastMessageType === "safety_warning") return copy.safetyWarningMsg;
+        if (conversation.lastMessageType === "image") {
+            const caption = conversation.lastMessagePreview?.trim();
+            // `LEGACY_IMAGE_PREVIEW` is what rows written before this stored; new
+            // ones store an empty preview and let this label supply the words.
+            if (!caption || caption === LEGACY_IMAGE_PREVIEW) return copy.imagePreview;
+            return caption;
+        }
+        return conversation.lastMessagePreview || copy.startConversation;
+    };
+
+    /**
+     * Offers whose payment already landed, from the thread itself.
+     *
+     * The "Go to checkout" button lives on the older offer_accepted bubble, which
+     * knows nothing about what happened afterwards. Reading the payment back out
+     * of the message list keeps the button honest with no extra fetch, and it
+     * corrects itself the moment the order_paid message arrives over realtime.
+     */
+    const paidOfferIds = useMemo(() => new Set(
+        messages
+            .filter(message => (message.metadata as { kind?: string } | null)?.kind === "order_paid")
+            .map(message => (message.metadata as { offerId?: string } | null)?.offerId)
+            .filter((offerId): offerId is string => !!offerId),
+    ), [messages]);
 
     const unreadCount = conversations.filter(conversation => conversation.unread).length;
 
@@ -889,7 +1069,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                     </div>
                                                 </div>
                                                 <p className="truncate text-xs text-muted-foreground">{conversation.card?.name || copy.marketplaceChat}</p>
-                                                <p className="mt-1 truncate text-xs">{conversation.lastMessagePreview || copy.startConversation}</p>
+                                                <p className="mt-1 truncate text-xs">{conversationPreview(conversation)}</p>
                                                 {conversation.lastMessageAt && (
                                                     <p className="mt-1 text-[11px] text-muted-foreground">
                                                         {formatDistanceToNow(new Date(conversation.lastMessageAt), { addSuffix: true, locale: dateLocale })}
@@ -972,6 +1152,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                         </button>
                                         {isSafetyExpanded && (
                                             <div className="mt-1 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-100 md:hidden">
+                                                <span className="mr-1" aria-hidden="true">⚠️</span>
                                                 {copy.safetyBanner}
                                             </div>
                                         )}
@@ -1140,26 +1321,52 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                         // Render server-generated system messages in the viewer's language
                                                         // (neutral wording works for both buyer and seller); fall back to
                                                         // the stored body for older messages without a `kind`.
-                                                        const meta = (message.metadata || {}) as { kind?: string; price?: number; checkoutUrl?: string };
-                                                        // Role-aware wording: `mine` = the viewer sent it. An offer_accepted
-                                                        // message is sent by the SELLER, so `mine` here means "I'm the seller".
+                                                        const meta = (message.metadata || {}) as { kind?: string; price?: number; checkoutUrl?: string; offerId?: string; orderId?: string };
+                                                        // Role-aware wording. Do NOT reach for `mine` here: it means "the
+                                                        // viewer sent this", and the sender differs per kind — the SELLER
+                                                        // sends offer_accepted, the BUYER sends order_paid. Reading the role
+                                                        // off the conversation instead keeps the two from being mirrored.
                                                         const systemBody = meta.kind === "offer_rejected" && typeof meta.price === "number"
                                                             ? copy.offerRejectedMsg.replace("{price}", formatVND(meta.price))
                                                             : meta.kind === "offer_accepted" && typeof meta.price === "number"
                                                                 ? (mine ? copy.offerAcceptedMsgSeller : copy.offerAcceptedMsg).replace("{price}", formatVND(meta.price))
-                                                                : message.body;
-                                                        // Checkout is the BUYER's action only.
-                                                        const showCheckout = meta.kind === "offer_accepted" && !mine && typeof meta.checkoutUrl === "string";
+                                                                : meta.kind === "order_paid" && typeof meta.price === "number"
+                                                                    ? (isSellerInSelectedConversation ? copy.orderPaidMsgSeller : copy.orderPaidMsg).replace("{price}", formatVND(meta.price))
+                                                                    : message.body;
+                                                        // Checkout is the BUYER's action only, and only while the offer is
+                                                        // still unpaid — otherwise the stale button walks them back into the
+                                                        // checkout for an order they already settled.
+                                                        const showCheckout = meta.kind === "offer_accepted"
+                                                            && !mine
+                                                            && typeof meta.checkoutUrl === "string"
+                                                            && !(meta.offerId && paidOfferIds.has(meta.offerId));
+                                                        // Both sides follow the order from here on.
+                                                        const showViewOrder = meta.kind === "order_paid" && typeof meta.orderId === "string";
                                                         return (
-                                                            <div key={message.id} className="mx-auto max-w-xl rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-100">
-                                                                {systemBody}
+                                                            <div key={message.id} className="mx-auto max-w-xl rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-[13px] leading-relaxed text-orange-100 md:text-xs">
+                                                                <p className="break-words">{systemBody}</p>
                                                                 {showCheckout && (
                                                                     <Button
                                                                         size="sm"
-                                                                        className={`mt-2 h-8 w-full bg-orange-500 text-white hover:bg-orange-600 ${offer?.buyer_id === user.id && offer.status === "chosen" ? "hidden md:inline-flex" : "inline-flex"}`}
+                                                                        // Shown on every width. This used to collapse to
+                                                                        // `hidden md:inline-flex` while the sticky offer bar was
+                                                                        // up, to avoid two pay buttons on a phone — but desktop
+                                                                        // has always shown both, and on mobile it left the
+                                                                        // sentence "go to checkout to pay" sitting above nothing
+                                                                        // to press. A duplicated CTA beats a dead instruction.
+                                                                        className="mt-2 inline-flex h-11 w-full text-sm bg-orange-500 text-white hover:bg-orange-600 md:h-8"
                                                                         onClick={() => router.push(meta.checkoutUrl as string)}
                                                                     >
                                                                         {copy.goCheckout}
+                                                                    </Button>
+                                                                )}
+                                                                {showViewOrder && (
+                                                                    <Button
+                                                                        size="sm"
+                                                                        className="mt-2 inline-flex h-11 w-full text-sm bg-orange-500 text-white hover:bg-orange-600 md:h-8"
+                                                                        onClick={() => router.push(`/orders/${meta.orderId}`)}
+                                                                    >
+                                                                        {copy.viewOrder}
                                                                     </Button>
                                                                 )}
                                                                 <p className="mt-1 text-[10px] text-muted-foreground">
@@ -1172,7 +1379,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                         const imageUrl = typeof message.metadata?.imageUrl === "string" ? message.metadata.imageUrl : null;
                                                         return (
                                                             <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                                                                <div className={`max-w-[78%] overflow-hidden rounded-2xl ${mine ? "bg-orange-500 text-white" : "bg-muted"}`}>
+                                                                <div className={`group max-w-[78%] overflow-hidden rounded-2xl ${mine ? "bg-orange-500 text-white" : "bg-muted"}`}>
                                                                     <p className={`px-3 pt-2 text-[11px] font-semibold ${mine ? "text-white/80" : "text-muted-foreground"}`}>
                                                                         {senderLabel}
                                                                     </p>
@@ -1186,10 +1393,22 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                                             />
                                                                         </a>
                                                                     )}
-                                                                    {message.body && <p className="px-3 pt-2 text-sm leading-6">{message.body}</p>}
-                                                                    <p className={`px-3 pb-2 pt-1 text-[10px] ${mine ? "text-white/75" : "text-muted-foreground"}`}>
-                                                                        {formatDistanceToNow(new Date(message.created_at), { addSuffix: true, locale: dateLocale })}
-                                                                    </p>
+                                                                    {message.body && <p className="whitespace-pre-wrap break-words px-3 pt-2 text-sm leading-6">{message.body}</p>}
+                                                                    <div className="flex items-center gap-2 px-3 pb-2 pt-1">
+                                                                        <p className={`text-[10px] ${mine ? "text-white/75" : "text-muted-foreground"}`}>
+                                                                            {formatDistanceToNow(new Date(message.created_at), { addSuffix: true, locale: dateLocale })}
+                                                                        </p>
+                                                                        {message.body && (
+                                                                            <CopyMessageButton
+                                                                                text={message.body}
+                                                                                copied={copiedMessageId === message.id}
+                                                                                onCopy={text => void copyMessageText(message.id, text)}
+                                                                                onLight={mine}
+                                                                                label={copy.copyMessage}
+                                                                                copiedLabel={copy.messageCopied}
+                                                                            />
+                                                                        )}
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         );
@@ -1201,7 +1420,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                         const offerCardName = typeof meta.cardName === "string" ? meta.cardName : null;
                                                         return (
                                                             <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                                                                <div className="max-w-[86%] overflow-hidden rounded-2xl border border-orange-500/30 bg-orange-500/10 md:max-w-[78%]">
+                                                                <div className="group max-w-[86%] overflow-hidden rounded-2xl border border-orange-500/30 bg-orange-500/10 md:max-w-[78%]">
                                                                     <div className="flex items-center gap-1.5 border-b border-orange-500/20 px-2.5 py-1.5 text-[11px] font-semibold text-orange-300 md:px-3">
                                                                         <HandCoins className="h-3.5 w-3.5" />
                                                                         {senderLabel} · {copy.offerTag}
@@ -1219,12 +1438,23 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                                         {offerText && (
                                                                             <div className="mt-2 rounded-md bg-background/40 px-2.5 py-1.5">
                                                                                 <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{copy.offerMessageLabel}</p>
-                                                                                <p className="text-sm text-foreground">{offerText}</p>
+                                                                                <p className="whitespace-pre-wrap break-words text-sm text-foreground">{offerText}</p>
                                                                             </div>
                                                                         )}
-                                                                        <p className="mt-1.5 text-[10px] text-muted-foreground">
-                                                                            {formatDistanceToNow(new Date(message.created_at), { addSuffix: true, locale: dateLocale })}
-                                                                        </p>
+                                                                        <div className="mt-1.5 flex items-center gap-2">
+                                                                            <p className="text-[10px] text-muted-foreground">
+                                                                                {formatDistanceToNow(new Date(message.created_at), { addSuffix: true, locale: dateLocale })}
+                                                                            </p>
+                                                                            {(offerText || message.body) && (
+                                                                                <CopyMessageButton
+                                                                                    text={offerText || message.body}
+                                                                                    copied={copiedMessageId === message.id}
+                                                                                    onCopy={text => void copyMessageText(message.id, text)}
+                                                                                    label={copy.copyMessage}
+                                                                                    copiedLabel={copy.messageCopied}
+                                                                                />
+                                                                            )}
+                                                                        </div>
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -1232,7 +1462,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                     }
                                                     return (
                                                         <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                                                            <div className={`max-w-[78%] rounded-2xl px-4 py-2 text-sm leading-6 ${
+                                                            <div className={`group max-w-[78%] rounded-2xl px-4 py-2 text-sm leading-6 ${
                                                                 mine
                                                                     ? "bg-orange-500 text-white"
                                                                     : "bg-muted"
@@ -1240,10 +1470,22 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                                 <p className={`mb-1 text-[11px] font-semibold ${mine ? "text-white/80" : "text-muted-foreground"}`}>
                                                                     {senderLabel}{offerAuto ? ` · ${copy.offerTag}` : ""}
                                                                 </p>
-                                                                <p>{message.body}</p>
-                                                                <p className={`mt-1 text-[10px] ${mine ? "text-white/75" : "text-muted-foreground"}`}>
-                                                                    {formatDistanceToNow(new Date(message.created_at), { addSuffix: true, locale: dateLocale })}
-                                                                </p>
+                                                                <p className="whitespace-pre-wrap break-words">{message.body}</p>
+                                                                <div className="mt-1 flex items-center gap-2">
+                                                                    <p className={`text-[10px] ${mine ? "text-white/75" : "text-muted-foreground"}`}>
+                                                                        {formatDistanceToNow(new Date(message.created_at), { addSuffix: true, locale: dateLocale })}
+                                                                    </p>
+                                                                    {message.body && (
+                                                                        <CopyMessageButton
+                                                                            text={message.body}
+                                                                            copied={copiedMessageId === message.id}
+                                                                            onCopy={text => void copyMessageText(message.id, text)}
+                                                                            onLight={mine}
+                                                                            label={copy.copyMessage}
+                                                                            copiedLabel={copy.messageCopied}
+                                                                        />
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     );

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendOrderPlacedToBuyer, sendOrderPlacedToSeller } from './mail';
+import { announceOrderPaidInChat } from './order-paid-chat';
 
 type WebhookFinancialResult = {
   ok?: boolean;
@@ -22,7 +23,7 @@ type PostProcessingClaim = {
 async function finalizeMarketplaceOrders(supabase: SupabaseClient, paymentOrderId: string) {
   const { data: orders, error } = await supabase
     .from('orders')
-    .select('id, card_id, seller_id, buyer_id, status, amount, shipping_fee, platform_fee, total_paid, shipping_address')
+    .select('id, card_id, seller_id, buyer_id, offer_id, status, amount, shipping_fee, platform_fee, total_paid, shipping_address')
     .eq('payment_order_id', paymentOrderId);
   if (error) throw error;
 
@@ -56,6 +57,15 @@ async function finalizeMarketplaceOrders(supabase: SupabaseClient, paymentOrderI
       // swallowed by the mail helpers and never rethrown.
       await sendOrderPlacedEmails(supabase, order);
     }
+
+    // Deliberately outside the notification branch. Post-processing is only
+    // at-least-once: an invocation that died after inserting `order_new` but
+    // before this line would, on retry or on the deferred drain, see the
+    // notification, skip the whole branch and mark itself complete — leaving the
+    // seller with a bell and no message in the thread they actually read.
+    // This delivery carries its own idempotency (a unique index on the receipt),
+    // so it does not need to borrow the notification's.
+    await announceOrderPaidInChat(supabase, order);
   }
 }
 
@@ -64,6 +74,7 @@ type PaidOrder = {
   card_id: string;
   seller_id: string;
   buyer_id: string;
+  offer_id: string | null;
   amount: number;
   shipping_fee: number | null;
   platform_fee: number | null;

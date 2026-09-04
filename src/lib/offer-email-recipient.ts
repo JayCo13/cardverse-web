@@ -3,10 +3,27 @@ import 'server-only';
 import type { SupportedLocale } from '@/lib/request-localization';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
-const normalizeLocale = (value: unknown, fallback: SupportedLocale): SupportedLocale => {
-    if (value === 'vi' || value === 'vi-VN') return 'vi-VN';
-    if (value === 'ja' || value === 'ja-JP') return 'ja-JP';
-    if (value === 'en' || value === 'en-US') return 'en-US';
+const matchLocale = (value: unknown): SupportedLocale | null => {
+    if (typeof value !== 'string') return null;
+    const tag = value.toLowerCase();
+    if (tag.startsWith('vi')) return 'vi-VN';
+    if (tag.startsWith('ja')) return 'ja-JP';
+    if (tag.startsWith('en')) return 'en-US';
+    return null;
+};
+
+/**
+ * The recipient's own language wins over the sender's.
+ *
+ * `fallback` is the locale of the request that triggered the mail, which belongs
+ * to the *other* party in an offer — the buyer's browser deciding what language
+ * the seller reads. Use it only when the recipient's account says nothing.
+ */
+const resolveLocale = (candidates: unknown[], fallback: SupportedLocale): SupportedLocale => {
+    for (const candidate of candidates) {
+        const matched = matchLocale(candidate);
+        if (matched) return matched;
+    }
     return fallback;
 };
 
@@ -29,6 +46,6 @@ export async function getOfferEmailRecipient(userId: string, fallbackLocale: Sup
     return {
         email,
         name,
-        locale: normalizeLocale(metadata?.locale ?? metadata?.language, fallbackLocale),
+        locale: resolveLocale([metadata?.locale, metadata?.language], fallbackLocale),
     };
 }

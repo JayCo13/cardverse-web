@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { getRequestLocale } from '@/lib/request-localization';
 import { getOfferEmailRecipient } from '@/lib/offer-email-recipient';
 import { sendOfferAcceptedEmail } from '@/lib/mail';
@@ -47,13 +48,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Chat is non-financial. It runs only for the first committed action; the
     // offer/card/loser state and notifications are already atomic in the RPC.
+    //
+    // Written with the service-role client: `system` messages are the app's own
+    // voice and RLS now refuses them from an authenticated user, so that a buyer
+    // cannot forge one straight through PostgREST. Authority is not lost — every
+    // id below comes from `perform_offer_action`, which already checked that this
+    // caller may accept this offer.
+    const service = createServiceSupabaseClient();
     let conversationId: string | null = null;
-    const { data: existing } = await supabase.from('conversations').select('id')
+    const { data: existing } = await service.from('conversations').select('id, status')
         .eq('buyer_id', result.buyer_id).eq('seller_id', result.seller_id)
         .eq('card_id', result.card_id).maybeSingle();
-    conversationId = (existing as { id?: string } | null)?.id || null;
+    const existingRow = existing as { id?: string; status?: string } | null;
+    conversationId = existingRow?.id || null;
+    // Service-role bypasses the RLS rule that only an active conversation accepts
+    // messages, so the check moves here.
+    if (conversationId && existingRow?.status && existingRow.status !== 'active') {
+        console.warn('[Offers] Skipping accept message for non-active conversation:', conversationId, existingRow.status);
+        conversationId = null;
+    }
     if (!conversationId && !result.replayed) {
-        const { data: created } = await supabase.from('conversations').insert({
+        const { data: created } = await service.from('conversations').insert({
             buyer_id: result.buyer_id,
             seller_id: result.seller_id,
             card_id: result.card_id,
@@ -63,7 +78,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     if (conversationId && !result.replayed) {
         const body = `The seller accepted your ${formatVND(Number(result.price))} offer. Continue to checkout to complete payment on CardVerseHub.`;
-        const { data: message } = await supabase.from('messages').insert({
+        const { data: message } = await service.from('messages').insert({
             conversation_id: conversationId,
             sender_id: user.id,
             body,
@@ -71,7 +86,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             metadata: { offerId: result.offer_id, cardId: result.card_id, checkoutUrl, kind: 'offer_accepted', price: Number(result.price) },
         } as never).select('id, created_at').single();
         if (message) {
-            await supabase.from('conversations').update({
+            await service.from('conversations').update({
                 offer_id: result.offer_id,
                 last_message_id: (message as { id: string }).id,
                 last_message_preview: body,
