@@ -8,6 +8,7 @@ import { quoteCheapestConfiguredShipping } from '@/lib/verified-shipping';
 import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link-claim';
 import { translateRequest } from '@/lib/request-localization';
 import { walletCheckoutError } from '@/lib/wallet-checkout-error';
+import { announcePaidOrdersInChat } from '@/lib/order-paid-chat';
 import { matchBundleSelection, type BundleItem, type BundleSelection } from '@/lib/bundle';
 
 // Fee model: the 8% platform fee is charged ONCE, at withdrawal
@@ -149,6 +150,11 @@ export async function POST(request: NextRequest) {
         await supabase.from('cart_items').delete().eq('user_id', user.id).in('id', cartItemIds);
       }
       if (replay.payment_method === 'wallet' && replay.orders?.length) {
+        // A replay reaches here when the RPC committed but the original request
+        // never finished — precisely the case where the chat receipt is still
+        // missing. The announcement is idempotent, so running it on every replay
+        // costs nothing and is the only remaining chance to send it.
+        await announcePaidOrdersInChat(service, replay.orders);
         return NextResponse.json({ success: true, orders: replay.orders, payment_method: 'wallet', replayed: true });
       }
       if (replay.payment_method === 'direct_payos' && replay.orders?.length && replay.payment_order?.checkout_url) {
@@ -426,6 +432,11 @@ export async function POST(request: NextRequest) {
             console.error('Checkout notification failed:', notificationError);
           }
         }
+
+        // The bell alone left the seller guessing when to pack: put the receipt
+        // in the thread the two of them are actually using. Driven off the rows
+        // the RPC returned, so this and the replay path above stay identical.
+        await announcePaidOrdersInChat(service, orders);
 
         if (mode === 'cart') {
           const cartItemIds = checkoutItems.map(item => item.cartItemId).filter(Boolean) as string[];

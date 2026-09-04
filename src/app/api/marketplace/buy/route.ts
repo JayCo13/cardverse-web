@@ -10,6 +10,7 @@ import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link
 import { translateRequest } from '@/lib/request-localization';
 import { walletCheckoutError } from '@/lib/wallet-checkout-error';
 import { sendOrderPlacedToBuyer, sendOrderPlacedToSeller } from '@/lib/mail';
+import { announcePaidOrdersInChat } from '@/lib/order-paid-chat';
 
 // Fee model: the 8% platform fee is charged once, at withdrawal — orders carry
 // platform_fee = 0 and the seller is credited the full amount on completion.
@@ -131,6 +132,9 @@ export async function POST(request: NextRequest) {
         if (replay.found) {
             const order = replay.orders?.[0];
             if (replay.payment_method === 'wallet' && order) {
+                // Idempotent, and the only remaining chance to announce if the
+                // original request died after the RPC committed.
+                await announcePaidOrdersInChat(service, [order]);
                 return NextResponse.json({ success: true, order, payment_method: 'wallet', replayed: true });
             }
             if (replay.payment_method === 'direct_payos' && order && replay.payment_order?.checkout_url) {
@@ -326,6 +330,10 @@ export async function POST(request: NextRequest) {
             if (notificationError) {
                 console.error('Wallet order notification failed:', notificationError);
             }
+
+            // No-ops unless a conversation already exists — a straight "buy now"
+            // has none, but a buyer who negotiated in chat first does.
+            await announcePaidOrdersInChat(service, [order]);
 
             // Wallet checkouts are paid the moment the RPC commits, so the
             // receipt goes out here. PayOS orders are emailed from the webhook

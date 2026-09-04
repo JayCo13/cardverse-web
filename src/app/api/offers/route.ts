@@ -306,9 +306,25 @@ export async function POST(request: NextRequest) {
         conversationId = createdConversation ? (createdConversation as any).id : null;
     }
 
+    // A blocked or archived conversation takes no messages. RLS used to enforce
+    // this; the service-role client below bypasses RLS, so the check has to be
+    // made here instead. It matters most for `offer_auto`, which carries the
+    // buyer's own note — otherwise a blocked participant could keep talking by
+    // attaching text to an offer.
+    const conversationStatus = (existingConversation as { status?: string } | null)?.status;
+    if (conversationId && conversationStatus && conversationStatus !== 'active') {
+        console.warn('[Offers] Skipping chat message for non-active conversation:', conversationId, conversationStatus);
+        conversationId = null;
+    }
+
     if (conversationId) {
         const messageBody = `${latestOffer ? 'Gửi lại đề nghị' : 'Gửi đề nghị'} ${formatVND(price)} ${cardRow.name}${message ? `: ${message}` : '.'}`;
-        const { data: messageRow } = await supabase
+        // `offer_auto` is app-generated and exempt from content screening, so RLS
+        // now refuses it from an authenticated user — otherwise anyone could post
+        // a fake offer bubble with any price. The offer row above was already
+        // validated and inserted for this caller.
+        const offerChatService = createServiceSupabaseClient();
+        const { data: messageRow } = await offerChatService
             .from('messages')
             .insert({
                 conversation_id: conversationId,
@@ -331,7 +347,7 @@ export async function POST(request: NextRequest) {
             .single();
 
         const now = new Date().toISOString();
-        await supabase
+        await offerChatService
             .from('conversations')
             .update({
                 last_message_id: messageRow ? (messageRow as any).id : null,

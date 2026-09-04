@@ -7,6 +7,7 @@ import { hashFinancialRequest, stableFinancialUuid } from '@/lib/financial-idemp
 import { quoteCheapestConfiguredShipping } from '@/lib/verified-shipping';
 import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link-claim';
 import { translateRequest } from '@/lib/request-localization';
+import { announcePaidOrdersInChat } from '@/lib/order-paid-chat';
 
 const RESERVATION_MINUTES = 15;
 
@@ -100,6 +101,9 @@ export async function POST(
     if (replay.found) {
       const order = replay.orders?.[0];
       if (replay.payment_method === 'wallet' && order) {
+        // Idempotent, and the only remaining chance to announce if the original
+        // request died after the RPC committed.
+        await announcePaidOrdersInChat(service, [order]);
         return NextResponse.json({ success: true, order, payment_method: 'wallet', replayed: true });
       }
       if (replay.payment_method === 'direct_payos' && order && replay.payment_order?.checkout_url) {
@@ -210,6 +214,11 @@ export async function POST(
       if (notificationError) {
         console.error('Transaction payment notification failed:', notificationError);
       }
+
+      // No-ops unless these two already have a conversation. Driven off the
+      // order row so the amount is whatever was really charged — quoting the
+      // route's bare `amount` would drop the shipping fee.
+      await announcePaidOrdersInChat(service, [order]);
 
       return NextResponse.json({ success: true, order, payment_method: 'wallet' });
     }

@@ -17,18 +17,26 @@ type ConversationRow = {
     updated_at: string;
 };
 
+type LastMessageRow = {
+    id: string;
+    message_type: string;
+    metadata: Record<string, unknown> | null;
+};
+
 const mapConversation = (
     conversation: ConversationRow,
     currentUserId: string,
     profiles: Map<string, any>,
     cards: Map<string, any>,
     mutedConversationIds: Set<string>,
+    lastMessages: Map<string, LastMessageRow>,
 ) => {
     const otherUserId = conversation.buyer_id === currentUserId ? conversation.seller_id : conversation.buyer_id;
     const ownLastRead = conversation.buyer_id === currentUserId
         ? conversation.buyer_last_read_at
         : conversation.seller_last_read_at;
     const unread = !!conversation.last_message_at && (!ownLastRead || new Date(conversation.last_message_at) > new Date(ownLastRead));
+    const lastMessage = conversation.last_message_id ? lastMessages.get(conversation.last_message_id) : undefined;
 
     return {
         id: conversation.id,
@@ -38,6 +46,13 @@ const mapConversation = (
         offerId: conversation.offer_id,
         lastMessageId: conversation.last_message_id,
         lastMessagePreview: conversation.last_message_preview,
+        // `last_message_preview` is a frozen string in whichever language the
+        // producing route happened to be written in — Vietnamese from the offer
+        // routes, English from accept/reject. The inbox needs to read in the
+        // viewer's language, so it gets the structured facts too and renders the
+        // line itself, exactly as the open thread already does from `metadata`.
+        lastMessageType: lastMessage?.message_type ?? null,
+        lastMessageMetadata: lastMessage?.metadata ?? null,
         lastMessageAt: conversation.last_message_at,
         buyerLastReadAt: conversation.buyer_last_read_at,
         sellerLastReadAt: conversation.seller_last_read_at,
@@ -74,13 +89,20 @@ export async function GET() {
     const rows = (conversations || []) as ConversationRow[];
     const profileIds = Array.from(new Set(rows.flatMap(row => [row.buyer_id, row.seller_id])));
     const cardIds = Array.from(new Set(rows.map(row => row.card_id).filter(Boolean))) as string[];
+    const lastMessageIds = Array.from(new Set(rows.map(row => row.last_message_id).filter(Boolean))) as string[];
 
-    const [profilesResult, cardsResult] = await Promise.all([
+    const [profilesResult, cardsResult, lastMessagesResult] = await Promise.all([
         profileIds.length > 0
             ? supabase.from('profiles').select('id, display_name, email, profile_image_url, seller_verified').in('id', profileIds)
             : Promise.resolve({ data: [] as any[] }),
         cardIds.length > 0
             ? supabase.from('cards').select('id, name, image_url, price, status, seller_id').in('id', cardIds)
+            : Promise.resolve({ data: [] as any[] }),
+        // One batched round trip for at most 50 ids, alongside the two already
+        // here. Read with the caller's own client, so the participant-scoped RLS
+        // on `messages` still applies.
+        lastMessageIds.length > 0
+            ? supabase.from('messages').select('id, message_type, metadata').in('id', lastMessageIds)
             : Promise.resolve({ data: [] as any[] }),
     ]);
 
@@ -95,10 +117,13 @@ export async function GET() {
 
     const profiles = new Map((profilesResult.data || []).map(profile => [profile.id, profile]));
     const cards = new Map((cardsResult.data || []).map(card => [card.id, card]));
+    const lastMessages = new Map(
+        ((lastMessagesResult.data || []) as LastMessageRow[]).map(message => [message.id, message]),
+    );
     const mutedConversationIds = new Set((mutedPreferences || []).map(preference => preference.conversation_id));
 
     return NextResponse.json({
-        conversations: rows.map(row => mapConversation(row, user.id, profiles, cards, mutedConversationIds)),
+        conversations: rows.map(row => mapConversation(row, user.id, profiles, cards, mutedConversationIds, lastMessages)),
     });
 }
 
