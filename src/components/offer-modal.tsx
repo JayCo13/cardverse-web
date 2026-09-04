@@ -36,7 +36,7 @@ type OfferHistoryItem = {
   id: string;
   price: number;
   message?: string | null;
-  status: 'pending' | 'accepted' | 'rejected' | 'chosen';
+  status: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired';
   createdAt: string;
   bundleSelection?: BundleItem[] | null;
 };
@@ -84,6 +84,8 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
         accepted: '承認済み',
         chosen: '決済待ち',
         rejected: '却下',
+        expired: '終了',
+        expiredHint: '前回の提案は取引が成立せず終了しました。同じ金額で再提案できます。',
       }
     : locale === 'vi-VN'
       ? {
@@ -121,6 +123,8 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
           accepted: 'Đã chấp nhận',
           chosen: 'Chờ thanh toán',
           rejected: 'Đã từ chối',
+          expired: 'Đã kết thúc',
+          expiredHint: 'Offer trước đã kết thúc vì đơn hàng không hoàn tất. Bạn có thể gửi lại offer với mức giá cũ.',
         }
       : {
           sendOfferBody: 'Send offer',
@@ -157,6 +161,8 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
           accepted: 'Accepted',
           chosen: 'Awaiting payment',
           rejected: 'Rejected',
+          expired: 'Closed',
+          expiredHint: 'Your previous offer closed because the order did not complete. You can offer the same price again.',
         };
 
   const [offerPrice, setOfferPrice] = useState('');
@@ -227,11 +233,15 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
 
   const parsedPrice = parseInt(offerPrice.replace(/[^\d]/g, ''), 10) || 0;
   const latestOffer = offerHistory[0] || null;
-  const latestRejectedOffer = offerHistory.find(offer => offer.status === 'rejected') || null;
+  // Only the newest offer can hold a floor over the next one: an older rejection
+  // belongs to a round that has since closed out. Matches /api/offers.
+  const latestRejectedOffer = latestOffer?.status === 'rejected' ? latestOffer : null;
+  const latestExpiredOffer = latestOffer?.status === 'expired' ? latestOffer : null;
   const hasHistory = offerHistory.length > 0;
   const lockedByPending = latestOffer?.status === 'pending';
   const lockedByAccepted = latestOffer?.status === 'accepted' || latestOffer?.status === 'chosen';
-  const showOfferForm = !hasHistory || (canOfferAgain && latestOffer?.status === 'rejected');
+  const showOfferForm = !hasHistory
+    || (canOfferAgain && (latestOffer?.status === 'rejected' || latestOffer?.status === 'expired'));
   const belowMin = minOffer > 0 && parsedPrice > 0 && parsedPrice < minOffer;
   const belowRejected = !!latestRejectedOffer && parsedPrice > 0 && parsedPrice <= latestRejectedOffer.price;
   const canSubmit = showOfferForm && parsedPrice > 0 && !belowMin && !belowRejected && !isSubmitting
@@ -241,12 +251,14 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
     if (status === 'pending') return copy.pending;
     if (status === 'accepted') return copy.accepted;
     if (status === 'chosen') return copy.chosen;
+    if (status === 'expired') return copy.expired;
     return copy.rejected;
   };
 
   const statusClass = (status: OfferHistoryItem['status']) => {
     if (status === 'rejected') return 'bg-red-500/15 text-red-300';
     if (status === 'pending') return 'bg-amber-500/15 text-amber-300';
+    if (status === 'expired') return 'bg-zinc-500/15 text-zinc-300';
     return 'bg-emerald-500/15 text-emerald-300';
   };
 
@@ -403,6 +415,11 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
               {latestRejectedOffer && (
                 <p className="rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-xs leading-5 text-red-200 sm:p-3 sm:text-sm">
                   {copy.rejectedHint}
+                </p>
+              )}
+              {latestExpiredOffer && (
+                <p className="rounded-lg border border-zinc-500/30 bg-zinc-500/10 p-2.5 text-xs leading-5 text-zinc-300 sm:p-3 sm:text-sm">
+                  {copy.expiredHint}
                 </p>
               )}
               <div className="space-y-1.5">

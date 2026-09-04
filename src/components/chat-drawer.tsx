@@ -69,7 +69,7 @@ type ChatMessage = {
 type OfferSummary = {
     id: string;
     price: number;
-    status: "pending" | "accepted" | "rejected" | "chosen";
+    status: "pending" | "accepted" | "rejected" | "chosen" | "expired";
     buyer_id: string;
     transaction_id: string | null;
 };
@@ -124,6 +124,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             offerChosen: "Đã được chấp nhận — chờ thanh toán",
             offerAccepted: "Đã được chấp nhận",
             offerRejected: "Đã bị từ chối",
+            offerExpired: "Đã kết thúc — đơn hàng không hoàn tất",
             acceptOffer: "Chấp nhận đề nghị",
             declineOffer: "Từ chối",
             declineOfferFailed: "Không thể từ chối đề nghị",
@@ -190,6 +191,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 offerChosen: "承認済み — 支払い待ち",
                 offerAccepted: "承認済み",
                 offerRejected: "却下されました",
+                offerExpired: "終了 — 取引は成立しませんでした",
                 acceptOffer: "オファーを承認",
                 declineOffer: "拒否",
                 declineOfferFailed: "オファーを拒否できません",
@@ -255,6 +257,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 offerChosen: "Accepted — awaiting payment",
                 offerAccepted: "Accepted",
                 offerRejected: "Rejected",
+                offerExpired: "Closed — the order did not complete",
                 acceptOffer: "Accept offer",
                 declineOffer: "Decline",
                 declineOfferFailed: "Unable to decline offer",
@@ -994,6 +997,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                             {offer.status === "chosen" && copy.offerChosen}
                                                             {offer.status === "accepted" && copy.offerAccepted}
                                                             {offer.status === "rejected" && copy.offerRejected}
+                                                            {offer.status === "expired" && copy.offerExpired}
                                                         </p>
                                                     </div>
 

@@ -66,7 +66,7 @@ export interface Offer {
   price: number;
   message?: string;
   createdAt: string;
-  status: 'pending' | 'accepted' | 'rejected' | 'chosen';
+  status: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired';
   transactionId?: string;
 }
 

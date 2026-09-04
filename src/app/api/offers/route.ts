@@ -24,6 +24,16 @@ type OfferRow = {
 };
 
 const OFFER_COLUMNS = 'id, card_id, buyer_id, price, message, status, transaction_id, bundle_selection, created_at';
+
+/**
+ * Terminal states a buyer may follow with a new offer.
+ *
+ * `expired` is here because an offer is closed for reasons that are not the
+ * buyer's doing — the order it produced was cancelled when the seller failed to
+ * ship. Treating that as a lock kept the buyer off a card that is back on the
+ * market and that they are still entitled to bid on.
+ */
+const REOFFERABLE_STATUSES: ReadonlySet<OfferRow['status']> = new Set(['rejected', 'expired']);
 const CARD_COLUMNS = 'id, seller_id, name, image_url, price, status, listing_type, accept_offers, min_offer_percent, is_bundle, bundle_items';
 
 /** Read a browser-supplied bundle selection into the shape `@/lib/bundle` matches on. */
@@ -98,8 +108,11 @@ export async function GET(request: NextRequest) {
     const latestOffer = offers[0] || null;
     const pendingOffer = offers.find(offer => offer.status === 'pending') || null;
     const acceptedOffer = offers.find(offer => offer.status === 'accepted' || offer.status === 'chosen') || null;
-    const latestRejectedOffer = offers.find(offer => offer.status === 'rejected') || null;
-    const canOfferAgain = !pendingOffer && !acceptedOffer && (!latestOffer || latestOffer.status === 'rejected');
+    // A price floor is the seller's answer to this buyer's last offer, so only
+    // the newest row can set one. An older rejection belongs to a round that has
+    // since been closed out, and must not follow the buyer into the next one.
+    const latestRejectedOffer = latestOffer && latestOffer.status === 'rejected' ? latestOffer : null;
+    const canOfferAgain = !latestOffer || REOFFERABLE_STATUSES.has(latestOffer.status);
 
     return NextResponse.json({
         offers,
@@ -201,31 +214,37 @@ export async function POST(request: NextRequest) {
     }
 
     const existingOffers = (existingData || []) as OfferRow[];
-    const pendingOffer = existingOffers.find(offer => offer.status === 'pending');
-    if (pendingOffer) {
+    // Only the buyer's most recent offer decides whether they may send another.
+    // Reading the whole history let a stale row from an earlier round — an offer
+    // left 'chosen' after its order was cancelled — lock the buyer out for good.
+    const latestOffer = existingOffers[0] || null;
+
+    if (latestOffer?.status === 'pending') {
         return NextResponse.json(
             { error: 'Bạn đã gửi offer cho thẻ này. Vui lòng chờ người bán phản hồi.', code: 'pending_offer_exists', offers: existingOffers.map(mapOffer) },
             { status: 409 },
         );
     }
 
-    const acceptedOffer = existingOffers.find(offer => offer.status === 'accepted' || offer.status === 'chosen');
-    if (acceptedOffer) {
+    if (latestOffer && (latestOffer.status === 'accepted' || latestOffer.status === 'chosen')) {
         return NextResponse.json(
             { error: 'Offer của bạn đã được chấp nhận. Vui lòng tiếp tục thanh toán.', code: 'offer_already_accepted', offers: existingOffers.map(mapOffer) },
             { status: 409 },
         );
     }
 
-    const latestOffer = existingOffers[0] || null;
-    const latestRejectedOffer = existingOffers.find(offer => offer.status === 'rejected') || null;
-    if (latestOffer && latestOffer.status !== 'rejected') {
+    if (latestOffer && !REOFFERABLE_STATUSES.has(latestOffer.status)) {
         return NextResponse.json(
-            { error: 'Bạn chỉ có thể offer lại sau khi offer trước bị từ chối.', code: 'offer_not_rejected', offers: existingOffers.map(mapOffer) },
+            { error: 'Bạn chỉ có thể offer lại sau khi offer trước đã kết thúc.', code: 'offer_not_rejected', offers: existingOffers.map(mapOffer) },
             { status: 409 },
         );
     }
 
+    // The floor stops a buyer walking their price down after a refusal, so only
+    // an actual refusal may create one. An offer closed because the order it
+    // produced was cancelled is not the buyer's doing, and must never force them
+    // above a price the seller had already agreed to.
+    const latestRejectedOffer = latestOffer && latestOffer.status === 'rejected' ? latestOffer : null;
     if (latestRejectedOffer && price <= Number(latestRejectedOffer.price)) {
         return NextResponse.json(
             {
@@ -288,7 +307,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (conversationId) {
-        const messageBody = `${latestRejectedOffer ? 'Gửi lại đề nghị' : 'Gửi đề nghị'} ${formatVND(price)} ${cardRow.name}${message ? `: ${message}` : '.'}`;
+        const messageBody = `${latestOffer ? 'Gửi lại đề nghị' : 'Gửi đề nghị'} ${formatVND(price)} ${cardRow.name}${message ? `: ${message}` : '.'}`;
         const { data: messageRow } = await supabase
             .from('messages')
             .insert({
@@ -304,7 +323,7 @@ export async function POST(request: NextRequest) {
                     price,
                     cardName: cardRow.name,
                     offerText: message || null,
-                    resend: !!latestRejectedOffer,
+                    resend: !!latestOffer,
                 },
                 flagged_terms: [],
             } as never)
