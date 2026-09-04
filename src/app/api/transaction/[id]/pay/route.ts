@@ -146,7 +146,7 @@ export async function POST(
     }
 
     const amount = Number(transaction.price);
-    const shippingFee = await quoteCheapestConfiguredShipping({
+    const { fee: shippingFee, carrier: shippingCarrier } = await quoteCheapestConfiguredShipping({
       sellerId: transaction.seller_id,
       toProvinceId: Number(to_province_id),
       toProvinceName: String(to_province_name),
@@ -174,7 +174,9 @@ export async function POST(
       amount,
       shipping_fee: shippingFee,
       total_paid: totalPaid,
-      metadata: { api_request_hash: apiRequestHash },
+      // shipping_carrier is what the seller ships with: this path picks the
+      // carrier on the buyer's behalf, so the order has to record which one.
+      metadata: { api_request_hash: apiRequestHash, shipping_carrier: shippingCarrier },
       ...orderShipping,
     };
 

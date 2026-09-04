@@ -1,6 +1,6 @@
 import 'server-only';
 import { calculateShippingFee, CARD_DEFAULTS } from '@/lib/ghn';
-import { cheapestTierFee, isValidShippingFee, resolveShippingTier, type ShopShippingFees } from '@/lib/shipping-fee';
+import { cheapestTierOption, isValidShippingFee, resolveShippingTier, type ShopShippingFees } from '@/lib/shipping-fee';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
 type ShippingQuoteInput = {
@@ -77,8 +77,14 @@ export async function quoteConfiguredShipping(input: ConfiguredShippingQuoteInpu
  * Quote the checkout-page default: the cheapest enabled carrier configured by
  * the seller for the buyer's delivery tier. This deliberately does not use a
  * live GHN quote; the seller's saved shipping table is the buyer's charge.
+ *
+ * Returns the carrier as well as the fee. The buyer is never asked to pick one
+ * on this path, so the carrier this quote settled on IS the agreed carrier, and
+ * the order has to carry it — the seller's ship action requires one.
  */
-export async function quoteCheapestConfiguredShipping(input: CheapestConfiguredShippingQuoteInput): Promise<number> {
+export async function quoteCheapestConfiguredShipping(
+  input: CheapestConfiguredShippingQuoteInput,
+): Promise<{ carrier: string; fee: number }> {
   const service = createServiceSupabaseClient();
   const { data, error } = await service
     .from('profiles')
@@ -106,10 +112,10 @@ export async function quoteCheapestConfiguredShipping(input: CheapestConfiguredS
   );
   const carriers = (Array.isArray(data.shipping_carriers) ? data.shipping_carriers : [])
     .filter((carrier): carrier is string => typeof carrier === 'string' && carrier !== 'self');
-  const fee = cheapestTierFee(data.shipping_fees, carriers, tier);
-  if (fee === null) throw new Error('shipping_fee_not_configured');
+  const option = cheapestTierOption(data.shipping_fees, carriers, tier);
+  if (option === null) throw new Error('shipping_fee_not_configured');
 
-  return fee;
+  return option;
 }
 
 export async function quoteVerifiedShipping(input: ShippingQuoteInput): Promise<number> {

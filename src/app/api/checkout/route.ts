@@ -175,6 +175,8 @@ export async function POST(request: NextRequest) {
       card: CheckoutCard;
       amount: number;
       shippingFee: number;
+      /** The carrier the fee was quoted from — the seller ships with this one. */
+      shippingCarrier?: string;
       offerBuyerId?: string;
       /** Set only for a bundle offer: the cards this payment takes out of the listing. */
       bundleSelection?: BundleItem[];
@@ -324,34 +326,41 @@ export async function POST(request: NextRequest) {
     // The checkout page displays the seller-configured lowest carrier rate,
     // charged once per seller. Recompute that same trusted value here instead
     // of accepting a browser fee or substituting a live GHN quote.
-    const sellersChargedShipping = new Set<string>();
+    // The fee is charged once per seller, but EVERY order needs the carrier it
+    // was quoted from. This path never asks the buyer to pick one, so the
+    // carrier the quote settled on is the agreed carrier; without it on the
+    // order the seller's fulfilment dialog had nothing to send and shipping
+    // failed with `invalid_carrier` after the buyer had already paid.
+    const carrierBySeller = new Map<string, string>();
     for (const item of checkoutItems) {
       const sellerId = item.card.seller_id;
-      if (sellersChargedShipping.has(sellerId)) {
+      if (carrierBySeller.has(sellerId)) {
         item.shippingFee = 0;
-        continue;
+      } else {
+        // A seller who never configured shipping is a caller-visible condition,
+        // not a server fault: let it out as a 409 with a code the buyer's UI can
+        // translate, the way /api/marketplace/buy already does. Left uncaught it
+        // reached the outer handler with no `status` and surfaced as a bare 500.
+        try {
+          const quote = await quoteCheapestConfiguredShipping({
+            sellerId,
+            toProvinceId: Number(body.to_province_id),
+            toProvinceName: String(body.to_province_name),
+          });
+          item.shippingFee = quote.fee;
+          carrierBySeller.set(sellerId, quote.carrier);
+        } catch (shippingError) {
+          const code = shippingError instanceof Error ? shippingError.message : 'shipping_fee_not_configured';
+          return NextResponse.json(
+            {
+              error: 'The seller shipping fee is not configured for this address.',
+              code: code === 'seller_shipping_configuration_missing' ? code : 'shipping_fee_not_configured',
+            },
+            { status: 409 },
+          );
+        }
       }
-      // A seller who never configured shipping is a caller-visible condition,
-      // not a server fault: let it out as a 409 with a code the buyer's UI can
-      // translate, the way /api/marketplace/buy already does. Left uncaught it
-      // reached the outer handler with no `status` and surfaced as a bare 500.
-      try {
-        item.shippingFee = await quoteCheapestConfiguredShipping({
-          sellerId,
-          toProvinceId: Number(body.to_province_id),
-          toProvinceName: String(body.to_province_name),
-        });
-      } catch (shippingError) {
-        const code = shippingError instanceof Error ? shippingError.message : 'shipping_fee_not_configured';
-        return NextResponse.json(
-          {
-            error: 'The seller shipping fee is not configured for this address.',
-            code: code === 'seller_shipping_configuration_missing' ? code : 'shipping_fee_not_configured',
-          },
-          { status: 409 },
-        );
-      }
-      sellersChargedShipping.add(sellerId);
+      item.shippingCarrier = carrierBySeller.get(sellerId);
     }
 
     const totalPaid = checkoutItems.reduce((sum, item) => sum + item.amount + item.shippingFee, 0);
@@ -374,6 +383,8 @@ export async function POST(request: NextRequest) {
         total_paid: item.amount + item.shippingFee,
         metadata: {
           api_request_hash: apiRequestHash,
+          // What the seller ships with. Read by the fulfilment dialog.
+          ...(item.shippingCarrier ? { shipping_carrier: item.shippingCarrier } : {}),
           // The immutable inventory snapshot a refund is allowed to restore,
           // written the same way /api/marketplace/buy writes it.
           ...(item.bundleSelection ? {
