@@ -15,7 +15,7 @@ import { useLocalization } from '@/context/localization-context';
 import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { useToast } from '@/hooks/use-toast';
 import { optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
-import { getCarrier, getTrackingUrl, getDeliveryDays } from '@/lib/shipping-carriers';
+import { getCarrier, getTrackingUrl, getDeliveryDays, SHIPPING_CARRIERS } from '@/lib/shipping-carriers';
 import { VerifiedSellerBadge } from '@/components/verified-seller-badge';
 
 const STATUS_STYLE: Record<string, string> = {
@@ -95,6 +95,12 @@ export default function OrderDetailsPage() {
   const [confirm, setConfirm] = useState<{ action: string; title: string; message: string; extra?: any } | null>(null);
   const [shipOpen, setShipOpen] = useState(false);
   const [trackingInput, setTrackingInput] = useState('');
+  // Orders placed before checkout recorded the quoted carrier have none, so the
+  // seller picks the one they actually shipped with. Seeded from the order when
+  // it does carry one, in which case the dialog just shows it.
+  const [shipCarrier, setShipCarrier] = useState('');
+  const orderCarrier: string | undefined = order?.metadata?.shipping_carrier;
+  const effectiveCarrier = orderCarrier || shipCarrier;
   const actionKeys = useRef<Record<string, string>>({});
 
   const runAction = async (action: string, extra?: any) => {
@@ -360,15 +366,39 @@ export default function OrderDetailsPage() {
             <DialogDescription>{tx('Người mua sẽ nhận email + thông báo với mã vận đơn.', 'The buyer will be notified by email with the tracking number.', '購入者に追跡番号がメールで通知されます。')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
-              {carrier?.logo && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={carrier.logo} alt="" className="h-5 w-5 rounded" />
-              )}
-              <span>{carrier?.name || order?.metadata?.shipping_carrier || tx('Chưa chọn', 'Not set', '未設定')}</span>
-              <span className="ml-auto text-xs text-muted-foreground">{tx('Người mua đã chọn', 'Chosen by buyer', '購入者が選択')}</span>
-            </div>
-            {order?.metadata?.shipping_carrier !== 'self' && (
+            {orderCarrier ? (
+              <div className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                {carrier?.logo && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={carrier.logo} alt="" className="h-5 w-5 rounded" />
+                )}
+                <span>{carrier?.name || orderCarrier}</span>
+                <span className="ml-auto text-xs text-muted-foreground">{tx('Người mua đã chọn', 'Chosen by buyer', '購入者が選択')}</span>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">{tx('Đơn vị vận chuyển', 'Carrier', '配送業者')}</p>
+                <div className="flex flex-wrap gap-2">
+                  {SHIPPING_CARRIERS.map(c => (
+                    <button
+                      key={c.code}
+                      type="button"
+                      onClick={() => setShipCarrier(c.code)}
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors ${shipCarrier === c.code ? 'border-orange-500 bg-orange-500/15 text-orange-300' : 'border-border/60 text-muted-foreground hover:border-orange-500/40'}`}
+                    >
+                      {c.logo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={c.logo} alt="" className="h-5 w-5 rounded" />
+                      ) : (
+                        <Truck className="h-4 w-4" />
+                      )}
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {effectiveCarrier && effectiveCarrier !== 'self' && (
               <Input value={trackingInput} onChange={e => setTrackingInput(e.target.value)} placeholder={tx('VD: LWtxxxxxxx', 'e.g. LWtxxxxxxx', '例: LWtxxxxxxx')} />
             )}
           </div>
@@ -376,8 +406,8 @@ export default function OrderDetailsPage() {
             <Button variant="outline" onClick={() => setShipOpen(false)} disabled={acting}>{tx('Huỷ', 'Cancel', 'キャンセル')}</Button>
             <Button
               className="bg-orange-500 hover:bg-orange-600"
-              disabled={acting || (order?.metadata?.shipping_carrier !== 'self' && !trackingInput.trim())}
-              onClick={() => runAction('ship', { shipping_provider: order?.metadata?.shipping_carrier, tracking_number: trackingInput.trim() })}
+              disabled={acting || !effectiveCarrier || (effectiveCarrier !== 'self' && !trackingInput.trim())}
+              onClick={() => runAction('ship', { shipping_provider: effectiveCarrier, tracking_number: trackingInput.trim() })}
             >
               {tx('Giao hàng', 'Ship', '発送')}
             </Button>

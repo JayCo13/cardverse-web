@@ -99,16 +99,34 @@ export const isValidShippingFee = (value: unknown): value is number =>
   && value >= SHIPPING_FEE_MIN
   && value <= SHIPPING_FEE_MAX;
 
+/**
+ * Cheapest valid carrier for a tier, with its fee; null if none is set.
+ *
+ * The carrier matters as much as the amount: it is what the seller ships with,
+ * and an order that recorded only the fee left the fulfilment dialog with
+ * nothing to send. Ties keep the first carrier in the shop's own order.
+ */
+export const cheapestTierOption = (
+  fees: ShopShippingFees | null | undefined,
+  carriers: string[],
+  tier: ShippingTier,
+): { carrier: string; fee: number } | null => {
+  if (!fees) return null;
+  let best: { carrier: string; fee: number } | null = null;
+  for (const carrier of carriers) {
+    const fee = fees[carrier]?.[tier];
+    if (!isValidShippingFee(fee)) continue;
+    if (!best || fee < best.fee) best = { carrier, fee };
+  }
+  return best;
+};
+
 /** Cheapest valid fee across the shop's carriers for a tier; null if none is set. */
 export const cheapestTierFee = (
   fees: ShopShippingFees | null | undefined,
   carriers: string[],
   tier: ShippingTier,
-): number | null => {
-  if (!fees) return null;
-  const values = carriers.map((c) => fees[c]?.[tier]).filter(isValidShippingFee);
-  return values.length ? Math.min(...values) : null;
-};
+): number | null => cheapestTierOption(fees, carriers, tier)?.fee ?? null;
 
 /**
  * The carriers that can actually be quoted. 'self' is hand delivery: it has no
