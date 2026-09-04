@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useLocalization } from '@/context/localization-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Upload, ShieldAlert, X, Loader2, Info, HandCoins, Plus, Trash2, Layers, MapPin, Sparkles, Truck } from 'lucide-react';
+import { Upload, ShieldAlert, X, Loader2, Info, HandCoins, Plus, Trash2, Layers, MapPin, Sparkles, Truck, ArrowRight } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useSupabase, useUser } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
@@ -1542,6 +1542,14 @@ export default function CreateListingPage() {
             </div>
             <h2 className="text-2xl font-semibold mb-1">{copy.addShipping}</h2>
             <p className="text-muted-foreground max-w-md">{copy.addShippingDesc}</p>
+            <Button
+              type="button"
+              className="mt-6 bg-orange-500 hover:bg-orange-600"
+              onClick={() => router.push('/sell#shop-shipping')}
+            >
+              {copy.addShipping}
+              <ArrowRight className="ml-2 h-4 w-4" aria-hidden />
+            </Button>
           </div>
         </div>
       );
