@@ -37,14 +37,3 @@ jobs:
             https://cardversehub.com/api/cron/expire-unshipped-orders
           echo
 
-      # Post-delivery settlement. Was only ever triggered by somebody loading the
-      # orders or wallet page, which was fine while it just escalated to an admin
-      # — but it releases escrow to sellers now, and payout timing should not
-      # depend on site traffic.
-      - name: Orders past their 72h buyer window
-        run: |
-          curl -sS -X POST \
-            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            --max-time 60 --fail-with-body \
-            https://cardversehub.com/api/cron/release-delivered-orders
-          echo
