@@ -288,7 +288,10 @@ export async function POST(request: NextRequest) {
     if (existingConversation) {
         const existingConversationId = (existingConversation as { id: string }).id;
         conversationId = existingConversationId;
-        await supabase
+        // Service role: `authenticated` no longer writes this table directly
+        // (20260905000600). The row was found by (buyer = caller, seller, card),
+        // so the caller is its buyer by construction.
+        await createServiceSupabaseClient()
             .from('conversations')
             .update({ offer_id: offer.id, updated_at: new Date().toISOString() } as never)
             .eq('id', existingConversationId);

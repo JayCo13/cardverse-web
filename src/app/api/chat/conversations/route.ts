@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServiceSupabaseClient } from '@/lib/supabase/service';
+import { isConversationHidden } from '@/lib/chat-visibility';
 
 type ConversationRow = {
     id: string;
@@ -12,6 +14,8 @@ type ConversationRow = {
     last_message_at: string | null;
     buyer_last_read_at: string | null;
     seller_last_read_at: string | null;
+    buyer_deleted_at: string | null;
+    seller_deleted_at: string | null;
     status: 'active' | 'archived' | 'blocked';
     created_at: string;
     updated_at: string;
@@ -21,6 +25,7 @@ type LastMessageRow = {
     id: string;
     message_type: string;
     metadata: Record<string, unknown> | null;
+    deleted_at: string | null;
 };
 
 const mapConversation = (
@@ -53,6 +58,9 @@ const mapConversation = (
         // line itself, exactly as the open thread already does from `metadata`.
         lastMessageType: lastMessage?.message_type ?? null,
         lastMessageMetadata: lastMessage?.metadata ?? null,
+        // The thread's last word was taken back. The stored preview is the
+        // recalled text, so the inbox has to be told not to print it.
+        lastMessageDeleted: !!lastMessage?.deleted_at,
         lastMessageAt: conversation.last_message_at,
         buyerLastReadAt: conversation.buyer_last_read_at,
         sellerLastReadAt: conversation.seller_last_read_at,
@@ -86,7 +94,20 @@ export async function GET() {
         return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    const rows = (conversations || []) as ConversationRow[];
+    // A conversation the caller deleted stays out of their inbox until the other
+    // side says something new. Applied after the query rather than inside it:
+    // the row's own columns answer it, and the alternative is a nested `.or()`
+    // spanning both roles that nobody will be able to read in a year.
+    //
+    // The `limit(50)` above counts rows before this filter, so someone who has
+    // deleted a great many conversations sees fewer than fifty. At this size
+    // that costs nothing; a cursor belongs here before it does.
+    const rows = ((conversations || []) as ConversationRow[]).filter(row => !isConversationHidden({
+        buyerId: row.buyer_id,
+        sellerId: row.seller_id,
+        buyerDeletedAt: row.buyer_deleted_at,
+        sellerDeletedAt: row.seller_deleted_at,
+    }, user.id, row.last_message_at));
     const profileIds = Array.from(new Set(rows.flatMap(row => [row.buyer_id, row.seller_id])));
     const cardIds = Array.from(new Set(rows.map(row => row.card_id).filter(Boolean))) as string[];
     const lastMessageIds = Array.from(new Set(rows.map(row => row.last_message_id).filter(Boolean))) as string[];
@@ -102,7 +123,7 @@ export async function GET() {
         // here. Read with the caller's own client, so the participant-scoped RLS
         // on `messages` still applies.
         lastMessageIds.length > 0
-            ? supabase.from('messages').select('id, message_type, metadata').in('id', lastMessageIds)
+            ? supabase.from('messages').select('id, message_type, metadata, deleted_at').in('id', lastMessageIds)
             : Promise.resolve({ data: [] as any[] }),
     ]);
 
@@ -253,7 +274,10 @@ export async function POST(request: NextRequest) {
         }
         conversation = inserted as ConversationRow;
     } else if (offerId && conversation.offer_id !== offerId) {
-        const { data: updated } = await supabase
+        // Service role: `authenticated` no longer writes this table directly
+        // (20260905000600). The `existing` row above was read with the caller's
+        // own client, so RLS has already established they are in it.
+        const { data: updated } = await createServiceSupabaseClient()
             .from('conversations')
             .update({ offer_id: offerId, updated_at: new Date().toISOString() } as never)
             .eq('id', conversation.id)
@@ -263,4 +287,71 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ conversation });
+}
+
+/**
+ * Delete a conversation for the caller alone.
+ *
+ * Nothing is removed. The caller's own cut-off timestamp is stamped, which
+ * takes the thread out of their inbox and, if it ever comes back, starts it
+ * from whatever is said next. The other participant's copy is untouched, and so
+ * is the record behind a disputed order.
+ *
+ * The two `*_deleted_at` columns are deliberately not granted to `authenticated`
+ * (see 20260905000500): the UPDATE policy on `conversations` cannot tell the
+ * buyer's columns from the seller's, so the write is made here with the service
+ * role once the caller's own client has proved — through RLS — that they are in
+ * this conversation.
+ */
+export async function DELETE(request: NextRequest) {
+    const supabase = await createServerSupabaseClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const conversationId = String(body.conversationId || body.conversation_id || '');
+    if (!conversationId) {
+        return NextResponse.json({ error: 'conversationId is required' }, { status: 400 });
+    }
+
+    const { data: conversationRow } = await supabase
+        .from('conversations')
+        .select('id, buyer_id, seller_id')
+        .eq('id', conversationId)
+        .maybeSingle();
+    const conversation = conversationRow as unknown as {
+        id: string;
+        buyer_id: string;
+        seller_id: string;
+    } | null;
+
+    if (!conversation) {
+        return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
+    }
+
+    const isBuyer = conversation.buyer_id === user.id;
+    if (!isBuyer && conversation.seller_id !== user.id) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const now = new Date().toISOString();
+    const service = createServiceSupabaseClient();
+    // Read state moves with the cut-off. Without it the thread returns on the
+    // next message already wearing an unread dot earned by the history the
+    // caller just cleared.
+    const { error: updateError } = await service
+        .from('conversations')
+        .update((isBuyer
+            ? { buyer_deleted_at: now, buyer_last_read_at: now }
+            : { seller_deleted_at: now, seller_last_read_at: now }) as never)
+        .eq('id', conversation.id);
+
+    if (updateError) {
+        return NextResponse.json({ error: updateError.message }, { status: 400 });
+    }
+
+    return NextResponse.json({ success: true });
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
+import { ownDeletedAt } from '@/lib/chat-visibility';
 
 const SAFETY_TERMS = [
     'facebook',
@@ -123,6 +124,32 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'conversationId is required' }, { status: 400 });
     }
 
+    // Also the deletion cut-off: a participant who cleared this conversation
+    // does not get the history back, only what has been said since. RLS keeps
+    // this to conversations the caller is actually in.
+    const { data: conversationRow } = await supabase
+        .from('conversations')
+        .select('buyer_id, seller_id, buyer_deleted_at, seller_deleted_at')
+        .eq('id', conversationId)
+        .maybeSingle();
+    const conversation = conversationRow as unknown as {
+        buyer_id: string;
+        seller_id: string;
+        buyer_deleted_at: string | null;
+        seller_deleted_at: string | null;
+    } | null;
+
+    if (!conversation) {
+        return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
+    }
+
+    const clearedAt = ownDeletedAt({
+        buyerId: conversation.buyer_id,
+        sellerId: conversation.seller_id,
+        buyerDeletedAt: conversation.buyer_deleted_at,
+        sellerDeletedAt: conversation.seller_deleted_at,
+    }, user.id);
+
     const PAGE_SIZE = 80;
 
     // Newest-first + reverse: ascending+limit returned the OLDEST 80, so a
@@ -131,9 +158,12 @@ export async function GET(request: NextRequest) {
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
-        .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .limit(PAGE_SIZE);
+
+    if (clearedAt) {
+        query = query.gt('created_at', clearedAt);
+    }
 
     if (before) {
         query = query.lt('created_at', before);
@@ -145,11 +175,74 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    const page = data || [];
+    const page = (data || []) as Array<Record<string, unknown> & { deleted_at: string | null }>;
     return NextResponse.json({
-        messages: [...page].reverse(),
+        // A recalled message is still a row in the thread — the other side has
+        // to see that something was taken back rather than watch the
+        // conversation quietly reshuffle. It just arrives with nothing in it.
+        // `PATCH` already empties the columns; this repeats the erasure so the
+        // route stays right whatever else learns to set `deleted_at`.
+        messages: [...page].reverse().map(message => (message.deleted_at
+            ? { ...message, body: '', metadata: {}, flagged_terms: [] }
+            : message)),
         hasMore: page.length === PAGE_SIZE,
     });
+}
+
+/**
+ * Unsend a message.
+ *
+ * Deliberately on the caller's own client. The UPDATE policy on `messages`
+ * (20260904000200) is `auth.uid() = sender_id and message_type in ('user',
+ * 'image')`, which is precisely the rule this endpoint wants: your own words,
+ * never someone else's and never the app's — so a request for a system receipt
+ * or for the safety warning raised against you matches no row and changes
+ * nothing. Reaching for the service role here would step around the one check
+ * that makes the feature safe.
+ *
+ * The body is erased rather than flagged, because realtime delivers the updated
+ * row to the other participant verbatim.
+ */
+export async function PATCH(request: NextRequest) {
+    const supabase = await createServerSupabaseClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const messageId = String(body.messageId || body.message_id || '');
+    if (!messageId) {
+        return NextResponse.json({ error: 'messageId is required' }, { status: 400 });
+    }
+
+    const { data, error } = await supabase
+        .from('messages')
+        .update({
+            body: '',
+            metadata: {},
+            flagged_terms: [],
+            deleted_at: new Date().toISOString(),
+        } as never)
+        // Alongside the policy, not instead of it — the same belt and braces
+        // the shipping-address routes keep.
+        .eq('id', messageId)
+        .eq('sender_id', user.id)
+        .is('deleted_at', null)
+        .select('id, conversation_id')
+        .maybeSingle() as { data: { id: string } | null; error: { message: string } | null };
+
+    if (error) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    if (!data) {
+        // Not yours, not recallable, or already recalled. All three are the
+        // same answer to the caller.
+        return NextResponse.json({ error: 'Message not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, id: data.id });
 }
 
 export async function POST(request: NextRequest) {
@@ -280,7 +373,10 @@ export async function POST(request: NextRequest) {
             ? metadata.offer_id
             : null;
 
-    await supabase
+    // Service role: `authenticated` no longer writes this table directly
+    // (20260905000600). Membership was settled at the 403 above, and
+    // `readColumn` stamps only the sender's own side.
+    await createServiceSupabaseClient()
         .from('conversations')
         .update({
             last_message_id: (message as any).id,

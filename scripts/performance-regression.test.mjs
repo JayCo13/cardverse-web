@@ -33,7 +33,7 @@ const nextServer = {
 };
 function query(result, calls, table) {
   const chain = {};
-  for (const method of ['select', 'eq', 'in', 'single', 'returns', 'order', 'limit', 'delete', 'insert']) {
+  for (const method of ['select', 'eq', 'in', 'single', 'maybeSingle', 'returns', 'order', 'limit', 'delete', 'insert']) {
     chain[method] = (...args) => {
       calls.push({ table, method, args });
       return chain;
@@ -86,17 +86,18 @@ test('shipping batch reads profiles once and matches single-seller quoting', asy
 test('shipping batch rejects missing sellers, invalid fees, and database errors', async () => {
   await assert.rejects(shippingHarness([]).shipping.quoteCheapestConfiguredShippingBatch([quoteInput('missing')]), /configuration_missing/);
   await assert.rejects(shippingHarness([seller('s1', { intra: 0 })]).shipping.quoteCheapestConfiguredShippingBatch([quoteInput('s1')]), /fee_not_configured/);
-  await assert.rejects(shippingHarness(null, { message: 'offline' }).shipping.quoteCheapestConfiguredShippingBatch([quoteInput('s1')]), /configuration_missing/);
+  await assert.rejects(shippingHarness(null, { message: 'offline' }).shipping.quoteCheapestConfiguredShippingBatch([quoteInput('s1')]), /shipping_quote_failed/);
 });
 
-function checkoutHarness({ authenticated = true, missingCart = false, cardOverride = {}, shippingError = false } = {}) {
+function checkoutHarness({ authenticated = true, missingCart = false, cardOverride = {}, shippingError = false, offerMode = false, multipleSellers = false, seller2Overrides = {} } = {}) {
   const calls = [];
   const cart = [{ id: 'cart1', card_id: 'card1', user_id: 'buyer' }, { id: 'cart2', card_id: 'card2', user_id: 'buyer' }];
-  const cards = cart.map(item => ({ id: item.card_id, seller_id: 'seller', name: 'Card', price: 100000, status: 'active', listing_type: 'sale', is_bundle: false, bundle_items: null, ...cardOverride }));
+  if (multipleSellers) cart.push({ id: 'cart3', card_id: 'card3', user_id: 'buyer' });
+  const cards = cart.map(item => ({ id: item.card_id, seller_id: item.card_id === 'card3' ? 'seller2' : 'seller', name: 'Card', price: 100000, status: 'active', listing_type: 'sale', is_bundle: false, bundle_items: null, ...cardOverride }));
   let settlement;
   const supabase = {
     auth: { getUser: async () => ({ data: { user: authenticated ? { id: 'buyer' } : null }, error: null }) },
-    from: table => query({ data: table === 'cart_items' ? (missingCart ? [] : cart) : cards, error: null }, calls, table),
+    from: table => query({ data: table === 'offers' ? { id: 'offer1', card_id: 'card1', buyer_id: 'buyer', price: 75000, status: 'chosen' } : table === 'orders' ? null : table === 'cart_items' ? (missingCart ? [] : cart) : offerMode ? cards[0] : cards, error: null }, calls, table),
     rpc: async name => { calls.push({ rpc: name }); return { data: 0, error: null }; },
   };
   const service = {
@@ -104,8 +105,14 @@ function checkoutHarness({ authenticated = true, missingCart = false, cardOverri
     rpc: async (name, payload) => {
       calls.push({ rpc: name });
       if (name === 'get_marketplace_checkout_replay') return { data: { found: false }, error: null };
-      assert.equal(name, 'create_verified_wallet_marketplace_orders');
       settlement = payload;
+      if (name === 'stage_payos_marketplace_checkout') {
+        return { data: {
+          payment_order: { id: 'payment1', order_code: payload.p_order_code, payos_checkout_url: 'https://pay.example.test/checkout' },
+          orders: payload.p_orders.map(order => ({ ...order, id: order.order_id })),
+        }, error: null };
+      }
+      assert.equal(name, 'create_verified_wallet_marketplace_orders');
       return { data: { orders: payload.p_orders.map(order => ({ ...order, id: order.order_id })) }, error: null };
     },
   };
@@ -113,14 +120,14 @@ function checkoutHarness({ authenticated = true, missingCart = false, cardOverri
     'next/server': nextServer,
     '@/lib/supabase/server': { createServerSupabaseClient: async () => supabase },
     '@/lib/supabase/service': { createServiceSupabaseClient: () => service },
-    '@/lib/financial-idempotency': { hashFinancialRequest: () => 'hash', stableFinancialUuid: value => value },
+    '@/lib/financial-idempotency': { hashFinancialRequest: input => { calls.push({ hashInput: input }); return loadTs('src/lib/financial-idempotency.ts').hashFinancialRequest(input); }, stableFinancialUuid: value => value },
     '@/lib/payos': {}, '@/lib/payos-link-claim': {}, '@/lib/request-localization': {},
     '@/lib/wallet-checkout-error': {}, '@/lib/bundle': {},
     '@/lib/order-paid-chat': { announcePaidOrdersInChat: async () => {} },
-    '@/lib/verified-shipping': { quoteCheapestConfiguredShippingBatch: async inputs => {
-      if (shippingError) throw new Error('seller_shipping_configuration_missing');
-      return new Map(inputs.map(input => [input.sellerId, { carrier: 'ghn', fee: 20000 }]));
-    } },
+    '@/lib/verified-shipping': shippingHarness([
+      { ...seller('seller'), shipping_carriers: ['ghn', 'vtp'], shipping_fees: { ghn: { intra: 20000, region: 40000 }, vtp: { intra: 35000, region: 55000 } } },
+      { ...seller('seller2'), display_name: 'Second Seller', shipping_carriers: ['ghn'], shipping_fees: { ghn: { intra: 15000, region: 30000 } }, ...seller2Overrides },
+    ], shippingError ? { message: 'missing profile' } : null).shipping,
   });
   const request = (items = [{ cart_item_id: 'cart1' }, { cart_item_id: 'cart2' }]) => ({
     headers: new Headers({ 'idempotency-key': '11111111-1111-4111-8111-111111111111' }),
@@ -149,7 +156,7 @@ for (const [name, options, expected] of [
   ['sold card', { cardOverride: { status: 'sold' } }, 409],
   ['own listing', { cardOverride: { seller_id: 'buyer' } }, 400],
   ['bundle cart item', { cardOverride: { is_bundle: true } }, 409],
-  ['unconfigured shipping', { shippingError: true }, 409],
+  ['shipping database unavailable', { shippingError: true }, 503],
 ]) {
   test(`checkout rejects ${name} before settlement`, async () => {
     const h = checkoutHarness(options);
@@ -161,6 +168,129 @@ for (const [name, options, expected] of [
 test('checkout rejects duplicate cart ids before settlement', async () => {
   const h = checkoutHarness();
   assert.equal((await h.route.POST(h.request([{ cart_item_id: 'cart1' }, { cart_item_id: 'cart1' }]))).status, 400);
+  assert.equal(h.settlement(), undefined);
+});
+
+test('wallet notifications identify each exact paid order', async () => {
+  const h = checkoutHarness();
+  assert.equal((await h.route.POST(h.request())).status, 200);
+  const notifications = h.calls.filter(call => call.table === 'notifications' && call.method === 'insert');
+  assert.equal(notifications.length, 2);
+  for (const { args: [notification] } of notifications) {
+    const order = h.settlement().p_orders.find(order => order.card_id === notification.card_id);
+    assert.equal(notification.order_id, order.order_id);
+    assert.equal(notification.user_id, order.seller_id);
+  }
+});
+
+for (const carrier of ['vtp', 'ghn', 'self', 'unknown']) {
+  test(`offer checkout validates selected carrier ${carrier} and ignores browser fees`, async () => {
+    const h = checkoutHarness({ offerMode: true });
+    const request = h.request();
+    const body = await request.json();
+    request.json = async () => ({ ...body, mode: 'offer', offer_id: 'offer1', shipping_carrier: carrier, shipping_fee: 1 });
+    const response = await h.route.POST(request);
+    if (carrier === 'self' || carrier === 'unknown') {
+      assert.equal(response.status, 409);
+      assert.equal(h.settlement(), undefined);
+      return;
+    }
+    assert.equal(response.status, 200);
+    const order = h.settlement().p_orders[0];
+    assert.equal(order.amount, 75000);
+    assert.equal(order.shipping_fee, carrier === 'vtp' ? 35000 : 20000);
+    assert.equal(order.metadata.shipping_carrier, carrier);
+    assert.equal(h.calls.find(call => call.hashInput).hashInput.shipping_carrier, carrier);
+    const notification = h.calls.find(call => call.table === 'notifications' && call.method === 'insert').args[0];
+    assert.equal(notification.order_id, order.order_id);
+    assert.equal(notification.offer_id, 'offer1');
+  });
+}
+
+for (const paymentMethod of ['wallet', 'direct_payos']) {
+  test(`cart ${paymentMethod} charges each seller once and preserves independent carrier choices`, async () => {
+    const h = checkoutHarness({ multipleSellers: true });
+    const request = h.request([{ cart_item_id: 'cart1' }, { cart_item_id: 'cart3' }, { cart_item_id: 'cart2' }]);
+    const body = await request.json();
+    request.json = async () => ({ ...body, payment_method: paymentMethod, shipping_carriers: { seller: 'vtp', seller2: 'ghn' }, shipping_fee: 1 });
+    const response = await h.route.POST(request);
+    assert.equal(response.status, 200);
+    const orders = h.settlement().p_orders;
+    assert.deepEqual(Array.from(orders, order => order.shipping_fee), [35000, 15000, 0]);
+    assert.deepEqual(Array.from(orders, order => order.metadata.shipping_carrier), ['vtp', 'ghn', 'vtp']);
+    assert.equal(orders.reduce((sum, order) => sum + order.total_paid, 0), 350000);
+    assert.equal(h.calls.filter(call => call.table === 'notifications' && call.method === 'insert').length, paymentMethod === 'wallet' ? 3 : 0);
+    if (paymentMethod === 'direct_payos') assert.equal((await response.json()).checkoutUrl, 'https://pay.example.test/checkout');
+  });
+}
+
+for (const [carriers, expected] of [
+  [{ seller: 'ghn' }, 400],
+  [{ seller: 'ghn', foreign: 'vtp' }, 400],
+  [{ seller: 'ghn', seller2: 'vtp' }, 409],
+  [{ seller: 'ghn', seller2: 'self' }, 409],
+  [{ seller: 'ghn', seller2: '' }, 400],
+  [[], 400], [null, 400],
+]) {
+  test(`cart rejects invalid carrier mapping ${JSON.stringify(carriers)}`, async () => {
+    const h = checkoutHarness({ multipleSellers: true });
+    const request = h.request([{ cart_item_id: 'cart1' }, { cart_item_id: 'cart2' }, { cart_item_id: 'cart3' }]);
+    const body = await request.json();
+    request.json = async () => ({ ...body, shipping_carriers: carriers });
+    assert.equal((await h.route.POST(request)).status, expected);
+    assert.equal(h.settlement(), undefined);
+  });
+}
+
+test('carrier choices affect idempotency even with equal fees; object key order does not', () => {
+  const { hashFinancialRequest } = loadTs('src/lib/financial-idempotency.ts');
+  const first = hashFinancialRequest({ shipping_carriers: { seller: 'ghn', seller2: 'vtp' } });
+  assert.notEqual(first, hashFinancialRequest({ shipping_carriers: { seller: 'vtp', seller2: 'vtp' } }));
+  assert.equal(first, hashFinancialRequest({ shipping_carriers: { seller2: 'vtp', seller: 'ghn' } }));
+});
+
+test('selected shipping batch recalculates tiers and validates each seller in one read', async () => {
+  const { shipping, calls } = shippingHarness([
+    { ...seller('s1'), shipping_carriers: ['ghn', 'vtp'], shipping_fees: { ghn: { intra: 20000, region: 40000 }, vtp: { intra: 35000, region: 55000 } } },
+    seller('s2'),
+  ]);
+  const quotes = await shipping.quoteCheckoutConfiguredShippingBatch([
+    { ...quoteInput('s1'), carrier: 'vtp', toProvinceId: 2, toProvinceName: 'Hồ Chí Minh' },
+    { ...quoteInput('s2'), carrier: 'ghn' },
+  ]);
+  assert.equal(quotes.get('s1').fee, 55000);
+  assert.equal(quotes.get('s2').fee, 20000);
+  assert.equal(calls.filter(call => call.method === 'select').length, 1);
+  await assert.rejects(shipping.quoteCheckoutConfiguredShippingBatch([{ ...quoteInput('s2'), carrier: 'vtp' }]), /invalid_shipping_carrier/);
+});
+
+for (const [overrides, expectedCode] of [
+  [{ shipping_fees: { ghn: {} } }, 'shipping_fee_not_configured'],
+  [{ address_province_name: null }, 'seller_shipping_origin_missing'],
+  [{ shipping_carriers: ['vtp'] }, 'invalid_shipping_carrier'],
+]) {
+  test(`checkout identifies the affected seller for ${expectedCode}`, async () => {
+    const h = checkoutHarness({ multipleSellers: true, seller2Overrides: overrides });
+    const request = h.request([{ cart_item_id: 'cart1' }, { cart_item_id: 'cart2' }, { cart_item_id: 'cart3' }]);
+    const body = await request.json();
+    request.json = async () => ({ ...body, shipping_carriers: { seller: 'ghn', seller2: 'ghn' } });
+    const response = await h.route.POST(request);
+    const payload = await response.json();
+    assert.equal(response.status, 409);
+    assert.equal(payload.code, expectedCode);
+    assert.equal(payload.seller_id, 'seller2');
+    assert.equal(payload.seller_name, 'Second Seller');
+    assert.equal(h.settlement(), undefined);
+  });
+}
+
+test('shipping read failure does not blame any seller configuration', async () => {
+  const h = checkoutHarness({ shippingError: true });
+  const response = await h.route.POST(h.request());
+  const payload = await response.json();
+  assert.equal(response.status, 503);
+  assert.equal(payload.code, 'shipping_quote_failed');
+  assert.equal(payload.seller_id, undefined);
   assert.equal(h.settlement(), undefined);
 });
 

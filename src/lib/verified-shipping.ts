@@ -41,6 +41,10 @@ export async function quoteConfiguredShipping(input: ConfiguredShippingQuoteInpu
 
   if (error || !data) throw new Error('seller_shipping_configuration_missing');
 
+  return configuredShippingFromProfile(input, data);
+}
+
+function configuredShippingFromProfile(input: ConfiguredShippingQuoteInput, data: SellerShippingProfile): number {
   const carrier = String(input.carrier || '').trim();
   const enabledCarriers = Array.isArray(data.shipping_carriers) ? data.shipping_carriers : [];
   if (!carrier || carrier === 'self' || !enabledCarriers.includes(carrier)) {
@@ -101,19 +105,61 @@ export async function quoteCheapestConfiguredShipping(
 export async function quoteCheapestConfiguredShippingBatch(
   inputs: CheapestConfiguredShippingQuoteInput[],
 ): Promise<Map<string, { carrier: string; fee: number }>> {
+  return quoteCheckoutConfiguredShippingBatch(inputs);
+}
+
+export class CheckoutShippingError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly sellerId?: string,
+    public readonly sellerName?: string,
+  ) {
+    super(code);
+    this.name = 'CheckoutShippingError';
+  }
+}
+
+/** Quote explicit choices or legacy defaults with one trusted profile read. */
+export async function quoteCheckoutConfiguredShippingBatch(
+  inputs: (CheapestConfiguredShippingQuoteInput & { carrier?: string })[],
+): Promise<Map<string, { carrier: string; fee: number }>> {
   if (inputs.length === 0) return new Map();
+  if (inputs.some(input => !Number.isSafeInteger(Number(input.toProvinceId))
+    || Number(input.toProvinceId) <= 0 || !input.toProvinceName?.trim())) {
+    throw new CheckoutShippingError('shipping_address_invalid');
+  }
   const service = createServiceSupabaseClient();
   const { data, error } = await service
     .from('profiles')
-    .select('id, shipping_carriers, shipping_fees, address_province_id, address_province_name')
+    .select('id, display_name, shipping_carriers, shipping_fees, address_province_id, address_province_name')
     .in('id', [...new Set(inputs.map(input => input.sellerId))])
-    .returns<(SellerShippingProfile & { id: string })[]>();
-  if (error || !data) throw new Error('seller_shipping_configuration_missing');
+    .returns<(SellerShippingProfile & { id: string; display_name: string | null })[]>();
+  // A failed query says nothing about any seller's configuration.
+  if (error || !data) {
+    console.error('Checkout shipping profile read failed:', error);
+    throw new CheckoutShippingError('shipping_quote_failed');
+  }
   const profiles = new Map(data.map(profile => [profile.id, profile]));
   return new Map(inputs.map(input => {
     const profile = profiles.get(input.sellerId);
-    if (!profile) throw new Error('seller_shipping_configuration_missing');
-    return [input.sellerId, cheapestConfiguredShippingFromProfile(input, profile)];
+    const sellerName = profile?.display_name || undefined;
+    if (!profile) throw new CheckoutShippingError('seller_shipping_configuration_missing', input.sellerId);
+    if (!Number.isSafeInteger(profile.address_province_id)
+      || !profile.address_province_name?.trim()) {
+      throw new CheckoutShippingError('seller_shipping_origin_missing', input.sellerId, sellerName);
+    }
+    try {
+      const quote = input.carrier === undefined
+        ? cheapestConfiguredShippingFromProfile(input, profile)
+        : { carrier: input.carrier, fee: configuredShippingFromProfile({ ...input, carrier: input.carrier }, profile) };
+      return [input.sellerId, quote];
+    } catch (error) {
+      const code = error instanceof Error ? error.message : '';
+      if (['invalid_shipping_carrier', 'shipping_fee_not_configured', 'seller_shipping_configuration_missing'].includes(code)) {
+        throw new CheckoutShippingError(code, input.sellerId, sellerName);
+      }
+      throw error;
+    }
   }));
 }
 

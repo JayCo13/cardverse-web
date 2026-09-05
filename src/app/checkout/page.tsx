@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AddressBook, type SavedAddress } from "@/components/address-book";
-import { resolveShippingTier, cheapestTierFee, shippableCarriers } from "@/lib/shipping-fee";
+import { resolveShippingTier, shippableCarriers, isValidShippingFee } from "@/lib/shipping-fee";
+import { getCarrier } from "@/lib/shipping-carriers";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -16,7 +17,7 @@ import { OrderTotalRow } from "@/components/order-total-row";
 import { useToast } from "@/hooks/use-toast";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { getCategoryCode } from "@/lib/category-code";
-import { CreditCard, PackageCheck, ShieldCheck, Truck, Wallet } from "lucide-react";
+import { CreditCard, ShieldCheck, Truck, Wallet } from "lucide-react";
 import { useLocalization } from "@/context/localization-context";
 import { localizeFinancialApiError } from "@/lib/financial-api-errors";
 import { VerifiedSellerBadge } from "@/components/verified-seller-badge";
@@ -85,6 +86,8 @@ export default function CheckoutPage() {
       emptyTitle: "Không có sản phẩm để checkout",
       backToCart: "Về giỏ hàng",
       shippingAddress: "Địa chỉ nhận hàng",
+      shippingCarrier: "Chọn đơn vị vận chuyển",
+      groupedShippingHint: "Gộp chung lô · Phí ship chỉ tính một lần cho người bán này.",
       missingPickup: "Một số seller chưa cập nhật địa chỉ gửi hàng. Vui lòng chọn sản phẩm khác hoặc liên hệ seller.",
       products: "Sản phẩm",
       seller: "Seller",
@@ -133,6 +136,8 @@ export default function CheckoutPage() {
         emptyTitle: "チェックアウトする商品がありません",
         backToCart: "カートへ戻る",
         shippingAddress: "配送先住所",
+        shippingCarrier: "配送業者を選択",
+        groupedShippingHint: "同梱配送 · この販売者の送料は一度だけ加算されます。",
         missingPickup: "一部の販売者が発送元住所を未設定です。別の商品を選ぶか販売者に連絡してください。",
         products: "商品",
         seller: "販売者",
@@ -180,6 +185,8 @@ export default function CheckoutPage() {
         emptyTitle: "No items to checkout",
         backToCart: "Back to cart",
         shippingAddress: "Shipping address",
+        shippingCarrier: "Choose a shipping carrier",
+        groupedShippingHint: "Combined shipment · Shipping is charged once for this seller.",
         missingPickup: "Some sellers have not added a pickup address. Please choose another item or contact the seller.",
         products: "Products",
         seller: "Seller",
@@ -221,6 +228,10 @@ export default function CheckoutPage() {
   const checkoutRequestRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
   const isOfferCheckout = !!offerId;
+  const [shippingOptions, setShippingOptions] = useState<Record<string, { carrier: string; fee: number }[]>>({});
+  const [selectedCarriers, setSelectedCarriers] = useState<Record<string, string>>({});
+  const selectedCarriersRef = useRef<Record<string, string>>({});
+  const feeRequestRef = useRef(0);
 
   const loadWallet = useCallback(async () => {
     try {
@@ -356,12 +367,17 @@ export default function CheckoutPage() {
     void load();
   }, [copy.openCheckoutError, isLoading, isOfferCheckout, loadCart, loadOffer, loadWallet, setAuthOpen, toast, user]);
 
-  // Seller-declared shipping (no more GHN auto-calc): the buyer is charged each
-  // shop's shipping_fee_max, once per seller (grouped). The first item from a
-  // seller carries the fee; the rest are 0.
+  // Quote seller-declared fees for the delivery address, once per seller.
+  // Keep each seller's chosen carrier when it is still available.
   const calculateFees = useCallback(async (address: SavedAddress | null, currentItems: CheckoutItem[]) => {
-    if (!address) return;
+    const requestId = ++feeRequestRef.current;
+    if (!address || !currentItems.length) {
+      setShippingOptions({});
+      setIsLoadingFee(false);
+      return;
+    }
     setIsLoadingFee(true);
+    setShippingOptions({});
     try {
       const sellerIds = [...new Set(currentItems.map(item => item.card.sellerId))];
       const { data, error } = await supabase
@@ -369,22 +385,28 @@ export default function CheckoutPage() {
         .select('id, shipping_carriers, shipping_fees, address_province_id, address_province_name')
         .in('id', sellerIds);
       if (error) throw error;
+      if (requestId !== feeRequestRef.current) return;
 
-      // Resolve the tier from seller vs buyer province, then charge the cheapest
-      // carrier's fee for that tier ('self' / hand delivery is excluded).
-      //
-      // A seller with no usable table stays null rather than falling back to 0.
-      // Zero is a fee a seller can legitimately set (free shipping); silently
-      // inventing it for a seller who set nothing showed the buyer a total the
-      // checkout route would then refuse to honour.
       const feeBySeller = new Map<string, number | null>();
+      const nextOptions: Record<string, { carrier: string; fee: number }[]> = {};
+      const nextCarriers: Record<string, string> = {};
       (data || []).forEach((p: any) => {
         const tier = resolveShippingTier(
           { provinceId: p.address_province_id, provinceName: p.address_province_name },
           { provinceId: address.province_id, provinceName: address.province_name },
         );
-        feeBySeller.set(p.id, cheapestTierFee(p.shipping_fees, shippableCarriers(p.shipping_carriers), tier));
+        const options = shippableCarriers(p.shipping_carriers).flatMap(carrier => {
+          const fee = p.shipping_fees?.[carrier]?.[tier];
+          return isValidShippingFee(fee) ? [{ carrier, fee }] : [];
+        }).sort((a, b) => a.fee - b.fee);
+        const selected = options.find(option => option.carrier === selectedCarriersRef.current[p.id]) || options[0];
+        nextOptions[p.id] = options;
+        if (selected) nextCarriers[p.id] = selected.carrier;
+        feeBySeller.set(p.id, selected?.fee ?? null);
       });
+      setShippingOptions(nextOptions);
+      selectedCarriersRef.current = nextCarriers;
+      setSelectedCarriers(nextCarriers);
 
       // Shipping is charged once per seller, so only the first item of each
       // seller carries the fee — but an unconfigured seller poisons every one of
@@ -401,16 +423,47 @@ export default function CheckoutPage() {
       });
       setItems(nextItems);
     } catch (error: any) {
+      if (requestId !== feeRequestRef.current) return;
+      setShippingOptions({});
       toast({ variant: "destructive", title: copy.shippingFeeTitle, description: error.message });
       setItems(currentItems.map(item => ({ ...item, shippingFee: null })));
     } finally {
-      setIsLoadingFee(false);
+      if (requestId === feeRequestRef.current) setIsLoadingFee(false);
     }
-  }, [copy.shippingFeeTitle, toast]);
+  }, [copy.shippingFeeTitle, supabase, toast]);
 
   const handleSelectAddress = (address: SavedAddress | null) => {
+    if (address === selectedAddress) return;
+    // Invalidate an in-flight quote immediately when the delivery address changes.
+    ++feeRequestRef.current;
+    setShippingOptions({});
     setSelectedAddress(address);
-    void calculateFees(address, items);
+    setIsLoadingFee(!!address);
+  };
+
+  const currentItemsRef = useRef(items);
+  currentItemsRef.current = items;
+  const checkoutItemsKey = items.map(item => `${item.offerId || item.cartItemId}:${item.card.sellerId}`).join(",");
+  useEffect(() => {
+    if (!isLoadingData) void calculateFees(selectedAddress, currentItemsRef.current);
+    return () => { ++feeRequestRef.current; };
+  }, [calculateFees, isLoadingData, checkoutItemsKey, selectedAddress]);
+
+  const selectCarrier = (sellerId: string, carrier: string) => {
+    const option = shippingOptions[sellerId]?.find(option => option.carrier === carrier);
+    if (!option || isLoadingFee || isPaying) return;
+    const nextCarriers = { ...selectedCarriersRef.current, [sellerId]: carrier };
+    selectedCarriersRef.current = nextCarriers;
+    setSelectedCarriers(nextCarriers);
+    setItems(current => {
+      let charged = false;
+      return current.map(item => {
+        if (item.card.sellerId !== sellerId) return item;
+        const shippingFee = charged ? 0 : option.fee;
+        charged = true;
+        return { ...item, shippingFee };
+      });
+    });
   };
 
   const subtotal = useMemo(() => items.reduce((sum, item) => sum + item.amount, 0), [items]);
@@ -418,7 +471,7 @@ export default function CheckoutPage() {
   const total = subtotal + shippingTotal;
   const hasMissingFee = items.some(item => item.shippingFee === null);
   const insufficient = paymentMethod === "wallet" && walletBalance < total;
-  const canPay = !!selectedAddress && items.length > 0 && !hasMissingFee && !isLoadingFee && !isPaying && !insufficient;
+  const canPay = !!selectedAddress && items.length > 0 && !hasMissingFee && !isLoadingFee && !isPaying && !insufficient && !isLoadingData && items.every(item => shippingOptions[item.card.sellerId]?.some(option => option.carrier === selectedCarriers[item.card.sellerId]));
   const sellerGroups = useMemo(() => {
     const groups = new Map<string, CheckoutSellerGroup>();
 
@@ -448,6 +501,7 @@ export default function CheckoutPage() {
       const fingerprint = JSON.stringify({
         mode: isOfferCheckout ? "offer" : "cart",
         offerId,
+        shippingCarriers: selectedCarriers,
         paymentMethod,
         addressId: selectedAddress.id,
         items: items.map((item) => [item.card.id, item.amount, item.shippingFee]),
@@ -465,6 +519,9 @@ export default function CheckoutPage() {
         body: JSON.stringify({
           mode: isOfferCheckout ? "offer" : "cart",
           offer_id: offerId,
+          ...(isOfferCheckout
+            ? { shipping_carrier: selectedCarriers[items[0].card.sellerId] }
+            : { shipping_carriers: selectedCarriers }),
           payment_method: paymentMethod,
           shipping_fee: items[0]?.shippingFee || 0,
           items: items.map(item => ({
@@ -486,7 +543,12 @@ export default function CheckoutPage() {
       });
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(localizeFinancialApiError(t, payload.code, copy.payError));
+        const reason = localizeFinancialApiError(t, payload.code, copy.payError);
+        const sellerGroup = sellerGroups.find(group => group.id === payload.seller_id);
+        const sellerName = sellerGroup ? (payload.seller_name || sellerGroup.name) : null;
+        throw new Error(sellerName
+          ? t('financial_shipping_seller_error', { seller: sellerName, reason })
+          : reason);
       }
       checkoutRequestRef.current = null;
 
@@ -564,6 +626,38 @@ export default function CheckoutPage() {
                           {copy.sellerShippingMissingHint}
                         </p>
                       )}
+
+                      <div className="border-b border-zinc-800 px-3 py-4 sm:px-4">
+                        <div className="mb-3 flex items-start gap-2.5">
+                          <Truck aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-orange-400" />
+                          <div className="min-w-0">
+                            <h3 id={`shipping-heading-${group.id}`} className="text-sm font-semibold leading-5">{copy.shippingCarrier}</h3>
+                            {group.items.length > 1 && (
+                              <p className="mt-1 text-xs leading-5 text-muted-foreground">{copy.groupedShippingHint}</p>
+                            )}
+                          </div>
+                        </div>
+                        {isLoadingFee ? <p role="status" className="text-sm text-muted-foreground">{copy.calculating}</p> : !selectedAddress ? (
+                          <p className="text-sm text-muted-foreground">{copy.chooseAddressForFee}</p>
+                        ) : (
+                          <RadioGroup aria-labelledby={`shipping-heading-${group.id}`} value={selectedCarriers[group.id] || ""} onValueChange={carrier => selectCarrier(group.id, carrier)} disabled={isPaying} className="gap-2">
+                            {(shippingOptions[group.id] || []).map(option => {
+                              const carrier = getCarrier(option.carrier);
+                              const selected = selectedCarriers[group.id] === option.carrier;
+                              return (
+                                <label key={option.carrier} className={`flex min-h-14 cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-3 transition-colors focus-within:ring-2 focus-within:ring-orange-400/60 sm:gap-3 ${selected ? "border-orange-500 bg-orange-500/10" : "border-zinc-800 bg-background/30 hover:border-zinc-600 hover:bg-muted/30"} ${isPaying ? "pointer-events-none opacity-60" : ""}`}>
+                                  <RadioGroupItem value={option.carrier} id={`carrier-${group.id}-${option.carrier}`} className="shrink-0" />
+                                  {carrier?.logo ? (
+                                    <Image src={carrier.logo} alt="" width={32} height={32} className="h-8 w-8 shrink-0 rounded-lg object-contain" />
+                                  ) : <Truck aria-hidden="true" className="h-8 w-8 shrink-0 text-muted-foreground" />}
+                                  <span className="min-w-0 flex-1 text-sm font-medium leading-5">{carrier?.name || option.carrier}</span>
+                                  <span className={`shrink-0 whitespace-nowrap text-sm font-semibold tabular-nums ${selected ? "text-orange-300" : "text-foreground"}`}>{formatVND(option.fee)}</span>
+                                </label>
+                              );
+                            })}
+                          </RadioGroup>
+                        )}
+                      </div>
 
                       {group.items.map(item => {
                         // A null fee means one of two different things: no

@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import { MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSupabase, useUser } from '@/lib/supabase';
+import { isConversationHidden } from '@/lib/chat-visibility';
 
 const ChatDrawer = dynamic(() => import('./chat-drawer').then(m => m.ChatDrawer), { ssr: false });
 
@@ -46,11 +47,20 @@ export function ChatInboxButton() {
 
         const { data } = await supabase
             .from("conversations")
-            .select("buyer_id, seller_id, last_message_at, buyer_last_read_at, seller_last_read_at")
+            .select("buyer_id, seller_id, last_message_at, buyer_last_read_at, seller_last_read_at, buyer_deleted_at, seller_deleted_at")
             .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`);
 
         const count = (data || []).filter((conversation: any) => {
             if (!conversation.last_message_at) return false;
+            // A conversation this user deleted is not in their inbox, so it must
+            // not be in the badge either — a count they cannot chase to a thread
+            // is a number that never goes down.
+            if (isConversationHidden({
+                buyerId: conversation.buyer_id,
+                sellerId: conversation.seller_id,
+                buyerDeletedAt: conversation.buyer_deleted_at,
+                sellerDeletedAt: conversation.seller_deleted_at,
+            }, user.id, conversation.last_message_at)) return false;
             const ownReadAt = conversation.buyer_id === user.id
                 ? conversation.buyer_last_read_at
                 : conversation.seller_last_read_at;
