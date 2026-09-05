@@ -107,3 +107,54 @@ export function readTrackingEvent(body: unknown): {
             : null,
     };
 }
+
+export type TrackingEvent = {
+    time: string | null;
+    description: string | null;
+    location: string | null;
+    stage: string | null;
+};
+
+/**
+ * The parcel's journey, as the tracking service currently has it.
+ *
+ * Read-only and safe to call on demand: `gettrackinfo` costs no quota, only
+ * `register` does. Returns null when the carrier is one we never registered
+ * (Viettel Post, hand delivery), so the caller can say so rather than showing
+ * an empty timeline that looks like a failure.
+ */
+export async function fetchCarrierTracking(
+    carrier: string,
+    trackingNumber: string,
+): Promise<{ status: string; subStatus: string | null; events: TrackingEvent[] } | null> {
+    const apiKey = process.env.SEVENTEENTRACK_API_KEY;
+    const carrierCode = CARRIER_CODES[carrier];
+    if (!apiKey || !carrierCode || !trackingNumber) return null;
+
+    try {
+        const response = await fetch(`${API_BASE}/gettrackinfo`, {
+            method: 'POST',
+            headers: { '17token': apiKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify([{ number: trackingNumber, carrier: carrierCode }]),
+        });
+        const payload = await response.json();
+        const item = payload?.data?.accepted?.[0];
+        if (!item) return null;
+
+        const info = item.track_info || {};
+        const provider = info?.tracking?.providers?.[0];
+        const rawEvents = Array.isArray(provider?.events) ? provider.events : [];
+        return {
+            status: info?.latest_status?.status || 'NotFound',
+            subStatus: info?.latest_status?.sub_status || null,
+            events: rawEvents.map((e: Record<string, any>) => ({
+                time: e?.time_utc || e?.time_iso || null,
+                description: e?.description || null,
+                location: e?.location || null,
+                stage: e?.stage || null,
+            })),
+        };
+    } catch {
+        return null;
+    }
+}

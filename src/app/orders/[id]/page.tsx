@@ -16,6 +16,8 @@ import { useToast } from '@/hooks/use-toast';
 import { optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
 import { getCarrier, getTrackingUrl, getDeliveryDays, SHIPPING_CARRIERS, sellerSuppliesTracking } from '@/lib/shipping-carriers';
 import { VerifiedSellerBadge } from '@/components/verified-seller-badge';
+import { ParcelTrackingDialog } from '@/components/parcel-tracking-dialog';
+import { PackingVideoField } from '@/components/packing-video-field';
 import { getCloudinarySignature, uploadVideoDirectToCloudinary } from '@/lib/cloudinary-direct';
 import {
   EVIDENCE_VIDEO_ACCEPT,
@@ -102,6 +104,7 @@ export default function OrderDetailsPage() {
   const [shipCarrier, setShipCarrier] = useState('');
   const [packingVideoUrl, setPackingVideoUrl] = useState<string | null>(null);
   const [videoBusy, setVideoBusy] = useState(false);
+  const [trackOpen, setTrackOpen] = useState(false);
   const orderCarrier: string | undefined = order?.metadata?.shipping_carrier;
   const effectiveCarrier = orderCarrier || shipCarrier;
   const actionKeys = useRef<Record<string, string>>({});
@@ -328,13 +331,16 @@ export default function OrderDetailsPage() {
             )}
 
             {/* Dispute evidence — the videos that decide who is heard */}
-            {['shipping', 'delivered', 'disputed'].includes(order.status) && (() => {
+            {['paid', 'shipping', 'delivered', 'disputed'].includes(order.status) && (() => {
               const sellerVideo: string | null = order.seller_packing_video_url || null;
               const buyerVideo: string | null = order.buyer_unboxing_video_url || null;
               // Read at render rather than from the LiveClock tick: the window is
               // 72h, so a per-second clock buys nothing here.
               const windowOpen = !order.auto_complete_at || new Date(order.auto_complete_at).getTime() > Date.now();
-              const canUpload = isBuyer && !buyerVideo && windowOpen;
+              // Nothing to film yet at 'paid' — the parcel has not moved. What
+              // each side needs at that point is the warning, not the control.
+              const beforeDispatch = order.status === 'paid';
+              const canUpload = isBuyer && !buyerVideo && windowOpen && !beforeDispatch;
               const row = (label: string, url: string | null, missingHint: string) => (
                 <div className="flex items-center gap-2 text-sm">
                   <Video className={`h-4 w-4 shrink-0 ${url ? 'text-emerald-400' : 'text-muted-foreground'}`} />
@@ -351,6 +357,29 @@ export default function OrderDetailsPage() {
               return (
                 <div className="space-y-3 rounded-xl border border-border/60 p-4">
                   <p className="text-sm font-semibold">{tx('Bằng chứng tranh chấp', 'Dispute evidence', '紛争の証拠')}</p>
+
+                  {/* The moment each side can still act on this. A packing video
+                      is only accepted at dispatch, so telling the seller once
+                      they are already at the ship dialog is telling them late. */}
+                  {beforeDispatch && !isBuyer && (
+                    <p className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-2.5 text-xs leading-5 text-orange-200">
+                      {tx(
+                        'Quay video khi bạn đang đóng gói. Hệ thống chỉ nhận video ở đúng bước bấm “Giao hàng” — không đính thêm được về sau. Nếu có tranh chấp mà bạn không có video còn người mua có, phần thua thuộc về bạn.',
+                        'Film while you pack. The video is only accepted at the moment you press Ship — it cannot be attached later. If a dispute follows and you have no video while the buyer does, you lose it.',
+                        '梱包中に撮影してください。動画は「発送」を押す時点でのみ受け付けます。後から追加はできません。',
+                      )}
+                    </p>
+                  )}
+                  {beforeDispatch && isBuyer && (
+                    <p className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-2.5 text-xs leading-5 text-orange-200">
+                      {tx(
+                        'Khi hàng tới, hãy quay video lúc mở hộp — quay liền mạch từ lúc phong bì còn nguyên. Đơn đã giao mà bạn không có video thì tranh chấp sẽ nghiêng về người bán, kể cả khi thẻ sai hoặc thiếu.',
+                        'When the parcel arrives, film the unboxing — one unbroken take starting with the envelope still sealed. On a delivered order with no video from you, a dispute goes to the seller, even for a wrong or missing card.',
+                        '荷物が届いたら、封を切る前から一度の撮影で開封を記録してください。動画がない場合、配達済みの注文では販売者が有利になります。',
+                      )}
+                    </p>
+                  )}
+
                   {row(
                     tx('Video đóng gói của người bán', 'Seller packing video', '販売者の梱包動画'),
                     sellerVideo,
@@ -361,6 +390,7 @@ export default function OrderDetailsPage() {
                     buyerVideo,
                     tx('Chưa có', 'Not yet', '未提出'),
                   )}
+                  {!beforeDispatch && (
                   <p className="rounded-lg bg-muted/40 p-2.5 text-xs leading-5 text-muted-foreground">
                     {tx(
                       'Quay video là không bắt buộc, nhưng đó là thứ quyết định khi có tranh chấp: bên nào không chứng minh được thì thua điểm đó. Nếu cả hai đều không có, hệ thống không phân xử và tiền được giải ngân cho người bán.',
@@ -368,6 +398,7 @@ export default function OrderDetailsPage() {
                       '撮影は任意ですが、紛争の判断材料になります。証明できない側がその点を失い、双方に動画がない場合は販売者に支払われます。',
                     )}
                   </p>
+                  )}
                   {canUpload && (
                     <div className="space-y-1.5">
                       <p className="text-xs text-muted-foreground">
@@ -415,15 +446,16 @@ export default function OrderDetailsPage() {
                   </Button>,
                 );
               }
-              // Buyer: confirm receipt, or report a problem to admin.
+              // Buyer: follow the parcel, or report a problem to admin.
+              //
+              // There is no "confirm receipt" button any more: escrow releases
+              // on its own 72h after a carrier confirms delivery, so pressing
+              // something added nothing. What the buyer wants here is to see
+              // where the parcel is.
               if (isBuyer && (order.status === 'shipping' || order.status === 'delivered')) {
                 btns.push(
-                  <Button key="confirm" className="flex-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => setConfirm({
-                    action: 'confirm_received',
-                    title: tx('Xác nhận đã nhận hàng?', 'Confirm receipt?', '受け取りを確認しますか？'),
-                    message: tx('Tiền sẽ được chuyển cho người bán. Chỉ xác nhận khi bạn đã nhận đúng hàng.', 'Funds will be released to the seller. Only confirm once you have received the item.', '代金が販売者に支払われます。商品を受け取ってから確認してください。'),
-                  })}>
-                    <CheckCircle className="mr-2 h-4 w-4" />{tx('Đã nhận hàng', 'Received', '受け取り済み')}
+                  <Button key="track" variant="outline" className="flex-1" onClick={() => setTrackOpen(true)}>
+                    <Truck className="mr-2 h-4 w-4" />{tx('Theo dõi đơn', 'Track parcel', '配送を追跡')}
                   </Button>,
                   <Button key="report" variant="outline" className="flex-1 border-red-500/40 text-red-300 hover:bg-red-500/10" onClick={() => setConfirm({
                     action: 'dispute',
@@ -511,35 +543,9 @@ export default function OrderDetailsPage() {
             {sellerSuppliesTracking(effectiveCarrier) && (
               <Input value={trackingInput} onChange={e => setTrackingInput(e.target.value)} placeholder={tx('VD: LWtxxxxxxx', 'e.g. LWtxxxxxxx', '例: LWtxxxxxxx')} />
             )}
-            <div className="space-y-1.5 rounded-lg border border-border/60 p-3">
-              <p className="flex items-center gap-2 text-sm font-medium">
-                <Video className="h-4 w-4 text-orange-400" />
-                {tx('Video đóng gói (không bắt buộc)', 'Packing video (optional)', '梱包動画（任意）')}
-              </p>
-              <p className="text-xs leading-5 text-muted-foreground">
-                {tx(
-                  'Chỉ nhận ở bước này. Nếu sau đó có tranh chấp mà bạn không có video, phần thắng thuộc về người mua khi họ có video mở hộp.',
-                  'Accepted at this step only. If a dispute follows and you have no video, the buyer wins it when they have an unboxing video.',
-                  'この時点でのみ受け付けます。紛争時に動画がなく、購入者に開封動画がある場合は購入者が有利になります。',
-                )}
-              </p>
-              {packingVideoUrl ? (
-                <p className="text-xs text-emerald-300">{tx('Đã tải video lên.', 'Video uploaded.', '動画をアップロードしました。')}</p>
-              ) : (
-                <input
-                  type="file"
-                  accept={EVIDENCE_VIDEO_ACCEPT}
-                  disabled={videoBusy}
-                  onChange={async e => {
-                    const file = e.target.files?.[0];
-                    e.target.value = '';
-                    if (file) setPackingVideoUrl(await uploadEvidenceVideo(file));
-                  }}
-                  className="block w-full text-xs text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-orange-500/15 file:px-3 file:py-1.5 file:text-orange-300"
-                />
-              )}
-              {videoBusy && <p className="text-xs text-muted-foreground">{tx('Đang tải lên…', 'Uploading…', 'アップロード中…')}</p>}
-            </div>
+            {effectiveCarrier && (
+              <PackingVideoField value={packingVideoUrl} onChange={setPackingVideoUrl} locale={locale} disabled={acting} />
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShipOpen(false)} disabled={acting}>{tx('Huỷ', 'Cancel', 'キャンセル')}</Button>
@@ -557,6 +563,15 @@ export default function OrderDetailsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ParcelTrackingDialog
+        open={trackOpen}
+        onOpenChange={setTrackOpen}
+        orderId={id}
+        locale={locale}
+        title={tx('Theo dõi đơn', 'Track parcel', '配送を追跡')}
+        closeLabel={tx('Đóng', 'Close', '閉じる')}
+      />
 
     </div>
   );

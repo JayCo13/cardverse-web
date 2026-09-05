@@ -19,6 +19,8 @@ import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { SHIPPING_CARRIERS, getTrackingUrl, getCarrier, sellerSuppliesTracking } from '@/lib/shipping-carriers';
+import { ParcelTrackingDialog } from '@/components/parcel-tracking-dialog';
+import { PackingVideoField } from '@/components/packing-video-field';
 import Image from 'next/image';
 import { VerifiedSellerBadge } from '@/components/verified-seller-badge';
 
@@ -139,6 +141,7 @@ export default function OrdersPage() {
         shipExpired: '発送期限切れ — 自動キャンセル・返金されます。',
         trackGHN: 'Track GHN',
         received: 'Received item',
+        trackParcel: '配送を追跡',
         dispute: '管理者に報告',
         seller: 'Seller',
         buyer: 'Buyer',
@@ -215,6 +218,7 @@ export default function OrdersPage() {
           shipExpired: 'Quá hạn giao hàng — đơn sẽ tự huỷ & hoàn tiền.',
           trackGHN: 'Theo dõi GHN',
           received: 'Đã nhận hàng',
+          trackParcel: 'Theo dõi đơn',
           dispute: 'Báo cáo admin',
           seller: 'Người bán',
           buyer: 'Người mua',
@@ -290,6 +294,7 @@ export default function OrdersPage() {
           shipExpired: 'Overdue — the order will auto-cancel and refund.',
           trackGHN: 'Track GHN',
           received: 'Item received',
+          trackParcel: 'Track parcel',
           dispute: 'Report to admin',
           seller: 'Seller',
           buyer: 'Buyer',
@@ -359,6 +364,7 @@ export default function OrdersPage() {
   const [shipDialog, setShipDialog] = useState<{ open: boolean; orderId: string }>({ open: false, orderId: '' });
   const [shipCarrier, setShipCarrier] = useState('');
   const [shipTracking, setShipTracking] = useState('');
+  const [shipPackingVideo, setShipPackingVideo] = useState<string | null>(null);
   // Generic confirm dialog for lifecycle actions (confirm received / cancel).
   const [confirmAction, setConfirmAction] = useState<{ orderId: string; action: string; title: string; message: string } | null>(null);
 
@@ -448,7 +454,9 @@ export default function OrdersPage() {
     }));
   };
 
-  const handleAction = async (orderId: string, action: string, extra?: Record<string, string>) => {
+  // `null` is a value the API accepts — an optional packing video that the
+  // seller chose not to attach — so the payload type has to allow it.
+  const handleAction = async (orderId: string, action: string, extra?: Record<string, string | null>) => {
     const fingerprint = `${orderId}:${action}:${JSON.stringify(extra || {})}`;
     actionKeys.current[fingerprint] ||= crypto.randomUUID();
     setActionLoading(orderId);
@@ -652,7 +660,7 @@ export default function OrdersPage() {
                 {!isBuyer && order.status === 'paid' && (
                   <Button
                     size="sm"
-                    onClick={() => { setShipCarrier(order.metadata?.shipping_carrier || ''); setShipTracking(''); setShipDialog({ open: true, orderId: order.id }); }}
+                    onClick={() => { setShipCarrier(order.metadata?.shipping_carrier || ''); setShipTracking(''); setShipPackingVideo(null); setShipDialog({ open: true, orderId: order.id }); }}
                     disabled={actionLoading === order.id}
                     className="bg-orange-500 hover:bg-orange-600"
                   >
@@ -673,22 +681,22 @@ export default function OrdersPage() {
                   </Button>
                 )}
 
-                {/* Buyer actions */}
+                {/* Buyer actions.
+
+                    There is no "Item received" button any more: escrow releases
+                    on its own 72h after a carrier confirms delivery, so asking
+                    the buyer to press something was asking for a step that adds
+                    nothing. What the buyer wants at this point is to know where
+                    the parcel is, which is what this opens. */}
                 {isBuyer && ['shipping', 'delivered'].includes(order.status) && (
                   <>
                     <Button
                       size="sm"
-                      onClick={() => setConfirmAction({
-                        orderId: order.id,
-                        action: 'confirm_received',
-                        title: locale === 'ja-JP' ? '受け取りを確認しますか？' : locale === 'en-US' ? 'Confirm receipt?' : 'Xác nhận đã nhận hàng?',
-                        message: locale === 'ja-JP' ? '代金が販売者に支払われます。商品を受け取ってから確認してください。' : locale === 'en-US' ? 'Funds will be released to the seller. Only confirm once you have received the item.' : 'Tiền sẽ được chuyển cho người bán. Chỉ xác nhận khi bạn đã nhận đúng hàng.',
-                      })}
-                      disabled={actionLoading === order.id}
-                      className="bg-green-600 hover:bg-green-700"
+                      variant="outline"
+                      onClick={() => setTrackingDialog({ open: true, order })}
                     >
-                      {actionLoading === order.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3 mr-1" />}
-                      {copy.received}
+                      <Truck className="h-3 w-3 mr-1" />
+                      {copy.trackParcel}
                     </Button>
                     <Button
                       size="sm"
@@ -966,12 +974,19 @@ export default function OrdersPage() {
                 />
               </div>
             )}
+            {shipCarrier && (
+              <PackingVideoField value={shipPackingVideo} onChange={setShipPackingVideo} locale={locale} />
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShipDialog({ open: false, orderId: '' })}>{copy.cancel}</Button>
             <Button
               className="bg-orange-500 hover:bg-orange-600"
-              onClick={() => handleAction(shipDialog.orderId, 'ship', { shipping_provider: shipCarrier, tracking_number: shipTracking.trim() })}
+              onClick={() => handleAction(shipDialog.orderId, 'ship', {
+                shipping_provider: shipCarrier,
+                tracking_number: shipTracking.trim(),
+                packing_video_url: shipPackingVideo,
+              })}
               disabled={!shipCarrier || (sellerSuppliesTracking(shipCarrier) && !shipTracking.trim()) || actionLoading === shipDialog.orderId}
             >
               {copy.shipOrder}
@@ -1004,6 +1019,15 @@ export default function OrdersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ParcelTrackingDialog
+        open={trackingDialog.open}
+        onOpenChange={open => setTrackingDialog({ open, order: open ? trackingDialog.order : null })}
+        orderId={trackingDialog.order?.id ?? null}
+        locale={locale}
+        title={copy.trackParcel}
+        closeLabel={copy.cancel}
+      />
     </div>
   );
 }
