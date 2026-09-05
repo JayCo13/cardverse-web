@@ -11,13 +11,20 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { ArrowLeft, Truck, MapPin, CreditCard, Clock, Package, User, CheckCircle, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Truck, MapPin, CreditCard, Clock, Package, User, CheckCircle, AlertTriangle, Video } from 'lucide-react';
 import { useLocalization } from '@/context/localization-context';
 import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { useToast } from '@/hooks/use-toast';
 import { optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
-import { getCarrier, getTrackingUrl, getDeliveryDays, SHIPPING_CARRIERS } from '@/lib/shipping-carriers';
+import { getCarrier, getTrackingUrl, getDeliveryDays, SHIPPING_CARRIERS, platformBooksShipment, sellerSuppliesTracking } from '@/lib/shipping-carriers';
 import { VerifiedSellerBadge } from '@/components/verified-seller-badge';
+import { getCloudinarySignature, uploadVideoDirectToCloudinary } from '@/lib/cloudinary-direct';
+import {
+  EVIDENCE_VIDEO_ACCEPT,
+  EVIDENCE_VIDEO_FOLDER,
+  EVIDENCE_VIDEO_MAX_BYTES,
+  isAcceptableEvidenceVideoFile,
+} from '@/lib/evidence-video';
 
 const STATUS_STYLE: Record<string, string> = {
   pending_payment: 'bg-gray-500/15 text-gray-300',
@@ -95,9 +102,38 @@ export default function OrderDetailsPage() {
   // seller picks the one they actually shipped with. Seeded from the order when
   // it does carry one, in which case the dialog just shows it.
   const [shipCarrier, setShipCarrier] = useState('');
+  const [packingVideoUrl, setPackingVideoUrl] = useState<string | null>(null);
+  const [videoBusy, setVideoBusy] = useState(false);
   const orderCarrier: string | undefined = order?.metadata?.shipping_carrier;
   const effectiveCarrier = orderCarrier || shipCarrier;
   const actionKeys = useRef<Record<string, string>>({});
+
+  /** Signed direct upload to the evidence folder. Returns null on any failure. */
+  const uploadEvidenceVideo = async (file: File): Promise<string | null> => {
+    if (!isAcceptableEvidenceVideoFile(file)) {
+      toast({
+        variant: 'destructive',
+        title: tx('Video không hợp lệ', 'Invalid video', '無効な動画'),
+        description: tx(
+          `Chọn một tệp video dưới ${Math.round(EVIDENCE_VIDEO_MAX_BYTES / (1024 * 1024))}MB.`,
+          `Pick a video file under ${Math.round(EVIDENCE_VIDEO_MAX_BYTES / (1024 * 1024))}MB.`,
+          `${Math.round(EVIDENCE_VIDEO_MAX_BYTES / (1024 * 1024))}MB 未満の動画を選んでください。`,
+        ),
+      });
+      return null;
+    }
+    setVideoBusy(true);
+    try {
+      const signature = await getCloudinarySignature(EVIDENCE_VIDEO_FOLDER);
+      const { secureUrl } = await uploadVideoDirectToCloudinary(file, signature);
+      return secureUrl;
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: tx('Lỗi', 'Error', 'エラー'), description: e.message });
+      return null;
+    } finally {
+      setVideoBusy(false);
+    }
+  };
 
   const runAction = async (action: string, extra?: any) => {
     const fingerprint = `${id}:${action}:${JSON.stringify(extra || {})}`;
@@ -118,7 +154,7 @@ export default function OrderDetailsPage() {
       }
       delete actionKeys.current[fingerprint];
       toast({ title: tx('Thành công', 'Done', '完了') });
-      setConfirm(null); setShipOpen(false); setTrackingInput('');
+      setConfirm(null); setShipOpen(false); setTrackingInput(''); setPackingVideoUrl(null);
       await load();
     } catch (e: any) {
       toast({ variant: 'destructive', title: tx('Lỗi', 'Error', 'エラー'), description: e.message });
@@ -294,6 +330,83 @@ export default function OrderDetailsPage() {
               )}</LiveClock>
             )}
 
+            {/* Dispute evidence — the videos that decide who is heard */}
+            {['shipping', 'delivered', 'disputed'].includes(order.status) && (() => {
+              const sellerVideo: string | null = order.seller_packing_video_url || null;
+              const buyerVideo: string | null = order.buyer_unboxing_video_url || null;
+              // Read at render rather than from the LiveClock tick: the window is
+              // 72h, so a per-second clock buys nothing here.
+              const windowOpen = !order.auto_complete_at || new Date(order.auto_complete_at).getTime() > Date.now();
+              const canUpload = isBuyer && !buyerVideo && windowOpen;
+              const row = (label: string, url: string | null, missingHint: string) => (
+                <div className="flex items-center gap-2 text-sm">
+                  <Video className={`h-4 w-4 shrink-0 ${url ? 'text-emerald-400' : 'text-muted-foreground'}`} />
+                  <span className="min-w-0 flex-1 truncate">{label}</span>
+                  {url ? (
+                    <a href={url} target="_blank" rel="noopener noreferrer" className="shrink-0 text-xs text-orange-300 underline">
+                      {tx('Xem', 'View', '見る')}
+                    </a>
+                  ) : (
+                    <span className="shrink-0 text-xs text-muted-foreground">{missingHint}</span>
+                  )}
+                </div>
+              );
+              return (
+                <div className="space-y-3 rounded-xl border border-border/60 p-4">
+                  <p className="text-sm font-semibold">{tx('Bằng chứng tranh chấp', 'Dispute evidence', '紛争の証拠')}</p>
+                  {row(
+                    tx('Video đóng gói của người bán', 'Seller packing video', '販売者の梱包動画'),
+                    sellerVideo,
+                    tx('Không có', 'None', 'なし'),
+                  )}
+                  {row(
+                    tx('Video mở hộp của người mua', 'Buyer unboxing video', '購入者の開封動画'),
+                    buyerVideo,
+                    tx('Chưa có', 'Not yet', '未提出'),
+                  )}
+                  <p className="rounded-lg bg-muted/40 p-2.5 text-xs leading-5 text-muted-foreground">
+                    {tx(
+                      'Quay video là không bắt buộc, nhưng đó là thứ quyết định khi có tranh chấp: bên nào không chứng minh được thì thua điểm đó. Nếu cả hai đều không có, hệ thống không phân xử và tiền được giải ngân cho người bán.',
+                      'Recording is optional, but it is what decides a dispute: whoever cannot show their side loses that point. If neither side has a video the platform does not arbitrate, and the funds go to the seller.',
+                      '撮影は任意ですが、紛争の判断材料になります。証明できない側がその点を失い、双方に動画がない場合は販売者に支払われます。',
+                    )}
+                  </p>
+                  {canUpload && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs text-muted-foreground">
+                        {order.auto_complete_at
+                          ? tx(`Nộp trước ${dt(order.auto_complete_at)} — sau đó không nhận nữa.`,
+                              `Submit before ${dt(order.auto_complete_at)} — not accepted after that.`,
+                              `${dt(order.auto_complete_at)} までに提出してください。`)
+                          : tx('Nộp trước khi đơn đóng.', 'Submit before the order closes.', '注文が閉じる前に提出してください。')}
+                      </p>
+                      <input
+                        type="file"
+                        accept={EVIDENCE_VIDEO_ACCEPT}
+                        disabled={videoBusy || acting}
+                        onChange={async e => {
+                          const file = e.target.files?.[0];
+                          e.target.value = '';
+                          if (!file) return;
+                          const url = await uploadEvidenceVideo(file);
+                          // Write-once at the database, so this only ever runs
+                          // for a real first submission.
+                          if (url) await runAction('submit_unboxing_video', { video_url: url });
+                        }}
+                        className="block w-full text-xs text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-orange-500/15 file:px-3 file:py-1.5 file:text-orange-300"
+                      />
+                      {videoBusy && <p className="text-xs text-muted-foreground">{tx('Đang tải lên…', 'Uploading…', 'アップロード中…')}</p>}
+                    </div>
+                  )}
+                  {isBuyer && !buyerVideo && !windowOpen && (
+                    <p className="text-xs text-amber-300">
+                      {tx('Đã hết hạn nộp video cho đơn này.', 'The window for submitting a video has closed.', '動画の提出期限が過ぎました。')}
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* Actions */}
             {(() => {
               const btns: ReactNode[] = [];
@@ -318,7 +431,9 @@ export default function OrderDetailsPage() {
                   <Button key="report" variant="outline" className="flex-1 border-red-500/40 text-red-300 hover:bg-red-500/10" onClick={() => setConfirm({
                     action: 'dispute',
                     title: tx('Báo cáo cho quản trị viên?', 'Report to admin?', '管理者に報告しますか？'),
-                    message: tx('Dùng khi chưa nhận được hàng / hàng lỗi / giao trễ. Đơn sẽ được giữ và chuyển cho admin kiểm tra. Tiền của bạn vẫn được giữ an toàn.', 'Use this if the item has not arrived / is faulty / is late. The order is held and sent to an admin to review. Your money stays safe.', '未着・不良・遅延の場合に使用します。注文は保留され管理者が確認します。'),
+                    message: order.buyer_unboxing_video_url
+                      ? tx('Dùng khi chưa nhận được hàng / hàng lỗi / giao trễ. Đơn sẽ được giữ và chuyển cho admin kiểm tra. Tiền của bạn vẫn được giữ an toàn.', 'Use this if the item has not arrived / is faulty / is late. The order is held and sent to an admin to review. Your money stays safe.', '未着・不良・遅延の場合に使用します。注文は保留され管理者が確認します。')
+                      : tx('Bạn chưa nộp video mở hộp. Vẫn báo cáo được, nhưng nếu người bán có video đóng gói thì đơn sẽ được giải ngân cho họ. Nên nộp video trước khi báo cáo.', 'You have not submitted an unboxing video. You can still report, but if the seller has a packing video the funds will go to them. Submit a video first if you can.', '開封動画が未提出です。報告はできますが、販売者に梱包動画がある場合は販売者に支払われます。'),
                     extra: { dispute_reason: tx('Người mua báo cáo (chưa nhận / lỗi / trễ)', 'Buyer reported (not received / faulty / late)', '購入者の報告（未着・不良・遅延）') },
                   })}>
                     <AlertTriangle className="mr-2 h-4 w-4" />{tx('Báo cáo admin', 'Report to admin', '管理者に報告')}
@@ -396,16 +511,58 @@ export default function OrderDetailsPage() {
                 </div>
               </div>
             )}
-            {effectiveCarrier && effectiveCarrier !== 'self' && (
+            {sellerSuppliesTracking(effectiveCarrier) && (
               <Input value={trackingInput} onChange={e => setTrackingInput(e.target.value)} placeholder={tx('VD: LWtxxxxxxx', 'e.g. LWtxxxxxxx', '例: LWtxxxxxxx')} />
             )}
+            {platformBooksShipment(effectiveCarrier) && (
+              <p className="rounded-lg bg-muted/40 p-2.5 text-xs leading-5 text-muted-foreground">
+                {tx(
+                  'CardVerse sẽ tạo vận đơn GHN và GHN đến lấy hàng tại địa chỉ của bạn — không cần nhập mã. Mã vận đơn hiện ra sau khi tạo xong, và trạng thái giao hàng tự cập nhật.',
+                  'CardVerse books the GHN shipment and GHN collects from your address — no tracking number to enter. The code appears once it is booked, and delivery status updates on its own.',
+                  'CardVerseがGHNの配送を手配し、GHNがあなたの住所に集荷します。追跡番号の入力は不要です。',
+                )}
+              </p>
+            )}
+            <div className="space-y-1.5 rounded-lg border border-border/60 p-3">
+              <p className="flex items-center gap-2 text-sm font-medium">
+                <Video className="h-4 w-4 text-orange-400" />
+                {tx('Video đóng gói (không bắt buộc)', 'Packing video (optional)', '梱包動画（任意）')}
+              </p>
+              <p className="text-xs leading-5 text-muted-foreground">
+                {tx(
+                  'Chỉ nhận ở bước này. Nếu sau đó có tranh chấp mà bạn không có video, phần thắng thuộc về người mua khi họ có video mở hộp.',
+                  'Accepted at this step only. If a dispute follows and you have no video, the buyer wins it when they have an unboxing video.',
+                  'この時点でのみ受け付けます。紛争時に動画がなく、購入者に開封動画がある場合は購入者が有利になります。',
+                )}
+              </p>
+              {packingVideoUrl ? (
+                <p className="text-xs text-emerald-300">{tx('Đã tải video lên.', 'Video uploaded.', '動画をアップロードしました。')}</p>
+              ) : (
+                <input
+                  type="file"
+                  accept={EVIDENCE_VIDEO_ACCEPT}
+                  disabled={videoBusy}
+                  onChange={async e => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (file) setPackingVideoUrl(await uploadEvidenceVideo(file));
+                  }}
+                  className="block w-full text-xs text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-orange-500/15 file:px-3 file:py-1.5 file:text-orange-300"
+                />
+              )}
+              {videoBusy && <p className="text-xs text-muted-foreground">{tx('Đang tải lên…', 'Uploading…', 'アップロード中…')}</p>}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShipOpen(false)} disabled={acting}>{tx('Huỷ', 'Cancel', 'キャンセル')}</Button>
             <Button
               className="bg-orange-500 hover:bg-orange-600"
-              disabled={acting || !effectiveCarrier || (effectiveCarrier !== 'self' && !trackingInput.trim())}
-              onClick={() => runAction('ship', { shipping_provider: effectiveCarrier, tracking_number: trackingInput.trim() })}
+              disabled={acting || !effectiveCarrier || (sellerSuppliesTracking(effectiveCarrier) && !trackingInput.trim())}
+              onClick={() => runAction('ship', {
+                shipping_provider: effectiveCarrier,
+                tracking_number: trackingInput.trim(),
+                packing_video_url: packingVideoUrl,
+              })}
             >
               {tx('Giao hàng', 'Ship', '発送')}
             </Button>

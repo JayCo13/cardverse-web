@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { v2 as cloudinary } from 'cloudinary';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { EVIDENCE_VIDEO_FOLDER } from '@/lib/evidence-video';
 
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -11,7 +12,14 @@ cloudinary.config({
 const KYC_UPLOAD_FOLDER = 'cardverse/cards/kyc';
 // Folders the client is allowed to request a signature for. The server signs
 // only these exact values so a tampered request can't write anywhere else.
-const ALLOWED_FOLDERS = new Set(['cardverse/cards', KYC_UPLOAD_FOLDER, 'cardverse/chat']);
+const ALLOWED_FOLDERS = new Set([
+    'cardverse/cards',
+    KYC_UPLOAD_FOLDER,
+    'cardverse/chat',
+    // Dispute evidence videos. Signed the same way; the resource type lives in
+    // the upload URL, not in the signed parameters, so nothing else changes here.
+    EVIDENCE_VIDEO_FOLDER,
+]);
 
 export async function POST(request: Request) {
     try {

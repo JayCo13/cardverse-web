@@ -54,6 +54,21 @@ export const getTrackingUrl = (code: string | null | undefined, trackingNumber: 
   return carrier.trackingUrl.replace('{code}', encodeURIComponent(trackingNumber));
 };
 
+/**
+ * Does the platform book this carrier itself?
+ *
+ * GHN only, and not for convenience: GHN sends webhook events to the account
+ * that registered the endpoint, so a shipment booked in the seller's own GHN
+ * account never reports delivery back to us. Booking it under the platform shop
+ * is what makes delivery tracking exist at all — and it means the seller has no
+ * tracking number to type, because there is no parcel until we create it.
+ */
+export const platformBooksShipment = (code: string | null | undefined): boolean => code === 'ghn';
+
+/** Does the seller have to supply a tracking number for this carrier? */
+export const sellerSuppliesTracking = (code: string | null | undefined): boolean =>
+  !!code && code !== 'self' && !platformBooksShipment(code);
+
 /** Turn stored carrier codes into their short labels, e.g. ['ghn','self'] → 'GHN, Tự giao'. */
 export const carrierShortLabels = (codes: string[] | null | undefined): string =>
   (codes || [])

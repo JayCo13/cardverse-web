@@ -20,7 +20,7 @@ import { useLocalization } from '@/context/localization-context';
 import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { SHIPPING_CARRIERS, getTrackingUrl, getCarrier } from '@/lib/shipping-carriers';
+import { SHIPPING_CARRIERS, getTrackingUrl, getCarrier, platformBooksShipment, sellerSuppliesTracking } from '@/lib/shipping-carriers';
 import Image from 'next/image';
 import { VerifiedSellerBadge } from '@/components/verified-seller-badge';
 
@@ -960,7 +960,16 @@ export default function OrdersPage() {
                 </div>
               </div>
             )}
-            {shipCarrier && shipCarrier !== 'self' && (
+            {shipCarrier && platformBooksShipment(shipCarrier) && (
+              <p className="rounded-lg bg-muted/40 p-2.5 text-xs leading-5 text-muted-foreground">
+                {locale === 'ja-JP'
+                  ? 'CardVerseがGHNの配送を手配し、GHNが集荷します。追跡番号の入力は不要です。'
+                  : locale === 'en-US'
+                    ? 'CardVerse books the GHN shipment and GHN collects from your address — no tracking number to enter.'
+                    : 'CardVerse sẽ tạo vận đơn GHN và GHN đến lấy hàng tại địa chỉ của bạn — không cần nhập mã.'}
+              </p>
+            )}
+            {sellerSuppliesTracking(shipCarrier) && (
               <div className="space-y-1.5">
                 <p className="text-sm font-medium">
                   {locale === 'ja-JP' ? '追跡番号' : locale === 'en-US' ? 'Tracking number' : 'Mã vận đơn'}
@@ -978,7 +987,7 @@ export default function OrdersPage() {
             <Button
               className="bg-orange-500 hover:bg-orange-600"
               onClick={() => handleAction(shipDialog.orderId, 'ship', { shipping_provider: shipCarrier, tracking_number: shipTracking.trim() })}
-              disabled={!shipCarrier || (shipCarrier !== 'self' && !shipTracking.trim()) || actionLoading === shipDialog.orderId}
+              disabled={!shipCarrier || (sellerSuppliesTracking(shipCarrier) && !shipTracking.trim()) || actionLoading === shipDialog.orderId}
             >
               {copy.shipOrder}
             </Button>

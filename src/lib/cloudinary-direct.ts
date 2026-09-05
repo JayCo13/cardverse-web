@@ -25,6 +25,37 @@ export async function getCloudinarySignature(folder?: string): Promise<Cloudinar
     return data as CloudinarySignaturePayload;
 }
 
+/**
+ * Same signed upload as the image path, against Cloudinary's video resource.
+ * The signature covers only `folder` and `timestamp`, so it is valid for both;
+ * what decides the resource type is the endpoint.
+ */
+export async function uploadVideoDirectToCloudinary(
+    file: File,
+    signedUpload: CloudinarySignaturePayload
+): Promise<DirectCloudinaryUploadResult> {
+    const { cloudName, apiKey, folder, timestamp, signature } = signedUpload;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('api_key', apiKey);
+    formData.append('timestamp', String(timestamp));
+    formData.append('folder', folder);
+    formData.append('signature', signature);
+
+    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, {
+        method: 'POST',
+        body: formData,
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.secure_url) {
+        throw new Error(data.error?.message || 'Tải video lên thất bại.');
+    }
+
+    return { secureUrl: data.secure_url as string };
+}
+
 export async function uploadImageDirectToCloudinary(
     file: File,
     signedUpload: CloudinarySignaturePayload

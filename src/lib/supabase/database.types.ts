@@ -1130,6 +1130,10 @@ export interface Database {
                     auto_complete_at: string | null
                     dispute_reason: string | null
                     dispute_evidence_url: string | null
+                    seller_packing_video_url: string | null
+                    seller_packing_video_at: string | null
+                    buyer_unboxing_video_url: string | null
+                    buyer_unboxing_video_at: string | null
                     created_at: string
                     updated_at: string
                 }
@@ -1166,6 +1170,10 @@ export interface Database {
                     auto_complete_at?: string | null
                     dispute_reason?: string | null
                     dispute_evidence_url?: string | null
+                    seller_packing_video_url?: string | null
+                    seller_packing_video_at?: string | null
+                    buyer_unboxing_video_url?: string | null
+                    buyer_unboxing_video_at?: string | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -1202,6 +1210,10 @@ export interface Database {
                     auto_complete_at?: string | null
                     dispute_reason?: string | null
                     dispute_evidence_url?: string | null
+                    seller_packing_video_url?: string | null
+                    seller_packing_video_at?: string | null
+                    buyer_unboxing_video_url?: string | null
+                    buyer_unboxing_video_at?: string | null
                     created_at?: string
                     updated_at?: string
                 }

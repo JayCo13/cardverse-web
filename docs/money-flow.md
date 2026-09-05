@@ -35,7 +35,7 @@ Wallet checkout skips `pending_payment` — orders are created directly as `paid
 | create `paid` (wallet) / `pending_payment` (PayOS) | `src/app/api/checkout/route.ts` (also legacy: `marketplace/buy`, `transaction/[id]/pay`) |
 | `pending_payment → paid` | `src/app/api/payos/webhook/route.ts` (signature-verified, idempotent at `payment_orders` level) |
 | `pending_payment → cancelled` | PayOS cancel webhook; `release_expired_card_reservations()` (3-min reservation, `20260609_card_reservation_expiry.sql`) |
-| `paid → shipping` | `marketplace/orders/route.ts` PATCH `ship` (creates GHN order) |
+| `paid → shipping` | `marketplace/orders/route.ts` PATCH `ship`. Books the GHN order under the platform shop and stores `ghn_order_code`; every other carrier is manual tracking |
 | `shipping → delivered` | `src/app/api/shipping/webhook/route.ts` (token-authenticated, idempotent; resets `auto_complete_at = now + 72h`) |
 | `delivered → completed` (manual) | `marketplace/orders/route.ts` PATCH `confirm_received` (`buyer_confirmed_at` set) |
 | `delivered → completed` (auto) | `complete_delivered_orders()` (`20260617_auto_release_escrow.sql`; `buyer_confirmed_at` stays NULL). Called opportunistically from `marketplace/orders` GET and `wallet` GET |
@@ -89,11 +89,13 @@ Ledger `type` values:
 ## Webhook security
 
 - **PayOS** (`api/payos/webhook`): signature verified via SDK; idempotent (`payment_orders.status='paid'` check); amount cross-checked.
-- **GHN** (`api/shipping/webhook`): shared-secret token (`GHN_WEBHOOK_TOKEN` env), constant-time compare, **fail closed** when unset. Configure at khachhang.ghn.vn → Webhook: `https://cardversehub.com/api/shipping/webhook?token=<value>`. Idempotent: terminal-status orders and unchanged `ghn_status` are ignored; only `shipping → delivered` transitions.
+- **GHN** (`api/shipping/webhook`): shared-secret token (`GHN_WEBHOOK_TOKEN` env), constant-time compare, **fail closed** when unset. GHN registers the URL themselves — there is no dashboard screen and no API for it. Email api@ghn.vn with Client ID, `https://cardversehub.com/api/shipping/webhook?token=<value>`, Staging/Production, and the shop name ([their docs](https://api.ghn.vn/home/docs/detail?id=47)). It is configured per **Client ID**, so it covers every shop under that account. Idempotent: terminal-status orders and unchanged `ghn_status` are ignored; only `shipping → delivered` transitions.
 
 ## Known gaps / follow-ups
 
-- Manual-tracking (non-GHN) shipments never reach `delivered`, so they never auto-complete — buyer confirmation is required. Deliberate (no delivery proof).
+- Manual-tracking (non-GHN) shipments never reach `delivered`, so they never auto-complete — buyer confirmation is required. Viettel Post and SPX carry a public tracking link only; neither has an integration, so the platform has no delivery proof for them. Closing that needs either Viettel Post's own Open API (partner2.viettelpost.vn — it has webhooks) or a multi-carrier tracking aggregator, since SPX offers no direct API.
+- `ghn_order_code` was never written before 20260905000200, so the GHN webhook's lookup never matched, `ghn_status` was never set, and no order ever reached `delivered` on its own — escrow auto-release included. `src/lib/ghn.ts` had a complete `createShippingOrder()` with no caller. The ship action now books it, which is also what the dispute verdict reads to tell "the carrier says it never arrived" from "we cannot see".
+- GHN sends webhook events only to the account that registered the endpoint, so the shipment has to be booked under the platform's own GHN shop. A code a seller pastes in from their own GHN account would never produce an event here.
 - Old `delivered` orders piled up before auto-release existed will all pay out on the first `complete_delivered_orders()` call after the migration — review them first (`select id, seller_id, amount from orders where status='delivered' and auto_complete_at < now();`).
 - Admin dispute `release_seller` (cardverse-ad) pays `amount − platform_fee` — correct for new orders (fee = 0) but under-pays **legacy** disputed orders.
 - `orders` table RLS posture not yet audited (the GHN webhook now uses the service client regardless).

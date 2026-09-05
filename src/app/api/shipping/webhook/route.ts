@@ -3,7 +3,14 @@ import { createHash, timingSafeEqual } from 'crypto';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
 // GHN Webhook — receives status updates for shipping orders
-// Configure webhook URL at: https://khachhang.ghn.vn → Settings → Webhook
+// GHN has NO self-service webhook screen and no registration endpoint — the
+// URL is configured by GHN on their side. Email api@ghn.vn (or langnghe.ghn.vn/
+// customer) with the four fields their docs ask for (api.ghn.vn/home/docs/detail?id=47):
+//   Client ID       — the platform's GHN client id (not the shop id; the config
+//                     is per client, so it covers every shop under it)
+//   Url webhook     — https://cardversehub.com/api/shipping/webhook?token=<GHN_WEBHOOK_TOKEN>
+//   Staging or Production
+//   Name            — the shop / system name
 // URL: https://cardversehub.com/api/shipping/webhook?token=<GHN_WEBHOOK_TOKEN>
 //
 // Security: this endpoint can flip an order to 'delivered', which starts the
