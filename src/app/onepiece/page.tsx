@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
@@ -38,6 +39,8 @@ export default function OnePiecePage() {
     const [sets, setSets] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState(searchParams.get('q') || "");
+    const debouncedSearch = useDebouncedValue(searchTerm);
+    const requestRef = useRef<AbortController | null>(null);
     const [priceFilter, setPriceFilter] = useState(searchParams.get('price') || "all");
     const [rarityFilter, setRarityFilter] = useState(searchParams.get('rarity') || "all");
     const [setFilter, setSetFilter] = useState(searchParams.get('set') || "all");
@@ -50,14 +53,14 @@ export default function OnePiecePage() {
     // Update URL when filters change
     useEffect(() => {
         const params = new URLSearchParams();
-        if (searchTerm) params.set('q', searchTerm);
+        if (debouncedSearch) params.set('q', debouncedSearch);
         if (priceFilter !== 'all') params.set('price', priceFilter);
         if (rarityFilter !== 'all') params.set('rarity', rarityFilter);
         if (setFilter !== 'all') params.set('set', setFilter);
 
         const newUrl = params.toString() ? `?${params.toString()}` : '/onepiece';
         router.replace(newUrl, { scroll: false });
-    }, [searchTerm, priceFilter, rarityFilter, setFilter, router]);
+    }, [debouncedSearch, priceFilter, rarityFilter, setFilter, router]);
 
     // Fetch available sets
     useEffect(() => {
@@ -89,6 +92,9 @@ export default function OnePiecePage() {
     }, []);
 
     const fetchCards = useCallback(async () => {
+        requestRef.current?.abort();
+        const controller = new AbortController();
+        requestRef.current = controller;
         setLoading(true);
         try {
             const supabase = getSupabaseClient();
@@ -101,8 +107,8 @@ export default function OnePiecePage() {
                     .not('market_price', 'is', null)
                     .gt('market_price', 0);
 
-                if (searchTerm) {
-                    query = query.ilike('name', `%${searchTerm}%`);
+                if (debouncedSearch) {
+                    query = query.ilike('name', `%${debouncedSearch}%`);
                 }
 
                 if (priceFilter === "under10") {
@@ -125,17 +131,18 @@ export default function OnePiecePage() {
 
                 return query
                     .order('market_price', { ascending: false })
-                    .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+                    .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1).abortSignal(controller.signal);
             };
 
             const noNarrowingFilters =
-                !searchTerm && setFilter === "all" && priceFilter === "all" && rarityFilter === "all";
+                !debouncedSearch && setFilter === "all" && priceFilter === "all" && rarityFilter === "all";
 
             // Retry to survive a stale/cold REST connection (empty "no cards").
             let data: any[] = [];
             let total = 0;
             for (let attempt = 1; attempt <= 3; attempt++) {
                 const { data: rows, error, count } = await runOnce();
+                if (controller.signal.aborted) return;
                 if (error) {
                     if (attempt === 3) throw error;
                     await new Promise(r => setTimeout(r, 500 * attempt));
@@ -150,23 +157,26 @@ export default function OnePiecePage() {
                 break;
             }
 
+            if (controller.signal.aborted) return;
             setTotalCount(total);
             setCards(data || []);
         } catch (err) {
             console.error('Fetch error:', err);
         } finally {
-            setLoading(false);
+            if (!controller.signal.aborted) setLoading(false);
         }
-    }, [searchTerm, priceFilter, rarityFilter, setFilter, page, PAGE_SIZE]);
+    }, [debouncedSearch, priceFilter, rarityFilter, setFilter, page, PAGE_SIZE]);
 
     // Reset to first page when filters/search change.
     useEffect(() => {
         setPage(0);
-    }, [searchTerm, priceFilter, rarityFilter, setFilter]);
+    }, [debouncedSearch, priceFilter, rarityFilter, setFilter]);
 
     useEffect(() => {
         fetchCards();
     }, [fetchCards]);
+
+    useEffect(() => () => requestRef.current?.abort(), []);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();

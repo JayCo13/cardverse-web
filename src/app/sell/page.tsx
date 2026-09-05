@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useMediaQuery } from '@/hooks/use-media-query';
 import { useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
@@ -190,6 +191,7 @@ type Bank = {
 };
 
 export default function SellPage() {
+  const desktop = useMediaQuery('(min-width: 768px)');
   const router = useRouter();
   const { t, locale } = useLocalization();
   const { user, isLoading: authLoading } = useAuth();
@@ -1514,7 +1516,7 @@ export default function SellPage() {
                   </div>
                 ) : (
                   <>
-                    <Tabs defaultValue="active" className="md:hidden">
+                    {!desktop && <Tabs defaultValue="active" className="md:hidden">
                       <TabsList className="grid h-auto w-full grid-cols-3">
                         <TabsTrigger value="active" className="min-w-0 flex-1 truncate px-2 text-xs">{copy.active} ({formatCompactCount(activeListings.length, locale)})</TabsTrigger>
                         <TabsTrigger value="sold" className="min-w-0 flex-1 truncate px-2 text-xs">{copy.sold} ({formatCompactCount(soldListings.length, locale)})</TabsTrigger>
@@ -1523,9 +1525,9 @@ export default function SellPage() {
                       {renderListingTab('active', activeListings, copy.active)}
                       {renderListingTab('sold', soldListings, copy.sold)}
                       {renderListingTab('draft', draftListings, tx('Nháp', 'Drafts', '下書き'))}
-                    </Tabs>
+                    </Tabs>}
 
-                    <div className="hidden grid-cols-2 gap-3 sm:grid-cols-3 md:grid md:grid-cols-4">
+                    {desktop && <div className="hidden grid-cols-2 gap-3 sm:grid-cols-3 md:grid md:grid-cols-4">
                       {myListings.map((listing) => {
                         const isSold = listing.status === 'sold';
                         return (
@@ -1564,7 +1566,7 @@ export default function SellPage() {
                           </div>
                         );
                       })}
-                    </div>
+                    </div>}
                   </>
                 )}
               </CardContent>
@@ -1614,7 +1616,7 @@ export default function SellPage() {
                             <div className="flex items-center gap-3">
                               {order.card?.image_url && (
                                 <div className="relative h-14 w-10 shrink-0 overflow-hidden rounded">
-                                  <Image src={order.card.image_url} alt="" fill className="object-cover" />
+                                  <Image src={order.card.image_url} alt="" fill sizes="40px" className="object-cover" />
                                 </div>
                               )}
                               <div>

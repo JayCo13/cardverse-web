@@ -1,5 +1,6 @@
 "use client";
 
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Header } from "@/components/layout/header";
@@ -41,6 +42,8 @@ export default function PokemonPage() {
     // Always start with a clean, unfiltered view on load. Stale filters
     // (from shared/old URLs) were leaving the page on "no cards found".
     const [searchTerm, setSearchTerm] = useState("");
+    const debouncedSearch = useDebouncedValue(searchTerm);
+    const requestRef = useRef<AbortController | null>(null);
     const [priceFilter, setPriceFilter] = useState("all");
     const [rarityFilter, setRarityFilter] = useState("all");
     const [setFilter, setSetFilter] = useState("all");
@@ -58,7 +61,7 @@ export default function PokemonPage() {
     // Update URL when filters change
     useEffect(() => {
         const params = new URLSearchParams();
-        if (searchTerm) params.set('q', searchTerm);
+        if (debouncedSearch) params.set('q', debouncedSearch);
         if (priceFilter !== 'all') params.set('price', priceFilter);
         if (rarityFilter !== 'all') params.set('rarity', rarityFilter);
         if (setFilter !== 'all') params.set('set', setFilter);
@@ -67,7 +70,7 @@ export default function PokemonPage() {
 
         const newUrl = params.toString() ? `?${params.toString()}` : '/pokemon';
         router.replace(newUrl, { scroll: false });
-    }, [searchTerm, priceFilter, rarityFilter, setFilter, sortBy, categoryFilter, router]);
+    }, [debouncedSearch, priceFilter, rarityFilter, setFilter, sortBy, categoryFilter, router]);
 
     // Fetch available sets from materialized view
     useEffect(() => {
@@ -93,6 +96,9 @@ export default function PokemonPage() {
     }, [categoryFilter]);
 
     const fetchCards = useCallback(async () => {
+        requestRef.current?.abort();
+        const controller = new AbortController();
+        requestRef.current = controller;
         setLoading(true);
         try {
             const supabase = getSupabaseClient();
@@ -106,8 +112,8 @@ export default function PokemonPage() {
                     .gt('market_price', 0);
 
                 // Apply search
-                if (searchTerm) {
-                    query = query.ilike('name', `%${searchTerm}%`);
+                if (debouncedSearch) {
+                    query = query.ilike('name', `%${debouncedSearch}%`);
                 }
 
                 // Apply set filter
@@ -148,11 +154,11 @@ export default function PokemonPage() {
                     query = query.order('product_id', { ascending: false });
                 }
 
-                return query.range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+                return query.range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1).abortSignal(controller.signal);
             };
 
             const noNarrowingFilters =
-                !searchTerm && setFilter === "all" && priceFilter === "all" && rarityFilter === "all";
+                !debouncedSearch && setFilter === "all" && priceFilter === "all" && rarityFilter === "all";
 
             // A stale/cold REST connection after inactivity returns an empty
             // list (the "no cards found" bug). Retry a couple of times before
@@ -161,6 +167,7 @@ export default function PokemonPage() {
             let total = 0;
             for (let attempt = 1; attempt <= 3; attempt++) {
                 const { data: rows, error, count } = await runOnce();
+                if (controller.signal.aborted) return;
                 if (error) {
                     console.error(`[Pokemon] query error (attempt ${attempt}):`, error.message, error.code);
                     if (attempt === 3) throw error;
@@ -177,6 +184,7 @@ export default function PokemonPage() {
                 }
                 break;
             }
+            if (controller.signal.aborted) return;
             setTotalCount(total);
             
             console.log('[Pokemon] Fetched cards:', data?.length || 0);
@@ -202,14 +210,14 @@ export default function PokemonPage() {
         } catch (err) {
             console.error('Fetch error:', err);
         } finally {
-            setLoading(false);
+            if (!controller.signal.aborted) setLoading(false);
         }
-    }, [searchTerm, priceFilter, rarityFilter, setFilter, sortBy, categoryFilter, page, PAGE_SIZE]);
+    }, [debouncedSearch, priceFilter, rarityFilter, setFilter, sortBy, categoryFilter, page, PAGE_SIZE]);
 
     // Reset to the first page whenever the filters/search/category/sort change.
     useEffect(() => {
         setPage(0);
-    }, [searchTerm, priceFilter, rarityFilter, setFilter, sortBy, categoryFilter]);
+    }, [debouncedSearch, priceFilter, rarityFilter, setFilter, sortBy, categoryFilter]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -218,6 +226,8 @@ export default function PokemonPage() {
         hasFetched.current = true;
         return () => clearTimeout(timer);
     }, [fetchCards]);
+
+    useEffect(() => () => requestRef.current?.abort(), []);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();

@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { LiveClock } from '@/components/live-clock';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
@@ -363,13 +364,6 @@ export default function OrdersPage() {
   // Generic confirm dialog for lifecycle actions (confirm received / cancel).
   const [confirmAction, setConfirmAction] = useState<{ orderId: string; action: string; title: string; message: string } | null>(null);
 
-  // Live clock for the 24h ship-deadline countdown.
-  const [nowTs, setNowTs] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNowTs(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
-
   // Tracking dialog
   const [trackingDialog, setTrackingDialog] = useState<{ open: boolean; order: Order | null }>({ open: false, order: null });
 
@@ -549,7 +543,7 @@ export default function OrdersPage() {
             {/* Card Image */}
             {order.card?.image_url && (
               <div className="relative w-20 h-28 rounded-lg overflow-hidden flex-shrink-0">
-                <Image src={order.card.image_url} alt="" fill className="object-cover" />
+                <Image src={order.card.image_url} alt="" fill sizes="80px" className="object-cover" />
               </div>
             )}
 
@@ -622,7 +616,7 @@ export default function OrdersPage() {
               </p>
 
               {/* 24h ship-deadline countdown (paid, not yet shipped) */}
-              {order.status === 'paid' && (() => {
+              {order.status === 'paid' && <LiveClock until={order.ship_deadline ? Date.parse(order.ship_deadline) : Date.parse(order.created_at) + 86400000}>{nowTs => {
                 // Older orders (created before the ship_deadline column) fall back
                 // to created_at + 24h so the countdown still shows.
                 const deadlineTs = order.ship_deadline
@@ -649,7 +643,7 @@ export default function OrdersPage() {
                     </span>
                   </div>
                 );
-              })()}
+              }}</LiveClock>}
 
               {/* GHN Tracking Stepper */}
               {(order.status === 'shipping' || order.status === 'delivered') && renderTrackingStepper(order)}

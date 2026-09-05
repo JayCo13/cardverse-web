@@ -94,6 +94,33 @@ export async function quoteCheapestConfiguredShipping(
 
   if (error || !data) throw new Error('seller_shipping_configuration_missing');
 
+  return cheapestConfiguredShippingFromProfile(input, data);
+}
+
+/** One trusted profile read for the whole cart; never use browser fee data. */
+export async function quoteCheapestConfiguredShippingBatch(
+  inputs: CheapestConfiguredShippingQuoteInput[],
+): Promise<Map<string, { carrier: string; fee: number }>> {
+  if (inputs.length === 0) return new Map();
+  const service = createServiceSupabaseClient();
+  const { data, error } = await service
+    .from('profiles')
+    .select('id, shipping_carriers, shipping_fees, address_province_id, address_province_name')
+    .in('id', [...new Set(inputs.map(input => input.sellerId))])
+    .returns<(SellerShippingProfile & { id: string })[]>();
+  if (error || !data) throw new Error('seller_shipping_configuration_missing');
+  const profiles = new Map(data.map(profile => [profile.id, profile]));
+  return new Map(inputs.map(input => {
+    const profile = profiles.get(input.sellerId);
+    if (!profile) throw new Error('seller_shipping_configuration_missing');
+    return [input.sellerId, cheapestConfiguredShippingFromProfile(input, profile)];
+  }));
+}
+
+function cheapestConfiguredShippingFromProfile(
+  input: CheapestConfiguredShippingQuoteInput,
+  data: SellerShippingProfile,
+): { carrier: string; fee: number } {
   const toProvinceId = Number(input.toProvinceId);
   if (!Number.isSafeInteger(toProvinceId) || !input.toProvinceName
       || !Number.isSafeInteger(data.address_province_id) || !data.address_province_name) {

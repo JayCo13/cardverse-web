@@ -8,12 +8,19 @@ type CartCard = {
   listing_type: string | null;
 };
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
 
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  if (request.nextUrl.searchParams.get('view') === 'count') {
+    const { count, error } = await supabase.from('cart_items')
+      .select('id', { count: 'exact', head: true }).eq('user_id', user.id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ count: count || 0 }, { headers: { 'Cache-Control': 'private, no-store' } });
   }
 
   const { data, error } = await supabase

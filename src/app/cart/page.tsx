@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMediaQuery } from '@/hooks/use-media-query';
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout/header";
@@ -72,6 +73,7 @@ const formatVND = (amount: number) =>
 export default function CartPage() {
   const router = useRouter();
   const { user, isLoading } = useAuth();
+  const desktop = useMediaQuery('(min-width: 640px)');
   const supabase = useSupabase();
   const { setOpen: setAuthOpen } = useAuthModal();
   const { toast } = useToast();
@@ -507,7 +509,7 @@ export default function CartPage() {
         ) : (
           <>
             <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-              <section className="space-y-4 sm:hidden">
+              {!desktop && <section className="space-y-4 sm:hidden">
                 {/* The sticky bar at the bottom already carries select-all and the
                     total, with no room left, so the destructive pair lives above
                     the list where it cannot be hit by accident on the way to
@@ -591,7 +593,7 @@ export default function CartPage() {
                               aria-label={card ? `${copy.viewDetail}: ${card.name}` : copy.missingCard}
                             >
                               {card?.image_url ? (
-                                <Image src={optimizeCloudinaryUrl(card.image_url, 420)} alt={card.name} fill className="object-cover" />
+                                <Image src={optimizeCloudinaryUrl(card.image_url, 420)} alt={card.name} fill sizes="(max-width: 639px) 96px, 128px" className="object-cover" />
                               ) : null}
                             </button>
                             <div className="flex min-w-0 flex-1 flex-col">
@@ -641,9 +643,8 @@ export default function CartPage() {
                     </section>
                   );
                 })}
-              </section>
-
-              <section className="hidden space-y-4 sm:block">
+              </section>}
+              {desktop && <section className="hidden space-y-4 sm:block">
                 <div className="flex flex-wrap items-center gap-3">
                   {availableItems.length > 0 && (
                     <label className="flex cursor-pointer items-center gap-3 rounded-lg border bg-card/70 px-4 py-2.5 text-sm font-medium transition hover:border-orange-500/40">
@@ -712,7 +713,7 @@ export default function CartPage() {
                       </div>
                       <div className="relative flex w-40 shrink-0 items-center justify-center bg-gradient-to-br from-zinc-900 to-black p-4">
                         <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg border border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.45)]">
-                          {card?.image_url ? <Image src={optimizeCloudinaryUrl(card.image_url, 420)} alt={card.name} fill className="object-cover" /> : null}
+                          {card?.image_url ? <Image src={optimizeCloudinaryUrl(card.image_url, 420)} alt={card.name} fill sizes="(max-width: 639px) 96px, 128px" className="object-cover" /> : null}
                         </div>
                         <span className="absolute right-3 top-3 rounded-md bg-orange-500 px-2 py-0.5 text-[11px] font-bold text-white shadow">{getCategoryCode(card?.category)}</span>
                       </div>
@@ -747,7 +748,7 @@ export default function CartPage() {
                     </section>
                   );
                 })}
-              </section>
+              </section>}
 
               <aside className="hidden sm:block lg:sticky lg:top-32 lg:self-start">
               <div className="rounded-xl border bg-card p-5 shadow-[0_20px_80px_rgba(0,0,0,0.24)]">

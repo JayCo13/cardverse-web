@@ -1,6 +1,7 @@
 "use client";
 
 import React from 'react';
+import { useVisibleCycle } from '@/hooks/use-visible-cycle';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -65,15 +66,10 @@ export function HeroSection() {
   };
 
   // Auto-cycle images
-  React.useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveIndex((prev) => (prev + 1) % 3);
-    }, 4000);
-    return () => clearInterval(interval);
-  }, []);
+  const cycleRef = useVisibleCycle<HTMLDivElement>(() => setActiveIndex(prev => (prev + 1) % 3), 4000);
 
   return (
-    <div className="relative w-full py-14 md:py-0 md:h-[80vh] md:min-h-[600px] background-grid-scan flex flex-col justify-center overflow-hidden">
+    <div ref={cycleRef} className="relative w-full py-14 md:py-0 md:h-[80vh] md:min-h-[600px] background-grid-scan flex flex-col justify-center overflow-hidden">
       {/* Background Gradient - adjusted to be more transparent at top/center to show grid */}
       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/60 to-background z-10 pointer-events-none" />
 

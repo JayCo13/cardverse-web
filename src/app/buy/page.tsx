@@ -21,6 +21,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function BuyPage() {
     let initialCards: Card[] = [];
+    let initialLoadSucceeded = false;
 
     try {
         const supabase = await createServerSupabaseClient();
@@ -30,12 +31,15 @@ export default async function BuyPage() {
             .eq('listing_type', 'sale')
             .eq('status', 'active');
 
-        if (data && !error) initialCards = data.map(mapSaleCard);
+        if (data && !error) {
+            initialCards = data.map(mapSaleCard);
+            initialLoadSucceeded = true;
+        }
     } catch (error) {
         // A failure here costs the head start, not the page: the client runs
         // the same query on mount and will fill the list in as it always did.
         console.error('[Buy] Server-side listing fetch failed:', error);
     }
 
-    return <BuyClient initialCards={initialCards} />;
+    return <BuyClient initialCards={initialCards} initialLoadSucceeded={initialLoadSucceeded} />;
 }

@@ -2,6 +2,7 @@
 "use client";
 
 import React from "react";
+import { useVisibleCycle } from '@/hooks/use-visible-cycle';
 import type { Card as CardType } from "@/lib/types";
 import Image from "next/image";
 import { Card } from "@/components/ui/card";
@@ -262,15 +263,10 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
     setActiveImageIndex(0);
   }, [card.id, images.length]);
 
-  React.useEffect(() => {
-    if (layout !== 'list' || images.length < 2) return;
-
-    const intervalId = window.setInterval(() => {
-      setActiveImageIndex((current) => (current + 1) % images.length);
-    }, 3500);
-
-    return () => window.clearInterval(intervalId);
-  }, [images.length, layout]);
+  const cycleRef = useVisibleCycle<HTMLDivElement>(
+    () => setActiveImageIndex(current => (current + 1) % images.length),
+    3500, layout === 'list' && images.length > 1,
+  );
 
   const activeImage = images[activeImageIndex] || card.imageUrl;
 
@@ -423,7 +419,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
         ? 'text-[13px] md:text-xl'
         : 'text-[13px] md:text-2xl';
     return (
-      <Card
+      <Card ref={cycleRef}
         className={`group relative flex w-full flex-row items-stretch gap-2.5 overflow-hidden rounded-[10px] border border-orange-400/40 bg-white/[0.02] p-2.5 shadow-[0_2px_8px_rgba(0,0,0,0.35)] transition-all duration-300 md:items-stretch md:gap-0 md:rounded-lg md:border md:border-white/5 md:bg-gradient-to-br md:from-card md:via-card md:to-card/50 md:p-0 md:shadow-sm
           ${card.status === 'sold'
             ? 'opacity-80 md:border-green-500/40'

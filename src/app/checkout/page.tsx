@@ -226,7 +226,7 @@ export default function CheckoutPage() {
 
   const loadWallet = useCallback(async () => {
     try {
-      const response = await fetch("/api/wallet", { cache: "no-store" });
+      const response = await fetch("/api/wallet?view=balance", { cache: "no-store" });
       const payload = await response.json();
       setWalletBalance(payload.wallet?.available_balance || 0);
     } catch {
@@ -587,7 +587,7 @@ export default function CheckoutPage() {
                             <div className="relative w-24 shrink-0 self-start overflow-hidden rounded-lg bg-zinc-900 aspect-[3/4] sm:flex sm:w-40 sm:items-center sm:justify-center sm:rounded-none sm:bg-gradient-to-br sm:from-zinc-900 sm:to-black sm:p-4">
                               <div className="relative h-full w-full overflow-hidden rounded-lg border border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.45)] sm:aspect-[3/4] sm:h-auto">
                                 {item.card.imageUrl ? (
-                                  <Image src={optimizeCloudinaryUrl(item.card.imageUrl, 320)} alt={item.card.name} fill className="object-cover" />
+                                  <Image src={optimizeCloudinaryUrl(item.card.imageUrl, 320)} alt={item.card.name} fill sizes="(max-width: 639px) 80px, 128px" className="object-cover" />
                                 ) : null}
                               </div>
                               <span className="absolute right-3 top-3 hidden rounded-md bg-orange-500 px-2 py-0.5 text-[11px] font-bold text-white shadow sm:block">

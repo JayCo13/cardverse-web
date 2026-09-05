@@ -10,6 +10,7 @@ import { TransactionLockProvider } from '@/components/transaction-lock-provider'
 import { CurrencyProvider } from '@/contexts/currency-context';
 import { CardCacheProvider } from '@/contexts/card-cache-context';
 import { AuthReady } from '@/components/auth-ready';
+import { SubscriptionProvider } from '@/hooks/useSubscription';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -74,6 +75,7 @@ export default function RootLayout({
       </head>
       <body className={`${inter.variable} ${orbitron.variable} ${quantico.variable} font-body antialiased`}>
         <SupabaseAuthProvider>
+          <SubscriptionProvider>
           <AuthReady>
             <AuthModalProvider>
               <CurrencyProvider>
@@ -88,6 +90,7 @@ export default function RootLayout({
               </CurrencyProvider>
             </AuthModalProvider>
           </AuthReady>
+          </SubscriptionProvider>
         </SupabaseAuthProvider>
         <Toaster />
         <ScrollToTop />
@@ -95,4 +98,3 @@ export default function RootLayout({
     </html>
   );
 }
-
