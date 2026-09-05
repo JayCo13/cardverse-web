@@ -569,6 +569,8 @@ export interface Database {
                     last_message_at: string | null
                     buyer_last_read_at: string | null
                     seller_last_read_at: string | null
+                    buyer_deleted_at: string | null
+                    seller_deleted_at: string | null
                     status: 'active' | 'archived' | 'blocked'
                     created_at: string
                     updated_at: string
@@ -584,6 +586,8 @@ export interface Database {
                     last_message_at?: string | null
                     buyer_last_read_at?: string | null
                     seller_last_read_at?: string | null
+                    buyer_deleted_at?: string | null
+                    seller_deleted_at?: string | null
                     status?: 'active' | 'archived' | 'blocked'
                     created_at?: string
                     updated_at?: string
@@ -599,6 +603,8 @@ export interface Database {
                     last_message_at?: string | null
                     buyer_last_read_at?: string | null
                     seller_last_read_at?: string | null
+                    buyer_deleted_at?: string | null
+                    seller_deleted_at?: string | null
                     status?: 'active' | 'archived' | 'blocked'
                     created_at?: string
                     updated_at?: string
@@ -633,7 +639,7 @@ export interface Database {
                     conversation_id: string
                     sender_id: string
                     body: string
-                    message_type: 'user' | 'system' | 'offer_auto' | 'safety_warning'
+                    message_type: 'user' | 'system' | 'offer_auto' | 'safety_warning' | 'image'
                     metadata: Json
                     flagged_terms: string[]
                     created_at: string
@@ -645,7 +651,7 @@ export interface Database {
                     conversation_id: string
                     sender_id: string
                     body: string
-                    message_type?: 'user' | 'system' | 'offer_auto' | 'safety_warning'
+                    message_type?: 'user' | 'system' | 'offer_auto' | 'safety_warning' | 'image'
                     metadata?: Json
                     flagged_terms?: string[]
                     created_at?: string
@@ -657,7 +663,7 @@ export interface Database {
                     conversation_id?: string
                     sender_id?: string
                     body?: string
-                    message_type?: 'user' | 'system' | 'offer_auto' | 'safety_warning'
+                    message_type?: 'user' | 'system' | 'offer_auto' | 'safety_warning' | 'image'
                     metadata?: Json
                     flagged_terms?: string[]
                     created_at?: string
@@ -861,9 +867,9 @@ export interface Database {
                 Update: { id?: string; order_id?: string; action?: 'refund_buyer' | 'release_seller'; actor_id?: string; actor_role?: string; idempotency_key?: string; result?: Json | null; created_at?: string }
             }
             marketplace_order_action_requests: {
-                Row: { id: string; order_id: string; actor_id: string; action: 'ship' | 'confirm_received' | 'open_dispute'; idempotency_key: string; request_hash: string; request_payload: Json; result: Json | null; created_at: string; completed_at: string | null }
-                Insert: { id?: string; order_id: string; actor_id: string; action: 'ship' | 'confirm_received' | 'open_dispute'; idempotency_key: string; request_hash: string; request_payload?: Json; result?: Json | null; created_at?: string; completed_at?: string | null }
-                Update: { id?: string; order_id?: string; actor_id?: string; action?: 'ship' | 'confirm_received' | 'open_dispute'; idempotency_key?: string; request_hash?: string; request_payload?: Json; result?: Json | null; created_at?: string; completed_at?: string | null }
+                Row: { id: string; order_id: string; actor_id: string; action: 'ship' | 'confirm_received' | 'open_dispute' | 'submit_unboxing_video'; idempotency_key: string; request_hash: string; request_payload: Json; result: Json | null; created_at: string; completed_at: string | null }
+                Insert: { id?: string; order_id: string; actor_id: string; action: 'ship' | 'confirm_received' | 'open_dispute' | 'submit_unboxing_video'; idempotency_key: string; request_hash: string; request_payload?: Json; result?: Json | null; created_at?: string; completed_at?: string | null }
+                Update: { id?: string; order_id?: string; actor_id?: string; action?: 'ship' | 'confirm_received' | 'open_dispute' | 'submit_unboxing_video'; idempotency_key?: string; request_hash?: string; request_payload?: Json; result?: Json | null; created_at?: string; completed_at?: string | null }
             }
             admin_subscription_grant_requests: {
                 Row: { id: string; idempotency_key: string; actor_id: string; actor_role: 'admin' | 'moderator'; user_id: string; package_type: 'day_pass' | 'credit_pack' | 'vip_pro'; result: Json; created_at: string }

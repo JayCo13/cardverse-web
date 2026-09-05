@@ -4,7 +4,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { hashFinancialRequest, stableFinancialUuid } from '@/lib/financial-idempotency';
 import { getPayOS } from '@/lib/payos';
-import { quoteCheapestConfiguredShippingBatch } from '@/lib/verified-shipping';
+import { CheckoutShippingError, quoteCheckoutConfiguredShippingBatch } from '@/lib/verified-shipping';
 import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link-claim';
 import { translateRequest } from '@/lib/request-localization';
 import { walletCheckoutError } from '@/lib/wallet-checkout-error';
@@ -109,6 +109,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Shipping address is incomplete' }, { status: 400 });
     }
 
+    // Older cart clients omit this map and retain their cheapest-carrier default.
+    const cartCarriers = mode === 'cart' ? body.shipping_carriers : undefined;
+    if (cartCarriers !== undefined && (
+      !cartCarriers || typeof cartCarriers !== 'object' || Array.isArray(cartCarriers)
+      || Object.values(cartCarriers).some(carrier => typeof carrier !== 'string' || !carrier.trim())
+    )) {
+      return NextResponse.json({ error: 'Invalid shipping carriers.', code: 'invalid_shipping_carrier' }, { status: 400 });
+    }
+
     const requestItems: Array<{ cart_item_id: string | null }> = Array.isArray(body.items)
       ? body.items.map((item: CheckoutItemInput) => ({ cart_item_id: item.cart_item_id || null }))
       : [];
@@ -120,6 +129,8 @@ export async function POST(request: NextRequest) {
       payment_method: paymentMethod,
       items: requestItems,
       offer_id: body.offer_id || null,
+      ...(mode === 'offer' && body.shipping_carrier ? { shipping_carrier: body.shipping_carrier } : {}),
+      ...(cartCarriers !== undefined ? { shipping_carriers: cartCarriers } : {}),
       ...orderShipping(body as ShippingBody),
     });
     const service = createServiceSupabaseClient();
@@ -335,29 +346,37 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // The checkout page displays the seller-configured lowest carrier rate,
-    // charged once per seller. Recompute that same trusted value here instead
-    // of accepting a browser fee or substituting a live GHN quote.
-    // The fee is charged once per seller, but EVERY order needs the carrier it
-    // was quoted from. This path never asks the buyer to pick one, so the
-    // carrier the quote settled on is the agreed carrier; without it on the
-    // order the seller's fulfilment dialog had nothing to send and shipping
-    // failed with `invalid_carrier` after the buyer had already paid.
+    // Only sellers in the verified checkout may be quoted. A submitted map
+    // must cover all of them; never silently replace a missing buyer choice.
+    const checkoutSellerIds = [...new Set(checkoutItems.map(item => item.card.seller_id))];
+    if (cartCarriers !== undefined && (
+      Object.keys(cartCarriers).length !== checkoutSellerIds.length
+      || checkoutSellerIds.some(sellerId => !Object.hasOwn(cartCarriers, sellerId))
+    )) {
+      return NextResponse.json({ error: 'Choose a carrier for each seller.', code: 'invalid_shipping_carrier' }, { status: 400 });
+    }
     let shippingQuotes: Map<string, { carrier: string; fee: number }>;
     try {
-      shippingQuotes = await quoteCheapestConfiguredShippingBatch(
-        [...new Set(checkoutItems.map(item => item.card.seller_id))].map(sellerId => ({
-          sellerId,
-          toProvinceId: Number(body.to_province_id),
-          toProvinceName: String(body.to_province_name),
-        })),
-      );
+      shippingQuotes = await quoteCheckoutConfiguredShippingBatch(checkoutSellerIds.map(sellerId => ({
+        sellerId,
+        carrier: mode === 'offer'
+          ? (body.shipping_carrier ? String(body.shipping_carrier).trim() : undefined)
+          : (cartCarriers !== undefined ? cartCarriers[sellerId].trim() : undefined),
+        toProvinceId: Number(body.to_province_id),
+        toProvinceName: String(body.to_province_name),
+      })));
     } catch (shippingError) {
-      const code = shippingError instanceof Error ? shippingError.message : 'shipping_fee_not_configured';
+      const known = shippingError instanceof CheckoutShippingError;
+      const code = known ? shippingError.code : 'shipping_quote_failed';
+      if (!known) console.error('Checkout shipping quote failed:', shippingError);
       return NextResponse.json({
-        error: 'The seller shipping fee is not configured for this address.',
-        code: code === 'seller_shipping_configuration_missing' ? code : 'shipping_fee_not_configured',
-      }, { status: 409 });
+        error: 'Could not quote checkout shipping.',
+        code,
+        ...(known && shippingError.sellerId ? {
+          seller_id: shippingError.sellerId,
+          seller_name: shippingError.sellerName || null,
+        } : {}),
+      }, { status: code === 'shipping_quote_failed' ? 503 : 409 });
     }
     const chargedSellers = new Set<string>();
     for (const item of checkoutItems) {
@@ -430,6 +449,9 @@ export async function POST(request: NextRequest) {
         }
 
         for (const item of checkoutItems) {
+          const order = orders.find(order => order.card_id === item.card.id
+            && order.seller_id === item.card.seller_id);
+          if (!order?.id) throw new Error('Paid order missing for checkout notification');
           const { error: notificationError } = await service.from('notifications').insert({
             user_id: item.card.seller_id,
             type: 'order_new',
@@ -437,6 +459,7 @@ export async function POST(request: NextRequest) {
             message: `Card "${item.card.name}" was paid for. Please ship the order.`,
             card_id: item.card.id,
             offer_id: item.offerId || null,
+            order_id: order.id,
           } as never);
           if (notificationError) {
             console.error('Checkout notification failed:', notificationError);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
 export async function POST(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
@@ -34,7 +35,13 @@ export async function POST(request: NextRequest) {
     const readColumn = row.buyer_id === user.id ? 'buyer_last_read_at' : 'seller_last_read_at';
     const readAt = new Date().toISOString();
 
-    const { error: updateError } = await supabase
+    // Service role, and the column name above is the reason. `authenticated` no
+    // longer holds UPDATE on this table (20260905000600), because a
+    // column-level grant could not tell the buyer's read receipt from the
+    // seller's: either participant could mark the other's inbox read and bury a
+    // message the other person had not seen. The 403 above is what decides who
+    // is asking; `readColumn` is what decides which side gets stamped.
+    const { error: updateError } = await createServiceSupabaseClient()
         .from('conversations')
         .update({ [readColumn]: readAt, updated_at: readAt } as never)
         .eq('id', conversationId);

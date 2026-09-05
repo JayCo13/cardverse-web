@@ -5,12 +5,23 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { enUS, ja, vi } from "date-fns/locale";
-import { AlertTriangle, ArrowLeft, Bell, BellOff, Check, CheckCircle, ChevronDown, Copy, CreditCard, HandCoins, Image as ImageIcon, Inbox, Loader2, MessageCircle, Plus, Send, ShieldAlert, Smile, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bell, BellOff, Check, CheckCircle, ChevronDown, Copy, CreditCard, HandCoins, Image as ImageIcon, Inbox, Loader2, MessageCircle, MoreHorizontal, Plus, Send, ShieldAlert, Smile, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useSupabase, useUser } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
@@ -40,6 +51,7 @@ type ConversationItem = {
     lastMessageAt: string | null;
     lastMessageType: string | null;
     lastMessageMetadata: Record<string, unknown> | null;
+    lastMessageDeleted?: boolean;
     buyerLastReadAt: string | null;
     sellerLastReadAt: string | null;
     unread: boolean;
@@ -70,6 +82,7 @@ type ChatMessage = {
     metadata: Record<string, unknown>;
     flagged_terms: string[];
     created_at: string;
+    deleted_at?: string | null;
 };
 
 type OfferSummary = {
@@ -165,6 +178,43 @@ function CopyMessageButton({ text, copied, onCopy, onLight, label, copiedLabel }
     );
 }
 
+/**
+ * The ⋯ on your own bubble. Same reveal and tap-target rules as
+ * `CopyMessageButton` above — hidden until hover on a desktop, always present
+ * on a phone, 44px of touch behind a 28px painted control.
+ */
+function MessageActionsButton({ onLight, label, onRecall, recallLabel }: {
+    onLight?: boolean;
+    label: string;
+    onRecall: () => void;
+    recallLabel: string;
+}) {
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <button
+                    type="button"
+                    aria-label={label}
+                    title={label}
+                    className={`relative -my-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-opacity after:absolute after:-inset-2 after:content-[''] md:after:hidden md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100 md:data-[state=open]:opacity-100 ${
+                        onLight
+                            ? "text-white/75 active:bg-white/25 hover:bg-white/20 hover:text-white"
+                            : "text-muted-foreground active:bg-foreground/15 hover:bg-foreground/10 hover:text-foreground"
+                    }`}
+                >
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+                <DropdownMenuItem className="text-red-500 focus:text-red-500" onClick={onRecall}>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    {recallLabel}
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
+}
+
 export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDrawerProps) {
     const supabase = useSupabase();
     const { user } = useUser();
@@ -222,6 +272,19 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             orderPaidMsgSeller: "Người mua đã thanh toán {price}. Hãy chuẩn bị gửi hàng.",
             viewOrder: "Xem đơn hàng",
             imagePreview: "📷 Hình ảnh",
+            messageRecalled: "Tin nhắn đã được thu hồi",
+            recallMessage: "Thu hồi tin nhắn",
+            confirmRecallTitle: "Thu hồi tin nhắn này?",
+            confirmRecallBody: "Tin nhắn sẽ biến mất ở cả hai phía và chỉ còn lại dòng \"Tin nhắn đã được thu hồi\". Không thể hoàn tác.",
+            recallFailed: "Không thu hồi được tin nhắn. Vui lòng thử lại.",
+            conversationActions: "Tuỳ chọn đoạn chat",
+            deleteConversation: "Xoá đoạn chat",
+            confirmDeleteConvTitle: "Xoá đoạn chat này?",
+            confirmDeleteConvBody: "Chỉ xoá ở phía bạn — người kia vẫn giữ nguyên đoạn chat. Nếu họ nhắn tiếp, đoạn chat sẽ hiện lại nhưng chỉ có tin mới.",
+            deleteConversationFailed: "Không xoá được đoạn chat. Vui lòng thử lại.",
+            conversationDeleted: "Đã xoá đoạn chat.",
+            cancel: "Huỷ",
+            confirmDelete: "Xoá",
             safetyWarningMsg: "CardVerseHub phát hiện nội dung có thể đưa giao dịch ra ngoài nền tảng. Để tránh scam, hãy trao đổi và thanh toán trực tiếp trên CardVerseHub.",
             payNow: "Thanh toán ngay",
             loadingMessages: "Đang tải tin nhắn...",
@@ -296,6 +359,19 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 orderPaidMsgSeller: "購入者が {price} を支払いました。発送の準備をしてください。",
                 viewOrder: "注文を見る",
                 imagePreview: "📷 画像",
+                messageRecalled: "メッセージの送信を取り消しました",
+                recallMessage: "送信を取り消す",
+                confirmRecallTitle: "このメッセージの送信を取り消しますか？",
+                confirmRecallBody: "メッセージは双方から消え、「送信を取り消しました」とだけ表示されます。元に戻せません。",
+                recallFailed: "送信を取り消せませんでした。もう一度お試しください。",
+                conversationActions: "チャットの操作",
+                deleteConversation: "チャットを削除",
+                confirmDeleteConvTitle: "このチャットを削除しますか？",
+                confirmDeleteConvBody: "削除されるのはあなたの側だけで、相手のチャットはそのまま残ります。相手が新しいメッセージを送ると、チャットは新しいメッセージだけを含んで再表示されます。",
+                deleteConversationFailed: "チャットを削除できませんでした。もう一度お試しください。",
+                conversationDeleted: "チャットを削除しました。",
+                cancel: "キャンセル",
+                confirmDelete: "削除",
                 safetyWarningMsg: "取引を外部に移す可能性のある内容を検出しました。詐欺防止のため、やり取りと支払いはCardVerseHub上で行ってください。",
                 payNow: "今すぐ支払う",
                 loadingMessages: "メッセージを読み込み中...",
@@ -369,6 +445,19 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 orderPaidMsgSeller: "The buyer paid {price}. Please prepare the shipment.",
                 viewOrder: "View order",
                 imagePreview: "📷 Photo",
+                messageRecalled: "Message unsent",
+                recallMessage: "Unsend message",
+                confirmRecallTitle: "Unsend this message?",
+                confirmRecallBody: "It disappears for both of you, leaving only \"Message unsent\" in its place. This cannot be undone.",
+                recallFailed: "Could not unsend the message. Please try again.",
+                conversationActions: "Chat options",
+                deleteConversation: "Delete chat",
+                confirmDeleteConvTitle: "Delete this chat?",
+                confirmDeleteConvBody: "It is removed on your side only — the other person keeps theirs. If they write again, the chat comes back carrying just the new messages.",
+                deleteConversationFailed: "Could not delete the chat. Please try again.",
+                conversationDeleted: "Chat deleted.",
+                cancel: "Cancel",
+                confirmDelete: "Delete",
                 safetyWarningMsg: "CardVerseHub detected content that may move the deal off-platform. Keep communication and payment on CardVerseHub to avoid scams.",
                 payNow: "Pay now",
                 loadingMessages: "Loading messages...",
@@ -405,6 +494,11 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     const [isUploadingImage, setIsUploadingImage] = useState(false);
     // Which bubble is currently showing its "copied" tick.
     const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+    // Both confirmations are single pieces of state holding an id, not a dialog
+    // per row: one AlertDialog lives at the end of the tree and reads whichever
+    // is set.
+    const [pendingRecallId, setPendingRecallId] = useState<string | null>(null);
+    const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
     const copiedResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [showEmoji, setShowEmoji] = useState(false);
     const [showMobileActions, setShowMobileActions] = useState(false);
@@ -526,6 +620,11 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     // A plain function, not useCallback: `copy` is a conditional object literal
     // rebuilt on every render, so memoising on it would never hit anyway.
     const conversationPreview = (conversation: ConversationItem) => {
+        // Before anything else: the stored preview is a copy of the text that was
+        // just taken back, so it is the one string in here that must never be
+        // printed.
+        if (conversation.lastMessageDeleted) return copy.messageRecalled;
+
         const meta = (conversation.lastMessageMetadata || {}) as { kind?: string; price?: number };
         // Role per row, not from the open conversation — this is a list.
         const viewerIsSeller = !!user && conversation.sellerId === user.id;
@@ -857,6 +956,23 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                     void fetchConversations();
                 },
             )
+            // An unsend arrives as an UPDATE, not an INSERT. Without this the
+            // other party keeps reading a message that no longer exists until
+            // they switch conversations. The row is merged rather than replaced
+            // so a payload missing a column cannot blank one locally, and the
+            // inbox is refreshed because the preview line may have been the
+            // recalled text.
+            .on(
+                "postgres_changes",
+                { event: "UPDATE", schema: "public", table: "messages", filter: `conversation_id=eq.${selectedId}` },
+                (payload) => {
+                    const updated = payload.new as ChatMessage;
+                    setMessages(prev => prev.map(message => message.id === updated.id
+                        ? { ...message, ...updated }
+                        : message));
+                    void fetchConversations();
+                },
+            )
             .subscribe();
 
         return () => {
@@ -938,6 +1054,56 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
         }
     };
 
+    const recallMessage = async (messageId: string) => {
+        try {
+            const response = await fetch("/api/chat/messages", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ messageId }),
+            });
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload.error || copy.recallFailed);
+            }
+            // Realtime delivers the same change a moment later; applying it here
+            // as well means the sender's own bubble does not sit there looking
+            // un-recalled while the round trip finishes. The UPDATE handler
+            // merges by id, so arriving twice changes nothing.
+            setMessages(prev => prev.map(message => message.id === messageId
+                ? { ...message, body: "", metadata: {}, flagged_terms: [], deleted_at: new Date().toISOString() }
+                : message));
+            setPendingRecallId(null);
+            void fetchConversations();
+        } catch (error) {
+            const description = error instanceof Error ? error.message : copy.recallFailed;
+            toast({ variant: "destructive", title: copy.recallFailed, description });
+        }
+    };
+
+    const deleteConversation = async (conversationId: string) => {
+        try {
+            const response = await fetch("/api/chat/conversations", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ conversationId }),
+            });
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload.error || copy.deleteConversationFailed);
+            }
+            setConversations(prev => prev.filter(conversation => conversation.id !== conversationId));
+            if (selectedIdRef.current === conversationId) setSelectedId(null);
+            setPendingDeleteId(null);
+            // The header badge counts conversations of its own, from its own
+            // query. Tell it one just left the inbox.
+            window.dispatchEvent(new Event("cardverse:chat-updated"));
+            toast({ title: copy.conversationDeleted });
+        } catch (error) {
+            const description = error instanceof Error ? error.message : copy.deleteConversationFailed;
+            toast({ variant: "destructive", title: copy.deleteConversationFailed, description });
+        }
+    };
+
     const insertEmoji = (emoji: string) => {
         const next = `${draftRef.current}${emoji}`;
         draftRef.current = next;
@@ -998,6 +1164,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     };
 
     return (
+        <>
         <Sheet open={open} onOpenChange={onOpenChange}>
             <SheetContent
                 side="right"
@@ -1022,7 +1189,18 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                 <p className="text-sm font-semibold">{copy.inboxTitle}</p>
                                 <p className="text-xs text-muted-foreground">{copy.inboxSubtitle}</p>
                             </div>
-                            <ScrollArea className="h-[calc(100dvh-132px)] md:h-[calc(100vh-132px)]">
+                            {/*
+                              * Radix wraps a ScrollArea's content in a
+                              * `display: table` div, which sizes itself to the
+                              * longest line rather than to the column. This list
+                              * was 725px wide inside a 339px column: `truncate`
+                              * never fired, previews were cut off mid-word with
+                              * no ellipsis, and anything positioned against the
+                              * row's right edge sat 350px outside the visible
+                              * area. Forcing that wrapper back to a block puts
+                              * the rows back inside their column.
+                              */}
+                            <ScrollArea className="h-[calc(100dvh-132px)] md:h-[calc(100vh-132px)] [&>[data-radix-scroll-area-viewport]>div]:!block">
                                 {isLoadingConversations && conversations.length === 0 ? (
                                     <div className="flex items-center justify-center p-6 text-muted-foreground">
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1035,8 +1213,15 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                     </div>
                                 ) : (
                                     conversations.map(conversation => (
-                                        <button
+                                        // A row, not a button: the ⋯ menu is a
+                                        // button of its own and cannot be nested
+                                        // inside one. The row's own button still
+                                        // covers the whole strip.
+                                        <div
                                             key={conversation.id}
+                                            className={`group relative flex border-b transition hover:bg-muted/50 ${selectedId === conversation.id ? "bg-orange-500/10" : ""}`}
+                                        >
+                                        <button
                                             type="button"
                                             onClick={() => {
                                                 setIsSafetyExpanded(false);
@@ -1044,7 +1229,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                 setShowEmoji(false);
                                                 setSelectedId(conversation.id);
                                             }}
-                                            className={`flex w-full gap-3 border-b p-4 text-left transition hover:bg-muted/50 ${selectedId === conversation.id ? "bg-orange-500/10" : ""}`}
+                                            className="flex w-full gap-3 p-4 pr-10 text-left"
                                         >
                                             <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-muted">
                                                 {conversation.card?.image_url ? (
@@ -1077,6 +1262,36 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                 )}
                                             </div>
                                         </button>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    aria-label={copy.conversationActions}
+                                                    title={copy.conversationActions}
+                                                    // Visible at rest, not on hover.
+                                                    // Deleting a conversation is
+                                                    // the only thing this list
+                                                    // offers besides opening one;
+                                                    // hiding it until the pointer
+                                                    // happens to land there makes
+                                                    // it undiscoverable, and on a
+                                                    // phone there is no hover at all.
+                                                    className="absolute right-1 top-3 inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground opacity-60 transition hover:bg-foreground/10 hover:text-foreground hover:opacity-100 focus-visible:opacity-100 data-[state=open]:bg-foreground/10 data-[state=open]:opacity-100"
+                                                >
+                                                    <MoreHorizontal className="h-4 w-4" />
+                                                </button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
+                                                <DropdownMenuItem
+                                                    className="text-red-500 focus:text-red-500"
+                                                    onClick={() => setPendingDeleteId(conversation.id)}
+                                                >
+                                                    <Trash2 className="mr-2 h-4 w-4" />
+                                                    {copy.deleteConversation}
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                        </div>
                                     ))
                                 )}
                             </ScrollArea>
@@ -1309,6 +1524,24 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                     const senderLabel = mine
                                                         ? copy.you
                                                         : selectedConversation.otherUser?.display_name || selectedConversation.otherUser?.email || copy.cardVerseUser;
+                                                    // Ahead of every other branch, because a recalled row keeps its
+                                                    // original `message_type` and would otherwise be rendered as the
+                                                    // thing it used to be — an empty image bubble, most visibly. The
+                                                    // row stays in place rather than vanishing so the other side can
+                                                    // see that something was withdrawn instead of watching the
+                                                    // conversation silently reshuffle.
+                                                    if (message.deleted_at) {
+                                                        return (
+                                                            <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                                                                <div className="max-w-[78%] rounded-2xl border border-dashed px-3 py-2 text-xs italic text-muted-foreground">
+                                                                    {copy.messageRecalled}
+                                                                    <span className="ml-2 not-italic opacity-70">
+                                                                        {formatDistanceToNow(new Date(message.created_at), { addSuffix: true, locale: dateLocale })}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    }
                                                     if (message.message_type === "safety_warning") {
                                                         return (
                                                             <div key={message.id} className="mx-auto max-w-xl rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
@@ -1408,6 +1641,14 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                                                 copiedLabel={copy.messageCopied}
                                                                             />
                                                                         )}
+                                                                        {mine && (
+                                                                            <MessageActionsButton
+                                                                                onLight={mine}
+                                                                                label={copy.recallMessage}
+                                                                                recallLabel={copy.recallMessage}
+                                                                                onRecall={() => setPendingRecallId(message.id)}
+                                                                            />
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -1483,6 +1724,14 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                                             onLight={mine}
                                                                             label={copy.copyMessage}
                                                                             copiedLabel={copy.messageCopied}
+                                                                        />
+                                                                    )}
+                                                                    {mine && !offerAuto && (
+                                                                        <MessageActionsButton
+                                                                            onLight={mine}
+                                                                            label={copy.recallMessage}
+                                                                            recallLabel={copy.recallMessage}
+                                                                            onRecall={() => setPendingRecallId(message.id)}
                                                                         />
                                                                     )}
                                                                 </div>
@@ -1704,5 +1953,53 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 )}
             </SheetContent>
         </Sheet>
+
+        {/* Both confirmations sit outside the Sheet: two nested Radix layers
+          * fight over the focus trap, and a dialog rendered inside the row it
+          * is asking about disappears the moment that row does. */}
+        <AlertDialog open={!!pendingRecallId} onOpenChange={open => !open && setPendingRecallId(null)}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>{copy.confirmRecallTitle}</AlertDialogTitle>
+                    <AlertDialogDescription>{copy.confirmRecallBody}</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>{copy.cancel}</AlertDialogCancel>
+                    <AlertDialogAction
+                        className="bg-red-500 text-white hover:bg-red-600"
+                        onClick={event => {
+                            // Keep the dialog up while the request is in flight,
+                            // the way the cart's remove confirmation does.
+                            event.preventDefault();
+                            if (pendingRecallId) void recallMessage(pendingRecallId);
+                        }}
+                    >
+                        {copy.recallMessage}
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={!!pendingDeleteId} onOpenChange={open => !open && setPendingDeleteId(null)}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>{copy.confirmDeleteConvTitle}</AlertDialogTitle>
+                    <AlertDialogDescription>{copy.confirmDeleteConvBody}</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>{copy.cancel}</AlertDialogCancel>
+                    <AlertDialogAction
+                        className="bg-red-500 text-white hover:bg-red-600"
+                        onClick={event => {
+                            event.preventDefault();
+                            if (pendingDeleteId) void deleteConversation(pendingDeleteId);
+                        }}
+                    >
+                        {copy.confirmDelete}
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+        </>
     );
 }
