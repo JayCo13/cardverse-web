@@ -29,6 +29,7 @@ import { useToast } from '@/hooks/use-toast';
 import { getCloudinarySignature, uploadImageDirectToCloudinary } from '@/lib/cloudinary-direct';
 import { isHeicFile, convertHeicToJpeg } from '@/lib/heic';
 import { compressImage } from '@/lib/image-compress';
+import { FilePreview } from '@/components/file-preview';
 import dynamic from 'next/dynamic';
 import {
   getCategories,
@@ -2181,8 +2182,8 @@ export default function CreateListingPage() {
                           }`}
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={URL.createObjectURL(file)}
+                          <FilePreview
+                            file={file}
                             alt={`preview ${index}`}
                             className="object-contain rounded-md w-full h-full bg-black/20 p-2 pointer-events-none"
                           />

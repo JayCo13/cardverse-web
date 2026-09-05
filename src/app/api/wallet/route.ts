@@ -1,10 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import type { Tables } from '@/lib/supabase/database.types';
 
 // GET: Get wallet balance
-export async function GET() {
+export async function GET(request: NextRequest) {
     try {
         const supabase = await createServerSupabaseClient();
         const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -13,9 +13,11 @@ export async function GET() {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Self-healing escrow release: a seller checking their balance pays out
-        // any of their delivered orders whose 72h confirmation window lapsed.
-        await supabase.rpc('complete_delivered_orders' as never);
+        const balanceOnly = request.nextUrl.searchParams.get('view') === 'balance';
+        // Keep the legacy maintenance fallback until the scheduled worker is verified.
+        if (!balanceOnly && process.env.MARKETPLACE_MAINTENANCE_WORKER_READY !== 'true') {
+            await supabase.rpc('complete_delivered_orders' as never);
+        }
 
         // Get or create wallet (reads go through the session client — RLS
         // allows owners to SELECT their own row; writes are service-only).
@@ -43,6 +45,10 @@ export async function GET() {
             wallet = newWallet;
         } else if (error) {
             throw error;
+        }
+
+        if (balanceOnly) {
+            return NextResponse.json({ wallet }, { headers: { 'Cache-Control': 'private, no-store' } });
         }
 
         // Withdrawal requests are returned alongside the ledger so the wallet

@@ -4,7 +4,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { hashFinancialRequest, stableFinancialUuid } from '@/lib/financial-idempotency';
 import { getPayOS } from '@/lib/payos';
-import { quoteCheapestConfiguredShipping } from '@/lib/verified-shipping';
+import { quoteCheapestConfiguredShippingBatch } from '@/lib/verified-shipping';
 import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link-claim';
 import { translateRequest } from '@/lib/request-localization';
 import { walletCheckoutError } from '@/lib/wallet-checkout-error';
@@ -195,28 +195,34 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Cart is empty' }, { status: 400 });
       }
 
-      for (const input of inputs) {
-        if (!input.cart_item_id) {
-          return NextResponse.json({ error: 'cart_item_id is required' }, { status: 400 });
-        }
-
-        const { data: cartItem, error: cartError } = await supabase
-          .from('cart_items')
-          .select('id, card_id, user_id')
-          .eq('id', input.cart_item_id)
-          .eq('user_id', user.id)
-          .single<{ id: string; card_id: string; user_id: string }>();
-
-        if (cartError || !cartItem) {
-          return NextResponse.json({ error: 'Cart item not found' }, { status: 404 });
-        }
-
-        const { data: card, error: cardError } = await supabase
-          .from('cards')
-          .select('id, name, seller_id, price, status, listing_type, is_bundle, bundle_items')
-          .eq('id', cartItem.card_id)
-          .single<CheckoutCard>();
-
+      if (inputs.some(input => !input.cart_item_id)) {
+        return NextResponse.json({ error: 'cart_item_id is required' }, { status: 400 });
+      }
+      const cartIds = inputs.map(input => input.cart_item_id!);
+      if (new Set(cartIds).size !== cartIds.length) {
+        return NextResponse.json({ error: 'Duplicate cart item', code: 'duplicate_cart_item' }, { status: 400 });
+      }
+      // Two scoped reads instead of two round trips for every item. The
+      // settlement RPC still locks and validates canonical inventory/prices.
+      const { data: cartRows, error: cartError } = await supabase
+        .from('cart_items')
+        .select('id, card_id, user_id')
+        .in('id', cartIds)
+        .eq('user_id', user.id)
+        .returns<{ id: string; card_id: string; user_id: string }[]>();
+      if (cartError || !cartRows || cartRows.length !== cartIds.length) {
+        return NextResponse.json({ error: 'Cart item not found' }, { status: 404 });
+      }
+      const { data: cardRows, error: cardError } = await supabase
+        .from('cards')
+        .select('id, name, seller_id, price, status, listing_type, is_bundle, bundle_items')
+        .in('id', cartRows.map(item => item.card_id))
+        .returns<CheckoutCard[]>();
+      const cartById = new Map(cartRows.map(item => [item.id, item]));
+      const cardById = new Map((cardRows || []).map(card => [card.id, card]));
+      for (const cartId of cartIds) {
+        const cartItem = cartById.get(cartId)!;
+        const card = cardById.get(cartItem.card_id);
         if (cardError || !card || card.status !== 'active' || card.listing_type !== 'sale') {
           return NextResponse.json({ error: 'A card in the cart is no longer available.', code: 'card_unavailable' }, { status: 409 });
         }
@@ -337,36 +343,29 @@ export async function POST(request: NextRequest) {
     // carrier the quote settled on is the agreed carrier; without it on the
     // order the seller's fulfilment dialog had nothing to send and shipping
     // failed with `invalid_carrier` after the buyer had already paid.
-    const carrierBySeller = new Map<string, string>();
+    let shippingQuotes: Map<string, { carrier: string; fee: number }>;
+    try {
+      shippingQuotes = await quoteCheapestConfiguredShippingBatch(
+        [...new Set(checkoutItems.map(item => item.card.seller_id))].map(sellerId => ({
+          sellerId,
+          toProvinceId: Number(body.to_province_id),
+          toProvinceName: String(body.to_province_name),
+        })),
+      );
+    } catch (shippingError) {
+      const code = shippingError instanceof Error ? shippingError.message : 'shipping_fee_not_configured';
+      return NextResponse.json({
+        error: 'The seller shipping fee is not configured for this address.',
+        code: code === 'seller_shipping_configuration_missing' ? code : 'shipping_fee_not_configured',
+      }, { status: 409 });
+    }
+    const chargedSellers = new Set<string>();
     for (const item of checkoutItems) {
       const sellerId = item.card.seller_id;
-      if (carrierBySeller.has(sellerId)) {
-        item.shippingFee = 0;
-      } else {
-        // A seller who never configured shipping is a caller-visible condition,
-        // not a server fault: let it out as a 409 with a code the buyer's UI can
-        // translate, the way /api/marketplace/buy already does. Left uncaught it
-        // reached the outer handler with no `status` and surfaced as a bare 500.
-        try {
-          const quote = await quoteCheapestConfiguredShipping({
-            sellerId,
-            toProvinceId: Number(body.to_province_id),
-            toProvinceName: String(body.to_province_name),
-          });
-          item.shippingFee = quote.fee;
-          carrierBySeller.set(sellerId, quote.carrier);
-        } catch (shippingError) {
-          const code = shippingError instanceof Error ? shippingError.message : 'shipping_fee_not_configured';
-          return NextResponse.json(
-            {
-              error: 'The seller shipping fee is not configured for this address.',
-              code: code === 'seller_shipping_configuration_missing' ? code : 'shipping_fee_not_configured',
-            },
-            { status: 409 },
-          );
-        }
-      }
-      item.shippingCarrier = carrierBySeller.get(sellerId);
+      const quote = shippingQuotes.get(sellerId)!;
+      item.shippingFee = chargedSellers.has(sellerId) ? 0 : quote.fee;
+      item.shippingCarrier = quote.carrier;
+      chargedSellers.add(sellerId);
     }
 
     const totalPaid = checkoutItems.reduce((sum, item) => sum + item.amount + item.shippingFee, 0);

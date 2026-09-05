@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { LiveClock } from '@/components/live-clock';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
@@ -43,12 +44,7 @@ export default function OrderDetailsPage() {
   const [role, setRole] = useState<'buyer' | 'seller'>('buyer');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [nowTs, setNowTs] = useState(() => Date.now());
 
-  useEffect(() => {
-    const timer = setInterval(() => setNowTs(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -88,7 +84,7 @@ export default function OrderDetailsPage() {
   // confirms (money is held, not paid to the seller). Nudge the buyer as that
   // deadline approaches (within the last 2 days).
   const escalateAt = order?.auto_complete_at ? new Date(order.auto_complete_at).getTime() : null;
-  const buyerShouldConfirm = escalateAt != null && nowTs >= escalateAt - 2 * 24 * 60 * 60 * 1000;
+  const confirmReminderAt = escalateAt != null ? escalateAt - 2 * 24 * 60 * 60 * 1000 : null;
 
   // Actions + confirm dialog.
   const [acting, setActing] = useState(false);
@@ -159,7 +155,7 @@ export default function OrderDetailsPage() {
             </div>
 
             {/* Countdown */}
-            {order.status === 'paid' && (() => {
+            {order.status === 'paid' && <LiveClock until={order.ship_deadline ? Date.parse(order.ship_deadline) : Date.parse(order.created_at) + 86400000}>{nowTs => {
               const deadlineTs = order.ship_deadline ? new Date(order.ship_deadline).getTime() : new Date(order.created_at).getTime() + 24 * 3600 * 1000;
               const rem = deadlineTs - nowTs;
               if (rem <= 0) {
@@ -173,7 +169,7 @@ export default function OrderDetailsPage() {
                   <b className="tabular-nums">{h}h {String(m).padStart(2, '0')}m {String(s).padStart(2, '0')}s</b>
                 </div>
               );
-            })()}
+            }}</LiveClock>}
 
             {/* Product */}
             <div className="space-y-3 rounded-xl border bg-card p-5">
@@ -285,7 +281,8 @@ export default function OrderDetailsPage() {
             </div>
 
             {/* Buyer reminder (part 5): overdue to confirm receipt */}
-            {isBuyer && (order.status === 'shipping' || order.status === 'delivered') && buyerShouldConfirm && (
+            {isBuyer && (order.status === 'shipping' || order.status === 'delivered') && confirmReminderAt != null && (
+              <LiveClock until={confirmReminderAt}>{now => now >= confirmReminderAt && (
               <div className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>{tx(
@@ -294,6 +291,7 @@ export default function OrderDetailsPage() {
                   '配達予定を過ぎています。届いた場合は「受け取り済み」、問題がある場合は「管理者に報告」を押してください。未対応の場合は自動的に管理者の確認に回されます（代金は安全に保持されます）。',
                 )}</span>
               </div>
+              )}</LiveClock>
             )}
 
             {/* Actions */}

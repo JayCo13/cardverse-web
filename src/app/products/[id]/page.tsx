@@ -109,87 +109,86 @@ export default function ProductDetailsPage() {
     };
 
     useEffect(() => {
+        const controller = new AbortController();
+        setCard(null);
+        setPriceHistory([]);
+        setPriceChange(0);
+        setIsLoading(true);
+        const productId = String(params.id || '');
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+        const headers = { apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '' };
+        const options = { headers, signal: controller.signal };
+
+        try {
+            const stored = sessionStorage.getItem('viewingProduct');
+            const parsed = stored ? JSON.parse(stored) : null;
+            if (parsed && String(parsed.product_id) === productId) {
+                setCard(parsed);
+                setIsLoading(false);
+            }
+        } catch {
+            // Storage may be unavailable; the canonical product still loads.
+        }
+
+        if (!productId) {
+            setIsLoading(false);
+            return () => controller.abort();
+        }
+
         const fetchCard = async () => {
-            const storedProduct = sessionStorage.getItem('viewingProduct');
-            if (storedProduct) {
-                try {
-                    const parsed = JSON.parse(storedProduct);
-                    setCard(parsed);
-                    // we will fetch history outside of this block using params.id or fall back
-                } catch (e) {
-                    console.error('Error parsing stored product:', e);
-                }
-            }
-
-            if (!params.id) {
-                setIsLoading(false);
-                return;
-            }
-
             try {
-                const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-                const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-
                 const response = await fetch(
-                    `${SUPABASE_URL}/rest/v1/tcgcsv_products?product_id=eq.${params.id}&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,category_id`,
-                    { headers: { 'apikey': SUPABASE_KEY } }
+                    `${supabaseUrl}/rest/v1/tcgcsv_products?product_id=eq.${encodeURIComponent(productId)}&select=product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,category_id`,
+                    options,
                 );
-
-                if (response.ok) {
-                    const [data] = await response.json();
-                    if (data) {
-                        const cardData = {
-                            product_id: data.product_id,
-                            title: data.name,
-                            image_url: data.image_url,
-                            market_price: data.market_price,
-                            low_price: data.low_price,
-                            mid_price: data.mid_price,
-                            high_price: data.high_price,
-                            rarity: data.rarity,
-                            category: data.set_name,
-                            category_id: data.category_id,
-                            number: data.number,
-                        };
-                        setCard(cardData);
-                    }
-                }
-
-                // Fetch real history for this product
-                const historyRes = await fetch(
-                    `${SUPABASE_URL}/rest/v1/tcgcsv_price_history?product_id=eq.${params.id}&order=recorded_at.asc&select=recorded_at,market_price&limit=30`,
-                    { headers: { 'apikey': SUPABASE_KEY } }
-                );
-                
-                if (historyRes.ok) {
-                    const historyData = await historyRes.json();
-                    if (historyData && historyData.length > 0) {
-                        const realHistory = historyData.map((item: any) => ({
-                            date: new Date(item.recorded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-                            price: item.market_price
-                        }));
-                        setPriceHistory(realHistory);
-
-                        if (realHistory.length >= 2) {
-                            const first = realHistory[0].price;
-                            const last = realHistory[realHistory.length - 1].price;
-                            if (first > 0) {
-                                const change = ((last - first) / first) * 100;
-                                setPriceChange(Math.round(change * 10) / 10);
-                            }
-                        }
-                    }
-                }
+                if (!response.ok) throw new Error('Product request failed');
+                const [data] = await response.json();
+                if (controller.signal.aborted) return;
+                if (data) setCard({
+                    product_id: data.product_id,
+                    title: data.name,
+                    image_url: data.image_url,
+                    market_price: data.market_price,
+                    low_price: data.low_price,
+                    mid_price: data.mid_price,
+                    high_price: data.high_price,
+                    rarity: data.rarity,
+                    category: data.set_name,
+                    category_id: data.category_id,
+                    number: data.number,
+                });
             } catch (error) {
-                console.error("Error fetching product:", error);
+                if (!controller.signal.aborted) console.error('Error fetching product:', error);
             } finally {
-                setIsLoading(false);
+                if (!controller.signal.aborted) setIsLoading(false);
             }
         };
-
-        fetchCard();
+        const fetchHistory = async () => {
+            try {
+                const response = await fetch(
+                    `${supabaseUrl}/rest/v1/tcgcsv_price_history?product_id=eq.${encodeURIComponent(productId)}&order=recorded_at.asc&select=recorded_at,market_price&limit=30`,
+                    options,
+                );
+                if (!response.ok) throw new Error('Price history request failed');
+                const rows: { recorded_at: string; market_price: number }[] = await response.json();
+                if (controller.signal.aborted) return;
+                const history = rows.map(item => ({
+                    date: new Date(item.recorded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                    price: item.market_price,
+                }));
+                setPriceHistory(history);
+                if (history.length >= 2 && history[0].price > 0) {
+                    const change = ((history[history.length - 1].price - history[0].price) / history[0].price) * 100;
+                    setPriceChange(Math.round(change * 10) / 10);
+                }
+            } catch (error) {
+                if (!controller.signal.aborted) console.error('Error fetching price history:', error);
+            }
+        };
+        void fetchCard();
+        void fetchHistory();
+        return () => controller.abort();
     }, [params.id]);
-
     if (isLoading) {
         return (
             <>

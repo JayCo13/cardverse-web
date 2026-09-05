@@ -205,7 +205,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
   const fetchWalletBalance = async () => {
     setIsLoadingWallet(true);
     try {
-      const res = await fetch('/api/wallet');
+      const res = await fetch('/api/wallet?view=balance', { cache: 'no-store' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || copy.walletLoadError);
       setWalletBalance(data.wallet?.available_balance || 0);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { createContext, createElement, useContext, useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from 'react';
 import { getSupabaseClient } from '@/lib/supabase/client';
 import { useUser } from '@/lib/supabase';
 
@@ -26,86 +26,51 @@ interface UseSubscriptionReturn {
     refresh: () => Promise<void>;
 }
 
-export function useSubscription(): UseSubscriptionReturn {
+function useSubscriptionState(): UseSubscriptionReturn {
     const { user } = useUser();
-    const [subscription, setSubscription] = useState<Subscription | null>(null);
+    const [snapshot, setSnapshot] = useState<{ userId: string | null; subscription: Subscription | null }>({ userId: null, subscription: null });
     const [isLoading, setIsLoading] = useState(true);
     const [justActivated, setJustActivated] = useState(false);
 
     const mountedRef = useRef(true);
-    const fetchedForUserRef = useRef<string | null>(null);
+    const activeUserRef = useRef<string | null>(null);
+    const requestVersion = useRef(0);
+    const activationTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
     // Stable user ID string — avoids object identity issues
     const userId = user?.id ?? null;
+    const subscription = snapshot.userId === userId ? snapshot.subscription : null;
 
     // Fetch subscription — stable reference, uses userId ref internally
     const doFetch = useCallback(async (uid: string, showLoading: boolean) => {
+        const version = ++requestVersion.current;
         if (showLoading) setIsLoading(true);
 
         try {
             const supabase = getSupabaseClient();
             const now = new Date().toISOString();
 
-            // Priority: VIP Pro > Day Pass > Credit Pack
-            const { data: vipPro } = await supabase
+            const { data, error } = await supabase
                 .from('user_subscriptions')
-                .select('*')
-                .eq('user_id', uid)
-                .eq('package_type', 'vip_pro')
-                .eq('status', 'active')
-                .gte('expires_at', now)
-                .order('expires_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-
-            if (vipPro && mountedRef.current) {
-                setSubscription(vipPro as Subscription);
-                setIsLoading(false);
-                return;
-            }
-
-            const { data: dayPass } = await supabase
-                .from('user_subscriptions')
-                .select('*')
-                .eq('user_id', uid)
-                .eq('package_type', 'day_pass')
-                .eq('status', 'active')
-                .gte('expires_at', now)
-                .order('expires_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-
-            if (dayPass && mountedRef.current) {
-                setSubscription(dayPass as Subscription);
-                setIsLoading(false);
-                return;
-            }
-
-            const { data: creditPack } = await supabase
-                .from('user_subscriptions')
-                .select('*')
-                .eq('user_id', uid)
-                .eq('package_type', 'credit_pack')
-                .eq('status', 'active')
-                .gt('scan_credits_remaining', 0)
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-
-            if (creditPack && mountedRef.current) {
-                setSubscription(creditPack as Subscription);
-                setIsLoading(false);
-                return;
-            }
-
-            if (mountedRef.current) {
-                setSubscription(null);
+                .select('id, package_type, status, starts_at, expires_at, scan_credits_remaining, created_at')
+                .eq('user_id', uid).eq('status', 'active')
+                .or(`and(package_type.in.(vip_pro,day_pass),expires_at.gte.${now}),and(package_type.eq.credit_pack,scan_credits_remaining.gt.0)`)
+                .order('expires_at', { ascending: false, nullsFirst: false })
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            const rows = (data || []) as (Subscription & { created_at: string })[];
+            const credits = rows.filter(row => row.package_type === 'credit_pack')
+                .sort((a, b) => b.created_at.localeCompare(a.created_at));
+            const selected = rows.find(row => row.package_type === 'vip_pro')
+                || rows.find(row => row.package_type === 'day_pass') || credits[0] || null;
+            if (mountedRef.current && activeUserRef.current === uid && version === requestVersion.current) {
+                setSnapshot({ userId: uid, subscription: selected });
                 setIsLoading(false);
             }
         } catch (err) {
             console.error('Error fetching subscription:', err);
-            if (mountedRef.current) {
-                setSubscription(null);
+            if (mountedRef.current && activeUserRef.current === uid && version === requestVersion.current) {
+                setSnapshot({ userId: uid, subscription: null });
                 setIsLoading(false);
             }
         }
@@ -119,20 +84,16 @@ export function useSubscription(): UseSubscriptionReturn {
     // Main effect — ONLY depends on userId (string)
     useEffect(() => {
         mountedRef.current = true;
+        activeUserRef.current = userId;
+        setJustActivated(false);
 
         if (!userId) {
-            setSubscription(null);
+            setSnapshot({ userId: null, subscription: null });
             setIsLoading(false);
-            fetchedForUserRef.current = null;
+
             return;
         }
 
-        // Skip if we already fetched for this exact user
-        if (fetchedForUserRef.current === userId) {
-            return;
-        }
-
-        fetchedForUserRef.current = userId;
         // Show loading only on first fetch
         doFetch(userId, true);
 
@@ -152,9 +113,10 @@ export function useSubscription(): UseSubscriptionReturn {
                     if (!mountedRef.current) return;
                     // Re-fetch silently (no loading spinner)
                     doFetch(userId, false).then(() => {
-                        if (mountedRef.current) {
+                        if (mountedRef.current && activeUserRef.current === userId) {
                             setJustActivated(true);
-                            setTimeout(() => setJustActivated(false), 5000);
+                            clearTimeout(activationTimer.current);
+                            activationTimer.current = setTimeout(() => setJustActivated(false), 5000);
                         }
                     });
                 }
@@ -163,11 +125,27 @@ export function useSubscription(): UseSubscriptionReturn {
 
         return () => {
             mountedRef.current = false;
+            requestVersion.current++;
+            clearTimeout(activationTimer.current);
             supabase.removeChannel(channel);
         };
     // ONLY depend on userId (string) — not user object or fetchSubscription
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [userId]);
+
+    useEffect(() => {
+        if (!userId) return;
+        const onFocus = () => { if (document.visibilityState === 'visible') void refresh(); };
+        document.addEventListener('visibilitychange', onFocus);
+        const expiresAt = subscription?.expires_at ? Date.parse(subscription.expires_at) : NaN;
+        const remaining = expiresAt - Date.now();
+        const timer = Number.isFinite(remaining) && remaining >= 0
+            ? setTimeout(() => void refresh(), Math.min(remaining + 100, 2147483647)) : undefined;
+        return () => {
+            document.removeEventListener('visibilitychange', onFocus);
+            clearTimeout(timer);
+        };
+    }, [userId, subscription?.expires_at, refresh]);
 
     const isVipPro = subscription?.package_type === 'vip_pro';
     const isDayPass = subscription?.package_type === 'day_pass';
@@ -190,7 +168,7 @@ export function useSubscription(): UseSubscriptionReturn {
                 ? 100
                 : 20;
 
-    return {
+    return useMemo(() => ({
         subscription,
         isVipPro,
         isDayPass,
@@ -198,10 +176,23 @@ export function useSubscription(): UseSubscriptionReturn {
         creditsRemaining,
         scanType,
         portfolioLimit,
-        isLoading,
-        justActivated,
+        isLoading: isLoading || snapshot.userId !== userId,
+        justActivated: snapshot.userId === userId && justActivated,
         refresh,
-    };
+    }), [subscription, isVipPro, isDayPass, hasCredits, creditsRemaining, scanType, portfolioLimit, isLoading, justActivated, refresh, snapshot.userId, userId]);
+}
+
+const SubscriptionContext = createContext<UseSubscriptionReturn | null>(null);
+
+export function SubscriptionProvider({ children }: { children: ReactNode }) {
+    const value = useSubscriptionState();
+    return createElement(SubscriptionContext.Provider, { value }, children);
+}
+
+export function useSubscription(): UseSubscriptionReturn {
+    const value = useContext(SubscriptionContext);
+    if (!value) throw new Error('SubscriptionProvider is required');
+    return value;
 }
 
 export default useSubscription;

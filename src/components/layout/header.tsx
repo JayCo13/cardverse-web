@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from "react"
 import { CircleUser, Menu, Headphones, Camera, Crown, Zap, Diamond, Wallet, Package, Settings, ShoppingCart, HandCoins } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { NotificationBell } from "@/components/notification-bell"
-import { ChatInboxButton } from "@/components/chat-drawer"
+import { ChatInboxButton } from "@/components/chat-inbox-button"
 import { LanguageSelector } from "@/components/language-selector"
 import { CurrencySelector } from "@/components/currency-selector"
 import { Button } from "@/components/ui/button"
@@ -93,9 +93,9 @@ export function Header() {
       return;
     }
     try {
-      const response = await fetch("/api/cart", { cache: "no-store" });
+      const response = await fetch("/api/cart?view=count", { cache: "no-store" });
       const payload = await response.json();
-      setCartCount(Array.isArray(payload.items) ? payload.items.length : 0);
+      setCartCount(response.ok && Number.isFinite(payload.count) ? payload.count : 0);
     } catch {
       setCartCount(0);
     }

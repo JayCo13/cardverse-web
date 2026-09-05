@@ -1731,8 +1731,6 @@ export function MarketSpotlight() {
     // ─── Edge Function warm-up utility ───
     const warmUpEdgeFunction = useCallback(async (): Promise<boolean> => {
         try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000);
             const res = await fetch(`${SUPABASE_URL}/functions/v1/identify-card`, {
                 method: 'POST',
                 headers: {
@@ -1740,9 +1738,8 @@ export function MarketSpotlight() {
                     'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
                 },
                 body: JSON.stringify({ ping: true }),
-                signal: controller.signal,
+                signal: AbortSignal.timeout(15000),
             });
-            clearTimeout(timeoutId);
             if (res.ok || res.status === 400) {
                 // 400 = function processed the ping but rejected it — still means it's warm
                 isWarmRef.current = true;
@@ -1756,9 +1753,10 @@ export function MarketSpotlight() {
 
     // Trigger warm-up eagerly (non-blocking) — called when user shows intent to scan
     const triggerEagerWarmup = useCallback(() => {
-        if (isWarmRef.current) return; // Already warm
-        console.log('Eagerly warming up Edge Function...');
-        warmupPromiseRef.current = warmUpEdgeFunction();
+        if (isWarmRef.current || warmupPromiseRef.current) return;
+        warmupPromiseRef.current = warmUpEdgeFunction().finally(() => {
+            warmupPromiseRef.current = null;
+        });
     }, [warmUpEdgeFunction]);
 
     // Quick scan: open the live camera with an alignment frame. Falls back to
@@ -1815,119 +1813,14 @@ export function MarketSpotlight() {
     };
 
     useEffect(() => {
-        // Pre-warm the REST API connection with a lightweight query
-        const prewarmConnection = async () => {
-            try {
-                await fetch(`${SUPABASE_URL}/rest/v1/tcgcsv_products?select=product_id&limit=1`, {
-                    headers: {
-                        'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-                    },
-                });
-                console.log('Database connection pre-warmed');
-            } catch (e) {
-                // Ignore errors - this is just a pre-warm
-            }
-        };
-
-        // Pre-warm identify-card and track the promise + warm state
-        const prewarmIdentifyFunction = async () => {
-            const success = await warmUpEdgeFunction();
-            if (success) console.log('Identify function pre-warmed successfully');
-            else console.log('Identify function pre-warm failed (will retry on scan)');
-        };
-
-        // Pre-warm the translate-jp Edge Function
-        const prewarmTranslateFunction = async () => {
-            try {
-                await fetch(`${SUPABASE_URL}/functions/v1/translate-jp`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
-                    },
-                    body: JSON.stringify({ ping: true }),
-                });
-                console.log('Translate function pre-warmed');
-            } catch (e) {
-                // Ignore errors - this is just a pre-warm
-            }
-        };
-
-        // Pre-warm the Soccer AI too, so a first soccer scan isn't a cold start.
-        const prewarmSoccerFunction = async () => {
-            try {
-                await fetch(`${SUPABASE_URL}/functions/v1/identify-soccer-card`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
-                    },
-                    body: JSON.stringify({ ping: true }),
-                });
-                console.log('Soccer function pre-warmed');
-            } catch (e) {
-                // Ignore — just a pre-warm
-            }
-        };
-
-        prewarmConnection();
-        prewarmIdentifyFunction();
-        prewarmTranslateFunction();
-        prewarmSoccerFunction();
         fetchFeaturedProduct();
-
-        // ─── Keep-alive: Ping Edge Function every 45s to prevent cold starts ───
-        // Only ping when the tab is visible to save resources
-        const KEEP_ALIVE_INTERVAL = 45000; // 45 seconds
-        let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
-
-        const startKeepAlive = () => {
-            if (keepAliveTimer) return;
-            keepAliveTimer = setInterval(() => {
-                // Only ping if tab is visible
-                if (document.visibilityState === 'visible') {
-                    const auth = `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`;
-                    fetch(`${SUPABASE_URL}/functions/v1/identify-card`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': auth },
-                        body: JSON.stringify({ ping: true }),
-                    }).then(() => {
-                        isWarmRef.current = true;
-                    }).catch(() => {
-                        isWarmRef.current = false;
-                    });
-                    // Keep the Soccer AI warm as well.
-                    fetch(`${SUPABASE_URL}/functions/v1/identify-soccer-card`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': auth },
-                        body: JSON.stringify({ ping: true }),
-                    }).catch(() => { });
-                }
-            }, KEEP_ALIVE_INTERVAL);
+        // A returning tab may be cold, but browsing alone must not trigger AI
+        // requests. Hover/focus/click on the scan area warms it on demand.
+        const onVisibilityChange = () => {
+            if (document.visibilityState === 'hidden') isWarmRef.current = false;
         };
-
-        const handleVisibilityChange = () => {
-            if (document.visibilityState === 'visible') {
-                // Tab just became visible — warm up immediately
-                isWarmRef.current = false; // Assume cold after being away
-                warmUpEdgeFunction();
-                startKeepAlive();
-            } else {
-                // Tab hidden — stop keep-alive to save resources
-                if (keepAliveTimer) {
-                    clearInterval(keepAliveTimer);
-                    keepAliveTimer = null;
-                }
-            }
-        };
-
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        startKeepAlive();
-
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-            if (keepAliveTimer) clearInterval(keepAliveTimer);
-        };
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', onVisibilityChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -2046,6 +1939,8 @@ export function MarketSpotlight() {
                             onDrop={handleDrop}
                             onDragOver={handleDragOver}
                             onPaste={handlePaste}
+                            onPointerEnter={triggerEagerWarmup}
+                            onFocus={triggerEagerWarmup}
                             tabIndex={0}
                             title="Kéo-thả hoặc dán (Ctrl+V) ảnh để quét"
                         >

@@ -4,6 +4,7 @@
 import { mapSaleCard } from './map-sale-card';
 
 import { useState, useMemo, useEffect } from 'react';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 import { CardItem } from '@/components/card-item';
@@ -63,7 +64,7 @@ export type Filters = {
 
 type SortOption = 'newest' | 'price-asc' | 'price-desc';
 
-export default function BuyClient({ initialCards }: { initialCards: Card[] }) {
+export default function BuyClient({ initialCards, initialLoadSucceeded }: { initialCards: Card[]; initialLoadSucceeded: boolean }) {
   const { t, locale } = useLocalization();
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -88,7 +89,8 @@ export default function BuyClient({ initialCards }: { initialCards: Card[] }) {
   // Seeded from the server render, so the first paint already has listings
   // instead of a skeleton waiting on a round trip the server already made.
   const [saleCards, setSaleCards] = useState<Card[]>(initialCards);
-  const [isLoading, setIsLoading] = useState(initialCards.length === 0);
+  const [isLoading, setIsLoading] = useState(!initialLoadSucceeded);
+  const debouncedSearch = useDebouncedValue(filters.search);
   const [checkoutCard, setCheckoutCard] = useState<Card | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutPreselected, setCheckoutPreselected] = useState<number[]>([]);
@@ -113,92 +115,64 @@ export default function BuyClient({ initialCards }: { initialCards: Card[] }) {
     } as any);
     setCheckoutPreselected(preselected);
 
-    // Fetch seller address for shipping fee calculation
-    try {
-      const { data: sellerProfile } = await supabase
-        .from('profiles')
-        .select('address_district_id, address_ward_code')
-        .eq('id', c.sellerId)
-        .single();
-      const sp = sellerProfile as any;
-      if (sp?.address_district_id && sp?.address_ward_code) {
-        setSellerAddress({ districtId: sp.address_district_id, wardCode: sp.address_ward_code });
-      } else {
-        setSellerAddress(null);
-      }
-    } catch {
-      setSellerAddress(null);
-    }
-
     setCheckoutOpen(true);
   };
-  const [sellerAddress, setSellerAddress] = useState<{ districtId: number; wardCode: string } | null>(null);
   const [offerCard, setOfferCard] = useState<Card | null>(null);
   const [offerOpen, setOfferOpen] = useState(false);
 
+  const userId = user?.id;
   useEffect(() => {
-    // The listing query, factored out so a release can re-run it.
+    const controller = new AbortController();
     const queryCards = () => supabase
       .from('cards')
       .select('*, profiles:seller_id(display_name, profile_image_url, seller_verified, seller_rating, seller_review_count, shipping_carriers, shipping_fees)')
       .eq('listing_type', 'sale')
-      .eq('status', 'active');
+      .eq('status', 'active')
+      .abortSignal(controller.signal);
 
+    // Offer state belongs to the active account, not to the server seed.
+    setSaleCards(cards => cards.map(card => ({ ...card, buyerOfferStatus: null })));
     const fetchCards = async () => {
-      // These three used to run one after another, and each round trip to the
-      // database costs 150-400ms from a browser — so the marketplace waited
-      // roughly a second before drawing anything. Nothing here depends on the
-      // others: the housekeeping call self-heals lapsed reservations, and a
-      // buyer's own offers can be fetched by buyer alone and matched to cards in
-      // memory rather than by feeding card ids into a second query.
-      const [releaseResult, cardsResult, offersResult] = await Promise.all([
-        supabase.rpc('release_expired_card_reservations' as never),
-        queryCards(),
-        user
-          ? supabase
-            .from('offers')
-            .select('card_id, status, created_at')
-            .eq('buyer_id', user.id)
-            .order('created_at', { ascending: false })
-          : Promise.resolve({ data: [] as { card_id: string; status: string; created_at: string }[] }),
-      ]);
-
-      // Running the release concurrently means this render can miss a card it
-      // just freed. Rare, and cheap to correct: re-read only when it actually
-      // released something.
-      const released = Number(releaseResult.data ?? 0);
-      const { data, error } = released > 0 ? await queryCards() : cardsResult;
-
-      if (data && !error) {
-        let cards: Card[] = (data as any[]).map(mapSaleCard);
-        if (user && cards.length > 0) {
-          const offers = offersResult.data;
-
-          const latestOfferByCard = new Map<string, 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired'>();
-          (offers || []).forEach((offer: any) => {
-            if (!latestOfferByCard.has(offer.card_id)) {
-              latestOfferByCard.set(offer.card_id, offer.status);
-            }
-          });
-
-          cards = cards.map(card => ({
-            ...card,
-            buyerOfferStatus: latestOfferByCard.get(card.id) || null,
-          }));
-        }
-        setSaleCards(cards);
+      try {
+        const [releaseResult, cardsResult, offersResult] = await Promise.all([
+          supabase.rpc('release_expired_card_reservations' as never).abortSignal(controller.signal),
+          initialLoadSucceeded ? Promise.resolve(null) : queryCards(),
+          userId
+            ? supabase.from('offers')
+              .select('card_id, status, created_at')
+              .eq('buyer_id', userId)
+              .order('created_at', { ascending: false })
+              .abortSignal(controller.signal)
+            : Promise.resolve({ data: [] }),
+        ]);
+        if (controller.signal.aborted) return;
+        // Keep the server snapshot; only reload if housekeeping changed stock
+        // or the initial server read failed.
+        const result = Number(releaseResult.data ?? 0) > 0 ? await queryCards() : cardsResult;
+        if (controller.signal.aborted) return;
+        const latest = new Map<string, Card['buyerOfferStatus']>();
+        (offersResult.data || []).forEach((offer: { card_id: string; status: string }) => {
+          if (!latest.has(offer.card_id)) latest.set(offer.card_id, offer.status as Card['buyerOfferStatus']);
+        });
+        setSaleCards(previous => {
+          const cards = result?.data && !result.error ? result.data.map(mapSaleCard) : previous;
+          return cards.map(card => ({ ...card, buyerOfferStatus: latest.get(card.id) || null }));
+        });
+      } catch (error) {
+        if (!controller.signal.aborted) console.error('[Buy] Refresh failed:', error);
+      } finally {
+        if (!controller.signal.aborted) setIsLoading(false);
       }
-      setIsLoading(false);
     };
-    fetchCards();
-  }, [supabase, user]);
+    void fetchCards();
+    return () => controller.abort();
+  }, [supabase, userId, initialLoadSucceeded]);
 
   const filteredAndSortedCards = useMemo(() => {
     if (!saleCards) return [];
 
     let filtered = saleCards.filter((card) => {
       const {
-        search,
         categories,
         conditions,
         minPrice,
@@ -211,7 +185,7 @@ export default function BuyClient({ initialCards }: { initialCards: Card[] }) {
         gradedOnly,
       } = filters;
 
-      const searchTerm = search.trim().toLocaleLowerCase(locale);
+      const searchTerm = debouncedSearch.trim().toLocaleLowerCase(locale);
       const searchableText = [
         card.name,
         card.cardNumber,
@@ -256,7 +230,7 @@ export default function BuyClient({ initialCards }: { initialCards: Card[] }) {
           return 0;
       }
     });
-  }, [filters, locale, sort, saleCards]);
+  }, [filters, debouncedSearch, locale, sort, saleCards]);
 
   const pageCount = Math.max(1, Math.ceil(filteredAndSortedCards.length / PAGE_SIZE));
   // Clamped rather than trusted: narrowing a filter can shrink the result set
@@ -492,7 +466,6 @@ export default function BuyClient({ initialCards }: { initialCards: Card[] }) {
           bundleItems: checkoutCard.bundleItems as any,
         } : null}
         preselectedBundle={checkoutPreselected}
-        sellerAddress={sellerAddress}
         onSuccess={() => {
           window.location.reload();
         }}
