@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getRouteUser } from '@/lib/supabase/route-user';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { isEvidenceVideoUrl } from '@/lib/evidence-video';
+import { registerCarrierTracking, trackableCarrier } from '@/lib/carrier-tracking';
 import { getCarrier, getTrackingUrl, getDeliveryDays } from '@/lib/shipping-carriers';
 import { sendOrderShippedEmail } from '@/lib/mail';
 import { expireUnshippedPaidOrders } from '@/lib/expire-orders';
@@ -155,6 +156,20 @@ export async function PATCH(request: NextRequest) {
                 );
                 if (actionError) throw actionError;
                 const actionResult = actionData as { replayed?: boolean } | null;
+
+                // Start following the parcel. Best-effort on purpose: the goods
+                // are already handed over, and an outage at the tracking service
+                // must not be what stops a seller from shipping. Without it the
+                // order simply keeps the 'unverified' delivery state, which the
+                // dispute verdict already reports honestly.
+                if (trackingNo && trackableCarrier(carrierCode) && !actionResult?.replayed) {
+                    const registration = await registerCarrierTracking(carrierCode, trackingNo);
+                    if (!registration.registered) {
+                        console.error(
+                            `[Tracking] Could not register ${carrierCode} ${trackingNo}: ${registration.reason}`,
+                        );
+                    }
+                }
 
                 const trackingUrl = getTrackingUrl(carrierCode, trackingNo);
 

@@ -1134,6 +1134,9 @@ export interface Database {
                     seller_packing_video_at: string | null
                     buyer_unboxing_video_url: string | null
                     buyer_unboxing_video_at: string | null
+                    carrier_status: string | null
+                    carrier_sub_status: string | null
+                    carrier_status_at: string | null
                     created_at: string
                     updated_at: string
                 }
@@ -1174,6 +1177,9 @@ export interface Database {
                     seller_packing_video_at?: string | null
                     buyer_unboxing_video_url?: string | null
                     buyer_unboxing_video_at?: string | null
+                    carrier_status?: string | null
+                    carrier_sub_status?: string | null
+                    carrier_status_at?: string | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -1214,6 +1220,9 @@ export interface Database {
                     seller_packing_video_at?: string | null
                     buyer_unboxing_video_url?: string | null
                     buyer_unboxing_video_at?: string | null
+                    carrier_status?: string | null
+                    carrier_sub_status?: string | null
+                    carrier_status_at?: string | null
                     created_at?: string
                     updated_at?: string
                 }
