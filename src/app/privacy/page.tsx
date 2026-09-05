@@ -1,8 +1,6 @@
 "use client";
 
 import { useLocalization } from "@/context/localization-context";
-import { Footer } from "@/components/layout/footer";
-import { Header } from "@/components/layout/header";
 import { ThemeProvider } from "next-themes";
 
 export default function PrivacyPage() {
@@ -10,8 +8,7 @@ export default function PrivacyPage() {
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-      <div className="flex min-h-screen flex-col bg-background">
-        <Header />
+      <div className="flex flex-1 flex-col bg-background">
         <main className="flex-1">
           <div className="container mx-auto px-4 py-16">
             <div className="max-w-4xl mx-auto space-y-12">
@@ -78,7 +75,6 @@ export default function PrivacyPage() {
             </div>
           </div>
         </main>
-        <Footer />
       </div>
     </ThemeProvider>
   );

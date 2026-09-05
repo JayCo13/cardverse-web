@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getRouteUser } from '@/lib/supabase/route-user';
 
 type OfferStatus = 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired';
 type StatusFilter = 'all' | 'pending' | 'awaiting_payment' | 'history';
@@ -63,21 +64,18 @@ const applyStatus = <T extends {
 
 export async function GET(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const user = await getRouteUser(supabase);
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const params = request.nextUrl.searchParams;
     if (params.get('summary') === 'account') {
-        const { data: sellerCards, error: sellerCardsError } = await supabase
-            .from('cards')
-            .select('id')
-            .eq('seller_id', user.id);
-        if (sellerCardsError) return NextResponse.json({ error: sellerCardsError.message }, { status: 400 });
-        const sellerCardIds = ((sellerCards || []) as Array<{ id: string }>).map(card => card.id);
-        const receivedPromise = sellerCardIds.length > 0
-            ? supabase.from('offers').select('card_id')
-                .in('card_id', sellerCardIds).eq('status', 'pending')
-            : Promise.resolve({ data: [] as Array<{ card_id: string }>, error: null });
+        // One hop, not two. This used to read every card the seller owns and
+        // then feed those ids back into a second query, which is two sequential
+        // round trips to the database for a number the join can produce in one.
+        const receivedPromise = supabase.from('offers')
+            .select('card_id, cards!inner(seller_id)')
+            .eq('status', 'pending')
+            .eq('cards.seller_id', user.id);
         const sentPromise = supabase.from('offers').select('id', { count: 'exact', head: true })
             .eq('buyer_id', user.id).in('status', ['chosen', 'accepted']);
         const [received, sent] = await Promise.all([receivedPromise, sentPromise]);

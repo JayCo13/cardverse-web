@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
-import { Header } from '@/components/layout/header';
-import { Footer } from '@/components/layout/footer';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { HandCoins, Tag, Package } from 'lucide-react';
@@ -50,8 +48,7 @@ export default function SoldCardsPage() {
   }, []);
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <Header />
+    <div className="flex flex-1 flex-col bg-background">
       <main className="container mx-auto flex-1 px-4 py-8">
         <div className="mb-6">
           <h1 className="flex items-center gap-2 text-3xl font-bold tracking-normal">
@@ -125,7 +122,6 @@ export default function SoldCardsPage() {
           </div>
         )}
       </main>
-      <Footer />
     </div>
   );
 }

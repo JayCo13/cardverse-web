@@ -5,8 +5,6 @@ import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, ChevronDown, FileText, HandCoins, Loader2, Lock, Pencil, Save } from "lucide-react";
-import { Header } from "@/components/layout/header";
-import { Footer } from "@/components/layout/footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -289,8 +287,7 @@ export default function EditListingPage() {
         .join(" · ");
 
     return (
-        <div className="flex min-h-screen flex-col bg-background">
-            <Header />
+        <div className="flex flex-1 flex-col bg-background">
             <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 lg:py-10">
                 <Button variant="ghost" className="mb-5 rounded-full px-4 text-muted-foreground hover:text-foreground" onClick={() => router.back()}>
                     <ArrowLeft className="mr-2 h-4 w-4" /> {copy.cancel}
@@ -487,7 +484,6 @@ export default function EditListingPage() {
                     </CardContent>
                 </Card>
             </main>
-            <Footer />
         </div>
     );
 }

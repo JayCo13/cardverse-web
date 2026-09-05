@@ -1,8 +1,6 @@
 "use client";
 
 import dynamic from 'next/dynamic';
-import { Header } from "@/components/layout/header";
-import { Footer } from "@/components/layout/footer";
 import { HeroSection } from "@/components/hero-section";
 import { MarketTicker } from "@/components/market-ticker";
 import { LazyMount } from "@/components/lazy-mount";
@@ -57,11 +55,10 @@ function ComingSoonToast() {
 
 export default function Home() {
   return (
-    <div className="flex flex-col min-h-screen bg-[#050505]">
+    <div className="flex flex-1 flex-col bg-[#050505]">
       <Suspense fallback={null}>
         <ComingSoonToast />
       </Suspense>
-      <Header />
       <main className="flex-1">
         <HeroSection />
         <MarketTicker />
@@ -119,7 +116,6 @@ export default function Home() {
           </div>
         </div>
       </main>
-      <Footer />
     </div>
   );
 }

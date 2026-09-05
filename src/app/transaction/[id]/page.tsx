@@ -2,8 +2,6 @@
 
 import { useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Header } from "@/components/layout/header";
-import { Footer } from "@/components/layout/footer";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSupabase, useUser } from "@/lib/supabase";
 
@@ -69,8 +67,7 @@ export default function LegacyTransactionRedirectPage() {
     }, [isLoading, router, supabase, transactionId, user]);
 
     return (
-        <div className="flex min-h-screen flex-col">
-            <Header />
+        <div className="flex flex-1 flex-col">
             <main className="container mx-auto flex-1 px-4 py-10">
                 <div className="mx-auto max-w-xl rounded-xl border bg-card p-6">
                     <p className="mb-4 text-lg font-semibold">Đang chuyển sang checkout...</p>
@@ -78,7 +75,6 @@ export default function LegacyTransactionRedirectPage() {
                     <Skeleton className="mt-3 h-4 w-2/3" />
                 </div>
             </main>
-            <Footer />
         </div>
     );
 }

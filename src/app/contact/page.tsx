@@ -2,8 +2,6 @@
 import React, { useRef, useState } from 'react';
 
 import { useLocalization } from "@/context/localization-context";
-import { Footer } from "@/components/layout/footer";
-import { Header } from "@/components/layout/header";
 import { ThemeProvider } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -144,8 +142,7 @@ export default function ContactPage() {
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-      <div className="flex min-h-screen flex-col bg-background">
-        <Header />
+      <div className="flex flex-1 flex-col bg-background">
         <main className="flex-1 bg-muted/30">
           <div className="container mx-auto px-4 py-16">
             <div className="max-w-6xl mx-auto">
@@ -336,7 +333,6 @@ export default function ContactPage() {
             </div>
           </div>
         </main>
-        <Footer />
       </div>
     </ThemeProvider>
   );

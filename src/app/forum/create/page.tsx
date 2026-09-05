@@ -2,8 +2,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Header } from '@/components/layout/header';
-import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -122,8 +120,7 @@ export default function CreatePostPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Header />
+    <div className="flex flex-1 flex-col">
       <main className="flex-1 container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
           <Card>
@@ -137,7 +134,6 @@ export default function CreatePostPage() {
           </Card>
         </div>
       </main>
-      <Footer />
     </div>
   );
 }

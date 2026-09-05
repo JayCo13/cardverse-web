@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Header } from '@/components/layout/header';
-import { Footer } from '@/components/layout/footer';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, Loader2, XCircle } from 'lucide-react';
@@ -35,7 +33,10 @@ export default function KycCallbackPage() {
         const poll = async () => {
             attempts += 1;
             try {
-                const res = await fetch('/api/seller/kyc/session');
+                // This page exists precisely to wait on the verdict, so it
+                // is the one caller that should reach the provider when the
+                // webhook has not landed yet.
+                const res = await fetch('/api/seller/kyc/session?poll=1');
                 if (res.ok) {
                     const data = await res.json();
                     const status = data.session?.status as string | undefined;
@@ -71,8 +72,7 @@ export default function KycCallbackPage() {
     }, [outcome, router]);
 
     return (
-        <div className="flex flex-col min-h-screen">
-            <Header />
+        <div className="flex flex-1 flex-col">
             <main className="flex-1 container mx-auto px-4 py-16">
                 <Card className="max-w-md mx-auto border-orange-500/20">
                     <CardContent className="pt-8 pb-8 flex flex-col items-center text-center gap-4">
@@ -126,7 +126,6 @@ export default function KycCallbackPage() {
                     </CardContent>
                 </Card>
             </main>
-            <Footer />
         </div>
     );
 }

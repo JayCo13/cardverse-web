@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getRouteUser } from '@/lib/supabase/route-user';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import type { Tables } from '@/lib/supabase/database.types';
 
@@ -7,9 +8,8 @@ import type { Tables } from '@/lib/supabase/database.types';
 export async function GET(request: NextRequest) {
     try {
         const supabase = await createServerSupabaseClient();
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-        if (authError || !user) {
+        const user = await getRouteUser(supabase);
+        if (!user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 

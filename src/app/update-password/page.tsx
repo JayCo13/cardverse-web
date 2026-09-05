@@ -3,8 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth, useUser } from "@/lib/supabase/auth-provider";
-import { Header } from "@/components/layout/header";
-import { Footer } from "@/components/layout/footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -71,21 +69,18 @@ export default function UpdatePasswordPage() {
     if (isUserLoading) {
         return (
             <>
-                <Header />
                 <main className="container mx-auto px-4 py-16 min-h-[60vh] flex items-center justify-center">
                     <div className="text-center">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
                         <p className="mt-4 text-muted-foreground">Loading...</p>
                     </div>
                 </main>
-                <Footer />
             </>
         );
     }
 
     return (
         <>
-            <Header />
             <main className="container mx-auto px-4 py-16 min-h-[60vh] flex items-center justify-center">
                 <Card className="w-full max-w-md">
                     <CardHeader className="text-center">
@@ -164,7 +159,6 @@ export default function UpdatePasswordPage() {
                     </CardContent>
                 </Card>
             </main>
-            <Footer />
         </>
     );
 }

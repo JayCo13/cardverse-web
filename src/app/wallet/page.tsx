@@ -3,8 +3,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { Header } from '@/components/layout/header';
-import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Wallet, ArrowUpCircle, ArrowDownCircle, Clock, CreditCard, Loader2, ExternalLink, Banknote, ShieldCheck, AlertTriangle } from 'lucide-react';
@@ -646,43 +644,37 @@ export default function WalletPage() {
 
   if (authLoading || isLoading) {
     return (
-      <div className="flex flex-col min-h-screen">
-        <Header />
+      <div className="flex flex-1 flex-col">
         <main className="flex-1 container mx-auto px-4 py-8">
           <div className="max-w-4xl mx-auto space-y-6">
             <Skeleton className="h-48 w-full rounded-xl" />
             <Skeleton className="h-64 w-full rounded-xl" />
           </div>
         </main>
-        <Footer />
       </div>
     );
   }
 
   if (!user) {
     return (
-      <div className="flex flex-col min-h-screen">
-        <Header />
+      <div className="flex flex-1 flex-col">
         <main className="flex-1 container mx-auto px-4 py-8 flex flex-col items-center justify-center">
           <Wallet className="h-16 w-16 text-muted-foreground mb-4" />
           <h2 className="text-2xl font-semibold mb-2">{copy.loginTitle}</h2>
           <Button onClick={() => setOpen(true)}>{copy.loginButton}</Button>
         </main>
-        <Footer />
       </div>
     );
   }
 
   if (walletLoadError) {
     return (
-      <div className="flex flex-col min-h-screen">
-        <Header />
+      <div className="flex flex-1 flex-col">
         <main className="flex-1 container mx-auto px-4 py-8 flex flex-col items-center justify-center text-center">
           <AlertTriangle className="h-14 w-14 text-red-400 mb-4" />
           <p className="text-lg font-medium text-red-300">{walletLoadError}</p>
           <Button variant="outline" className="mt-4" onClick={() => void fetchWallet()}>{copy.retry}</Button>
         </main>
-        <Footer />
       </div>
     );
   }
@@ -861,8 +853,7 @@ export default function WalletPage() {
   );
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Header />
+    <div className="flex flex-1 flex-col">
       <main className="flex-1 container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto space-y-6">
           {/* Wallet Balance Card */}
@@ -1103,7 +1094,6 @@ export default function WalletPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Footer />
     </div>
   );
 }

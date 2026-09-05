@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
 import {
   ForumPost

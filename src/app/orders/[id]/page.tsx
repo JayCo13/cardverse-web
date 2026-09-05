@@ -4,8 +4,6 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { LiveClock } from '@/components/live-clock';
-import { Header } from '@/components/layout/header';
-import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -164,8 +162,7 @@ export default function OrderDetailsPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <Header />
+    <div className="flex flex-1 flex-col bg-background">
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 sm:px-6">
         <Button variant="ghost" onClick={() => router.back()} className="mb-4 h-9 px-2 text-muted-foreground">
           <ArrowLeft className="mr-2 h-4 w-4" /> {tx('Quay lại', 'Back', '戻る')}
@@ -561,7 +558,6 @@ export default function OrderDetailsPage() {
         </DialogContent>
       </Dialog>
 
-      <Footer />
     </div>
   );
 }

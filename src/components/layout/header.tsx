@@ -28,6 +28,7 @@ import { useAuthModal } from "@/components/auth-modal"
 import { useToast } from "@/hooks/use-toast"
 import { usePathname, useRouter } from "next/navigation"
 import { useSubscription } from "@/hooks/useSubscription"
+import { getAccountSummary, invalidateAccountSummary, resetAccountSummary } from "@/lib/account-summary"
 
 const VND_ONLY_MARKETPLACE_PATHS = [
   "/buy",
@@ -87,53 +88,42 @@ export function Header() {
     path => pathname === path || pathname.startsWith(`${path}/`),
   );
 
-  const fetchCartCount = useCallback(async () => {
+  // Both badges come from one request. They used to be two, fired from two
+  // effects that each reran when auth resolved — four round trips for two
+  // numbers, on every page the header was mounted on.
+  const refreshBadges = useCallback(async (options?: { force?: boolean }) => {
     if (!user) {
+      resetAccountSummary();
       setCartCount(0);
-      return;
-    }
-    try {
-      const response = await fetch("/api/cart?view=count", { cache: "no-store" });
-      const payload = await response.json();
-      setCartCount(response.ok && Number.isFinite(payload.count) ? payload.count : 0);
-    } catch {
-      setCartCount(0);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    void fetchCartCount();
-    const handler = () => void fetchCartCount();
-    window.addEventListener("cardverse:cart-updated", handler);
-    return () => window.removeEventListener("cardverse:cart-updated", handler);
-  }, [fetchCartCount]);
-
-  const fetchOfferActionCount = useCallback(async () => {
-    if (!user) {
       setOfferActionCount(0);
       return;
     }
-    try {
-      const response = await fetch("/api/offers/inbox?summary=account", { cache: "no-store" });
-      const payload = await response.json();
-      setOfferActionCount(response.ok && Number.isFinite(payload.actionCount) ? payload.actionCount : 0);
-    } catch {
-      setOfferActionCount(0);
-    }
+    const summary = await getAccountSummary(options);
+    setCartCount(summary.cartCount);
+    setOfferActionCount(summary.actionCount);
   }, [user]);
 
   useEffect(() => {
-    // Fetching here mirrors the existing cart badge lifecycle.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void fetchOfferActionCount();
-    const handler = () => void fetchOfferActionCount();
-    window.addEventListener("cardverse:offers-updated", handler);
-    window.addEventListener("focus", handler);
-    return () => {
-      window.removeEventListener("cardverse:offers-updated", handler);
-      window.removeEventListener("focus", handler);
+    void refreshBadges();
+
+    const onChanged = () => {
+      invalidateAccountSummary();
+      void refreshBadges({ force: true });
     };
-  }, [fetchOfferActionCount]);
+    // Coming back to the tab is worth a re-read, but not a forced one: the
+    // shared result already collapses a burst of focus events.
+    const onFocus = () => void refreshBadges();
+
+    window.addEventListener("cardverse:cart-updated", onChanged);
+    window.addEventListener("cardverse:offers-updated", onChanged);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("cardverse:cart-updated", onChanged);
+      window.removeEventListener("cardverse:offers-updated", onChanged);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [refreshBadges]);
 
   const handleComingSoon = () => {
     toast({

@@ -42,6 +42,18 @@ function query(result, calls, table) {
   chain.then = (resolve, reject) => Promise.resolve(result).then(resolve, reject);
   return chain;
 }
+const routeUser = loadTs('src/lib/supabase/route-user.ts');
+
+// Routes resolve their caller through getRouteUser, which reads the verified
+// JWT claims rather than asking the auth server for the whole user record.
+// The stub answers the same shape the library does.
+const claimsAuth = (userId) => ({
+  getClaims: async () => (userId
+    ? { data: { claims: { sub: userId, email: `${userId}@example.test` } }, error: null }
+    : { data: null, error: { message: 'no session' } }),
+  getUser: async () => ({ data: { user: userId ? { id: userId } : null }, error: null }),
+});
+
 const shippingFee = loadTs('src/lib/shipping-fee.ts');
 function shippingHarness(profiles, error = null) {
   const calls = [];
@@ -156,7 +168,7 @@ test('balance-only wallet read skips history and maintenance but preserves auth 
   const calls = [];
   let authenticated = true;
   const supabase = {
-    auth: { getUser: async () => ({ data: { user: authenticated ? { id: 'buyer' } : null }, error: null }) },
+    get auth() { return claimsAuth(authenticated ? 'buyer' : null); },
     from: table => query({ data: { available_balance: 200000 }, error: null }, calls, table),
     rpc: async () => { throw new Error('Balance view must not call RPCs'); },
   };
@@ -164,6 +176,7 @@ test('balance-only wallet read skips history and maintenance but preserves auth 
     'next/server': nextServer,
     '@/lib/supabase/server': { createServerSupabaseClient: async () => supabase },
     '@/lib/supabase/service': {},
+    '@/lib/supabase/route-user': routeUser,
   });
   const request = { nextUrl: new URL('http://localhost/api/wallet?view=balance') };
   const response = await route.GET(request);
@@ -178,15 +191,72 @@ test('balance-only wallet read skips history and maintenance but preserves auth 
 test('cart badge reads an owner-scoped count without downloading card rows', async () => {
   const calls = [];
   const supabase = {
-    auth: { getUser: async () => ({ data: { user: { id: 'buyer' } }, error: null }) },
+    auth: claimsAuth('buyer'),
     from: table => query({ count: 3, error: null }, calls, table),
   };
   const route = loadTs('src/app/api/cart/route.ts', {
     'next/server': nextServer,
     '@/lib/supabase/server': { createServerSupabaseClient: async () => supabase },
+    '@/lib/supabase/route-user': routeUser,
   });
   const response = await route.GET({ nextUrl: new URL('http://localhost/api/cart?view=count') });
   assert.deepEqual(await response.json(), { count: 3 });
   assert.equal(calls.find(call => call.method === 'select').args[1].head, true);
   assert.ok(calls.some(call => call.method === 'eq' && call.args[0] === 'user_id' && call.args[1] === 'buyer'));
+});
+
+test('account summary answers both badges from one auth check and three independent queries', async () => {
+  const calls = [];
+  let authenticated = true;
+  const results = {
+    cart_items: { count: 3, error: null },
+    offers: null, // set per call below
+  };
+  let offersCall = 0;
+  const supabase = {
+    get auth() { return claimsAuth(authenticated ? 'buyer' : null); },
+    from(table) {
+      if (table !== 'offers') return query(results[table], calls, table);
+      // First offers query is the received-pending join, second is the sent count.
+      const result = offersCall++ === 0
+        ? { data: [{ card_id: 'card-a' }, { card_id: 'card-a' }, { card_id: 'card-b' }], error: null }
+        : { count: 2, error: null };
+      return query(result, calls, table);
+    },
+  };
+  const route = loadTs('src/app/api/account/summary/route.ts', {
+    'next/server': nextServer,
+    '@/lib/supabase/server': { createServerSupabaseClient: async () => supabase },
+    '@/lib/supabase/route-user': routeUser,
+  });
+
+  const response = await route.GET();
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'private, no-store');
+  assert.deepEqual(await response.json(), {
+    cartCount: 3,
+    receivedPending: 3,
+    sentAwaitingPayment: 2,
+    actionCount: 5,
+    cardPendingCounts: { 'card-a': 2, 'card-b': 1 },
+  });
+
+  // Three tables, no fourth round trip, and the cart badge stays head-only.
+  assert.deepEqual([...new Set(calls.map(call => call.table))].sort(), ['cart_items', 'offers']);
+  const cartSelect = calls.find(call => call.table === 'cart_items' && call.method === 'select');
+  assert.equal(cartSelect.args[1].head, true);
+
+  // The received-pending count must come from a join, not from a preceding
+  // read of every card the seller owns.
+  assert.ok(!calls.some(call => call.table === 'cards'));
+  const receivedSelect = calls.find(call => call.table === 'offers' && call.method === 'select');
+  assert.match(receivedSelect.args[0], /cards!inner\(seller_id\)/);
+  assert.ok(calls.some(call => call.method === 'eq' && call.args[0] === 'cards.seller_id' && call.args[1] === 'buyer'));
+
+  // Owner scoping on both sides.
+  assert.ok(calls.some(call => call.table === 'cart_items' && call.method === 'eq' && call.args[0] === 'user_id' && call.args[1] === 'buyer'));
+  assert.ok(calls.some(call => call.table === 'offers' && call.method === 'eq' && call.args[0] === 'buyer_id' && call.args[1] === 'buyer'));
+
+  authenticated = false;
+  assert.equal((await route.GET()).status, 401);
 });

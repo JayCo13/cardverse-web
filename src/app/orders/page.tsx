@@ -4,8 +4,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { LiveClock } from '@/components/live-clock';
-import { Header } from '@/components/layout/header';
-import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -716,19 +714,16 @@ export default function OrdersPage() {
 
   if (authLoading) {
     return (
-      <div className="flex flex-col min-h-screen">
-        <Header />
+      <div className="flex flex-1 flex-col">
         <main className="flex-1 container mx-auto px-4 py-8">
           <Skeleton className="h-[400px] w-full max-w-4xl mx-auto rounded-xl" />
         </main>
-        <Footer />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Header />
+    <div className="flex flex-1 flex-col">
       <main className="flex-1 container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto space-y-6">
           <h1 className="text-3xl font-bold" style={{ fontFamily: "'Orbitron', sans-serif" }}>
@@ -872,7 +867,6 @@ export default function OrdersPage() {
           </Tabs>
         </div>
       </main>
-      <Footer />
 
       {/* Generic confirm dialog (confirm received / cancel) */}
       <Dialog open={!!confirmAction} onOpenChange={o => !o && setConfirmAction(null)}>

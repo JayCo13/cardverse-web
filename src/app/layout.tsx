@@ -10,6 +10,8 @@ import { TransactionLockProvider } from '@/components/transaction-lock-provider'
 import { CurrencyProvider } from '@/contexts/currency-context';
 import { CardCacheProvider } from '@/contexts/card-cache-context';
 import { AuthReady } from '@/components/auth-ready';
+import { Header } from '@/components/layout/header';
+import { Footer } from '@/components/layout/footer';
 import { SubscriptionProvider } from '@/hooks/useSubscription';
 
 const inter = Inter({
@@ -82,7 +84,32 @@ export default function RootLayout({
                 <LocalizationProvider>
                   <TransactionLockProvider>
                     <CardCacheProvider>
-                      {children}
+                      {/*
+                        * Header and Footer live here, not in each page.
+                        *
+                        * Rendered per page they were torn down and rebuilt on
+                        * every navigation, and the header is not cheap: the
+                        * cart badge, the offer badge, the notification bell,
+                        * the chat inbox and the subscription hook each open
+                        * their own request on mount. That was five to six
+                        * round trips repeated for every link the user clicked,
+                        * on a path where a single round trip costs the best
+                        * part of a second.
+                        *
+                        * Mounted once in the layout they survive navigation:
+                        * the chrome stays on screen, its data is fetched once
+                        * per session, and only the page body swaps.
+                        */}
+                      <div className="flex min-h-screen flex-col">
+                        <Header />
+                        {/* Grows to fill the viewport so the footer sits at the
+                          * bottom on short pages, whether the page hands back a
+                          * flex column of its own or a bare fragment. */}
+                        <div className="flex flex-1 flex-col">
+                          {children}
+                        </div>
+                        <Footer />
+                      </div>
                     </CardCacheProvider>
                   </TransactionLockProvider>
                   <AuthModal />

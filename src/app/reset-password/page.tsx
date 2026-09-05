@@ -2,8 +2,6 @@
 
 import { useRef, useState } from "react";
 import { useAuth } from "@/lib/supabase/auth-provider";
-import { Header } from "@/components/layout/header";
-import { Footer } from "@/components/layout/footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,7 +41,6 @@ export default function ResetPasswordPage() {
 
     return (
         <>
-            <Header />
             <main className="container mx-auto px-4 py-16 min-h-[60vh] flex items-center justify-center">
                 <Card className="w-full max-w-md">
                     <CardHeader className="text-center">
@@ -122,7 +119,6 @@ export default function ResetPasswordPage() {
                     </CardContent>
                 </Card>
             </main>
-            <Footer />
         </>
     );
 }

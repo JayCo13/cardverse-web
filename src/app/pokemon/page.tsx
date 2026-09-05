@@ -3,8 +3,6 @@
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Header } from "@/components/layout/header";
-import { Footer } from "@/components/layout/footer";
 import { PokemonCardItem } from "@/components/pokemon-card-item";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -252,8 +250,7 @@ export default function PokemonPage() {
     const hasActiveFilters = priceFilter !== "all" || rarityFilter !== "all" || setFilter !== "all" || searchTerm !== "";
 
     return (
-        <div className="flex flex-col min-h-screen bg-[#050505]">
-            <Header />
+        <div className="flex flex-1 flex-col bg-[#050505]">
             <main className="flex-1 py-6 px-4">
                 <div className="max-w-7xl mx-auto">
                     {/* Header */}
@@ -552,7 +549,6 @@ export default function PokemonPage() {
                 <AdBanner slot="pokemon_list_bottom" format="auto" className="rounded-xl overflow-hidden" />
             </div>
 
-            <Footer />
         </div>
     );
 }

@@ -4,8 +4,6 @@
 import { useState, useEffect } from 'react';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useRouter } from 'next/navigation';
-import { Header } from '@/components/layout/header';
-import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckCircle, XCircle, Phone, FileCheck, ChevronRight, ChevronLeft, ChevronDown, Sparkles, AlertTriangle, MapPin, Truck, HandCoins } from 'lucide-react';
 import { SHIPPING_CARRIERS, carrierShortLabels } from '@/lib/shipping-carriers';
+import { getAccountSummary, invalidateAccountSummary } from '@/lib/account-summary';
 import { hasUsableShipping, isValidShippingFee, shippableCarriers, shopShippingRange, SHIPPING_FEE_MAX, SHIPPING_FEE_MIN, type ShopShippingFees } from '@/lib/shipping-fee';
 import { useAuth, useSupabase } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
@@ -574,14 +573,19 @@ export default function SellPage() {
     }
   };
 
-  const fetchOfferSummary = async () => {
+  /**
+   * The same counts the header badge reads, from the same request.
+   *
+   * The dashboard and the header both wanted the seller's pending offers and
+   * each asked for them separately, so opening /sell spent two round trips on
+   * one number. They now share whatever is already in flight.
+   */
+  const fetchOfferSummary = async (options?: { force?: boolean }) => {
     if (!user) return;
     try {
-      const response = await fetch('/api/offers/inbox?summary=account', { cache: 'no-store' });
-      const payload = await response.json();
-      if (!response.ok) return;
-      setPendingOffersTotal(Number(payload.receivedPending) || 0);
-      setPendingOfferCounts(payload.cardPendingCounts || {});
+      const summary = await getAccountSummary(options);
+      setPendingOffersTotal(summary.receivedPending);
+      setPendingOfferCounts(summary.cardPendingCounts);
     } catch (err) {
       console.error('Failed to fetch offer summary:', err);
     }
@@ -589,7 +593,10 @@ export default function SellPage() {
 
   useEffect(() => {
     if (!user) return;
-    const refresh = () => void fetchOfferSummary();
+    const refresh = () => {
+      invalidateAccountSummary();
+      void fetchOfferSummary({ force: true });
+    };
     window.addEventListener('cardverse:offers-updated', refresh);
     return () => window.removeEventListener('cardverse:offers-updated', refresh);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -742,10 +749,18 @@ export default function SellPage() {
   // flow (document + liveness + face match), and its verdict reaches us through
   // a signed webhook. The browser only learns the resulting status.
 
-  const refreshKycSession = async (options?: { silent?: boolean }) => {
+  /**
+   * `poll` decides whether the server may call the provider.
+   *
+   * Only a user who is actually waiting on a verdict needs that: the in-flight
+   * poll loop below and the explicit "check again" buttons. A plain page load
+   * reads the stored status instead, which is what the webhook keeps current
+   * and costs a database read rather than a live call to Didit.
+   */
+  const refreshKycSession = async (options?: { silent?: boolean; poll?: boolean }) => {
     if (!options?.silent) setIsRefreshingKyc(true);
     try {
-      const res = await fetch('/api/seller/kyc/session');
+      const res = await fetch(options?.poll ? '/api/seller/kyc/session?poll=1' : '/api/seller/kyc/session');
       if (!res.ok) return null;
       const data = await readJson(res);
       const session = (data.session ?? null) as KycSession | null;
@@ -891,7 +906,7 @@ export default function SellPage() {
         clearInterval(timer);
         return;
       }
-      refreshKycSession({ silent: true });
+      refreshKycSession({ silent: true, poll: true });
     }, 5000);
     return () => clearInterval(timer);
   }, [user, isKycInFlight]);
@@ -1160,15 +1175,13 @@ export default function SellPage() {
   // ── LOADING STATE ──
   if (authLoading || isLoadingVerification) {
     return (
-      <div className="flex flex-col min-h-screen">
-        <Header />
+      <div className="flex flex-1 flex-col">
         <main className="flex-1 container mx-auto px-4 py-8">
           <div className="max-w-4xl mx-auto space-y-6">
             <Skeleton className="h-10 w-64 mx-auto" />
             <Skeleton className="h-64 w-full rounded-xl" />
           </div>
         </main>
-        <Footer />
       </div>
     );
   }
@@ -1176,14 +1189,12 @@ export default function SellPage() {
   // ── NOT LOGGED IN ──
   if (!user) {
     return (
-      <div className="flex flex-col min-h-screen">
-        <Header />
+      <div className="flex flex-1 flex-col">
         <main className="flex-1 container mx-auto px-4 py-8 flex flex-col items-center justify-center">
           <ShieldAlert className="h-16 w-16 text-muted-foreground mb-4" />
           <h2 className="text-2xl font-semibold mb-2">{copy.signInToSell}</h2>
           <Button onClick={() => setOpen(true)}>{copy.signIn}</Button>
         </main>
-        <Footer />
       </div>
     );
   }
@@ -1191,8 +1202,7 @@ export default function SellPage() {
   // ── KYC PENDING ──
   if (verification?.status === 'pending') {
     return (
-      <div className="flex flex-col min-h-screen">
-        <Header />
+      <div className="flex flex-1 flex-col">
         <main className="flex-1 container mx-auto px-4 py-8">
           <div className="max-w-2xl mx-auto text-center">
             <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-8 space-y-4">
@@ -1205,7 +1215,6 @@ export default function SellPage() {
             </div>
           </div>
         </main>
-        <Footer />
       </div>
     );
   }
@@ -1213,8 +1222,7 @@ export default function SellPage() {
   // ── KYC REJECTED ──
   if (verification?.status === 'rejected') {
     return (
-      <div className="flex flex-col min-h-screen">
-        <Header />
+      <div className="flex flex-1 flex-col">
         <main className="flex-1 container mx-auto px-4 py-8">
           <div className="max-w-2xl mx-auto text-center space-y-6">
             <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-8 space-y-4">
@@ -1229,7 +1237,6 @@ export default function SellPage() {
             </div>
           </div>
         </main>
-        <Footer />
       </div>
     );
   }
@@ -1267,8 +1274,7 @@ export default function SellPage() {
         );
 
     return (
-      <div className="flex flex-col min-h-screen">
-        <Header />
+      <div className="flex flex-1 flex-col">
         <main className="flex-1 container mx-auto px-4 py-8 pb-24 md:pb-8">
           <div className="max-w-4xl mx-auto space-y-6">
             <div className="flex items-center justify-between">
@@ -1679,7 +1685,6 @@ export default function SellPage() {
             </div>
           </DrawerContent>
         </Drawer>
-        <Footer />
       </div>
     );
   }
@@ -1692,8 +1697,7 @@ export default function SellPage() {
   ];
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Header />
+    <div className="flex flex-1 flex-col">
       <main className="flex-1 container mx-auto px-4 py-8">
         <div className="max-w-2xl mx-auto space-y-6">
           <div className="text-center">
@@ -1800,7 +1804,7 @@ export default function SellPage() {
                           : t('seller_kyc_in_review_description')}
                       </p>
                       <div className="flex flex-wrap gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={() => refreshKycSession()} disabled={isRefreshingKyc}>
+                        <Button type="button" variant="outline" size="sm" onClick={() => refreshKycSession({ poll: true })} disabled={isRefreshingKyc}>
                           {t('seller_kyc_check_again')}
                         </Button>
                         {kycPollingTimedOut && (
@@ -1819,7 +1823,7 @@ export default function SellPage() {
                       <p className="text-xs text-muted-foreground">
                         {tx('Nếu bạn chưa hoàn tất, hãy mở lại phiên xác minh. Kết quả thường có trong vòng một phút.', 'If you have not finished, open the session again. Results usually arrive within a minute.', '完了していない場合は再度セッションを開いてください。結果は通常1分以内に届きます。')}
                       </p>
-                      <Button type="button" variant="outline" size="sm" onClick={() => refreshKycSession()} disabled={isRefreshingKyc}>
+                      <Button type="button" variant="outline" size="sm" onClick={() => refreshKycSession({ poll: true })} disabled={isRefreshingKyc}>
                         {tx('Kiểm tra lại', 'Check again', '再確認')}
                       </Button>
                     </div>
@@ -2208,7 +2212,6 @@ export default function SellPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Footer />
     </div>
   );
 }

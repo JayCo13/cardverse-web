@@ -3,8 +3,6 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useSupabase, useUser } from "@/lib/supabase";
 import { useAuthModal } from "@/components/auth-modal";
-import { Header } from "@/components/layout/header";
-import { Footer } from "@/components/layout/footer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -224,7 +222,6 @@ export default function CollectionPage() {
     if (!isUserLoading && !user) {
         return (
             <>
-                <Header />
                 <div className="container mx-auto px-4 py-16 text-center min-h-[60vh] flex flex-col items-center justify-center">
                     <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-6">
                         <Library className="h-10 w-10 text-primary" />
@@ -238,7 +235,6 @@ export default function CollectionPage() {
                         {t('coll_sign_in_btn')}
                     </Button>
                 </div>
-                <Footer />
             </>
         );
     }
@@ -246,7 +242,6 @@ export default function CollectionPage() {
     if (isLoading) {
         return (
             <>
-                <Header />
                 <div className="container mx-auto px-4 py-8">
                     <Skeleton className="h-40 w-full rounded-2xl mb-6" />
                     <div className="flex gap-4 mb-6">
@@ -260,14 +255,12 @@ export default function CollectionPage() {
                         ))}
                     </div>
                 </div>
-                <Footer />
             </>
         );
     }
 
     return (
         <>
-            <Header />
             <main className="container mx-auto px-4 py-8">
                 {/* Collection Header Stats */}
                 <div className="bg-gradient-to-r from-primary/20 via-purple-500/10 to-blue-500/10 rounded-2xl p-6 md:p-8 mb-8 border border-primary/20">
@@ -569,7 +562,6 @@ export default function CollectionPage() {
                     </DialogContent>
                 </Dialog>
             </main>
-            <Footer />
         </>
     );
 }

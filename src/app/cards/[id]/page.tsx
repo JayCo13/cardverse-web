@@ -27,8 +27,6 @@ import {
     Tag,
     Truck,
 } from "lucide-react";
-import { Header } from "@/components/layout/header";
-import { Footer } from "@/components/layout/footer";
 import { CheckoutModal } from "@/components/checkout-modal";
 import { ChatDrawer } from "@/components/chat-drawer";
 import { OfferModal } from "@/components/offer-modal";
@@ -941,35 +939,30 @@ export default function CardDetailsPage() {
 
     if (isLoading) {
         return (
-            <div className="flex min-h-screen flex-col">
-                <Header />
+            <div className="flex flex-1 flex-col">
                 <main className="container mx-auto flex-1 px-4 py-8">
                     <Skeleton className="h-[620px] w-full rounded-xl" />
                 </main>
-                <Footer />
             </div>
         );
     }
 
     if (!card) {
         return (
-            <div className="flex min-h-screen flex-col">
-                <Header />
+            <div className="flex flex-1 flex-col">
                 <main className="container mx-auto flex-1 px-4 py-16 text-center">
                     <p className="text-xl text-muted-foreground">{copy.notFound}</p>
                     <Button onClick={() => router.back()} className="mt-4">
                         <ArrowLeft className="mr-2 h-4 w-4" /> {copy.back}
                     </Button>
                 </main>
-                <Footer />
             </div>
         );
     }
 
     if (!isSale) {
         return (
-            <div className="flex min-h-screen flex-col">
-                <Header />
+            <div className="flex flex-1 flex-col">
                 <main className="container mx-auto flex-1 px-4 py-8">
                     <Button variant="ghost" onClick={() => router.back()} className="mb-6">
                         <ArrowLeft className="mr-2 h-4 w-4" /> {copy.back}
@@ -995,7 +988,6 @@ export default function CardDetailsPage() {
                         </div>
                     </div>
                 </main>
-                <Footer />
             </div>
         );
     }
@@ -1003,8 +995,7 @@ export default function CardDetailsPage() {
     const displayRelatedCards = relatedCards.length > 0 ? relatedCards : [card];
 
     return (
-        <div className="flex min-h-screen flex-col bg-background">
-            <Header />
+        <div className="flex flex-1 flex-col bg-background">
             <main className="flex-1">
                 <div className="mx-auto w-full max-w-[1820px] space-y-4 px-4 py-6 sm:px-6 xl:space-y-8">
                     <div className="flex items-center justify-between gap-4 border-b pb-4">
@@ -1347,7 +1338,6 @@ export default function CardDetailsPage() {
                     <RelatedRail title={copy.relatedItems} cards={displayRelatedCards} labels={{ cond: copy.condLabel, price: copy.priceLabel, sold: copy.sold, preOwned: copy.preOwned, contact: copy.contact }} />
                 </div>
             </main>
-            <Footer />
 
             <CheckoutModal
                 open={checkoutOpen}

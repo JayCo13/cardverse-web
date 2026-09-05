@@ -16,8 +16,6 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { Header } from "@/components/layout/header";
-import { Footer } from "@/components/layout/footer";
 import { useLocalization } from "@/context/localization-context";
 
 /**
@@ -397,14 +395,12 @@ export default function ProfilePage() {
     if (!isUserLoading && !user) {
         return (
             <>
-                <Header />
                 <div className="container mx-auto px-4 py-24 text-center">
                     <User className="h-14 w-14 mx-auto text-muted-foreground mb-4" />
                     <h1 className="text-2xl font-bold mb-2">{copy.loginTitle}</h1>
                     <p className="text-muted-foreground mb-6 max-w-md mx-auto">{copy.loginDescription}</p>
                     <Button onClick={() => setOpen(true)}>{copy.loginButton}</Button>
                 </div>
-                <Footer />
             </>
         );
     }
@@ -412,7 +408,6 @@ export default function ProfilePage() {
     if (isLoading || isUserLoading) {
         return (
             <>
-                <Header />
                 <div className="container mx-auto px-4 py-8 space-y-6">
                     <Skeleton className="h-48 w-full rounded-2xl" />
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -420,7 +415,6 @@ export default function ProfilePage() {
                     </div>
                     <Skeleton className="h-96 w-full rounded-xl" />
                 </div>
-                <Footer />
             </>
         );
     }
@@ -464,7 +458,6 @@ export default function ProfilePage() {
 
     return (
         <>
-            <Header />
             <main className="container mx-auto px-4 py-8">
                 {/* ── Identity ───────────────────────────────────────────── */}
                 <section className="rounded-2xl border bg-gradient-to-br from-primary/10 via-background to-background p-6 md:p-8 mb-6">
@@ -758,7 +751,6 @@ export default function ProfilePage() {
                     </TabsContent>
                 </Tabs>
             </main>
-            <Footer />
         </>
     );
 }

@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Header } from "@/components/layout/header";
-import { Footer } from "@/components/layout/footer";
 import { SoccerCardItem, type SoccerCard } from "@/components/soccer-card-item";
 import { useLocalization } from "@/context/localization-context";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -374,8 +372,7 @@ export default function SoccerPage() {
     };
 
     return (
-        <div className="flex flex-col min-h-screen bg-[#050505]">
-            <Header />
+        <div className="flex flex-1 flex-col bg-[#050505]">
             <main className="flex-1 py-8 px-4">
                 <div className="max-w-7xl mx-auto">
                     {/* Header */}
@@ -559,7 +556,6 @@ export default function SoccerPage() {
                 <AdBanner slot="soccer_list_bottom" format="auto" className="rounded-xl overflow-hidden" />
             </div>
 
-            <Footer />
         </div>
     );
 }

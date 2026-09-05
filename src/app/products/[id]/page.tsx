@@ -4,8 +4,6 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useSupabase, useUser } from "@/lib/supabase";
 import { useAuthModal } from "@/components/auth-modal";
-import { Header } from "@/components/layout/header";
-import { Footer } from "@/components/layout/footer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -192,7 +190,6 @@ export default function ProductDetailsPage() {
     if (isLoading) {
         return (
             <>
-                <Header />
                 <div className="container mx-auto px-4 py-8">
                     <Skeleton className="h-8 w-32 mb-6" />
                     <div className="grid md:grid-cols-2 gap-8">
@@ -204,7 +201,6 @@ export default function ProductDetailsPage() {
                         </div>
                     </div>
                 </div>
-                <Footer />
             </>
         );
     }
@@ -212,21 +208,18 @@ export default function ProductDetailsPage() {
     if (!card) {
         return (
             <>
-                <Header />
                 <div className="container mx-auto px-4 py-16 text-center">
                     <Package className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
                     <h1 className="text-2xl font-bold mb-2">{t('product_not_found')}</h1>
                     <p className="text-muted-foreground mb-6">{t('product_load_error')}</p>
                     <Button onClick={() => router.push('/')}>{t('go_home')}</Button>
                 </div>
-                <Footer />
             </>
         );
     }
 
     return (
         <>
-            <Header />
             <main className="container mx-auto px-4 py-8">
                 <Button variant="ghost" className="mb-6 gap-2" onClick={() => router.back()}>
                     <ArrowLeft className="h-4 w-4" /> {t('back_button')}
@@ -440,7 +433,6 @@ export default function ProductDetailsPage() {
                     </div>
                 </div>
             </main>
-            <Footer />
         </>
     );
 }

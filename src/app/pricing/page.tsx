@@ -2,8 +2,6 @@
 
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Header } from "@/components/layout/header";
-import { Footer } from "@/components/layout/footer";
 import { useUser } from "@/lib/supabase";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useToast } from "@/hooks/use-toast";
@@ -113,11 +111,10 @@ export default function PricingPage() {
     };
 
     return (
-        <div className="flex flex-col min-h-screen bg-[#050505]">
+        <div className="flex flex-1 flex-col bg-[#050505]">
             <Suspense fallback={null}>
                 <PaymentStatusHandler />
             </Suspense>
-            <Header />
 
             <main className="flex-1 pt-8 pb-20">
                 {/* Hero */}
@@ -285,7 +282,6 @@ export default function PricingPage() {
                 </div>
             </main>
 
-            <Footer />
         </div>
     );
 }

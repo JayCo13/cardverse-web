@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getRouteUser } from '@/lib/supabase/route-user';
 
 type AddressBody = {
     recipient_name?: string;
@@ -25,8 +26,8 @@ function validate(body: AddressBody): string | null {
 // GET — list the current user's saved addresses (default first, then newest).
 export async function GET() {
     const supabase = await createServerSupabaseClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const user = await getRouteUser(supabase);
+    if (!user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

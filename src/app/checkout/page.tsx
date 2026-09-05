@@ -3,8 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Header } from "@/components/layout/header";
-import { Footer } from "@/components/layout/footer";
 import { AddressBook, type SavedAddress } from "@/components/address-book";
 import { resolveShippingTier, cheapestTierFee, shippableCarriers } from "@/lib/shipping-fee";
 import { Button } from "@/components/ui/button";
@@ -510,8 +508,7 @@ export default function CheckoutPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <Header />
+    <div className="flex flex-1 flex-col">
       <main className="container mx-auto flex-1 px-4 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold tracking-normal">{copy.pageTitle}</h1>
@@ -702,7 +699,6 @@ export default function CheckoutPage() {
           </div>
         )}
       </main>
-      <Footer />
     </div>
   );
 }

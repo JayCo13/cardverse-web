@@ -4,8 +4,6 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useSupabase, useUser } from "@/lib/supabase";
 import { useAuthModal } from "@/components/auth-modal";
-import { Header } from "@/components/layout/header";
-import { Footer } from "@/components/layout/footer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -164,7 +162,6 @@ export default function SoccerCardDetailsPage() {
     if (isLoading) {
         return (
             <>
-                <Header />
                 <div className="container mx-auto px-4 py-6">
                     <Skeleton className="h-8 w-24 mb-4" />
                     <div className="flex flex-col md:flex-row gap-6">
@@ -176,7 +173,6 @@ export default function SoccerCardDetailsPage() {
                         </div>
                     </div>
                 </div>
-                <Footer />
             </>
         );
     }
@@ -184,21 +180,18 @@ export default function SoccerCardDetailsPage() {
     if (!card) {
         return (
             <>
-                <Header />
                 <div className="container mx-auto px-4 py-16 text-center">
                     <Trophy className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
                     <h1 className="text-2xl font-bold mb-2">{t('card_not_found')}</h1>
                     <p className="text-muted-foreground mb-6">{t('card_load_error')}</p>
                     <Button onClick={() => router.push('/')}>{t('go_home')}</Button>
                 </div>
-                <Footer />
             </>
         );
     }
 
     return (
         <>
-            <Header />
             <main className="container mx-auto px-4 py-8">
                 {/* Back button */}
                 <Button variant="ghost" className="mb-6 gap-2" onClick={() => router.back()}>
@@ -342,7 +335,6 @@ export default function SoccerCardDetailsPage() {
                     </div>
                 </div>
             </main>
-            <Footer />
         </>
     );
 }

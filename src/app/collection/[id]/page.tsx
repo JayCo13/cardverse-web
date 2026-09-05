@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useSupabase, useUser } from "@/lib/supabase";
-import { Header } from "@/components/layout/header";
-import { Footer } from "@/components/layout/footer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -159,7 +157,6 @@ export default function CardDetailsPage() {
     if (isLoading) {
         return (
             <>
-                <Header />
                 <div className="container mx-auto px-4 py-8">
                     <Skeleton className="h-8 w-32 mb-6" />
                     <div className="grid md:grid-cols-2 gap-8">
@@ -171,7 +168,6 @@ export default function CardDetailsPage() {
                         </div>
                     </div>
                 </div>
-                <Footer />
             </>
         );
     }
@@ -179,7 +175,6 @@ export default function CardDetailsPage() {
     if (!card) {
         return (
             <>
-                <Header />
                 <div className="container mx-auto px-4 py-16 text-center">
                     <Package className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
                     <h1 className="text-2xl font-bold mb-2">{t('coll_card_not_found')}</h1>
@@ -190,14 +185,12 @@ export default function CardDetailsPage() {
                         <Link href="/collection">{t('coll_back')}</Link>
                     </Button>
                 </div>
-                <Footer />
             </>
         );
     }
 
     return (
         <>
-            <Header />
             <main className="container mx-auto px-4 py-8">
                 {/* Back Button */}
                 <Button
@@ -490,7 +483,6 @@ export default function CardDetailsPage() {
                     </div>
                 </div>
             </main>
-            <Footer />
         </>
     );
 }

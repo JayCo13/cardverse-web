@@ -2,8 +2,6 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { Header } from '@/components/layout/header';
-import { Footer } from '@/components/layout/footer';
 import { CardItem } from '@/components/card-item';
 import type { Card, CardCategory, CardCondition } from '@/lib/types';
 import { useLocalization } from '@/context/localization-context';
@@ -141,8 +139,7 @@ export default function BidPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Header />
+    <div className="flex flex-1 flex-col">
       <main className="flex-1 container mx-auto px-4 py-8">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold" style={{ fontFamily: "'Orbitron', sans-serif" }}>{t('bid_title')}</h1>
@@ -189,7 +186,6 @@ export default function BidPage() {
           </div>
         </div>
       </main>
-      <Footer />
     </div>
   );
 }

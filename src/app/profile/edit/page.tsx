@@ -3,8 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useSupabase, useUser, useAuth } from "@/lib/supabase";
-import { Header } from "@/components/layout/header";
-import { Footer } from "@/components/layout/footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -389,7 +387,6 @@ export default function EditProfilePage() {
     if (!isUserLoading && !user) {
         return (
             <>
-                <Header />
                 <div className="container mx-auto px-4 py-16 text-center min-h-[60vh] flex flex-col items-center justify-center">
                     <User className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
                     <h1 className="text-2xl font-bold mb-2">{copy.loginTitle}</h1>
@@ -398,7 +395,6 @@ export default function EditProfilePage() {
                     </p>
                     <Button onClick={() => setOpen(true)} className="min-w-[120px]">{copy.loginButton}</Button>
                 </div>
-                <Footer />
             </>
         );
     }
@@ -406,11 +402,9 @@ export default function EditProfilePage() {
     if (isUserLoading || isLoading) {
         return (
             <>
-                <Header />
                 <div className="container mx-auto px-4 py-8 max-w-4xl min-h-[60vh]">
                     <Skeleton className="h-[400px] w-full rounded-2xl mb-6" />
                 </div>
-                <Footer />
             </>
         );
     }
@@ -419,7 +413,6 @@ export default function EditProfilePage() {
 
     return (
         <>
-            <Header />
             <main className="container mx-auto px-4 py-8 max-w-4xl min-h-[70vh]">
                 <div className="flex items-center gap-4 mb-8">
                     <Link href="/profile">
@@ -706,7 +699,6 @@ export default function EditProfilePage() {
                     </div>
                 </Tabs>
             </main>
-            <Footer />
         </>
     );
 }

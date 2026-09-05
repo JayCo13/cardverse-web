@@ -7,8 +7,6 @@ import { hasUsableShipping } from '@/lib/shipping-fee';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Header } from '@/components/layout/header';
-import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -2604,8 +2602,7 @@ export default function CreateListingPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Header />
+    <div className="flex flex-1 flex-col">
       <main className="flex-1 container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
           <Card>
@@ -2619,7 +2616,6 @@ export default function CreateListingPage() {
           </Card>
         </div>
       </main>
-      <Footer />
     </div>
   );
 }

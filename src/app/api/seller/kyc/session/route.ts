@@ -292,9 +292,22 @@ export async function POST(request: NextRequest) {
  * has no grants for `authenticated`, so the decision payload (document images,
  * MRZ, scores) can never be pulled client-side.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
     const startedAt = Date.now();
     const remainingMs = () => FUNCTION_BUDGET_MS - (Date.now() - startedAt);
+
+    /**
+     * Asking the provider costs a live HTTP call to Didit — measured at 4.3s on
+     * production — and it is only ever useful to someone actually waiting on a
+     * verdict: the callback page, the in-flight poll loop, and the explicit
+     * "check again" button. Opening /sell is not that. Every seller paid those
+     * seconds on page load to re-learn a status that had not moved in weeks.
+     *
+     * So the poll is opt-in. Without `?poll=1` this answers from the stored
+     * row, which is one database read and what the webhook keeps current
+     * anyway.
+     */
+    const shouldPollProvider = request.nextUrl.searchParams.get('poll') === '1';
 
     try {
         const supabase = await createServerSupabaseClient();
@@ -322,7 +335,7 @@ export async function GET() {
         // Webhooks can be delayed or lost. If the user is back on our callback
         // page and the session is still open, ask the provider directly rather
         // than leaving the UI spinning.
-        if (POLLABLE_STATUSES.includes(row.status as KycStatus)) {
+        if (shouldPollProvider && POLLABLE_STATUSES.includes(row.status as KycStatus)) {
             try {
                 const provider = getKycProvider();
                 // Bound the adapter too, not just the wait: racing a promise

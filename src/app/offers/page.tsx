@@ -324,8 +324,8 @@ function OffersContent() {
     );
   };
 
-  if (authLoading) return <div className="min-h-screen bg-background"><Header /><main className="mx-auto max-w-6xl space-y-4 px-4 py-8"><Skeleton className="h-12 w-64" /><Skeleton className="h-80 w-full" /></main></div>;
-  if (!user) return <div className="flex min-h-screen flex-col bg-background"><Header /><main className="flex flex-1 items-center justify-center px-4"><Card className="max-w-md"><CardContent className="p-8 text-center"><HandCoins className="mx-auto mb-4 h-12 w-12 text-orange-400" /><p className="text-lg font-semibold">{copy.signIn}</p></CardContent></Card></main><Footer /></div>;
+  if (authLoading) return <div className="flex flex-1 flex-col bg-background"><main className="mx-auto max-w-6xl space-y-4 px-4 py-8"><Skeleton className="h-12 w-64" /><Skeleton className="h-80 w-full" /></main></div>;
+  if (!user) return <div className="flex flex-1 flex-col bg-background"><main className="flex flex-1 items-center justify-center px-4"><Card className="max-w-md"><CardContent className="p-8 text-center"><HandCoins className="mx-auto mb-4 h-12 w-12 text-orange-400" /><p className="text-lg font-semibold">{copy.signIn}</p></CardContent></Card></main></div>;
 
   const statusFilters: Array<{ id: StatusFilter; label: string; count?: number }> = [
     { id: "all", label: copy.all }, { id: "pending", label: copy.pending, count: counts.pending },
@@ -334,8 +334,7 @@ function OffersContent() {
   const selectedCard = focusedCard || items.find(item => item.cardId === cardId)?.card || null;
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <Header />
+    <div className="flex flex-1 flex-col bg-background">
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:py-10">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div><h1 className="flex items-center gap-2 text-2xl font-bold sm:text-3xl"><HandCoins className="h-7 w-7 text-orange-400" />{copy.title}</h1><p className="mt-1 text-sm text-muted-foreground">{copy.subtitle}</p></div>
@@ -380,7 +379,6 @@ function OffersContent() {
                     })}{nextCursor && <Button variant="outline" className="w-full" onClick={() => void loadOffers(nextCursor, true)} loading={isLoadingMore}>{isLoadingMore ? null : <Loader2 className="mr-2 hidden h-4 w-4" />}{copy.loadMore}</Button>}</div>
                   </div>}
       </main>
-      <Footer />
 
       <AlertDialog open={Boolean(pendingAction)} onOpenChange={open => { if (!open && !actionOfferId) setPendingAction(null); }}>
         <AlertDialogContent className="max-sm:bottom-0 max-sm:left-0 max-sm:top-auto max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none max-sm:rounded-t-2xl">
@@ -393,5 +391,5 @@ function OffersContent() {
 }
 
 export default function OffersPage() {
-  return <Suspense fallback={<div className="min-h-screen bg-background"><Header /><main className="mx-auto max-w-6xl px-4 py-8"><Skeleton className="h-96 w-full" /></main></div>}><OffersContent /></Suspense>;
+  return <Suspense fallback={<div className="flex flex-1 flex-col bg-background"><main className="mx-auto max-w-6xl px-4 py-8"><Skeleton className="h-96 w-full" /></main></div>}><OffersContent /></Suspense>;
 }
