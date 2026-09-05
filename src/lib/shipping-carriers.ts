@@ -55,19 +55,20 @@ export const getTrackingUrl = (code: string | null | undefined, trackingNumber: 
 };
 
 /**
- * Does the platform book this carrier itself?
+ * Does the seller have to supply a tracking number for this carrier?
  *
- * GHN only, and not for convenience: GHN sends webhook events to the account
- * that registered the endpoint, so a shipment booked in the seller's own GHN
- * account never reports delivery back to us. Booking it under the platform shop
- * is what makes delivery tracking exist at all — and it means the seller has no
- * tracking number to type, because there is no parcel until we create it.
+ * Every carrier except hand delivery. Sellers book their own shipments on the
+ * carrier's own system and paste the code back here; the platform books nothing.
+ *
+ * The consequence to know: GHN registers its webhook per Client ID, so events
+ * for a parcel booked in a seller's own GHN account are delivered to that
+ * account, never to us. Reading delivery status for seller-booked parcels
+ * therefore needs a source that is not tied to the booking account — a
+ * multi-carrier tracking service — and that one source covers Viettel Post and
+ * SPX too, neither of which we integrate with either.
  */
-export const platformBooksShipment = (code: string | null | undefined): boolean => code === 'ghn';
-
-/** Does the seller have to supply a tracking number for this carrier? */
 export const sellerSuppliesTracking = (code: string | null | undefined): boolean =>
-  !!code && code !== 'self' && !platformBooksShipment(code);
+  !!code && code !== 'self';
 
 /** Turn stored carrier codes into their short labels, e.g. ['ghn','self'] → 'GHN, Tự giao'. */
 export const carrierShortLabels = (codes: string[] | null | undefined): string =>

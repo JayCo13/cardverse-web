@@ -16,7 +16,7 @@ import { useLocalization } from '@/context/localization-context';
 import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { useToast } from '@/hooks/use-toast';
 import { optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
-import { getCarrier, getTrackingUrl, getDeliveryDays, SHIPPING_CARRIERS, platformBooksShipment, sellerSuppliesTracking } from '@/lib/shipping-carriers';
+import { getCarrier, getTrackingUrl, getDeliveryDays, SHIPPING_CARRIERS, sellerSuppliesTracking } from '@/lib/shipping-carriers';
 import { VerifiedSellerBadge } from '@/components/verified-seller-badge';
 import { getCloudinarySignature, uploadVideoDirectToCloudinary } from '@/lib/cloudinary-direct';
 import {
@@ -513,15 +513,6 @@ export default function OrderDetailsPage() {
             )}
             {sellerSuppliesTracking(effectiveCarrier) && (
               <Input value={trackingInput} onChange={e => setTrackingInput(e.target.value)} placeholder={tx('VD: LWtxxxxxxx', 'e.g. LWtxxxxxxx', '例: LWtxxxxxxx')} />
-            )}
-            {platformBooksShipment(effectiveCarrier) && (
-              <p className="rounded-lg bg-muted/40 p-2.5 text-xs leading-5 text-muted-foreground">
-                {tx(
-                  'CardVerse sẽ tạo vận đơn GHN và GHN đến lấy hàng tại địa chỉ của bạn — không cần nhập mã. Mã vận đơn hiện ra sau khi tạo xong, và trạng thái giao hàng tự cập nhật.',
-                  'CardVerse books the GHN shipment and GHN collects from your address — no tracking number to enter. The code appears once it is booked, and delivery status updates on its own.',
-                  'CardVerseがGHNの配送を手配し、GHNがあなたの住所に集荷します。追跡番号の入力は不要です。',
-                )}
-              </p>
             )}
             <div className="space-y-1.5 rounded-lg border border-border/60 p-3">
               <p className="flex items-center gap-2 text-sm font-medium">

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { isEvidenceVideoUrl } from '@/lib/evidence-video';
-import { createShippingOrder } from '@/lib/ghn';
 import { getCarrier, getTrackingUrl, getDeliveryDays } from '@/lib/shipping-carriers';
 import { sendOrderShippedEmail } from '@/lib/mail';
 import { expireUnshippedPaidOrders } from '@/lib/expire-orders';
@@ -123,76 +122,10 @@ export async function PATCH(request: NextRequest) {
                 }
                 const carrierCode = typeof shipping_provider === 'string' ? shipping_provider.trim() : '';
                 const packingVideoUrl = evidenceVideoUrl(body.packing_video_url);
-                let trackingNo = typeof tracking_number === 'string' ? tracking_number.trim() : '';
+                const trackingNo = typeof tracking_number === 'string' ? tracking_number.trim() : '';
                 const carrier = getCarrier(carrierCode);
                 if (!carrier) {
                     return NextResponse.json({ error: 'Select a valid shipping carrier.', code: 'invalid_carrier' }, { status: 400 });
-                }
-
-                // ── GHN: the platform books the shipment under its own shop ──
-                //
-                // GHN delivers webhook events only to the account that registered
-                // the endpoint, so a shipment the seller books in their own GHN
-                // account can never tell us it was delivered — whatever code they
-                // paste in. Booking it here is what makes `ghn_status` (and with
-                // it escrow auto-release and the dispute verdict) work at all.
-                //
-                // The code is taken from GHN's response and never from the
-                // request body: it is the join key the delivery webhook trusts.
-                let ghnOrderCode: string | null = order.ghn_order_code || null;
-                if (carrierCode === 'ghn' && !ghnOrderCode) {
-                    const { data: sellerProfile } = await service
-                        .from('profiles')
-                        .select('default_shipping_name, default_shipping_phone, default_shipping_detail, default_shipping_ward_name, default_shipping_district_id, address_detail, address_ward_name, address_district_id, display_name, phone')
-                        .eq('id', user.id)
-                        .single();
-                    const p = (sellerProfile || {}) as Record<string, any>;
-                    const fromDistrictId = p.default_shipping_district_id || p.address_district_id;
-                    const fromWardName = p.default_shipping_ward_name || p.address_ward_name;
-                    const fromAddress = p.default_shipping_detail || p.address_detail;
-                    const fromPhone = p.default_shipping_phone || p.phone;
-                    if (!fromDistrictId || !fromWardName || !fromAddress || !fromPhone) {
-                        return NextResponse.json({
-                            error: 'Địa chỉ lấy hàng của bạn chưa đầy đủ nên chưa tạo được vận đơn GHN. Cập nhật địa chỉ trong phần Bán hàng, hoặc chọn đơn vị vận chuyển khác.',
-                            code: 'seller_pickup_address_incomplete',
-                        }, { status: 409 });
-                    }
-                    if (!order.to_district_id || !order.to_ward_code || !order.to_name || !order.to_phone) {
-                        return NextResponse.json({
-                            error: 'Địa chỉ nhận hàng của đơn này không đủ để tạo vận đơn GHN.',
-                            code: 'buyer_address_incomplete',
-                        }, { status: 409 });
-                    }
-                    try {
-                        const created = await createShippingOrder({
-                            client_order_code: String(order.id),
-                            to_name: String(order.to_name),
-                            to_phone: String(order.to_phone),
-                            to_address: String(order.shipping_address || order.to_address_detail || ''),
-                            to_ward_code: String(order.to_ward_code),
-                            to_district_id: Number(order.to_district_id),
-                            from_name: p.default_shipping_name || p.display_name || undefined,
-                            from_phone: String(fromPhone),
-                            from_address: String(fromAddress),
-                            from_ward_name: String(fromWardName),
-                            from_district_id: Number(fromDistrictId),
-                            // The buyer already paid through escrow — nothing is
-                            // collected on delivery.
-                            cod_amount: 0,
-                            insurance_value: Math.min(5_000_000, Math.max(0, Number(order.amount) || 0)),
-                        });
-                        ghnOrderCode = created.order_code;
-                        trackingNo = created.order_code;
-                    } catch (ghnError: any) {
-                        return NextResponse.json({
-                            error: `Không tạo được vận đơn GHN: ${ghnError?.message || 'lỗi không rõ'}. Bạn có thể thử lại hoặc chọn đơn vị vận chuyển khác.`,
-                            code: 'ghn_order_creation_failed',
-                        }, { status: 502 });
-                    }
-                } else if (ghnOrderCode) {
-                    // A retry after the booking succeeded but the transition did
-                    // not: reuse the code rather than booking a second parcel.
-                    trackingNo = ghnOrderCode;
                 }
 
                 // Hand delivery ('self') may skip the tracking number; carriers require it.
@@ -216,7 +149,6 @@ export async function PATCH(request: NextRequest) {
                             shipping_provider: carrierCode,
                             // Accepted at dispatch only — see the RPC.
                             packing_video_url: packingVideoUrl,
-                            ghn_order_code: ghnOrderCode,
                             auto_complete_at: new Date(Date.now() + (estMaxDays + 3) * 24 * 60 * 60 * 1000).toISOString(),
                         },
                     } as never,
@@ -255,7 +187,6 @@ export async function PATCH(request: NextRequest) {
                     tracking_number: trackingNo,
                     shipping_provider: carrierCode,
                     packing_video_url: packingVideoUrl,
-                    ghn_order_code: ghnOrderCode,
                 });
             }
 
