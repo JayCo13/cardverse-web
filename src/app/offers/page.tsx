@@ -23,6 +23,7 @@ import { useLocalization } from "@/context/localization-context";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth, useSupabase } from "@/lib/supabase";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
+import { UserLink } from "@/components/user-link";
 import { VerifiedSellerBadge } from "@/components/verified-seller-badge";
 
 type InboxView = "received" | "sent";
@@ -39,7 +40,11 @@ type OfferItem = {
   transactionId: string | null;
   createdAt: string;
   conversationId: string | null;
-  card: { id: string; name: string; imageUrl: string | null; price: number | null; status: string } | null;
+  orderId: string | null;
+  card: {
+    id: string; name: string; imageUrl: string | null; price: number | null; status: string;
+    isBundle: boolean; bundleItems: Record<string, unknown>[] | null;
+  } | null;
   counterparty: { id: string; display_name: string | null; profile_image_url: string | null; seller_verified: boolean | null } | null;
   bundleSelection: { title?: string; price?: number }[] | null;
 };
@@ -92,7 +97,8 @@ function OffersContent() {
     empty: "Chưa có offer trong mục này.", loadFailed: "Không thể tải danh sách offer.", retry: "Thử lại", loadMore: "Xem thêm",
     buyer: "Người mua", seller: "Người bán", askingPrice: "Giá niêm yết", offered: "Giá đề nghị", offeredCards: "Thẻ được offer", viewCard: "Xem thẻ",
     message: "Nhắn tin", accept: "Chấp nhận", reject: "Từ chối", pay: "Thanh toán ngay",
-    pendingStatus: "Đang chờ phản hồi", chosenStatus: "Đã chấp nhận — chờ thanh toán", acceptedStatus: "Đã chấp nhận",
+    viewOrder: "Xem đơn hàng", cardTaken: "Thẻ đã có người khác mua",
+    pendingStatus: "Đang chờ phản hồi", chosenStatus: "Đã chấp nhận, chờ thanh toán", acceptedStatus: "Đã mua",
     rejectedStatus: "Đã từ chối", expiredStatus: "Đã hết hạn", backAll: "Xem tất cả offer",
     acceptTitle: "Chấp nhận offer này?", acceptDesc: "Listing sẽ được giữ cho buyer này trong thời hạn thanh toán. Tất cả offer đang chờ khác của cùng thẻ sẽ tự động bị từ chối.",
     rejectTitle: "Từ chối offer này?", rejectDesc: "Buyer sẽ được thông báo và có thể gửi lại một offer cao hơn.", cancel: "Huỷ",
@@ -105,7 +111,8 @@ function OffersContent() {
     empty: "この項目にオファーはありません。", loadFailed: "オファーを読み込めません。", retry: "再試行", loadMore: "さらに表示",
     buyer: "購入者", seller: "販売者", askingPrice: "販売価格", offered: "提示価格", offeredCards: "対象カード", viewCard: "カードを見る",
     message: "メッセージ", accept: "承認", reject: "拒否", pay: "今すぐ支払う",
-    pendingStatus: "返答待ち", chosenStatus: "承認済み — 支払い待ち", acceptedStatus: "承認済み",
+    viewOrder: "注文を見る", cardTaken: "このカードは他の方が購入しました",
+    pendingStatus: "返答待ち", chosenStatus: "承認済み・支払い待ち", acceptedStatus: "購入済み",
     rejectedStatus: "拒否済み", expiredStatus: "期限切れ", backAll: "すべてのオファーを見る",
     acceptTitle: "このオファーを承認しますか？", acceptDesc: "支払い期限までこの購入者のために出品が確保され、同じカードの他の保留中オファーは自動的に拒否されます。",
     rejectTitle: "このオファーを拒否しますか？", rejectDesc: "購入者に通知され、より高い価格で再提案できます。", cancel: "キャンセル",
@@ -118,7 +125,8 @@ function OffersContent() {
     empty: "There are no offers in this view.", loadFailed: "Unable to load offers.", retry: "Try again", loadMore: "Load more",
     buyer: "Buyer", seller: "Seller", askingPrice: "Asking price", offered: "Offer", offeredCards: "Cards offered on", viewCard: "View card",
     message: "Message", accept: "Accept", reject: "Reject", pay: "Pay now",
-    pendingStatus: "Waiting for response", chosenStatus: "Accepted — awaiting payment", acceptedStatus: "Accepted",
+    viewOrder: "View order", cardTaken: "Another buyer bought this card",
+    pendingStatus: "Waiting for response", chosenStatus: "Accepted, awaiting payment", acceptedStatus: "Purchased",
     rejectedStatus: "Rejected", expiredStatus: "Expired", backAll: "View all offers",
     acceptTitle: "Accept this offer?", acceptDesc: "The listing will be reserved for this buyer during the payment window. Every other pending offer for the same card will be rejected automatically.",
     rejectTitle: "Reject this offer?", rejectDesc: "The buyer will be notified and may submit a higher offer.", cancel: "Cancel",
@@ -189,9 +197,50 @@ function OffersContent() {
     expired: copy.expiredStatus,
   })[offerStatus];
 
+  /**
+   * The card behind a still-unpaid offer is no longer buyable.
+   *
+   * The scheduled sweep closes these within ten minutes, but until it runs the
+   * row still says `chosen`, and paying would fail. `card.status` has been in
+   * this response all along and was never read.
+   *
+   * A `chosen` offer's own card sits at `in_transaction` — that reservation is
+   * this buyer's — so only `sold` (or a card that has vanished) counts as lost.
+   *
+   * A partial bundle offer reserves nothing, so it needs the second test: its
+   * named items can be bought from under it while the listing stays `active`
+   * with the rest. `/api/checkout` re-matches the selection against the current
+   * `bundle_items` and 409s, so without this the button is a dead end.
+   */
+  const cardIsGone = (offer: OfferItem) => {
+    if (!offer.card) return true;
+    if (offer.card.status === "sold") return true;
+    const selection = offer.bundleSelection;
+    if (!selection || selection.length === 0) return false;
+    // Same rule as `bundle_selection_available` in SQL: match by value AND
+    // occurrence, so two identical cards in a bundle stay two distinct units.
+    // Both arrays come back from the same jsonb column, so their keys are in
+    // the same normalised order and stringifying is a safe identity.
+    const remaining = new Map<string, number>();
+    for (const item of offer.card.bundleItems ?? []) {
+      const key = JSON.stringify(item);
+      remaining.set(key, (remaining.get(key) ?? 0) + 1);
+    }
+    for (const item of selection) {
+      const key = JSON.stringify(item);
+      const left = remaining.get(key) ?? 0;
+      if (left === 0) return true;
+      remaining.set(key, left - 1);
+    }
+    return false;
+  };
+
+  // `accepted` is a settled purchase, not an open one, so it wears the muted
+  // colour of the other finished states. Only `chosen` still wants something
+  // from the buyer.
   const statusClass = (offerStatus: OfferStatus) => offerStatus === "pending"
     ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
-    : offerStatus === "chosen" || offerStatus === "accepted"
+    : offerStatus === "chosen"
       ? "border-green-500/40 bg-green-500/10 text-green-300"
       : "border-white/10 bg-muted/30 text-muted-foreground";
 
@@ -262,15 +311,17 @@ function OffersContent() {
     return (
       <div key={offer.id} className="rounded-xl border border-white/10 bg-background/40 p-4 transition-colors hover:border-orange-500/25">
         <div className="flex items-start gap-3">
-          <Avatar className="h-10 w-10 border border-white/10">
-            {offer.counterparty?.profile_image_url && <AvatarImage src={offer.counterparty.profile_image_url} alt="" />}
-            <AvatarFallback>{initials(personName)}</AvatarFallback>
-          </Avatar>
+          <UserLink variant="plain" userId={offer.counterparty?.id}>
+            <Avatar className="h-10 w-10 border border-white/10">
+              {offer.counterparty?.profile_image_url && <AvatarImage src={offer.counterparty.profile_image_url} alt="" />}
+              <AvatarFallback>{initials(personName)}</AvatarFallback>
+            </Avatar>
+          </UserLink>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <p className="flex min-w-0 items-center gap-1 font-medium">
-                  <span className="truncate">{personName}</span>
+                  <UserLink userId={offer.counterparty?.id} className="truncate">{personName}</UserLink>
                   <VerifiedSellerBadge verified={offer.counterparty?.seller_verified} className="h-3.5 w-3.5" />
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">{new Date(offer.createdAt).toLocaleString(locale)}</p>
@@ -312,9 +363,23 @@ function OffersContent() {
                   </Button>
                 </>
               )}
-              {view === "sent" && (offer.status === "chosen" || offer.status === "accepted") && (
-                <Button type="button" size="sm" asChild className="min-h-11 bg-orange-500 text-white hover:bg-orange-600 sm:min-h-9">
-                  <Link href={`/checkout?offerId=${offer.id}`}><CreditCard className="mr-1.5 h-4 w-4" />{copy.pay}</Link>
+              {/* Only `chosen` is unpaid. `accepted` means the payment finalisers
+                  already ran, so it gets a way back to the order instead. And
+                  even a `chosen` offer is unpayable once its card is gone —
+                  checkout would 409 — so say so here rather than send the buyer
+                  into a dead end. */}
+              {view === "sent" && offer.status === "chosen" && (
+                cardIsGone(offer) ? (
+                  <p className="col-span-2 self-center text-xs text-muted-foreground sm:col-span-1">{copy.cardTaken}</p>
+                ) : (
+                  <Button type="button" size="sm" asChild className="min-h-11 bg-orange-500 text-white hover:bg-orange-600 sm:min-h-9">
+                    <Link href={`/checkout?offerId=${offer.id}`}><CreditCard className="mr-1.5 h-4 w-4" />{copy.pay}</Link>
+                  </Button>
+                )
+              )}
+              {view === "sent" && offer.status === "accepted" && offer.orderId && (
+                <Button type="button" variant="outline" size="sm" asChild className="min-h-11 sm:min-h-9">
+                  <Link href={`/orders/${offer.orderId}`}><Package className="mr-1.5 h-4 w-4" />{copy.viewOrder}</Link>
                 </Button>
               )}
             </div>

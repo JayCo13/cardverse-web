@@ -384,10 +384,10 @@ export function CameraScanner({
                 </button>
                 <p className="text-xs text-white/45 text-center max-w-[260px]">
                     {autoOn
-                        ? (locked ? "✓ Đã khóa — đang chụp"
+                        ? (locked ? "✓ Đã khóa, đang chụp"
                             : focusing ? "Đang lấy nét… giữ yên cho rõ số thẻ"
                                 : progress > 0 ? "Ổn định… chuẩn bị chụp"
-                                    : "Trùm khung lên thẻ (thật hoặc trên màn hình) — máy tự chụp")
+                                    : "Trùm khung lên thẻ (thật hoặc trên màn hình), máy tự chụp")
                         : "Trùm khung lên thẻ rồi bấm để quét"}
                 </p>
             </div>

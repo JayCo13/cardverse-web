@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { CheckoutModal } from "@/components/checkout-modal";
 import { ChatDrawer } from "@/components/chat-drawer";
+import { UserLink } from "@/components/user-link";
 import { OfferModal } from "@/components/offer-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1068,16 +1069,20 @@ export default function CardDetailsPage() {
                                         {card.name}
                                     </h1>
                                     <div className="mt-4 flex min-w-0 items-center gap-2.5">
-                                        {seller?.profile_image_url ? (
-                                            <Image src={seller.profile_image_url} alt="" width={44} height={44} className="shrink-0 rounded-full object-cover" />
-                                        ) : (
-                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-500 font-bold text-white">
-                                                {(seller?.display_name || "C").charAt(0).toUpperCase()}
-                                            </div>
-                                        )}
+                                        <UserLink variant="plain" userId={card.sellerId} className="shrink-0">
+                                            {seller?.profile_image_url ? (
+                                                <Image src={seller.profile_image_url} alt="" width={44} height={44} className="shrink-0 rounded-full object-cover" />
+                                            ) : (
+                                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-500 font-bold text-white">
+                                                    {(seller?.display_name || "C").charAt(0).toUpperCase()}
+                                                </div>
+                                            )}
+                                        </UserLink>
                                         <div className="min-w-0 flex-1 overflow-hidden">
                                             <div className="flex min-w-0 items-center gap-1">
-                                                <span className="truncate font-medium">{seller?.display_name || card.sellerName || copy.seller}</span>
+                                                <UserLink userId={card.sellerId} className="truncate font-medium">
+                                                    {seller?.display_name || card.sellerName || copy.seller}
+                                                </UserLink>
                                                 {seller?.seller_verified && <BadgeCheck className="h-4 w-4 shrink-0 text-orange-500" />}
                                             </div>
                                             <p className="truncate text-xs text-muted-foreground">

@@ -322,7 +322,12 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                     />
                 </div>
 
+                {/* Keyed per row: the picker seeds its province/district/ward
+                    options from the address it mounts with, so switching from
+                    one address to another (or to a blank "add") has to be a
+                    remount, not a re-render. */}
                 <AddressPicker
+                    key={editing?.id ?? 'new'}
                     value={form.address ?? undefined}
                     onChange={handleAddressChange}
                     detailPlaceholder={copy.detailPlaceholder}

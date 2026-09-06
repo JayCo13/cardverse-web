@@ -45,6 +45,7 @@ export default function EditProfilePage() {
             tabAddresses: "Sổ địa chỉ",
             tabAddressesMobile: "Địa chỉ",
             tabSecurity: "Bảo mật",
+            tabSecurityMobile: "Bảo mật",
             generalTitle: "Hồ sơ cá nhân",
             generalDescription: "Cập nhật ảnh đại diện và thông tin liên hệ chính.",
             avatarHint: "Tối đa 5MB. JPG, PNG.",
@@ -102,6 +103,7 @@ export default function EditProfilePage() {
                 tabAddresses: "住所録",
                 tabAddressesMobile: "住所",
                 tabSecurity: "セキュリティ",
+                tabSecurityMobile: "セキュリティ",
                 generalTitle: "プロフィール",
                 generalDescription: "プロフィール画像と主な連絡先情報を更新します。",
                 avatarHint: "最大5MB。JPG、PNG。",
@@ -158,6 +160,7 @@ export default function EditProfilePage() {
                 tabAddresses: "Address Book",
                 tabAddressesMobile: "Addresses",
                 tabSecurity: "Security",
+                tabSecurityMobile: "Security",
                 generalTitle: "Profile",
                 generalDescription: "Update your avatar and primary contact details.",
                 avatarHint: "Up to 5MB. JPG, PNG.",
@@ -449,6 +452,7 @@ export default function EditProfilePage() {
                         <TabsTrigger value="security" className="flex justify-start gap-3 w-full data-[state=active]:bg-primary/5 data-[state=active]:text-primary border border-transparent data-[state=active]:border-primary/20 py-2.5 px-4 rounded-lg transition-all">
                             <Lock className="h-4 w-4" />
                             <span className="hidden sm:inline">{copy.tabSecurity}</span>
+                            <span className="sm:hidden">{copy.tabSecurityMobile}</span>
                         </TabsTrigger>
                     </TabsList>
 
@@ -590,7 +594,13 @@ export default function EditProfilePage() {
                                             </div>
                                             <div className="flex shrink-0 gap-3">
                                                 <Link href="/pricing">
-                                                    <Button variant={subscription ? "outline" : "default"} className="border-primary text-primary hover:bg-primary/10">
+                                                    {/* `text-primary` on the solid variant painted orange on orange:
+                                                        the label only appeared once hover lightened the background.
+                                                        The primary tint belongs to the outline variant alone. */}
+                                                    <Button
+                                                        variant={subscription ? "outline" : "default"}
+                                                        className={subscription ? "border-primary text-primary hover:bg-primary/10" : undefined}
+                                                    >
                                                         {subscription ? copy.changePlan : copy.upgradeNow}
                                                         <Zap className="w-4 h-4 ml-2" />
                                                     </Button>

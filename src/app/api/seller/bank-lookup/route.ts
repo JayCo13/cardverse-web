@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
                 lookup.reason === 'rate_limited'
                     ? 'Bạn đã tra cứu quá nhiều lần. Vui lòng thử lại sau 1 giờ.'
                     : lookup.reason === 'not_configured' || lookup.reason === 'unauthorized' || lookup.reason === 'insufficient_balance'
-                        ? 'Tra cứu tự động chưa được bật. Vui lòng nhập tên chủ tài khoản đúng như trên giấy tờ — admin sẽ đối chiếu khi duyệt.'
+                        ? 'Tra cứu tự động chưa được bật. Vui lòng nhập tên chủ tài khoản đúng như trên giấy tờ. Admin sẽ đối chiếu khi duyệt.'
                         : 'Dịch vụ tra cứu ngân hàng đang gián đoạn. Bạn vẫn có thể gửi hồ sơ, admin sẽ kiểm tra thủ công.';
 
             return NextResponse.json(

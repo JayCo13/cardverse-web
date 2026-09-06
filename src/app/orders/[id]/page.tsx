@@ -16,6 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
 import { getCarrier, getTrackingUrl, getDeliveryDays, SHIPPING_CARRIERS, sellerSuppliesTracking } from '@/lib/shipping-carriers';
 import { VerifiedSellerBadge } from '@/components/verified-seller-badge';
+import { UserLink } from '@/components/user-link';
 import { ParcelTrackingDialog } from '@/components/parcel-tracking-dialog';
 import { PackingVideoField } from '@/components/packing-video-field';
 import { getCloudinarySignature, uploadVideoDirectToCloudinary } from '@/lib/cloudinary-direct';
@@ -45,7 +46,7 @@ export default function OrderDetailsPage() {
   const tx = (vi: string, en: string, ja: string) => (locale === 'ja-JP' ? ja : locale === 'en-US' ? en : vi);
   const fmt = (n: number | null | undefined) =>
     new Intl.NumberFormat(locale, { style: 'currency', currency: 'VND' }).format(Number(n || 0));
-  const dt = (s: string | null | undefined) => (s ? new Date(s).toLocaleString(locale) : '—');
+  const dt = (s: string | null | undefined) => (s ? new Date(s).toLocaleString(locale) : '-');
 
   const [order, setOrder] = useState<any | null>(null);
   const [role, setRole] = useState<'buyer' | 'seller'>('buyer');
@@ -84,6 +85,7 @@ export default function OrderDetailsPage() {
   const trackingUrl = order ? getTrackingUrl(order.metadata?.shipping_carrier, order.tracking_number) : null;
   const bundleSel: { title: string; price: number }[] = Array.isArray(order?.metadata?.bundle_selection) ? order.metadata.bundle_selection : [];
   const counterparty = order ? (isBuyer ? order.seller : order.buyer) : null;
+  const counterpartyId: string | null = counterparty?.id ?? null;
 
   // Shipping timing (from carrier pickup → delivery estimate).
   const estDays = order ? getDeliveryDays(order.metadata?.shipping_carrier || order.shipping_provider) : null;
@@ -195,7 +197,7 @@ export default function OrderDetailsPage() {
               const deadlineTs = order.ship_deadline ? new Date(order.ship_deadline).getTime() : new Date(order.created_at).getTime() + 24 * 3600 * 1000;
               const rem = deadlineTs - nowTs;
               if (rem <= 0) {
-                return <div className="flex items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300"><Clock className="h-4 w-4" />{tx('Quá hạn giao hàng — đơn sẽ tự huỷ & hoàn tiền.', 'Overdue — the order will auto-cancel and refund.', '発送期限切れ — 自動キャンセル・返金されます。')}</div>;
+                return <div className="flex items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300"><Clock className="h-4 w-4" />{tx('Quá hạn giao hàng. Đơn sẽ tự huỷ & hoàn tiền.', 'Overdue. The order will auto-cancel and refund.', '発送期限切れ。自動キャンセル・返金されます。')}</div>;
               }
               const h = Math.floor(rem / 3600000), m = Math.floor((rem % 3600000) / 60000), s = Math.floor((rem % 60000) / 1000);
               return (
@@ -291,14 +293,16 @@ export default function OrderDetailsPage() {
             <div className="space-y-3 rounded-xl border bg-card p-5">
               <h2 className="flex items-center gap-2 text-sm font-semibold"><User className="h-4 w-4 text-orange-400" />{isBuyer ? tx('Người bán', 'Seller', '販売者') : tx('Người mua', 'Buyer', '購入者')}</h2>
               <div className="flex items-center gap-3">
-                {counterparty?.profile_image_url ? (
-                  <Image src={counterparty.profile_image_url} alt="" width={40} height={40} className="h-10 w-10 rounded-full object-cover" />
-                ) : (
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500 font-bold text-white">{(counterparty?.display_name || counterparty?.email || 'C').charAt(0).toUpperCase()}</div>
-                )}
+                <UserLink variant="plain" userId={counterpartyId} className="shrink-0">
+                  {counterparty?.profile_image_url ? (
+                    <Image src={counterparty.profile_image_url} alt="" width={40} height={40} className="h-10 w-10 rounded-full object-cover" />
+                  ) : (
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500 font-bold text-white">{(counterparty?.display_name || counterparty?.email || 'C').charAt(0).toUpperCase()}</div>
+                  )}
+                </UserLink>
                 <div>
                   <p className="flex items-center gap-1 font-medium">
-                    <span className="truncate">{counterparty?.display_name || counterparty?.email || '—'}</span>
+                    <UserLink userId={counterpartyId} className="truncate">{counterparty?.display_name || counterparty?.email || '-'}</UserLink>
                     {isBuyer && <VerifiedSellerBadge verified={counterparty?.seller_verified} />}
                   </p>
                   {isBuyer && counterparty?.seller_rating != null && (
@@ -364,8 +368,8 @@ export default function OrderDetailsPage() {
                   {beforeDispatch && !isBuyer && (
                     <p className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-2.5 text-xs leading-5 text-orange-200">
                       {tx(
-                        'Quay video khi bạn đang đóng gói. Hệ thống chỉ nhận video ở đúng bước bấm “Giao hàng” — không đính thêm được về sau. Nếu có tranh chấp mà bạn không có video còn người mua có, phần thua thuộc về bạn.',
-                        'Film while you pack. The video is only accepted at the moment you press Ship — it cannot be attached later. If a dispute follows and you have no video while the buyer does, you lose it.',
+                        'Quay video khi bạn đang đóng gói. Hệ thống chỉ nhận video ở đúng bước bấm “Giao hàng”, không đính thêm được về sau. Nếu có tranh chấp mà bạn không có video còn người mua có, phần thua thuộc về bạn.',
+                        'Film while you pack. The video is only accepted at the moment you press Ship, and it cannot be attached later. If a dispute follows and you have no video while the buyer does, you lose it.',
                         '梱包中に撮影してください。動画は「発送」を押す時点でのみ受け付けます。後から追加はできません。',
                       )}
                     </p>
@@ -373,8 +377,8 @@ export default function OrderDetailsPage() {
                   {beforeDispatch && isBuyer && (
                     <p className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-2.5 text-xs leading-5 text-orange-200">
                       {tx(
-                        'Khi hàng tới, hãy quay video lúc mở hộp — quay liền mạch từ lúc phong bì còn nguyên. Đơn đã giao mà bạn không có video thì tranh chấp sẽ nghiêng về người bán, kể cả khi thẻ sai hoặc thiếu.',
-                        'When the parcel arrives, film the unboxing — one unbroken take starting with the envelope still sealed. On a delivered order with no video from you, a dispute goes to the seller, even for a wrong or missing card.',
+                        'Khi hàng tới, hãy quay video lúc mở hộp, quay liền mạch từ lúc phong bì còn nguyên. Đơn đã giao mà bạn không có video thì tranh chấp sẽ nghiêng về người bán, kể cả khi thẻ sai hoặc thiếu.',
+                        'When the parcel arrives, film the unboxing in one unbroken take, starting with the envelope still sealed. On a delivered order with no video from you, a dispute goes to the seller, even for a wrong or missing card.',
                         '荷物が届いたら、封を切る前から一度の撮影で開封を記録してください。動画がない場合、配達済みの注文では販売者が有利になります。',
                       )}
                     </p>
@@ -403,8 +407,8 @@ export default function OrderDetailsPage() {
                     <div className="space-y-1.5">
                       <p className="text-xs text-muted-foreground">
                         {order.auto_complete_at
-                          ? tx(`Nộp trước ${dt(order.auto_complete_at)} — sau đó không nhận nữa.`,
-                              `Submit before ${dt(order.auto_complete_at)} — not accepted after that.`,
+                          ? tx(`Nộp trước ${dt(order.auto_complete_at)}. Sau đó không nhận nữa.`,
+                              `Submit before ${dt(order.auto_complete_at)}. Not accepted after that.`,
                               `${dt(order.auto_complete_at)} までに提出してください。`)
                           : tx('Nộp trước khi đơn đóng.', 'Submit before the order closes.', '注文が閉じる前に提出してください。')}
                       </p>
