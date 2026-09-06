@@ -116,6 +116,43 @@ export type TrackingEvent = {
 };
 
 /**
+ * App locale → the language 17TRACK should write its event descriptions in.
+ *
+ * The dialog's own chrome has always been translated, but the timeline inside
+ * it is the carrier's text relayed by the service, so a Vietnamese reader was
+ * getting "Sender is preparing to ship your parcel" under Vietnamese headings.
+ * The service translates on request; the three codes the app speaks are all on
+ * its supported list.
+ */
+const TRACKING_LANGS: Record<string, string> = {
+    'vi-VN': 'vi',
+    'en-US': 'en',
+    'ja-JP': 'ja',
+};
+
+export const trackingLang = (locale: string | null | undefined): string | null =>
+    (locale && TRACKING_LANGS[locale]) || null;
+
+/**
+ * The event text to show, preferring the requested translation.
+ *
+ * `description_translation` is documented but its shape is not, and this file's
+ * nesting was already worked out from live responses rather than from the docs
+ * — so both a bare string and an object carrying the text are accepted, and
+ * anything else falls back to the carrier's own wording. An untranslated event
+ * is worth more than a blank line.
+ */
+function eventDescription(event: Record<string, any>): string | null {
+    const translated = event?.description_translation;
+    if (typeof translated === 'string' && translated.trim()) return translated;
+    if (translated && typeof translated === 'object') {
+        const nested = translated.description ?? translated.text ?? translated.content;
+        if (typeof nested === 'string' && nested.trim()) return nested;
+    }
+    return event?.description || null;
+}
+
+/**
  * The parcel's journey, as the tracking service currently has it.
  *
  * Read-only and safe to call on demand: `gettrackinfo` costs no quota, only
@@ -126,6 +163,7 @@ export type TrackingEvent = {
 export async function fetchCarrierTracking(
     carrier: string,
     trackingNumber: string,
+    lang?: string | null,
 ): Promise<{ status: string; subStatus: string | null; events: TrackingEvent[] } | null> {
     const apiKey = process.env.SEVENTEENTRACK_API_KEY;
     const carrierCode = CARRIER_CODES[carrier];
@@ -135,7 +173,13 @@ export async function fetchCarrierTracking(
         const response = await fetch(`${API_BASE}/gettrackinfo`, {
             method: 'POST',
             headers: { '17token': apiKey, 'Content-Type': 'application/json' },
-            body: JSON.stringify([{ number: trackingNumber, carrier: carrierCode }]),
+            // `lang` sits beside `number` and `carrier`, and is simply omitted
+            // when the reader's language is not one we map — asking for a
+            // language the service does not know is worse than not asking.
+            // `translation_mode` is left at its default: the paid third-party
+            // fallback is available if official carrier translations turn out
+            // to be thin, but it is not something to opt into silently.
+            body: JSON.stringify([{ number: trackingNumber, carrier: carrierCode, ...(lang ? { lang } : {}) }]),
         });
         const payload = await response.json();
         const item = payload?.data?.accepted?.[0];
@@ -149,7 +193,7 @@ export async function fetchCarrierTracking(
             subStatus: info?.latest_status?.sub_status || null,
             events: rawEvents.map((e: Record<string, any>) => ({
                 time: e?.time_utc || e?.time_iso || null,
-                description: e?.description || null,
+                description: eventDescription(e),
                 location: e?.location || null,
                 stage: e?.stage || null,
             })),

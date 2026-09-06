@@ -126,13 +126,14 @@ export default function OrdersPage() {
         missingSellerDesc: '発送前にプロフィールで住所を更新してください。',
         success: '成功',
         updated: '注文が更新されました。',
-        tracking: 'GHN tracking',
-        openDispute: 'Open dispute',
-        openDisputeDesc: 'Describe the reason. Admin will review and decide.',
-        disputePlaceholder: 'Example: Fake card, not as described, damaged...',
-        cancel: 'Cancel',
-        submitDispute: 'Submit dispute',
-        cancelOrder: 'Cancel order',
+        tracking: 'GHN 追跡',
+        openDispute: '異議を申し立てる',
+        openDisputeDesc: '申し立ての理由をご記入ください。管理者が確認して判断します。',
+        disputePlaceholder: '例: 偽造カード、説明と異なる、破損している...',
+        cancel: 'キャンセル',
+        closeDialog: '閉じる',
+        submitDispute: '異議を送信',
+        cancelOrder: '注文をキャンセル',
         shipOrder: '発送する',
         confirm: '確認',
         shipCountdownSeller: '追跡番号を入力する残り時間:',
@@ -140,13 +141,13 @@ export default function OrdersPage() {
         shipCountdownNoteBuyer: '期限超過で自動キャンセル・あなたのウォレットへ返金・販売者の評価減点。',
         shipCountdownNoteSeller: '期限超過で自動キャンセル・購入者へ返金・あなたの評価が減点されます。',
         shipExpired: '発送期限切れ。自動キャンセル・返金されます。',
-        trackGHN: 'Track GHN',
-        received: 'Received item',
+        trackGHN: 'GHN で追跡',
+        received: '受け取りました',
         trackParcel: '配送を追跡',
         dispute: '管理者に報告',
-        seller: 'Seller',
-        buyer: 'Buyer',
-        noCard: 'Unknown card',
+        seller: '販売者',
+        buyer: '購入者',
+        noCard: '不明なカード',
         errorTitle: 'エラー',
         loadError: '注文を読み込めませんでした。',
         retry: '再試行',
@@ -208,6 +209,7 @@ export default function OrdersPage() {
           openDisputeDesc: 'Mô tả lý do khiếu nại. Admin sẽ xem xét và phân xử.',
           disputePlaceholder: 'VD: Thẻ bị giả, không đúng mô tả, hư hỏng...',
           cancel: 'Hủy',
+          closeDialog: 'Đóng',
           submitDispute: 'Gửi khiếu nại',
           cancelOrder: 'Hủy đơn',
           shipOrder: 'Giao hàng',
@@ -284,6 +286,7 @@ export default function OrdersPage() {
           openDisputeDesc: 'Describe the dispute reason. Admin will review and decide.',
           disputePlaceholder: 'Example: Fake card, not as described, damaged...',
           cancel: 'Cancel',
+          closeDialog: 'Close',
           submitDispute: 'Submit dispute',
           cancelOrder: 'Cancel order',
           shipOrder: 'Ship order',
@@ -1106,7 +1109,7 @@ export default function OrdersPage() {
         orderId={trackingDialog.order?.id ?? null}
         locale={locale}
         title={copy.trackParcel}
-        closeLabel={copy.cancel}
+        closeLabel={copy.closeDialog}
       />
     </div>
   );

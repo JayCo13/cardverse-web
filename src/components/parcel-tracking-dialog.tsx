@@ -58,13 +58,16 @@ export function ParcelTrackingDialog({
     if (!open || !orderId) { setInfo(null); return; }
     let cancelled = false;
     setLoading(true);
-    fetch(`/api/shipping/tracking-status?order_id=${encodeURIComponent(orderId)}`, { cache: 'no-store' })
+    // `lang` asks the tracking service for the timeline in the reader's
+    // language; the headings around it were already translated, the carrier's
+    // own event text was not.
+    fetch(`/api/shipping/tracking-status?order_id=${encodeURIComponent(orderId)}&lang=${encodeURIComponent(locale)}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(d => { if (!cancelled) setInfo(d?.error ? null : d); })
       .catch(() => { if (!cancelled) setInfo(null); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [open, orderId]);
+  }, [open, orderId, locale]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

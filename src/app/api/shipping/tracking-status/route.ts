@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { fetchCarrierTracking, trackableCarrier } from '@/lib/carrier-tracking';
+import { fetchCarrierTracking, trackableCarrier, trackingLang } from '@/lib/carrier-tracking';
 
 // The parcel's journey for one order, for the buyer or the seller on it.
 //
@@ -60,7 +60,15 @@ export async function GET(request: NextRequest) {
         });
     }
 
-    const live = await fetchCarrierTracking(carrier, trackingNumber);
+    // The reader's language travels with the request so the carrier events come
+    // back written in it. `trackingLang` maps only the locales the app ships and
+    // returns null for anything else, so a caller cannot push an arbitrary
+    // string into the upstream request.
+    const live = await fetchCarrierTracking(
+        carrier,
+        trackingNumber,
+        trackingLang(request.nextUrl.searchParams.get('lang')),
+    );
     return NextResponse.json({
         ...stored,
         supported: true,
