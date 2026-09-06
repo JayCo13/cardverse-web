@@ -17,7 +17,7 @@ import { useAuth } from '@/lib/supabase';
  */
 const PUBLIC_PREFIXES = [
     '/cards', '/products', '/pokemon', '/onepiece', '/soccer',
-    '/sold', '/pricing', '/help', '/terms', '/privacy', '/contact',
+    '/sold', '/pricing', '/help', '/terms', '/privacy', '/complaints', '/contact',
     // Not public, but not worth gating either: middleware has already turned
     // away anyone who is not a signed-in tester, and the listings do not depend
     // on who is looking. Gating it only hid a server-rendered catalogue behind

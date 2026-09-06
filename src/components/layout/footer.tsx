@@ -128,6 +128,7 @@ export function Footer() {
         <Link key="contact" href="/contact" className="text-muted-foreground transition-colors hover:text-foreground">{t('page_contact_title')}</Link>,
         <Link key="terms" href="/terms" className="text-muted-foreground transition-colors hover:text-foreground">{t('page_terms_title')}</Link>,
         <Link key="privacy" href="/privacy" className="text-muted-foreground transition-colors hover:text-foreground">{t('page_privacy_title')}</Link>,
+        <Link key="complaints" href="/complaints" className="text-muted-foreground transition-colors hover:text-foreground">{t('page_complaints_title')}</Link>,
       ],
     },
   ];
