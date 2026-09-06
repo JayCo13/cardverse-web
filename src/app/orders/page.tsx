@@ -344,10 +344,24 @@ export default function OrdersPage() {
           } as Record<string, string>,
           trackingSteps: ['Created', 'Picked up', 'In transit', 'Delivering', 'Delivered'],
         };
-  // Open the tab requested via ?tab=seller|buyer (e.g. from a "new order"
-  // notification, which is a seller-side event). Defaults to the buyer tab.
+  // Which tab to open on arrival.
+  //
+  // `?tab=seller|buyer` still wins outright — a "new order" notification is a
+  // seller-side event and links straight to that side. Without it the tab is
+  // left undecided (null) and the server picks: a verified seller lands on
+  // their sales, everyone else on their purchases. It used to default to buyer
+  // for everyone, so a seller following a link back from an order they had
+  // sold arrived on a tab that could not contain it.
+  //
+  // Undecided is a real state rather than "buyer until proven otherwise",
+  // because guessing first means rendering the wrong tab and pulling a list
+  // nobody asked for. The list is already showing its skeleton at this point,
+  // so waiting one request costs nothing on screen.
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState<OrderTab>(searchParams.get('tab') === 'seller' ? 'seller' : 'buyer');
+  const tabParam = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState<OrderTab | null>(
+    tabParam === 'seller' ? 'seller' : tabParam === 'buyer' ? 'buyer' : null,
+  );
   const [viewStateByTab, setViewStateByTab] = useState<Record<OrderTab, OrderViewState>>({
     buyer: { filter: 'all', sort: 'newest', page: 1 },
     seller: { filter: 'all', sort: 'newest', page: 1 },
@@ -376,30 +390,64 @@ export default function OrdersPage() {
     if (!authLoading && !user) setOpen(true);
   }, [authLoading, user, setOpen]);
 
-  const fetchOrders = useCallback(async (role: string) => {
+  // What the list on screen currently holds, as "<user id>:<tab>", and who the
+  // role has already been resolved for.
+  //
+  // The refs exist so the effect below can tell "the tab changed" from "the tab
+  // was just filled in by the response we already rendered", which otherwise
+  // fetches the same list twice. They are keyed by user, not by tab alone, so
+  // signing in as someone else still reloads rather than leaving the previous
+  // account's orders on screen under the new session.
+  const loadedKeyRef = useRef<string | null>(null);
+  const resolvedForUserRef = useRef<string | null>(null);
+
+  // `role` is null on the very first load of an undecided tab: the server then
+  // chooses the side and names it in the response, which is what settles the
+  // tab. Every later call passes the tab explicitly.
+  const fetchOrders = useCallback(async (role: OrderTab | null) => {
     setIsLoading(true);
     setLoadError('');
+    const settle = (tab: OrderTab) => {
+      loadedKeyRef.current = `${user?.id ?? ''}:${tab}`;
+      if (!role) setActiveTab(tab);
+    };
     try {
-      const res = await fetch(`/api/marketplace/orders?role=${role}`);
+      const res = await fetch(`/api/marketplace/orders${role ? `?role=${role}` : ''}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || copy.loadError);
       setOrders(data.orders || []);
+      settle(role ?? (data.role === 'seller' ? 'seller' : 'buyer'));
     } catch (err: unknown) {
       console.error('Failed to fetch orders:', err);
       setLoadError(err instanceof Error ? err.message : copy.loadError);
+      // A failed resolve must not leave the tab undecided, or the page keeps a
+      // skeleton with no tab selected and no way to retry. Fall back to
+      // purchases so the retry button has something to act on.
+      if (!role) settle('buyer');
     } finally {
       setIsLoading(false);
     }
-  }, [copy.loadError]);
+  }, [copy.loadError, user?.id]);
 
   useEffect(() => {
-    if (user) fetchOrders(activeTab);
+    if (!user) return;
+    if (activeTab === null) {
+      if (resolvedForUserRef.current === user.id) return;
+      resolvedForUserRef.current = user.id;
+      void fetchOrders(null);
+      return;
+    }
+    if (loadedKeyRef.current === `${user.id}:${activeTab}`) return;
+    void fetchOrders(activeTab);
   }, [user, activeTab, fetchOrders]);
 
   const formatVND = (amount: number) =>
     new Intl.NumberFormat(locale, { style: 'currency', currency: 'VND' }).format(amount);
 
-  const activeViewState = viewStateByTab[activeTab];
+  // Filter and sort state is per tab. Before the tab is resolved nothing is on
+  // screen to filter, so the buyer slot stands in as a harmless key.
+  const viewStateTab: OrderTab = activeTab ?? 'buyer';
+  const activeViewState = viewStateByTab[viewStateTab];
   const filteredOrders = useMemo(() => {
     const matchedStatuses = STATUS_FILTERS[activeViewState.filter];
     const filtered = matchedStatuses
@@ -438,10 +486,10 @@ export default function OrdersPage() {
   const updateActiveViewState = (next: Partial<OrderViewState>, resetPage = false) => {
     setViewStateByTab(previous => ({
       ...previous,
-      [activeTab]: {
-        ...previous[activeTab],
+      [viewStateTab]: {
+        ...previous[viewStateTab],
         ...next,
-        page: resetPage ? 1 : next.page ?? previous[activeTab].page,
+        page: resetPage ? 1 : next.page ?? previous[viewStateTab].page,
       },
     }));
   };
@@ -691,23 +739,35 @@ export default function OrdersPage() {
                   </Button>
                 )}
 
+                {/* Track the parcel — both sides.
+
+                    The seller needs this as much as the buyer: delivery is what
+                    starts their 72h payout clock, and a parcel no carrier
+                    confirms goes to an administrator instead of paying out. The
+                    button was buyer-only even though
+                    /api/shipping/tracking-status has always authorised "the
+                    buyer or the seller on it", so the seller's only tracking
+                    was the GHN stepper above, which renders off ghn_order_code
+                    — a column nothing writes any more. */}
+                {['shipping', 'delivered'].includes(order.status) && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setTrackingDialog({ open: true, order })}
+                  >
+                    <Truck className="h-3 w-3 mr-1" />
+                    {copy.trackParcel}
+                  </Button>
+                )}
+
                 {/* Buyer actions.
 
                     There is no "Item received" button any more: escrow releases
                     on its own 72h after a carrier confirms delivery, so asking
                     the buyer to press something was asking for a step that adds
-                    nothing. What the buyer wants at this point is to know where
-                    the parcel is, which is what this opens. */}
+                    nothing. Reporting a problem stays buyer-only. */}
                 {isBuyer && ['shipping', 'delivered'].includes(order.status) && (
                   <>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setTrackingDialog({ open: true, order })}
-                    >
-                      <Truck className="h-3 w-3 mr-1" />
-                      {copy.trackParcel}
-                    </Button>
                     <Button
                       size="sm"
                       variant="destructive"
@@ -748,6 +808,15 @@ export default function OrdersPage() {
             {copy.title}
           </h1>
 
+          {/* Nothing is selected until the side is known, so the tab strip
+              waits with the list rather than lighting up "purchases" and
+              switching under the reader a moment later. */}
+          {activeTab === null ? (
+            <div className="space-y-4">
+              <Skeleton className="h-10 w-full max-w-sm rounded-md" />
+              {[1, 2, 3].map(i => <Skeleton key={i} className="h-32 w-full rounded-xl" />)}
+            </div>
+          ) : (
           <Tabs value={activeTab} onValueChange={handleTabChange}>
             <TabsList className="grid w-full grid-cols-2 max-w-sm">
               <TabsTrigger value="buyer" className="flex items-center gap-2">
@@ -883,6 +952,7 @@ export default function OrdersPage() {
               )}
             </TabsContent>
           </Tabs>
+          )}
         </div>
       </main>
 

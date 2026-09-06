@@ -1591,7 +1591,10 @@ export default function SellPage() {
                     )}
                   </div>
                   <Button variant="outline" size="sm" className="shrink-0" asChild>
-                    <Link href="/orders" className="whitespace-nowrap">{copy.viewAll}</Link>
+                    {/* "View all" of the seller's own orders, so name the tab
+                        rather than leaving it to the list's account-level
+                        default. */}
+                    <Link href="/orders?tab=seller" className="whitespace-nowrap">{copy.viewAll}</Link>
                   </Button>
                 </div>
               </CardHeader>
@@ -1610,7 +1613,7 @@ export default function SellPage() {
                         return <OrderRow key={order.id} order={order} statusLabel={statusInfo.label} statusClass={statusInfo.color} unknownCard={copy.unknownCard} date={new Date(order.created_at).toLocaleDateString(locale)} price={formatVND(order.amount - order.platform_fee)} />;
                       })}
                       {sellerOrders.length > 3 && (
-                        <Link href="/orders" className="mt-3 block text-center text-sm font-medium text-primary">{copy.viewAll} ›</Link>
+                        <Link href="/orders?tab=seller" className="mt-3 block text-center text-sm font-medium text-primary">{copy.viewAll} ›</Link>
                       )}
                     </div>
 

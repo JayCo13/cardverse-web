@@ -450,17 +450,25 @@ export default function OrderDetailsPage() {
                   </Button>,
                 );
               }
-              // Buyer: follow the parcel, or report a problem to admin.
-              //
-              // There is no "confirm receipt" button any more: escrow releases
-              // on its own 72h after a carrier confirms delivery, so pressing
-              // something added nothing. What the buyer wants here is to see
-              // where the parcel is.
-              if (isBuyer && (order.status === 'shipping' || order.status === 'delivered')) {
+              // Follow the parcel — both sides. Delivery is what starts the
+              // seller's 72h payout clock, and an unconfirmed parcel goes to an
+              // administrator instead of paying out, so the seller has as much
+              // reason to look as the buyer. The tracking endpoint has always
+              // authorised either party on the order.
+              if (order.status === 'shipping' || order.status === 'delivered') {
                 btns.push(
                   <Button key="track" variant="outline" className="flex-1" onClick={() => setTrackOpen(true)}>
                     <Truck className="mr-2 h-4 w-4" />{tx('Theo dõi đơn', 'Track parcel', '配送を追跡')}
                   </Button>,
+                );
+              }
+              // Reporting a problem stays buyer-only.
+              //
+              // There is no "confirm receipt" button any more: escrow releases
+              // on its own 72h after a carrier confirms delivery, so pressing
+              // something added nothing.
+              if (isBuyer && (order.status === 'shipping' || order.status === 'delivered')) {
+                btns.push(
                   <Button key="report" variant="outline" className="flex-1 border-red-500/40 text-red-300 hover:bg-red-500/10" onClick={() => setConfirm({
                     action: 'dispute',
                     title: tx('Báo cáo cho quản trị viên?', 'Report to admin?', '管理者に報告しますか？'),
@@ -481,7 +489,12 @@ export default function OrderDetailsPage() {
               );
             })()}
 
-            <Button variant="outline" className="w-full" onClick={() => router.push('/orders')}>
+            {/* Back to the side this order is actually on. The list resolves a
+                default tab from the account, which is right on arrival but
+                wrong here: a verified seller looking at something they bought
+                would be sent to their sales. This page already knows which
+                side the viewer is on for this order, so it says so. */}
+            <Button variant="outline" className="w-full" onClick={() => router.push(`/orders?tab=${role}`)}>
               {tx('Về danh sách đơn hàng', 'Back to orders', '注文一覧へ')}
             </Button>
           </div>

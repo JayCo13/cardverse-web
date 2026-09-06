@@ -35,8 +35,45 @@ export async function GET(request: NextRequest) {
         }
 
         const { searchParams } = new URL(request.url);
-        const role = searchParams.get('role') || 'buyer'; // 'buyer' | 'seller'
         const status = searchParams.get('status');
+
+        // Which side of the marketplace the caller is asking about.
+        //
+        // Omitting `role` asks the server to choose, and it answers with the
+        // side the caller actually works on. The decision lives here because
+        // the data it needs does, and because the page cannot pick a tab before
+        // it knows — resolving it client-side meant rendering the purchases tab
+        // first and yanking a seller off it a moment later.
+        //
+        // "Seller" is `seller_verified` OR having sold anything, not the flag
+        // alone. The flag means "allowed to sell", which is not the same as
+        // "is here to sell": the busiest seller in the database, 27 orders,
+        // currently has seller_verified = false, and sending them to purchases
+        // is exactly the bug this resolves. The flag still counts on its own so
+        // that a newly approved seller lands on the tab their first sale will
+        // arrive in, rather than on someone else's.
+        //
+        // The resolved role is echoed back so the caller can label the view.
+        const requested = searchParams.get('role');
+        let role: 'buyer' | 'seller';
+        if (requested === 'buyer' || requested === 'seller') {
+            role = requested;
+        } else {
+            const [{ data: viewer }, { data: anySale }] = await Promise.all([
+                supabase
+                    .from('profiles')
+                    .select('seller_verified')
+                    .eq('id', user.id)
+                    .maybeSingle<{ seller_verified: boolean | null }>(),
+                supabase
+                    .from('orders')
+                    .select('id')
+                    .eq('seller_id', user.id)
+                    .limit(1)
+                    .maybeSingle<{ id: string }>(),
+            ]);
+            role = viewer?.seller_verified || anySale ? 'seller' : 'buyer';
+        }
 
         let query = supabase
             .from('orders')
@@ -62,7 +99,7 @@ export async function GET(request: NextRequest) {
 
         if (error) throw error;
 
-        return NextResponse.json({ orders: data || [] });
+        return NextResponse.json({ orders: data || [], role });
     } catch (error: any) {
         console.error('Get orders error:', error);
         return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
