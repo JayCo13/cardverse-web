@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -94,15 +94,33 @@ export function AddressPicker({
     const onChangeRef = useRef(onChange);
     const lastEmittedRef = useRef<string | null>(null);
 
+    /**
+     * The address this picker was mounted with, kept for the whole life of the
+     * instance. GHN's master-data lists are slow, and go down outright when the
+     * token lapses; Radix resolves a Select's label from its items, so with an
+     * empty list an edit form shows three empty selects, `emitChange` resolves
+     * nothing, reports `null` upward, and the parent clears the very row the
+     * user opened. Seeding the lists from what was already saved keeps the form
+     * readable and truthful whether or not GHN answers.
+     *
+     * Callers give the picker a `key` per address, so a remount is what changes
+     * this — not a re-render.
+     */
+    const initialRef = useRef<Partial<AddressData> | undefined>(value);
+
     useEffect(() => {
         onChangeRef.current = onChange;
     }, [onChange]);
 
     useEffect(() => {
-        setSelectedProvince(value?.provinceId?.toString() || '');
-        setSelectedDistrict(value?.districtId?.toString() || '');
-        setSelectedWard(value?.wardCode || '');
-        setDetail(value?.detail || '');
+        // Only an address arriving from outside is applied. The parent also
+        // goes null while the user re-picks a province — that is this picker's
+        // own doing, and echoing it back would wipe the selection mid-edit.
+        if (!value?.provinceId) return;
+        setSelectedProvince(value.provinceId.toString());
+        setSelectedDistrict(value.districtId?.toString() || '');
+        setSelectedWard(value.wardCode || '');
+        setDetail(value.detail || '');
     }, [value?.provinceId, value?.districtId, value?.wardCode, value?.detail]);
 
     // Load provinces on mount
@@ -116,8 +134,11 @@ export function AddressPicker({
                 if (!res.ok) throw new Error(data.error || copy.loadError);
                 setProvinces(data.data || []);
             } catch (err) {
+                // The carrier's own wording ("Token is not valid!") means
+                // nothing to a buyer and names our integration; log it, show
+                // them the sentence they can act on.
                 console.error('Failed to fetch provinces:', err);
-                setLoadError(err instanceof Error ? err.message : copy.loadError);
+                setLoadError(copy.loadError);
             } finally {
                 setLoadingProvinces(false);
             }
@@ -141,7 +162,7 @@ export function AddressPicker({
                 setDistricts(data.data || []);
             } catch (err) {
                 console.error('Failed to fetch districts:', err);
-                setLoadError(err instanceof Error ? err.message : copy.loadError);
+                setLoadError(copy.loadError);
             } finally {
                 setLoadingDistricts(false);
             }
@@ -165,7 +186,7 @@ export function AddressPicker({
                 setWards(data.data || []);
             } catch (err) {
                 console.error('Failed to fetch wards:', err);
-                setLoadError(err instanceof Error ? err.message : copy.loadError);
+                setLoadError(copy.loadError);
             } finally {
                 setLoadingWards(false);
             }
@@ -173,13 +194,50 @@ export function AddressPicker({
         fetchWards();
     }, [selectedDistrict, retryNonce]);
 
+    const provinceOptions = useMemo(() => {
+        const saved = initialRef.current;
+        const list = provinces.slice();
+        if (saved?.provinceId && saved.provinceName && !list.some(p => p.ProvinceID === saved.provinceId)) {
+            list.push({ ProvinceID: saved.provinceId, ProvinceName: saved.provinceName });
+        }
+        return list.sort((a, b) => a.ProvinceName.localeCompare(b.ProvinceName));
+    }, [provinces]);
+
+    const districtOptions = useMemo(() => {
+        const saved = initialRef.current;
+        const list = districts.slice();
+        // Only while the saved province is still the selected one — once the
+        // user picks a different province the saved district is not an option.
+        if (
+            saved?.districtId && saved.districtName &&
+            saved.provinceId?.toString() === selectedProvince &&
+            !list.some(d => d.DistrictID === saved.districtId)
+        ) {
+            list.push({ DistrictID: saved.districtId, DistrictName: saved.districtName, ProvinceID: saved.provinceId! });
+        }
+        return list.sort((a, b) => a.DistrictName.localeCompare(b.DistrictName));
+    }, [districts, selectedProvince]);
+
+    const wardOptions = useMemo(() => {
+        const saved = initialRef.current;
+        const list = wards.slice();
+        if (
+            saved?.wardCode && saved.wardName &&
+            saved.districtId?.toString() === selectedDistrict &&
+            !list.some(w => w.WardCode === saved.wardCode)
+        ) {
+            list.push({ WardCode: saved.wardCode, WardName: saved.wardName, DistrictID: saved.districtId! });
+        }
+        return list.sort((a, b) => a.WardName.localeCompare(b.WardName));
+    }, [wards, selectedDistrict]);
+
     // Emit changes
     const emitChange = useCallback((
         pId: string, dId: string, wCode: string, det: string
     ) => {
-        const province = provinces.find(p => p.ProvinceID.toString() === pId);
-        const district = districts.find(d => d.DistrictID.toString() === dId);
-        const ward = wards.find(w => w.WardCode === wCode);
+        const province = provinceOptions.find(p => p.ProvinceID.toString() === pId);
+        const district = districtOptions.find(d => d.DistrictID.toString() === dId);
+        const ward = wardOptions.find(w => w.WardCode === wCode);
         const nextKey = province && district && ward
             ? `${province.ProvinceID}|${district.DistrictID}|${ward.WardCode}|${det}`
             : 'null';
@@ -202,7 +260,7 @@ export function AddressPicker({
         } else {
             onChangeRef.current(null);
         }
-    }, [provinces, districts, wards]);
+    }, [provinceOptions, districtOptions, wardOptions]);
 
     // Trigger emitChange when ward or detail changes
     useEffect(() => {
@@ -265,18 +323,16 @@ export function AddressPicker({
                             <SelectValue placeholder={loadingProvinces ? copy.loading : copy.selectProvince} />
                         </SelectTrigger>
                         <SelectContent className="max-h-[300px]">
-                            {loadingProvinces ? (
+                            {loadingProvinces && provinceOptions.length === 0 ? (
                                 <div className="flex items-center justify-center py-4">
                                     <Loader2 className="h-4 w-4 animate-spin" />
                                 </div>
                             ) : (
-                                provinces
-                                    .sort((a, b) => a.ProvinceName.localeCompare(b.ProvinceName))
-                                    .map(p => (
-                                        <SelectItem key={p.ProvinceID} value={p.ProvinceID.toString()}>
-                                            {p.ProvinceName}
-                                        </SelectItem>
-                                    ))
+                                provinceOptions.map(p => (
+                                    <SelectItem key={p.ProvinceID} value={p.ProvinceID.toString()}>
+                                        {p.ProvinceName}
+                                    </SelectItem>
+                                ))
                             )}
                         </SelectContent>
                     </Select>
@@ -294,18 +350,16 @@ export function AddressPicker({
                             <SelectValue placeholder={loadingDistricts ? copy.loading : copy.selectDistrict} />
                         </SelectTrigger>
                         <SelectContent className="max-h-[300px]">
-                            {loadingDistricts ? (
+                            {loadingDistricts && districtOptions.length === 0 ? (
                                 <div className="flex items-center justify-center py-4">
                                     <Loader2 className="h-4 w-4 animate-spin" />
                                 </div>
                             ) : (
-                                districts
-                                    .sort((a, b) => a.DistrictName.localeCompare(b.DistrictName))
-                                    .map(d => (
-                                        <SelectItem key={d.DistrictID} value={d.DistrictID.toString()}>
-                                            {d.DistrictName}
-                                        </SelectItem>
-                                    ))
+                                districtOptions.map(d => (
+                                    <SelectItem key={d.DistrictID} value={d.DistrictID.toString()}>
+                                        {d.DistrictName}
+                                    </SelectItem>
+                                ))
                             )}
                         </SelectContent>
                     </Select>
@@ -323,18 +377,16 @@ export function AddressPicker({
                             <SelectValue placeholder={loadingWards ? copy.loading : copy.selectWard} />
                         </SelectTrigger>
                         <SelectContent className="max-h-[300px]">
-                            {loadingWards ? (
+                            {loadingWards && wardOptions.length === 0 ? (
                                 <div className="flex items-center justify-center py-4">
                                     <Loader2 className="h-4 w-4 animate-spin" />
                                 </div>
                             ) : (
-                                wards
-                                    .sort((a, b) => a.WardName.localeCompare(b.WardName))
-                                    .map(w => (
-                                        <SelectItem key={w.WardCode} value={w.WardCode}>
-                                            {w.WardName}
-                                        </SelectItem>
-                                    ))
+                                wardOptions.map(w => (
+                                    <SelectItem key={w.WardCode} value={w.WardCode}>
+                                        {w.WardName}
+                                    </SelectItem>
+                                ))
                             )}
                         </SelectContent>
                     </Select>

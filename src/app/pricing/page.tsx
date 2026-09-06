@@ -58,7 +58,7 @@ export default function PricingPage() {
                     : t('pricing_creditpack');
             toast({
                 title: "🎉 " + (t('pricing_active') || 'Activated!'),
-                description: `${packageName} — ${t('pricing_subtitle')}`,
+                description: `${packageName} · ${t('pricing_subtitle')}`,
                 duration: 6000,
             });
         }

@@ -24,6 +24,8 @@ type CardRow = {
     image_url: string | null;
     price: number | null;
     status: string;
+    is_bundle: boolean | null;
+    bundle_items: Array<Record<string, unknown>> | null;
 };
 
 type ProfileRow = {
@@ -57,8 +59,12 @@ const applyStatus = <T extends {
     in: (column: string, values: string[]) => T;
 }>(query: T, status: StatusFilter): T => {
     if (status === 'pending') return query.eq('status', 'pending');
-    if (status === 'awaiting_payment') return query.in('status', ['chosen', 'accepted']);
-    if (status === 'history') return query.in('status', ['rejected', 'expired']);
+    // `chosen` alone. `accepted` is set by the payment finalisers — the wallet
+    // path and the PayOS webhook, both `chosen -> accepted` — so it means the
+    // offer is PAID, not that it is waiting to be. Counting it here is what put
+    // a "Pay now" button on nine already-paid orders.
+    if (status === 'awaiting_payment') return query.eq('status', 'chosen');
+    if (status === 'history') return query.in('status', ['accepted', 'rejected', 'expired']);
     return query;
 };
 
@@ -77,7 +83,7 @@ export async function GET(request: NextRequest) {
             .eq('status', 'pending')
             .eq('cards.seller_id', user.id);
         const sentPromise = supabase.from('offers').select('id', { count: 'exact', head: true })
-            .eq('buyer_id', user.id).in('status', ['chosen', 'accepted']);
+            .eq('buyer_id', user.id).eq('status', 'chosen');
         const [received, sent] = await Promise.all([receivedPromise, sentPromise]);
         if (received.error || sent.error) {
             return NextResponse.json({ error: received.error?.message || sent.error?.message }, { status: 400 });
@@ -114,7 +120,7 @@ export async function GET(request: NextRequest) {
     if (view === 'received' || cardId) {
         let cardsQuery = supabase
             .from('cards')
-            .select('id, seller_id, name, image_url, price, status');
+            .select('id, seller_id, name, image_url, price, status, is_bundle, bundle_items');
         if (view === 'received') cardsQuery = cardsQuery.eq('seller_id', user.id);
         if (cardId) cardsQuery = cardsQuery.eq('id', cardId);
         const { data: cardData, error: cardsError } = await cardsQuery;
@@ -165,7 +171,7 @@ export async function GET(request: NextRequest) {
     if (missingCardIds.length > 0) {
         const { data } = await supabase
             .from('cards')
-            .select('id, seller_id, name, image_url, price, status')
+            .select('id, seller_id, name, image_url, price, status, is_bundle, bundle_items')
             .in('id', missingCardIds);
         cards.push(...((data || []) as CardRow[]));
     }
@@ -177,19 +183,30 @@ export async function GET(request: NextRequest) {
     ).filter(Boolean))) as string[];
     const offerIds = offers.map(offer => offer.id);
 
-    const [profilesResult, conversationsResult] = await Promise.all([
+    const [profilesResult, conversationsResult, ordersResult] = await Promise.all([
         counterpartyIds.length > 0
             ? supabase.from('profiles').select('id, display_name, profile_image_url, seller_verified').in('id', counterpartyIds)
             : Promise.resolve({ data: [] as ProfileRow[], error: null }),
         offerIds.length > 0
             ? supabase.from('conversations').select('id, offer_id').in('offer_id', offerIds)
             : Promise.resolve({ data: [] as Array<{ id: string; offer_id: string | null }>, error: null }),
+        // A paid offer has an order behind it; without the id the page can only
+        // send the buyer to the whole list to go find it. Read through the
+        // caller's own client, so the owner-only RLS on `orders` still applies
+        // and this returns nothing for an offer they are not a party to.
+        offerIds.length > 0
+            ? supabase.from('orders').select('id, offer_id').in('offer_id', offerIds)
+            : Promise.resolve({ data: [] as Array<{ id: string; offer_id: string | null }>, error: null }),
     ]);
     if (profilesResult.error) return NextResponse.json({ error: profilesResult.error.message }, { status: 400 });
     if (conversationsResult.error) return NextResponse.json({ error: conversationsResult.error.message }, { status: 400 });
+    if (ordersResult.error) return NextResponse.json({ error: ordersResult.error.message }, { status: 400 });
 
     const profileMap = new Map(((profilesResult.data || []) as ProfileRow[]).map(profile => [profile.id, profile]));
     const conversationMap = new Map((conversationsResult.data || [])
+        .filter(row => row.offer_id)
+        .map(row => [row.offer_id as string, row.id]));
+    const orderMap = new Map((ordersResult.data || [])
         .filter(row => row.offer_id)
         .map(row => [row.offer_id as string, row.id]));
 
@@ -205,8 +222,8 @@ export async function GET(request: NextRequest) {
     try {
         const [pending, awaitingPayment, history] = await Promise.all([
             countOffers(['pending']),
-            countOffers(['chosen', 'accepted']),
-            countOffers(['rejected', 'expired']),
+            countOffers(['chosen']),
+            countOffers(['accepted', 'rejected', 'expired']),
         ]);
 
         return NextResponse.json({
@@ -224,12 +241,19 @@ export async function GET(request: NextRequest) {
                     createdAt: offer.created_at,
                     bundleSelection: Array.isArray(offer.bundle_selection) ? offer.bundle_selection : null,
                     conversationId: conversationMap.get(offer.id) || null,
+                    orderId: orderMap.get(offer.id) || null,
                     card: card ? {
                         id: card.id,
                         name: card.name,
                         imageUrl: card.image_url,
                         price: card.price == null ? null : Number(card.price),
                         status: card.status,
+                        // What is left in the bundle right now. A partial offer
+                        // reserves nothing, so its named items can be sold from
+                        // under it while the listing stays `active` — without
+                        // this the page cannot tell that "Pay now" would fail.
+                        isBundle: Boolean(card.is_bundle),
+                        bundleItems: Array.isArray(card.bundle_items) ? card.bundle_items : null,
                     } : null,
                     counterparty: counterpartyId ? profileMap.get(counterpartyId) || null : null,
                 };
@@ -238,7 +262,7 @@ export async function GET(request: NextRequest) {
             nextCursor: hasMore && offers.length > 0 ? encodeCursor(offers[offers.length - 1]) : null,
             selectedCard: cardId && cardMap.has(cardId) ? (() => {
                 const card = cardMap.get(cardId)!;
-                return { id: card.id, name: card.name, imageUrl: card.image_url, price: card.price == null ? null : Number(card.price), status: card.status };
+                return { id: card.id, name: card.name, imageUrl: card.image_url, price: card.price == null ? null : Number(card.price), status: card.status, isBundle: Boolean(card.is_bundle), bundleItems: Array.isArray(card.bundle_items) ? card.bundle_items : null };
             })() : null,
         });
     } catch (error: unknown) {

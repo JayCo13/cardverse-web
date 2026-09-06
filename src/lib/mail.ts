@@ -79,7 +79,7 @@ function buildTemplate(title: string, body: string, locale: SupportedLocale = 'v
                     <!-- Footer -->
                     <tr>
                         <td style="padding: 28px 40px; background-color: rgba(0,0,0,0.35); border-top: 1px solid rgba(255,255,255,0.06);">
-                            <p style="margin: 0 0 6px; color: #71717a; font-size: 13px; text-align: center; font-weight: 600;">CardVerseHub — ${mailText(locale, 'email_brand_description')}</p>
+                            <p style="margin: 0 0 6px; color: #71717a; font-size: 13px; text-align: center; font-weight: 600;">CardVerseHub | ${mailText(locale, 'email_brand_description')}</p>
                             <p style="margin: 0; color: #52525b; font-size: 12px; text-align: center; line-height: 1.6;">
                                 <a href="${appUrl}" style="color: #f97316; text-decoration: none;">${appUrl.replace(/^https?:\/\//, '')}</a>
                                 &nbsp;&middot;&nbsp; &copy; ${year} CardVerseHub. ${mailText(locale, 'email_all_rights_reserved')}
@@ -186,7 +186,7 @@ export async function sendOrderShippedEmail(
         await transporter.sendMail({
             from,
             to: buyerEmail,
-            subject: '📦 Đơn hàng của bạn đã được gửi — CardVerseHub',
+            subject: '📦 Đơn hàng của bạn đã được gửi | CardVerseHub',
             html: buildTemplate(
                 '📦 Đơn hàng đã được gửi',
                 `<p style="color:#e4e4e7;">Người bán đã gửi thẻ <strong style="color:#f97316;">${cardName}</strong> cho bạn.</p>
@@ -281,7 +281,7 @@ export async function sendKycManualReviewToAdmin(input: {
             subject: `⏳ KYC chờ duyệt thủ công: ${input.fullName || input.providerSessionId}`,
             html: buildTemplate(
                 '⏳ Hồ sơ KYC cần người duyệt tay',
-                `<p style="color: #e4e4e7;">Didit đã chuyển một phiên xác minh sang trạng thái <strong>In Review</strong> — hệ thống tự động không kết luận được, cần người vào xem và quyết định.</p>
+                `<p style="color: #e4e4e7;">Didit đã chuyển một phiên xác minh sang trạng thái <strong>In Review</strong>. Hệ thống tự động không kết luận được, cần người vào xem và quyết định.</p>
                 <div style="background: rgba(250,204,21,0.1); border: 1px solid rgba(250,204,21,0.2); border-radius: 8px; padding: 16px; margin: 20px 0;">
                     <p style="margin: 0; color: #fcd34d;">👤 <strong>Tên trên giấy tờ:</strong> ${name}</p>
                     <p style="margin: 8px 0 0; color: #a1a1aa;">📧 <strong>Tài khoản:</strong> ${escapeHtml(input.userEmail || 'không rõ')}</p>
@@ -289,7 +289,7 @@ export async function sendKycManualReviewToAdmin(input: {
                 </div>
                 <p style="color: #e4e4e7; margin-bottom: 8px;"><strong>Cảnh báo từ nhà cung cấp:</strong></p>
                 <ul style="margin: 0 0 20px; padding-left: 20px;">${warningRows}</ul>
-                <p style="color: #a1a1aa;">Mở Didit Business Console, tìm phiên theo Session ID ở trên, rồi chọn Approve / Decline / Request Resubmission. Kết quả sẽ tự đồng bộ về CardVerseHub qua webhook — không cần thao tác gì thêm ở admin dashboard.</p>
+                <p style="color: #a1a1aa;">Mở Didit Business Console, tìm phiên theo Session ID ở trên, rồi chọn Approve / Decline / Request Resubmission. Kết quả sẽ tự đồng bộ về CardVerseHub qua webhook, không cần thao tác gì thêm ở admin dashboard.</p>
                 <div style="text-align: center; margin: 24px 0;">
                     <a href="${consoleUrl}" style="display: inline-block; background: #eab308; color: #000; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">Mở Didit Console →</a>
                 </div>`
@@ -376,7 +376,7 @@ export async function sendWithdrawalSubmittedToAdmin(input: {
             from,
             to: from,
             bcc: input.adminEmails,
-            subject: `💸 Yêu cầu rút tiền mới: ${formatVND(input.amountRequested)} — ${input.sellerName}`,
+            subject: `💸 Yêu cầu rút tiền mới: ${formatVND(input.amountRequested)} · ${input.sellerName}`,
             html: buildTemplate(
                 '💸 Yêu cầu rút tiền mới cần xử lý',
                 `<p style="color:#e4e4e7;">Seller vừa gửi một yêu cầu rút tiền đang chờ admin chuyển khoản:</p>
@@ -442,7 +442,7 @@ export async function sendKYCRejected(userEmail: string, fullName: string, reaso
         await transporter.sendMail({
             from,
             to: userEmail,
-            subject: '❌ Hồ sơ KYC chưa được duyệt — CardVerseHub',
+            subject: '❌ Hồ sơ KYC chưa được duyệt | CardVerseHub',
             html: buildTemplate(
                 '❌ Hồ sơ chưa được duyệt',
                 `<p style="color: #e4e4e7;">Xin chào <strong style="color: #f97316;">${fullName}</strong>,</p>
@@ -497,7 +497,7 @@ export async function sendOrderPlacedToBuyer(
         await transporter.sendMail({
             from,
             to: buyerEmail,
-            subject: `✅ Đặt hàng thành công #${shortOrderId(params.orderId)} — CardVerseHub`,
+            subject: `✅ Đặt hàng thành công #${shortOrderId(params.orderId)} | CardVerseHub`,
             html: buildTemplate(
                 '✅ Đặt hàng thành công',
                 `<p style="color:#e4e4e7;">Cảm ơn bạn đã mua hàng trên CardVerseHub. Đơn hàng của bạn đã được thanh toán và đang chờ người bán gửi đi.</p>
@@ -552,7 +552,7 @@ export async function sendOrderPlacedToSeller(
         await transporter.sendMail({
             from,
             to: sellerEmail,
-            subject: `🛒 Bạn có đơn hàng mới #${shortOrderId(params.orderId)} — CardVerseHub`,
+            subject: `🛒 Bạn có đơn hàng mới #${shortOrderId(params.orderId)} | CardVerseHub`,
             html: buildTemplate(
                 '🛒 Bạn có đơn hàng mới',
                 `<p style="color:#e4e4e7;">Người mua đã thanh toán. Vui lòng chuẩn bị và gửi hàng sớm nhất có thể.</p>
@@ -597,20 +597,20 @@ export async function sendContactSubmissionConfirmation(
         const safeSubject = escapeHtml(contact.subject);
         const copy = locale === 'vi-VN'
             ? {
-                subject: 'Chúng tôi đã nhận được liên hệ của bạn — CardVerseHub',
+                subject: 'Chúng tôi đã nhận được liên hệ của bạn | CardVerseHub',
                 title: 'Đã nhận được yêu cầu liên hệ',
                 body: 'Cảm ơn bạn đã liên hệ với CardVerseHub. Đội ngũ hỗ trợ sẽ xem xét và phản hồi qua email trong thời gian sớm nhất.',
                 reference: 'Chủ đề của bạn',
             }
             : locale === 'ja-JP'
                 ? {
-                    subject: 'お問い合わせを受け付けました — CardVerseHub',
+                    subject: 'お問い合わせを受け付けました | CardVerseHub',
                     title: 'お問い合わせを受け付けました',
                     body: 'CardVerseHub にお問い合わせいただきありがとうございます。サポートチームが確認後、できるだけ早くメールでご連絡します。',
                     reference: 'お問い合わせの件名',
                 }
                 : {
-                    subject: 'We received your contact request — CardVerseHub',
+                    subject: 'We received your contact request | CardVerseHub',
                     title: 'Contact request received',
                     body: 'Thank you for contacting CardVerseHub. Our support team will review your request and reply by email as soon as possible.',
                     reference: 'Your subject',

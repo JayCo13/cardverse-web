@@ -5,13 +5,15 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { enUS, ja, vi } from "date-fns/locale";
-import { AlertTriangle, ArrowLeft, Bell, BellOff, Check, CheckCircle, ChevronDown, Copy, CreditCard, HandCoins, Image as ImageIcon, Inbox, Loader2, MessageCircle, MoreHorizontal, Plus, Send, ShieldAlert, Smile, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bell, BellOff, Check, CheckCircle, ChevronDown, Copy, CreditCard, HandCoins, Image as ImageIcon, Inbox, Loader2, MessageCircle, MoreHorizontal, Plus, Send, ShieldAlert, Smile, Trash2, User, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { UserLink } from "@/components/user-link";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -253,10 +255,10 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             buyerOffer: "Đề nghị từ người mua",
             yourOffer: "Đề nghị của bạn",
             offerPending: "Đang chờ người bán phản hồi",
-            offerChosen: "Đã được chấp nhận — chờ thanh toán",
-            offerAccepted: "Đã được chấp nhận",
+            offerChosen: "Đã được chấp nhận, chờ thanh toán",
+            offerAccepted: "Đã mua",
             offerRejected: "Đã bị từ chối",
-            offerExpired: "Đã kết thúc — đơn hàng không hoàn tất",
+            offerExpired: "Đã kết thúc, đơn hàng không hoàn tất",
             acceptOffer: "Chấp nhận đề nghị",
             declineOffer: "Từ chối",
             declineOfferFailed: "Không thể từ chối đề nghị",
@@ -278,9 +280,10 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             confirmRecallBody: "Tin nhắn sẽ biến mất ở cả hai phía và chỉ còn lại dòng \"Tin nhắn đã được thu hồi\". Không thể hoàn tác.",
             recallFailed: "Không thu hồi được tin nhắn. Vui lòng thử lại.",
             conversationActions: "Tuỳ chọn đoạn chat",
+            viewProfile: "Xem hồ sơ",
             deleteConversation: "Xoá đoạn chat",
             confirmDeleteConvTitle: "Xoá đoạn chat này?",
-            confirmDeleteConvBody: "Chỉ xoá ở phía bạn — người kia vẫn giữ nguyên đoạn chat. Nếu họ nhắn tiếp, đoạn chat sẽ hiện lại nhưng chỉ có tin mới.",
+            confirmDeleteConvBody: "Chỉ xoá ở phía bạn, người kia vẫn giữ nguyên đoạn chat. Nếu họ nhắn tiếp, đoạn chat sẽ hiện lại nhưng chỉ có tin mới.",
             deleteConversationFailed: "Không xoá được đoạn chat. Vui lòng thử lại.",
             conversationDeleted: "Đã xoá đoạn chat.",
             cancel: "Huỷ",
@@ -340,10 +343,10 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 buyerOffer: "購入者からのオファー",
                 yourOffer: "あなたのオファー",
                 offerPending: "販売者の返信待ち",
-                offerChosen: "承認済み — 支払い待ち",
-                offerAccepted: "承認済み",
+                offerChosen: "承認済み・支払い待ち",
+                offerAccepted: "購入済み",
                 offerRejected: "却下されました",
-                offerExpired: "終了 — 取引は成立しませんでした",
+                offerExpired: "終了・取引は成立しませんでした",
                 acceptOffer: "オファーを承認",
                 declineOffer: "拒否",
                 declineOfferFailed: "オファーを拒否できません",
@@ -365,6 +368,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 confirmRecallBody: "メッセージは双方から消え、「送信を取り消しました」とだけ表示されます。元に戻せません。",
                 recallFailed: "送信を取り消せませんでした。もう一度お試しください。",
                 conversationActions: "チャットの操作",
+                viewProfile: "プロフィールを見る",
                 deleteConversation: "チャットを削除",
                 confirmDeleteConvTitle: "このチャットを削除しますか？",
                 confirmDeleteConvBody: "削除されるのはあなたの側だけで、相手のチャットはそのまま残ります。相手が新しいメッセージを送ると、チャットは新しいメッセージだけを含んで再表示されます。",
@@ -426,10 +430,10 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 buyerOffer: "Offer from buyer",
                 yourOffer: "Your offer",
                 offerPending: "Waiting for seller response",
-                offerChosen: "Accepted — awaiting payment",
-                offerAccepted: "Accepted",
+                offerChosen: "Accepted, awaiting payment",
+                offerAccepted: "Purchased",
                 offerRejected: "Rejected",
-                offerExpired: "Closed — the order did not complete",
+                offerExpired: "Closed, the order did not complete",
                 acceptOffer: "Accept offer",
                 declineOffer: "Decline",
                 declineOfferFailed: "Unable to decline offer",
@@ -451,9 +455,10 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                 confirmRecallBody: "It disappears for both of you, leaving only \"Message unsent\" in its place. This cannot be undone.",
                 recallFailed: "Could not unsend the message. Please try again.",
                 conversationActions: "Chat options",
+                viewProfile: "View profile",
                 deleteConversation: "Delete chat",
                 confirmDeleteConvTitle: "Delete this chat?",
-                confirmDeleteConvBody: "It is removed on your side only — the other person keeps theirs. If they write again, the chat comes back carrying just the new messages.",
+                confirmDeleteConvBody: "It is removed on your side only, and the other person keeps theirs. If they write again, the chat comes back carrying just the new messages.",
                 deleteConversationFailed: "Could not delete the chat. Please try again.",
                 conversationDeleted: "Chat deleted.",
                 cancel: "Cancel",
@@ -1282,6 +1287,19 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                 </button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
+                                                {/* The row itself is a <button>, so a link cannot be
+                                                    nested inside it. This menu is the way into the
+                                                    other person's profile from the inbox — and it is
+                                                    already shown at rest rather than on hover, so it
+                                                    is reachable by touch. */}
+                                                {conversation.otherUser?.id && (
+                                                    <DropdownMenuItem asChild>
+                                                        <Link href={`/users/${conversation.otherUser.id}`}>
+                                                            <User className="mr-2 h-4 w-4" />
+                                                            {copy.viewProfile}
+                                                        </Link>
+                                                    </DropdownMenuItem>
+                                                )}
                                                 <DropdownMenuItem
                                                     className="text-red-500 focus:text-red-500"
                                                     onClick={() => setPendingDeleteId(conversation.id)}
@@ -1331,7 +1349,10 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                 <p className="truncate font-semibold">{selectedConversation.card?.name || copy.marketplaceChat}</p>
                                                 <p className="flex min-w-0 items-center gap-1 text-sm text-muted-foreground">
                                                     <span className="truncate">
-                                                        {copy.withUser} {selectedConversation.otherUser?.display_name || selectedConversation.otherUser?.email || copy.cardVerseUser}
+                                                        {copy.withUser}{" "}
+                                                        <UserLink userId={selectedConversation.otherUser?.id}>
+                                                            {selectedConversation.otherUser?.display_name || selectedConversation.otherUser?.email || copy.cardVerseUser}
+                                                        </UserLink>
                                                     </span>
                                                     <VerifiedSellerBadge verified={selectedConversation.otherUser?.seller_verified} className="h-3.5 w-3.5" />
                                                     {selectedConversation.card?.price ? <span className="shrink-0">{` · ${formatVND(selectedConversation.card.price)}`}</span> : null}

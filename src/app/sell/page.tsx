@@ -1157,7 +1157,7 @@ export default function SellPage() {
         ) : (
           <>
             <div>{visibleListings.map(listing => (
-              <ListingRow key={listing.id} listing={listing} statusLabel={listing.status === 'sold' ? copy.sold : statusLabel} price={listing.price ? formatVND(listing.price) : '—'} pendingOffers={pendingOfferCounts[listing.id] || 0} offerLabel={tx('offer đang chờ', 'pending offers', '件の保留中オファー')} />
+              <ListingRow key={listing.id} listing={listing} statusLabel={listing.status === 'sold' ? copy.sold : statusLabel} price={listing.price ? formatVND(listing.price) : '-'} pendingOffers={pendingOfferCounts[listing.id] || 0} offerLabel={tx('offer đang chờ', 'pending offers', '件の保留中オファー')} />
             ))}</div>
             {listings.length > 5 && !showAllListings[key] && (
               <button type="button" onClick={() => setShowAllListings(prev => ({ ...prev, [key]: true }))} className="mt-3 w-full text-sm font-medium text-primary">
@@ -1567,7 +1567,7 @@ export default function SellPage() {
                             </div>
                             <div className="flex flex-1 flex-col p-2.5">
                               <p className="line-clamp-1 text-sm font-medium">{listing.name}</p>
-                              <p className="mt-1 text-sm font-bold text-orange-400">{listing.price ? formatVND(listing.price) : '—'}</p>
+                              <p className="mt-1 text-sm font-bold text-orange-400">{listing.price ? formatVND(listing.price) : '-'}</p>
                             </div>
                           </div>
                         );
@@ -1751,7 +1751,7 @@ export default function SellPage() {
                 <CardDescription>
                   {tx(
                     'Bạn sẽ được chuyển sang trang xác minh của đối tác để chụp CCCD và quét khuôn mặt. Ảnh giấy tờ do đối tác lưu giữ, CardVerseHub không giữ bản sao.',
-                    'You will be taken to our verification partner to capture your ID and a face scan. The partner stores the document images — CardVerseHub keeps no copy.',
+                    'You will be taken to our verification partner to capture your ID and a face scan. The partner stores the document images, and CardVerseHub keeps no copy.',
                     'パートナーの確認ページで身分証と顔スキャンを行います。画像はパートナーが保管し、CardVerseHubは保存しません。'
                   )}
                 </CardDescription>
@@ -1789,7 +1789,7 @@ export default function SellPage() {
                       </p>
                       <div>
                         <p className="text-muted-foreground text-xs">{tx('Tên trên giấy tờ', 'Name on document', '書類上の氏名')}</p>
-                        <p className="font-medium">{verifiedName || '—'}</p>
+                        <p className="font-medium">{verifiedName || '-'}</p>
                       </div>
                     </div>
                   ) : isKycUnderReview ? (
@@ -1893,7 +1893,7 @@ export default function SellPage() {
                         <SelectContent>
                           {banks.map(b => (
                             <SelectItem key={b.bin} value={b.bin}>
-                              {b.shortName} — {b.name}
+                              {b.shortName} · {b.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -2105,11 +2105,11 @@ export default function SellPage() {
                       </div>
                       <div>
                       <p className="text-muted-foreground text-xs">{tx('Số tài khoản', 'Account number', '口座番号')}</p>
-                      <p className="font-mono font-medium">{editableBankAccountNumber || '—'}</p>
+                      <p className="font-mono font-medium">{editableBankAccountNumber || '-'}</p>
                     </div>
                       <div>
                         <p className="text-muted-foreground text-xs">{tx('Tên chủ tài khoản', 'Account holder name', '口座名義')}</p>
-                        <p className="font-medium">{editableBankAccountName || '—'}</p>
+                        <p className="font-medium">{editableBankAccountName || '-'}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground text-xs">{tx('Tài khoản ngân hàng', 'Bank account', '銀行口座')}</p>
@@ -2117,7 +2117,7 @@ export default function SellPage() {
                           {isBankVerified
                             ? tx('✅ Đã đối chiếu với ngân hàng', '✅ Verified with the bank', '✅ 銀行と照合済み')
                             : isBankLookupUnavailable
-                              ? tx('⚠️ Tra cứu đang bận — sẽ đối chiếu lại khi gửi', '⚠️ Lookup busy — will be re-checked on submit', '⚠️ 照会が混雑中 — 送信時に再照合されます')
+                              ? tx('⚠️ Tra cứu đang bận, sẽ đối chiếu lại khi gửi', '⚠️ Lookup busy, will be re-checked on submit', '⚠️ 照会が混雑中・送信時に再照合されます')
                               : tx('❌ Chưa đối chiếu', '❌ Not verified', '❌ 未照合')}
                         </p>
                       </div>

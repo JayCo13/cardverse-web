@@ -36,10 +36,14 @@ export async function GET() {
             .select('card_id, cards!inner(seller_id)')
             .eq('status', 'pending')
             .eq('cards.seller_id', user.id),
+        // `chosen` only. `accepted` is written by the payment finalisers, so it
+        // means the offer is already paid — counting it here kept settled
+        // purchases in the header's action badge. Must stay in step with
+        // /api/offers/inbox, which draws the same distinction.
         supabase.from('offers')
             .select('id', { count: 'exact', head: true })
             .eq('buyer_id', user.id)
-            .in('status', ['chosen', 'accepted']),
+            .eq('status', 'chosen'),
     ]);
 
     if (cart.error || received.error || sent.error) {

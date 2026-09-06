@@ -2111,7 +2111,7 @@ export function MarketSpotlight() {
                                     <MagnifyingGlass className="w-5 h-5 text-yellow-400" weight="bold" />
                                     {t('scan_select_card') || 'Select Your Card'}
                                 </DialogTitle>
-                                <p className="text-xs text-white/50 mt-1">{t('scan_top_matches') || 'Top matches from scan — tap to select'}</p>
+                                <p className="text-xs text-white/50 mt-1">{t('scan_top_matches') || 'Top matches from scan, tap to select'}</p>
                             </DialogHeader>
 
                             {/* Scrollable body — keeps the modal within the screen height */}

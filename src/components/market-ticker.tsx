@@ -62,7 +62,7 @@ export function MarketTicker() {
                             ? "down"
                             : "neutral";
                 items.push({
-                    text: `${card.name} — ${formatPrice(card.market_price)}`,
+                    text: `${card.name} · ${formatPrice(card.market_price)}`,
                     change,
                 });
             }
@@ -73,7 +73,7 @@ export function MarketTicker() {
             if (card.price && card.price > 0) {
                 const grade = card.grade ? ` ${card.grader || ''} ${card.grade}`.trim() : '';
                 items.push({
-                    text: `${card.name}${grade} — ${formatPrice(card.price, 'soccer')}`,
+                    text: `${card.name}${grade} · ${formatPrice(card.price, 'soccer')}`,
                     change: "neutral",
                 });
             }
@@ -89,7 +89,7 @@ export function MarketTicker() {
                             ? "down"
                             : "neutral";
                 items.push({
-                    text: `${card.name} — ${formatPrice(card.market_price)}`,
+                    text: `${card.name} · ${formatPrice(card.market_price)}`,
                     change,
                 });
             }

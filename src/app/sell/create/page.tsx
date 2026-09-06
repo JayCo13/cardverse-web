@@ -1169,7 +1169,7 @@ export default function CreateListingPage() {
 
     toast({
       title: '✅ Đã điền thông tin',
-      description: `${card.name} — ${card.setName}`,
+      description: `${card.name} · ${card.setName}`,
     });
   };
 
@@ -2334,7 +2334,7 @@ export default function CreateListingPage() {
                   <span className="font-semibold text-violet-500">
                     {bundlePriceRange.min === bundlePriceRange.max
                       ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(bundlePriceRange.min)
-                      : `${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(bundlePriceRange.min)} — ${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(bundlePriceRange.max)}`
+                      : `${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(bundlePriceRange.min)} – ${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(bundlePriceRange.max)}`
                     }
                   </span>
                 </div>
@@ -2373,7 +2373,7 @@ export default function CreateListingPage() {
 
                   {isBundle && bundlePriceRange && (
                     <p className="text-xs text-muted-foreground">
-                      💡 Tổng giá từng thẻ: {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(bundlePriceRange.total)} — Bạn có thể đặt giá bán cả bộ thấp hơn hoặc cao hơn
+                      💡 Tổng giá từng thẻ: {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(bundlePriceRange.total)}. Bạn có thể đặt giá bán cả bộ thấp hơn hoặc cao hơn
                     </p>
                   )}
                   <FormMessage />

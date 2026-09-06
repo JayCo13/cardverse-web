@@ -73,7 +73,7 @@ export function PackingVideoField({
       <p className="text-xs leading-5 text-muted-foreground">
         {tx(
           'Chỉ nhận ở bước này, không đính thêm được về sau. Nếu có tranh chấp mà bạn không có video còn người mua có, phần thua thuộc về bạn.',
-          'Accepted at this step only — it cannot be attached later. If a dispute follows and you have no video while the buyer does, you lose it.',
+          'Accepted at this step only, and it cannot be attached later. If a dispute follows and you have no video while the buyer does, you lose it.',
           'この時点でのみ受け付けます。後から追加はできません。',
         )}
       </p>

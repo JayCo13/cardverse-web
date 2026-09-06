@@ -125,7 +125,7 @@ export function ParcelTrackingDialog({
                 {info.events.map((e, i) => (
                   <li key={i} className="relative text-sm">
                     <span className={`absolute -left-[21px] top-1.5 h-2 w-2 rounded-full ${i === 0 ? 'bg-orange-500' : 'bg-border'}`} />
-                    <p className={i === 0 ? 'font-medium' : ''}>{e.description || '—'}</p>
+                    <p className={i === 0 ? 'font-medium' : ''}>{e.description || '-'}</p>
                     <p className="text-xs text-muted-foreground">
                       {[e.time ? new Date(e.time).toLocaleString(locale) : null, e.location].filter(Boolean).join(' · ')}
                     </p>

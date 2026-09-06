@@ -283,7 +283,7 @@ function mrzReadWarnings(mrz: Record<string, unknown> | null): KycWarning[] {
         feature: 'ID_VERIFICATION',
         risk: 'MRZ_READ_UNRELIABLE',
         logType: 'warning',
-        shortDescription: 'Vùng máy đọc trên giấy tờ lỗi — họ tên hoặc số giấy tờ có thể bị đọc sai.',
+        shortDescription: 'Vùng máy đọc trên giấy tờ lỗi, họ tên hoặc số giấy tờ có thể bị đọc sai.',
         longDescription: `Lỗi MRZ: ${significant.join('; ')}`,
     }];
 }

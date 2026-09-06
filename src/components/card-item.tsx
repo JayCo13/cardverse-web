@@ -22,6 +22,7 @@ import { getCategoryCode } from "@/lib/category-code";
 import { getCarrier } from "@/lib/shipping-carriers";
 import { shopShippingRange } from "@/lib/shipping-fee";
 import { formatCompactCount } from "@/lib/format";
+import { UserLink } from "@/components/user-link";
 
 // Category badge styles with colors and gradients (no icons for cleaner look)
 const getCategoryStyle = (category: string) => {
@@ -537,7 +538,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
               const specs = [
                 (card.gradingCompany || card.grade != null) && {
                   label: copy.grading,
-                  value: [card.gradingCompany, card.grade].filter((v) => v != null && v !== '').join(' ') || '—',
+                  value: [card.gradingCompany, card.grade].filter((v) => v != null && v !== '').join(' ') || '-',
                   labelClassName: 'font-medium text-primary',
                 },
                 card.cardNumber && { label: copy.cardNumber, value: card.cardNumber },
@@ -598,16 +599,18 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
 
           <div className="mt-0.5 flex flex-col justify-between gap-1.5 border-0 border-t border-dashed border-white/10 bg-transparent p-0 pt-1.5 md:mt-0 md:gap-4 md:border-solid md:border-border/50 md:pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
             <div className="flex min-w-0 items-center gap-1.5 md:gap-3">
-              {card.sellerAvatar ? (
-                <Image src={card.sellerAvatar} alt={card.sellerName || ''} width={42} height={42} className="h-[22px] w-[22px] shrink-0 rounded-full object-cover ring-1 ring-border md:h-[42px] md:w-[42px]" />
-              ) : (
-                <div className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-primary/15 ring-1 ring-primary/30 md:h-11 md:w-11">
-                  <span className="text-[10px] font-bold text-primary md:text-base">{(card.sellerName || card.author || 'C').charAt(0).toUpperCase()}</span>
-                </div>
-              )}
+              <UserLink variant="plain" userId={card.sellerId} stopPropagation className="shrink-0">
+                {card.sellerAvatar ? (
+                  <Image src={card.sellerAvatar} alt={card.sellerName || ''} width={42} height={42} className="h-[22px] w-[22px] shrink-0 rounded-full object-cover ring-1 ring-border md:h-[42px] md:w-[42px]" />
+                ) : (
+                  <div className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-primary/15 ring-1 ring-primary/30 md:h-11 md:w-11">
+                    <span className="text-[10px] font-bold text-primary md:text-base">{(card.sellerName || card.author || 'C').charAt(0).toUpperCase()}</span>
+                  </div>
+                )}
+              </UserLink>
               <div className="flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden text-[11px] md:block md:text-sm">
                 <p className="flex min-w-0 items-center gap-1 font-semibold text-foreground">
-                  <span className="truncate">{card.sellerName || card.author}</span>
+                  <UserLink userId={card.sellerId} stopPropagation className="truncate">{card.sellerName || card.author}</UserLink>
                   {card.sellerVerified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-orange-500 md:h-4 md:w-4" />}
                 </p>
                 <span className="text-muted-foreground md:hidden">·</span>
@@ -783,14 +786,16 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
 
         {/* Seller info */}
         <div className="flex items-center gap-1.5 mb-1 sm:mb-2">
-          {card.sellerAvatar ? (
-            <Image src={card.sellerAvatar} alt={card.sellerName || ''} width={16} height={16} className="rounded-full object-cover" />
-          ) : (
-            <div className="h-4 w-4 rounded-full bg-muted flex items-center justify-center">
-              <User className="h-2.5 w-2.5 text-muted-foreground" />
-            </div>
-          )}
-          <span className="text-[11px] sm:text-xs text-muted-foreground/80 truncate">{card.sellerName || card.author}</span>
+          <UserLink variant="plain" userId={card.sellerId} stopPropagation className="shrink-0">
+            {card.sellerAvatar ? (
+              <Image src={card.sellerAvatar} alt={card.sellerName || ''} width={16} height={16} className="rounded-full object-cover" />
+            ) : (
+              <div className="h-4 w-4 rounded-full bg-muted flex items-center justify-center">
+                <User className="h-2.5 w-2.5 text-muted-foreground" />
+              </div>
+            )}
+          </UserLink>
+          <UserLink userId={card.sellerId} stopPropagation className="text-[11px] sm:text-xs text-muted-foreground/80 truncate">{card.sellerName || card.author}</UserLink>
         </div>
 
         {/* Footer with price and button */}

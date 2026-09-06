@@ -20,6 +20,7 @@ import { getCategoryCode } from "@/lib/category-code";
 import { CreditCard, ShieldCheck, Truck, Wallet } from "lucide-react";
 import { useLocalization } from "@/context/localization-context";
 import { localizeFinancialApiError } from "@/lib/financial-api-errors";
+import { UserLink } from "@/components/user-link";
 import { VerifiedSellerBadge } from "@/components/verified-seller-badge";
 
 type CheckoutItem = {
@@ -607,14 +608,14 @@ export default function CheckoutPage() {
                     return (
                     <section key={group.id} className="overflow-hidden rounded-xl border border-zinc-800 bg-background/50">
                       <header className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/70 px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
-                        <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-orange-500/15 text-[10px] font-bold text-orange-300 sm:h-8 sm:w-8 sm:text-xs">
+                        <UserLink variant="plain" userId={group.id} className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-orange-500/15 text-[10px] font-bold text-orange-300 sm:h-8 sm:w-8 sm:text-xs">
                           {group.avatarUrl ? (
                             <Image src={group.avatarUrl} alt="" width={32} height={32} className="h-full w-full object-cover" />
                           ) : (
                             group.name.charAt(0).toUpperCase()
                           )}
-                        </div>
-                        <span className="min-w-0 truncate text-sm font-medium sm:font-semibold">{group.name}</span>
+                        </UserLink>
+                        <UserLink userId={group.id} className="min-w-0 truncate text-sm font-medium sm:font-semibold">{group.name}</UserLink>
                         <VerifiedSellerBadge verified={group.verified} className="h-3.5 w-3.5" />
                         <span className="ml-auto shrink-0 rounded bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-medium text-orange-300 sm:rounded-md sm:px-2 sm:py-1 sm:text-xs">
                           {copy.cardVerseSeller}

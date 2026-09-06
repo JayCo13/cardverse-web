@@ -22,6 +22,7 @@ import { SHIPPING_CARRIERS, getTrackingUrl, getCarrier, sellerSuppliesTracking }
 import { ParcelTrackingDialog } from '@/components/parcel-tracking-dialog';
 import { PackingVideoField } from '@/components/packing-video-field';
 import Image from 'next/image';
+import { UserLink } from "@/components/user-link";
 import { VerifiedSellerBadge } from '@/components/verified-seller-badge';
 
 type Order = {
@@ -138,7 +139,7 @@ export default function OrdersPage() {
         shipCountdownBuyer: '販売者の発送期限まで:',
         shipCountdownNoteBuyer: '期限超過で自動キャンセル・あなたのウォレットへ返金・販売者の評価減点。',
         shipCountdownNoteSeller: '期限超過で自動キャンセル・購入者へ返金・あなたの評価が減点されます。',
-        shipExpired: '発送期限切れ — 自動キャンセル・返金されます。',
+        shipExpired: '発送期限切れ。自動キャンセル・返金されます。',
         trackGHN: 'Track GHN',
         received: 'Received item',
         trackParcel: '配送を追跡',
@@ -215,7 +216,7 @@ export default function OrdersPage() {
           shipCountdownBuyer: 'Người bán cần giao hàng trong',
           shipCountdownNoteBuyer: 'Quá hạn: đơn tự huỷ, tiền hoàn về ví bạn, người bán bị trừ uy tín.',
           shipCountdownNoteSeller: 'Quá hạn: đơn tự huỷ, tiền hoàn cho người mua, bạn bị trừ điểm uy tín.',
-          shipExpired: 'Quá hạn giao hàng — đơn sẽ tự huỷ & hoàn tiền.',
+          shipExpired: 'Quá hạn giao hàng. Đơn sẽ tự huỷ & hoàn tiền.',
           trackGHN: 'Theo dõi GHN',
           received: 'Đã nhận hàng',
           trackParcel: 'Theo dõi đơn',
@@ -291,7 +292,7 @@ export default function OrdersPage() {
           shipCountdownBuyer: 'The seller must ship within',
           shipCountdownNoteBuyer: 'If overdue: the order auto-cancels, is refunded to your wallet, and the seller loses reputation.',
           shipCountdownNoteSeller: 'If overdue: the order auto-cancels, the buyer is refunded, and you lose reputation.',
-          shipExpired: 'Overdue — the order will auto-cancel and refund.',
+          shipExpired: 'Overdue. The order will auto-cancel and refund.',
           trackGHN: 'Track GHN',
           received: 'Item received',
           trackParcel: 'Track parcel',
@@ -613,11 +614,20 @@ export default function OrdersPage() {
               <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
                 {isBuyer ? (
                   <>
-                    <span>{`${copy.seller}: ${order.seller?.display_name || order.seller?.email || '—'}`}</span>
+                    <span>
+                      {`${copy.seller}: `}
+                      {/* The whole card pushes /orders/{id} from its own onClick
+                          (line ~544), so without this the click fires both
+                          navigations and the order usually wins the race. */}
+                      <UserLink userId={order.seller_id} stopPropagation>{order.seller?.display_name || order.seller?.email || '-'}</UserLink>
+                    </span>
                     <VerifiedSellerBadge verified={order.seller?.seller_verified} className="h-3.5 w-3.5" />
                   </>
                 ) : (
-                  <span>{`${copy.buyer}: ${order.buyer?.display_name || order.buyer?.email || '—'}`}</span>
+                  <span>
+                    {`${copy.buyer}: `}
+                    <UserLink userId={order.buyer_id} stopPropagation>{order.buyer?.display_name || order.buyer?.email || '-'}</UserLink>
+                  </span>
                 )}
               </p>
 
@@ -912,7 +922,7 @@ export default function OrdersPage() {
               {locale === 'ja-JP'
                 ? '追跡番号を入力すると、購入者にメールで通知されます。'
                 : locale === 'en-US'
-                  ? 'Enter the tracking number — the buyer will be notified by email.'
+                  ? 'Enter the tracking number. The buyer will be notified by email.'
                   : 'Nhập mã vận đơn để giao hàng. Người mua sẽ nhận email thông báo.'}
             </DialogDescription>
           </DialogHeader>
