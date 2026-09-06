@@ -1,5 +1,5 @@
-// Transport lives in mail-transport.ts: Resend when RESEND_API_KEY is set,
-// SMTP otherwise. Re-exported so existing importers keep working.
+// All email uses the CardVerseHub Gmail identity via mail-transport.ts.
+// Re-exported so existing importers keep working.
 export { createMailTransporter, getFromAddress } from './mail-transport';
 import { createMailTransporter, getFromAddress } from './mail-transport';
 import { translations, type TranslationKey } from './i18n';
@@ -32,7 +32,7 @@ function mailText(
 
 function buildTemplate(title: string, body: string, locale: SupportedLocale = 'vi-VN') {
     const appUrl = getAppUrl();
-    const logoUrl = `${appUrl}/assets/logo-verse.png`;
+    const logoUrl = 'https://cardversehub.com/assets/logo-verse.png';
     const year = new Date().getFullYear();
     const language = locale === 'ja-JP' ? 'ja' : locale === 'en-US' ? 'en' : 'vi';
 

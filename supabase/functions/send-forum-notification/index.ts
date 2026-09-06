@@ -2,15 +2,14 @@
 // Sends professional email notifications for forum interactions
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
-import { SmtpClient } from "https://deno.land/x/smtp@v0.7.0/mod.ts";
+import nodemailer from "npm:nodemailer@8.0.4";
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Gmail SMTP config
-const GMAIL_USER = Deno.env.get('GMAIL_USER')!;
-const GMAIL_APP_PASSWORD = Deno.env.get('GMAIL_APP_PASSWORD')!;
+const MAIL_SENDER_EMAIL = 'cardversehubsupport@gmail.com';
 
 interface Notification {
     id: string;
@@ -41,7 +40,7 @@ function generateEmailHtml(
     postPreview: string,
     postId: string
 ): string {
-    const baseUrl = 'https://cardverse.app';
+    const baseUrl = 'https://cardversehub.com';
     const postUrl = `${baseUrl}/forum?post=${postId}`;
 
     let title = '';
@@ -51,7 +50,7 @@ function generateEmailHtml(
     switch (type) {
         case 'post_like':
             title = 'Someone liked your post! ❤️';
-            message = `<strong>${actorName}</strong> liked your post on CardVerse.`;
+            message = `<strong>${actorName}</strong> liked your post on CardVerseHub.`;
             emoji = '❤️';
             break;
         case 'comment':
@@ -82,9 +81,7 @@ function generateEmailHtml(
                     <!-- Header -->
                     <tr>
                         <td style="padding: 30px 40px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                            <h1 style="margin: 0; font-size: 28px; font-weight: 700; background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
-                                CardVerse
-                            </h1>
+                            <img src="https://cardversehub.com/assets/logo-verse.png" alt="CardVerseHub" height="40" style="display: block; height: 40px; width: auto; border: 0; margin: 0 auto;">
                             <p style="margin: 5px 0 0; color: rgba(255,255,255,0.5); font-size: 12px; letter-spacing: 2px; text-transform: uppercase;">
                                 Trading Card Community
                             </p>
@@ -129,10 +126,10 @@ function generateEmailHtml(
                     <tr>
                         <td style="padding: 30px 40px; text-align: center; background: rgba(0,0,0,0.2); border-top: 1px solid rgba(255,255,255,0.1);">
                             <p style="margin: 0 0 10px; color: rgba(255,255,255,0.4); font-size: 12px;">
-                                You received this email because you're a member of CardVerse.
+                                You received this email because you're a member of CardVerseHub.
                             </p>
                             <p style="margin: 0; color: rgba(255,255,255,0.3); font-size: 11px;">
-                                © 2026 CardVerse. All rights reserved.
+                                © 2026 CardVerseHub. All rights reserved.
                             </p>
                         </td>
                     </tr>
@@ -147,24 +144,29 @@ function generateEmailHtml(
 // Send email via Gmail SMTP
 async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
     try {
-        const client = new SmtpClient();
-
-        await client.connectTLS({
-            hostname: "smtp.gmail.com",
+        // Accept existing Edge Function secret names while migrating to SMTP_*.
+        const user = (Deno.env.get('SMTP_USER') || Deno.env.get('GMAIL_USER'))?.trim().toLowerCase();
+        const password = Deno.env.get('SMTP_PASSWORD') || Deno.env.get('GMAIL_APP_PASSWORD');
+        if (user !== MAIL_SENDER_EMAIL || !password?.trim()) {
+            throw new Error('Configure the CardVerseHub Gmail account and its app password for forum email.');
+        }
+        const client = nodemailer.createTransport({
+            host: 'smtp.gmail.com',
             port: 465,
-            username: GMAIL_USER,
-            password: GMAIL_APP_PASSWORD,
+            secure: true,
+            auth: { user: MAIL_SENDER_EMAIL, pass: password },
+            connectionTimeout: 5_000,
+            greetingTimeout: 5_000,
+            socketTimeout: 8_000,
         });
-
-        await client.send({
-            from: GMAIL_USER,
-            to: to,
-            subject: subject,
-            content: "Please view this email in an HTML-compatible client.",
-            html: html,
+        // Nodemailer separates the named From header from the SMTP envelope.
+        await client.sendMail({
+            from: `CardVerseHub <${MAIL_SENDER_EMAIL}>`,
+            to,
+            subject,
+            text: 'Please view this email in an HTML-compatible client.',
+            html,
         });
-
-        await client.close();
         return true;
     } catch (error) {
         console.error('Email send error:', error);
@@ -220,13 +222,13 @@ async function processPendingNotifications(): Promise<{ processed: number; sent:
                 .eq('id', notification.post_id)
                 .single();
 
-            const postPreview = post?.content || 'View the post on CardVerse';
+            const postPreview = post?.content || 'View the post on CardVerseHub';
 
             // Generate subject based on type
             let subject = '';
             switch (notification.type) {
                 case 'post_like':
-                    subject = `❤️ ${actorName} liked your post on CardVerse`;
+                    subject = `❤️ ${actorName} liked your post on CardVerseHub`;
                     break;
                 case 'comment':
                     subject = `💬 ${actorName} commented on your post`;
