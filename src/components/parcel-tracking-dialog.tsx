@@ -24,7 +24,13 @@ type TrackingStatus = {
   supported: boolean;
   /** 'ok' when the lookup succeeded; otherwise why it did not. */
   lookup?: 'ok' | 'not_trackable' | 'not_configured' | 'not_registered' | 'unavailable';
-  events: { time: string | null; description: string | null; location: string | null; stage: string | null }[];
+  events: {
+    time: string | null;
+    description: string | null;
+    translation: { lang: string; description: string } | null;
+    location: string | null;
+    stage: string | null;
+  }[];
 };
 
 /** The tracking service's nine main statuses, in the reader's language. */
@@ -68,6 +74,24 @@ export function ParcelTrackingDialog({
     const entry = key ? CARRIER_STATUS_LABELS[key] : undefined;
     return entry ? entry[locale === 'ja-JP' ? 'ja' : locale === 'en-US' ? 'en' : 'vi'] : null;
   };
+  const readerLang = locale === 'ja-JP' ? 'ja' : locale === 'en-US' ? 'en' : 'vi';
+
+  /**
+   * What one event should say, best first.
+   *
+   * The service's translation is the richest text available — "Người gửi đang
+   * chuẩn bị gửi bưu kiện của bạn" rather than a bare status — but its language
+   * was fixed when the parcel was registered and cannot follow the reader, so
+   * it is only used when it happens to match. Otherwise the `stage` enum says
+   * the same thing less precisely but in the right language, which beats prose
+   * nobody asked for. The carrier's own wording is the last resort, for parcels
+   * registered before any of this and for a stage the service does not name.
+   */
+  const eventText = (e: { translation: { lang: string; description: string } | null; stage: string | null; description: string | null }) =>
+    (e.translation && e.translation.lang === readerLang ? e.translation.description : null)
+    || statusText(e.stage)
+    || e.description
+    || '-';
 
   // Fetched when the dialog opens rather than with the list: it is one upstream
   // call per order, and most orders are never opened.
@@ -163,13 +187,7 @@ export function ParcelTrackingDialog({
                 {info.events.map((e, i) => (
                   <li key={i} className="relative text-sm">
                     <span className={`absolute -left-[21px] top-1.5 h-2 w-2 rounded-full ${i === 0 ? 'bg-orange-500' : 'bg-border'}`} />
-                    {/* The carrier's own wording is the fallback, not the
-                        default: it arrives in English regardless of the
-                        language asked for, so a Vietnamese reader would get an
-                        English line under Vietnamese headings. `stage` says
-                        the same thing in a form we can translate; the time and
-                        place underneath carry the detail the enum drops. */}
-                    <p className={i === 0 ? 'font-medium' : ''}>{statusText(e.stage) || e.description || '-'}</p>
+                    <p className={i === 0 ? 'font-medium' : ''}>{eventText(e)}</p>
                     <p className="text-xs text-muted-foreground">
                       {[e.time ? new Date(e.time).toLocaleString(locale) : null, e.location].filter(Boolean).join(' · ')}
                     </p>

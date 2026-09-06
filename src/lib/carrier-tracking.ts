@@ -51,6 +51,7 @@ export type CarrierStatus =
 export async function registerCarrierTracking(
     carrier: string,
     trackingNumber: string,
+    lang: string | null = DEFAULT_TRACKING_LANG,
 ): Promise<{ registered: boolean; reason?: string }> {
     const apiKey = process.env.SEVENTEENTRACK_API_KEY;
     const carrierCode = CARRIER_CODES[carrier];
@@ -62,7 +63,14 @@ export async function registerCarrierTracking(
         const response = await fetch(`${API_BASE}/register`, {
             method: 'POST',
             headers: { '17token': apiKey, 'Content-Type': 'application/json' },
-            body: JSON.stringify([{ number: trackingNumber, carrier: carrierCode }]),
+            // `translation_mode` only means anything alongside `lang`, and only
+            // here — this is the one call that decides how the parcel's prose
+            // will read for the rest of its life.
+            body: JSON.stringify([{
+                number: trackingNumber,
+                carrier: carrierCode,
+                ...(lang ? { lang, translation_mode: 'UseThirdPartyServices' } : {}),
+            }]),
         });
         const payload = await response.json();
         const rejected = payload?.data?.rejected;
@@ -110,21 +118,41 @@ export function readTrackingEvent(body: unknown): {
 
 export type TrackingEvent = {
     time: string | null;
+    /** The carrier's own wording, in whatever language the carrier publishes. */
     description: string | null;
+    /**
+     * The service's translation and the language it is in, fixed when the
+     * parcel was registered. The reader's language may not be this one, which
+     * is why the caller compares before using it.
+     */
+    translation: { lang: string; description: string } | null;
     location: string | null;
     stage: string | null;
 };
 
 /**
- * App locale → the language 17TRACK is asked to write event descriptions in.
+ * App locale → the language 17TRACK writes its event descriptions in.
  *
- * Read this before relying on it: **as of 2026-09-06 it changes nothing.** The
- * live API was called for SPXVN069266737329 with lang vi, en and ja, and once
- * more with translation_mode 'UseThirdPartyServices', and every response came
- * back with the identical English `description` and no `description_translation`
- * field anywhere in the payload. `lang` is documented and the three codes are
- * on the supported list, so the parameter is kept and costs nothing — but the
- * timeline is translated from the `stage` enum in the dialog, not from this.
+ * The one thing to know: **`lang` belongs to `register`, not to
+ * `gettrackinfo`.** Sending it on the read does nothing at all — verified with
+ * vi, en and ja, and with translation_mode set as well; every response came
+ * back identical English with no `description_translation` field. Sent on
+ * registration it works, and the field appears:
+ *
+ *   register {lang: 'vi'}                              -> {"lang":"vi","description":"Sender is preparing…"}
+ *   register {lang: 'vi', translation_mode: 3rd party} -> {"lang":"vi","description":"Người gửi đang chuẩn bị gửi bưu kiện của bạn"}
+ *
+ * Both parts are needed: `lang` alone only asks the carrier for its own
+ * official wording, which SPX and GHN publish in English, so the translation
+ * comes back untranslated. The third-party mode is what actually renders it,
+ * and it is the same thing the 17TRACK dashboard's "Translate" checkbox does.
+ * It costs no extra quota beyond the one the registration already spends.
+ *
+ * The consequence to design around: a parcel is registered once, at ship time,
+ * so its prose has ONE language for everyone who later looks at it. It cannot
+ * follow the reader. That is why each event still carries its `stage`, and why
+ * the dialog falls back to translating that enum for anyone whose language does
+ * not match `description_translation.lang`.
  */
 const TRACKING_LANGS: Record<string, string> = {
     'vi-VN': 'vi',
@@ -136,22 +164,36 @@ export const trackingLang = (locale: string | null | undefined): string | null =
     (locale && TRACKING_LANGS[locale]) || null;
 
 /**
- * The event text, preferring a translation if one ever appears.
+ * The language parcels are registered in.
  *
- * No response observed so far carries `description_translation` at all — the
- * live event keys are address, description, location, stage, sub_status,
- * time_iso, time_raw and time_utc. This reads it defensively anyway, as a bare
- * string or an object, because it is documented and costs three lines; every
- * real response falls straight through to the carrier's own wording.
+ * Vietnamese, because the platform ships inside Vietnam only and both parties
+ * on an order are reading Vietnamese in almost every case. Readers of the other
+ * two languages are not stranded: they get the translated `stage` instead of
+ * prose in a language they did not ask for. If delivery ever crosses a border,
+ * pass the buyer's own locale here instead of this constant.
  */
-function eventDescription(event: Record<string, any>): string | null {
-    const translated = event?.description_translation;
-    if (typeof translated === 'string' && translated.trim()) return translated;
-    if (translated && typeof translated === 'object') {
-        const nested = translated.description ?? translated.text ?? translated.content;
-        if (typeof nested === 'string' && nested.trim()) return nested;
+export const DEFAULT_TRACKING_LANG = 'vi';
+
+/**
+ * The translation on an event, or null when there is none.
+ *
+ * Live shape, from a parcel registered with a language:
+ *   {"lang": "vi", "description": "Người gửi đang chuẩn bị gửi bưu kiện của bạn"}
+ *
+ * A parcel registered without one has no `description_translation` key at all,
+ * so null here is the normal case for anything shipped before this was set.
+ * A bare string is still accepted in case the shape ever changes back.
+ */
+function eventTranslation(event: Record<string, any>): { lang: string; description: string } | null {
+    const raw = event?.description_translation;
+    if (typeof raw === 'string' && raw.trim()) return { lang: '', description: raw };
+    if (raw && typeof raw === 'object') {
+        const text = raw.description ?? raw.text ?? raw.content;
+        if (typeof text === 'string' && text.trim()) {
+            return { lang: typeof raw.lang === 'string' ? raw.lang : '', description: text };
+        }
     }
-    return event?.description || null;
+    return null;
 }
 
 /**
@@ -193,7 +235,6 @@ const NOT_REGISTERED_CODE = -18019902;
 export async function fetchCarrierTracking(
     carrier: string,
     trackingNumber: string,
-    lang?: string | null,
 ): Promise<TrackingLookup> {
     const apiKey = process.env.SEVENTEENTRACK_API_KEY;
     const carrierCode = CARRIER_CODES[carrier];
@@ -204,12 +245,9 @@ export async function fetchCarrierTracking(
         const response = await fetch(`${API_BASE}/gettrackinfo`, {
             method: 'POST',
             headers: { '17token': apiKey, 'Content-Type': 'application/json' },
-            // `lang` sits beside `number` and `carrier`, and is omitted when
-            // the reader's language is not one we map. It is sent in hope
-            // rather than expectation: see TRACKING_LANGS for the live test
-            // showing it currently has no effect. `translation_mode` is left at
-            // its default, having been tried and made no difference either.
-            body: JSON.stringify([{ number: trackingNumber, carrier: carrierCode, ...(lang ? { lang } : {}) }]),
+            // No `lang` here on purpose: this endpoint ignores it. The
+            // language was decided at registration; see TRACKING_LANGS.
+            body: JSON.stringify([{ number: trackingNumber, carrier: carrierCode }]),
         });
         const payload = await response.json();
         const item = payload?.data?.accepted?.[0];
@@ -229,7 +267,8 @@ export async function fetchCarrierTracking(
             subStatus: info?.latest_status?.sub_status || null,
             events: rawEvents.map((e: Record<string, any>) => ({
                 time: e?.time_utc || e?.time_iso || null,
-                description: eventDescription(e),
+                description: e?.description || null,
+                translation: eventTranslation(e),
                 location: e?.location || null,
                 stage: e?.stage || null,
             })),

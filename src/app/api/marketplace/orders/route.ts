@@ -3,7 +3,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getRouteUser } from '@/lib/supabase/route-user';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { isEvidenceVideoUrl } from '@/lib/evidence-video';
-import { registerCarrierTracking, trackableCarrier } from '@/lib/carrier-tracking';
+import { DEFAULT_TRACKING_LANG, registerCarrierTracking, trackableCarrier } from '@/lib/carrier-tracking';
 import { getCarrier, getTrackingUrl, getDeliveryDays } from '@/lib/shipping-carriers';
 import { sendOrderShippedEmail } from '@/lib/mail';
 import { expireUnshippedPaidOrders } from '@/lib/expire-orders';
@@ -200,7 +200,10 @@ export async function PATCH(request: NextRequest) {
                 // order simply keeps the 'unverified' delivery state, which the
                 // dispute verdict already reports honestly.
                 if (trackingNo && trackableCarrier(carrierCode) && !actionResult?.replayed) {
-                    const registration = await registerCarrierTracking(carrierCode, trackingNo);
+                    // The language is decided here and never again: a parcel
+                    // is registered once, and that is the only moment the
+                    // tracking service will accept one.
+                    const registration = await registerCarrierTracking(carrierCode, trackingNo, DEFAULT_TRACKING_LANG);
                     if (!registration.registered) {
                         console.error(
                             `[Tracking] Could not register ${carrierCode} ${trackingNo}: ${registration.reason}`,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { fetchCarrierTracking, trackableCarrier, trackingLang } from '@/lib/carrier-tracking';
+import { fetchCarrierTracking, trackableCarrier } from '@/lib/carrier-tracking';
 
 // The parcel's journey for one order, for the buyer or the seller on it.
 //
@@ -61,16 +61,11 @@ export async function GET(request: NextRequest) {
         });
     }
 
-    // The reader's language travels with the request. `trackingLang` maps only
-    // the locales the app ships and returns null for anything else, so a caller
-    // cannot push an arbitrary string into the upstream request. (It currently
-    // changes nothing upstream — see TRACKING_LANGS — the timeline is
-    // translated from each event's `stage`.)
-    const live = await fetchCarrierTracking(
-        carrier,
-        trackingNumber,
-        trackingLang(request.nextUrl.searchParams.get('lang')),
-    );
+    // No language is sent on the read: the parcel's prose language was fixed
+    // when it was registered, and `gettrackinfo` ignores `lang` (see
+    // TRACKING_LANGS). Each event carries its translation and that
+    // translation's language, and the dialog compares before using it.
+    const live = await fetchCarrierTracking(carrier, trackingNumber);
 
     // `supported` says the carrier can be tracked at all; `lookup` says whether
     // we actually managed to read it just now. Keeping them apart is the point:
