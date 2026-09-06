@@ -116,13 +116,15 @@ export type TrackingEvent = {
 };
 
 /**
- * App locale → the language 17TRACK should write its event descriptions in.
+ * App locale → the language 17TRACK is asked to write event descriptions in.
  *
- * The dialog's own chrome has always been translated, but the timeline inside
- * it is the carrier's text relayed by the service, so a Vietnamese reader was
- * getting "Sender is preparing to ship your parcel" under Vietnamese headings.
- * The service translates on request; the three codes the app speaks are all on
- * its supported list.
+ * Read this before relying on it: **as of 2026-09-06 it changes nothing.** The
+ * live API was called for SPXVN069266737329 with lang vi, en and ja, and once
+ * more with translation_mode 'UseThirdPartyServices', and every response came
+ * back with the identical English `description` and no `description_translation`
+ * field anywhere in the payload. `lang` is documented and the three codes are
+ * on the supported list, so the parameter is kept and costs nothing — but the
+ * timeline is translated from the `stage` enum in the dialog, not from this.
  */
 const TRACKING_LANGS: Record<string, string> = {
     'vi-VN': 'vi',
@@ -134,13 +136,13 @@ export const trackingLang = (locale: string | null | undefined): string | null =
     (locale && TRACKING_LANGS[locale]) || null;
 
 /**
- * The event text to show, preferring the requested translation.
+ * The event text, preferring a translation if one ever appears.
  *
- * `description_translation` is documented but its shape is not, and this file's
- * nesting was already worked out from live responses rather than from the docs
- * — so both a bare string and an object carrying the text are accepted, and
- * anything else falls back to the carrier's own wording. An untranslated event
- * is worth more than a blank line.
+ * No response observed so far carries `description_translation` at all — the
+ * live event keys are address, description, location, stage, sub_status,
+ * time_iso, time_raw and time_utc. This reads it defensively anyway, as a bare
+ * string or an object, because it is documented and costs three lines; every
+ * real response falls straight through to the carrier's own wording.
  */
 function eventDescription(event: Record<string, any>): string | null {
     const translated = event?.description_translation;
@@ -173,12 +175,11 @@ export async function fetchCarrierTracking(
         const response = await fetch(`${API_BASE}/gettrackinfo`, {
             method: 'POST',
             headers: { '17token': apiKey, 'Content-Type': 'application/json' },
-            // `lang` sits beside `number` and `carrier`, and is simply omitted
-            // when the reader's language is not one we map — asking for a
-            // language the service does not know is worse than not asking.
-            // `translation_mode` is left at its default: the paid third-party
-            // fallback is available if official carrier translations turn out
-            // to be thin, but it is not something to opt into silently.
+            // `lang` sits beside `number` and `carrier`, and is omitted when
+            // the reader's language is not one we map. It is sent in hope
+            // rather than expectation: see TRACKING_LANGS for the live test
+            // showing it currently has no effect. `translation_mode` is left at
+            // its default, having been tried and made no difference either.
             body: JSON.stringify([{ number: trackingNumber, carrier: carrierCode, ...(lang ? { lang } : {}) }]),
         });
         const payload = await response.json();

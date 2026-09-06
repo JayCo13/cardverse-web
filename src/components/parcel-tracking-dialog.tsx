@@ -22,7 +22,7 @@ type TrackingStatus = {
   carrier: string;
   trackingNumber: string;
   supported: boolean;
-  events: { time: string | null; description: string | null; location: string | null }[];
+  events: { time: string | null; description: string | null; location: string | null; stage: string | null }[];
 };
 
 /** The tracking service's nine main statuses, in the reader's language. */
@@ -51,6 +51,21 @@ export function ParcelTrackingDialog({
   const [info, setInfo] = useState<TrackingStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const tx = (vi: string, en: string, ja: string) => (locale === 'ja-JP' ? ja : locale === 'en-US' ? en : vi);
+  /**
+   * A carrier status in the reader's language, or null if it is not one of the
+   * nine the service uses.
+   *
+   * This is how the timeline gets translated. The service relays the carrier's
+   * own prose in `description` and it is English whatever `lang` is set to —
+   * verified against the live API with vi, en and ja, and with
+   * translation_mode set to the paid third-party service: identical English
+   * every time, and no description_translation field in the response at all.
+   * `stage` is an enum, so it translates without asking anyone.
+   */
+  const statusText = (key: string | null | undefined) => {
+    const entry = key ? CARRIER_STATUS_LABELS[key] : undefined;
+    return entry ? entry[locale === 'ja-JP' ? 'ja' : locale === 'en-US' ? 'en' : 'vi'] : null;
+  };
 
   // Fetched when the dialog opens rather than with the list: it is one upstream
   // call per order, and most orders are never opened.
@@ -89,9 +104,7 @@ export function ParcelTrackingDialog({
           <div className="space-y-4">
             <div className="rounded-lg border border-border/60 p-3">
               <p className="text-sm font-semibold">
-                {(CARRIER_STATUS_LABELS[info.status || 'NotFound'] || CARRIER_STATUS_LABELS.NotFound)[
-                  locale === 'ja-JP' ? 'ja' : locale === 'en-US' ? 'en' : 'vi'
-                ]}
+                {statusText(info.status) || statusText('NotFound')}
               </p>
               {info.at && <p className="mt-0.5 text-xs text-muted-foreground">{new Date(info.at).toLocaleString(locale)}</p>}
             </div>
@@ -139,7 +152,13 @@ export function ParcelTrackingDialog({
                 {info.events.map((e, i) => (
                   <li key={i} className="relative text-sm">
                     <span className={`absolute -left-[21px] top-1.5 h-2 w-2 rounded-full ${i === 0 ? 'bg-orange-500' : 'bg-border'}`} />
-                    <p className={i === 0 ? 'font-medium' : ''}>{e.description || '-'}</p>
+                    {/* The carrier's own wording is the fallback, not the
+                        default: it arrives in English regardless of the
+                        language asked for, so a Vietnamese reader would get an
+                        English line under Vietnamese headings. `stage` says
+                        the same thing in a form we can translate; the time and
+                        place underneath carry the detail the enum drops. */}
+                    <p className={i === 0 ? 'font-medium' : ''}>{statusText(e.stage) || e.description || '-'}</p>
                     <p className="text-xs text-muted-foreground">
                       {[e.time ? new Date(e.time).toLocaleString(locale) : null, e.location].filter(Boolean).join(' · ')}
                     </p>
