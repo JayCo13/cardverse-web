@@ -59,6 +59,18 @@ export function walletCheckoutError(error: unknown): WalletCheckoutError {
     };
   }
 
+  // A settlement function refusing the address is the caller's problem, not a
+  // server fault. Without this branch it fell through to the 500 below, which
+  // is how a district requirement left behind in two Postgres functions read as
+  // "Unable to complete checkout" instead of "your address is incomplete".
+  if (message.includes('_marketplace_shipping_invalid')) {
+    return {
+      code: 'shipping_address_invalid',
+      message: 'The delivery address is incomplete.',
+      status: 400,
+    };
+  }
+
   return {
     code: 'checkout_failed',
     message: 'Unable to complete checkout.',

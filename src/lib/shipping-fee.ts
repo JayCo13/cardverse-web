@@ -56,18 +56,28 @@ export const getRegion = (provinceName: string | null | undefined): VnRegion | n
   REGION_BY_PROVINCE.get(normalizeProvince(provinceName)) ?? null;
 
 /**
- * Which fee tier applies for a delivery. Prefers province IDs for the
- * same-province check (reliable when both come from the same API); falls back
- * to name matching. Region comparison always uses names.
+ * Which fee tier applies for a delivery.
+ *
+ * The same-province check reads NAMES first, and treats matching ids only as a
+ * second way to say yes. It used to be the other way round, which was right
+ * while every id came from GHN and wrong the moment they did not: a seller
+ * whose address predates the 2025 reorganisation carries GHN's id (Tây Ninh =
+ * 240) while a buyer who picked an address afterwards carries the official code
+ * (Tây Ninh = 80). Two ids from two code spaces are never equal, so a delivery
+ * inside one province was being quoted — and charged — at the inter-province
+ * rate. Names survive the change: `normalizeProvince` strips the "Tỉnh" and
+ * "Thành phố" prefixes that the new list adds.
+ *
+ * Region comparison has always used names, and still does.
  */
 export const resolveShippingTier = (
   seller: { provinceId?: number | null; provinceName?: string | null },
   buyer: { provinceId?: number | null; provinceName?: string | null },
 ): ShippingTier => {
-  const sameProvince = seller.provinceId && buyer.provinceId
-    ? seller.provinceId === buyer.provinceId
-    : normalizeProvince(seller.provinceName) !== '' &&
-      normalizeProvince(seller.provinceName) === normalizeProvince(buyer.provinceName);
+  const sellerKey = normalizeProvince(seller.provinceName);
+  const buyerKey = normalizeProvince(buyer.provinceName);
+  const sameProvince = (sellerKey !== '' && sellerKey === buyerKey)
+    || (!!seller.provinceId && !!buyer.provinceId && seller.provinceId === buyer.provinceId);
   if (sameProvince) return 'intra';
 
   const sellerRegion = getRegion(seller.provinceName);
