@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ExternalLink } from 'lucide-react';
-import { getCarrier, getTrackingUrl } from '@/lib/shipping-carriers';
+import { getCarrier, getTrackingUrl, trackingPrefillsCode } from '@/lib/shipping-carriers';
 
 /**
  * The parcel's journey for one order, read live from the tracking service.
@@ -102,6 +102,17 @@ export function ParcelTrackingDialog({
                   'This carrier is not covered by automatic tracking. Check the carrier’s own page.',
                   'この配送業者は自動追跡に対応していません。業者のサイトでご確認ください。',
                 )}</p>
+                {/* Viettel Post puts its lookup behind a reCAPTCHA iframe that
+                    ignores every query parameter, so this link opens an empty
+                    form. Say so, because the number is right there in the
+                    dialog header for the visitor to copy. */}
+                {!trackingPrefillsCode(info.carrier) && (
+                  <p>{tx(
+                    `Trang của hãng không nhận sẵn mã, bạn dán mã ${info.trackingNumber} vào ô tra cứu.`,
+                    `The carrier's page cannot be pre-filled, so paste ${info.trackingNumber} into its search box.`,
+                    `業者のページには番号を渡せないため、${info.trackingNumber} を検索欄に貼り付けてください。`,
+                  )}</p>
+                )}
                 {getTrackingUrl(info.carrier, info.trackingNumber) && (
                   <a
                     href={getTrackingUrl(info.carrier, info.trackingNumber) as string}

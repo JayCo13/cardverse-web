@@ -18,8 +18,23 @@ export interface ShippingCarrier {
   name: string;
   /** Logo image path under /public, or null for carriers rendered with an icon (self delivery). */
   logo: string | null;
-  /** Public tracking page; `{code}` is replaced with the tracking number. null = no online tracking (self delivery). */
+  /**
+   * Public tracking page; `{code}` is replaced with the tracking number.
+   * null = no online tracking (self delivery).
+   *
+   * Every carrier parses this differently and none of them document it, so each
+   * template below was verified by loading it in a real browser and reading the
+   * value that ended up in the carrier's own search box. Do not "tidy" one into
+   * the shape of another.
+   */
   trackingUrl: string | null;
+  /**
+   * Does opening `trackingUrl` actually fill in the code, or does the visitor
+   * still have to type it? Viettel Post puts its lookup behind a reCAPTCHA
+   * iframe that ignores every query parameter, so the link is a destination
+   * rather than a lookup. Show the number next to the link for those carriers.
+   */
+  trackingPrefills: boolean;
   /**
    * Estimated delivery window in days, counted from when the carrier PICKS UP
    * the parcel (the "đã lấy hàng" status that only appears on the carrier's own
@@ -31,10 +46,24 @@ export interface ShippingCarrier {
 }
 
 export const SHIPPING_CARRIERS: ShippingCarrier[] = [
-  { code: 'ghn', short: 'GHN', name: 'Giao Hàng Nhanh (GHN)', logo: '/assets/carriers/ghn.svg', trackingUrl: 'https://donhang.ghn.vn/?order_code={code}', deliveryDays: { min: 2, max: 5 } },
-  { code: 'vtp', short: 'Viettel Post', name: 'Viettel Post', logo: '/assets/carriers/vtp.svg', trackingUrl: 'https://viettelpost.com.vn/tra-cuu-hanh-trinh-don/?peopleTracking={code}', deliveryDays: { min: 2, max: 5 } },
-  { code: 'shopee', short: 'SPX', name: 'Shopee Express', logo: '/assets/carriers/shopee.svg', trackingUrl: 'https://spx.vn/track?TrackingID={code}', deliveryDays: { min: 2, max: 4 } },
-  { code: 'self', short: 'Tự giao', name: 'Tự giao / Gặp mặt', logo: null, trackingUrl: null, deliveryDays: null },
+  // GHN reads the `order_code` parameter and fills its search box with it.
+  { code: 'ghn', short: 'GHN', name: 'Giao Hàng Nhanh (GHN)', logo: '/assets/carriers/ghn.svg', trackingUrl: 'https://donhang.ghn.vn/?order_code={code}', trackingPrefills: true, deliveryDays: { min: 2, max: 5 } },
+  // Viettel Post renders its lookup inside an iframe
+  // (viettelpost.vn/viettelpost-iframe/tra-cuu-hanh-trinh-don-hang-v3-recaptcha)
+  // whose src carries no query of its own, so nothing on the outer URL reaches
+  // the form. The `peopleTracking` parameter this used to send was dead: it was
+  // tested along with orderNumber, order, code, tracking, keyword and billCode,
+  // on both the page and the iframe, and the box stayed empty every time. The
+  // reCAPTCHA in front of it says that is deliberate. Link to the page and let
+  // the UI show the number to copy.
+  { code: 'vtp', short: 'Viettel Post', name: 'Viettel Post', logo: '/assets/carriers/vtp.svg', trackingUrl: 'https://viettelpost.com.vn/tra-cuu-hanh-trinh-don/', trackingPrefills: false, deliveryDays: { min: 2, max: 5 } },
+  // SPX takes the WHOLE query string as the tracking number, not a named
+  // parameter — it is doing the equivalent of location.search.slice(1). So
+  // `?TrackingID=SPXVN0692...` searched for the literal text
+  // "TrackingID=SPXVN0692..." and returned "Không có kết quả phù hợp". The code
+  // goes straight after the `?` with no name in front of it.
+  { code: 'shopee', short: 'SPX', name: 'Shopee Express', logo: '/assets/carriers/shopee.svg', trackingUrl: 'https://spx.vn/track?{code}', trackingPrefills: true, deliveryDays: { min: 2, max: 4 } },
+  { code: 'self', short: 'Tự giao', name: 'Tự giao / Gặp mặt', logo: null, trackingUrl: null, trackingPrefills: false, deliveryDays: null },
 ];
 
 const CARRIER_BY_CODE = new Map(SHIPPING_CARRIERS.map((c) => [c.code, c]));
@@ -53,6 +82,14 @@ export const getTrackingUrl = (code: string | null | undefined, trackingNumber: 
   if (!carrier?.trackingUrl) return null;
   return carrier.trackingUrl.replace('{code}', encodeURIComponent(trackingNumber));
 };
+
+/**
+ * Does this carrier's tracking link arrive with the code already in the box, or
+ * does the visitor still have to paste it? Callers that hide the number behind
+ * a link need to keep it on screen when this is false.
+ */
+export const trackingPrefillsCode = (code: string | null | undefined): boolean =>
+  !!code && !!getCarrier(code)?.trackingPrefills;
 
 /**
  * Does the seller have to supply a tracking number for this carrier?
