@@ -155,21 +155,50 @@ function eventDescription(event: Record<string, any>): string | null {
 }
 
 /**
+ * Why a lookup produced nothing. Kept apart from "the parcel has not moved
+ * yet", because the two look identical to a caller holding an empty array and
+ * only one of them is the carrier's doing.
+ *
+ * `not_registered` is the one worth watching: the service answers it for a
+ * number nobody ever registered, and also for one whose registration has gone
+ * away. It happened to a live order on 2026-09-05, and until the number is
+ * registered again no webhook will ever fire for it, so the order can never
+ * settle on the delivery path.
+ */
+export type TrackingLookupFailure =
+    | 'not_configured'
+    | 'not_trackable'
+    | 'not_registered'
+    | 'unavailable';
+
+export type TrackingLookup =
+    | { ok: true; status: string; subStatus: string | null; events: TrackingEvent[] }
+    | { ok: false; reason: TrackingLookupFailure };
+
+/** 17TRACK's code for "this number was never registered". */
+const NOT_REGISTERED_CODE = -18019902;
+
+/**
  * The parcel's journey, as the tracking service currently has it.
  *
  * Read-only and safe to call on demand: `gettrackinfo` costs no quota, only
- * `register` does. Returns null when the carrier is one we never registered
- * (Viettel Post, hand delivery), so the caller can say so rather than showing
- * an empty timeline that looks like a failure.
+ * `register` does.
+ *
+ * Never collapses a failure into an empty result. An unset API key, a number
+ * the service is not following, and an outage all used to come back as `null`,
+ * which the route turned into `events: []` and the dialog rendered as "the
+ * carrier has no updates yet" — blaming the carrier for our own missing
+ * configuration. The caller gets the reason and can say something true.
  */
 export async function fetchCarrierTracking(
     carrier: string,
     trackingNumber: string,
     lang?: string | null,
-): Promise<{ status: string; subStatus: string | null; events: TrackingEvent[] } | null> {
+): Promise<TrackingLookup> {
     const apiKey = process.env.SEVENTEENTRACK_API_KEY;
     const carrierCode = CARRIER_CODES[carrier];
-    if (!apiKey || !carrierCode || !trackingNumber) return null;
+    if (!apiKey) return { ok: false, reason: 'not_configured' };
+    if (!carrierCode || !trackingNumber) return { ok: false, reason: 'not_trackable' };
 
     try {
         const response = await fetch(`${API_BASE}/gettrackinfo`, {
@@ -184,12 +213,18 @@ export async function fetchCarrierTracking(
         });
         const payload = await response.json();
         const item = payload?.data?.accepted?.[0];
-        if (!item) return null;
+        if (!item) {
+            // A rejection carries a reason; an empty response does not.
+            const rejected = payload?.data?.rejected?.[0]?.error;
+            if (rejected?.code === NOT_REGISTERED_CODE) return { ok: false, reason: 'not_registered' };
+            return { ok: false, reason: 'unavailable' };
+        }
 
         const info = item.track_info || {};
         const provider = info?.tracking?.providers?.[0];
         const rawEvents = Array.isArray(provider?.events) ? provider.events : [];
         return {
+            ok: true,
             status: info?.latest_status?.status || 'NotFound',
             subStatus: info?.latest_status?.sub_status || null,
             events: rawEvents.map((e: Record<string, any>) => ({
@@ -200,6 +235,6 @@ export async function fetchCarrierTracking(
             })),
         };
     } catch {
-        return null;
+        return { ok: false, reason: 'unavailable' };
     }
 }

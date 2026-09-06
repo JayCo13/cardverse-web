@@ -56,24 +56,42 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({
             ...stored,
             supported: false,
+            lookup: 'not_trackable',
             events: [],
         });
     }
 
-    // The reader's language travels with the request so the carrier events come
-    // back written in it. `trackingLang` maps only the locales the app ships and
-    // returns null for anything else, so a caller cannot push an arbitrary
-    // string into the upstream request.
+    // The reader's language travels with the request. `trackingLang` maps only
+    // the locales the app ships and returns null for anything else, so a caller
+    // cannot push an arbitrary string into the upstream request. (It currently
+    // changes nothing upstream — see TRACKING_LANGS — the timeline is
+    // translated from each event's `stage`.)
     const live = await fetchCarrierTracking(
         carrier,
         trackingNumber,
         trackingLang(request.nextUrl.searchParams.get('lang')),
     );
+
+    // `supported` says the carrier can be tracked at all; `lookup` says whether
+    // we actually managed to read it just now. Keeping them apart is the point:
+    // folding a failed lookup into `events: []` told the reader the carrier had
+    // posted no updates, when the truth was that we never got an answer.
+    if (!live.ok) {
+        console.warn(`[Tracking] lookup failed for ${carrier} ${trackingNumber}: ${live.reason}`);
+        return NextResponse.json({
+            ...stored,
+            supported: true,
+            lookup: live.reason,
+            events: [],
+        });
+    }
+
     return NextResponse.json({
         ...stored,
         supported: true,
-        status: live?.status ?? stored.status,
-        subStatus: live?.subStatus ?? stored.subStatus,
-        events: live?.events ?? [],
+        lookup: 'ok',
+        status: live.status,
+        subStatus: live.subStatus,
+        events: live.events,
     });
 }

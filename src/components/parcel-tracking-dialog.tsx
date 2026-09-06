@@ -22,6 +22,8 @@ type TrackingStatus = {
   carrier: string;
   trackingNumber: string;
   supported: boolean;
+  /** 'ok' when the lookup succeeded; otherwise why it did not. */
+  lookup?: 'ok' | 'not_trackable' | 'not_configured' | 'not_registered' | 'unavailable';
   events: { time: string | null; description: string | null; location: string | null; stage: string | null }[];
 };
 
@@ -111,12 +113,21 @@ export function ParcelTrackingDialog({
 
             {/* A carrier we cannot track is said so plainly, rather than shown as
                 an empty timeline that reads like a failure. */}
-            {!info.supported ? (
+            {!info.supported || (info.lookup && info.lookup !== 'ok') ? (
               <div className="space-y-2 rounded-lg bg-muted/40 p-3 text-xs leading-5 text-muted-foreground">
-                <p>{tx(
+                {/* Two different truths, and they used to be told as one. A
+                    carrier outside the tracking service is the carrier's
+                    limitation; a lookup that failed is ours, and reporting it
+                    as "no updates from the carrier" blamed them for our own
+                    missing key, spent quota or dropped registration. */}
+                <p>{!info.supported ? tx(
                   'Đơn vị vận chuyển này chưa hỗ trợ theo dõi tự động. Bạn xem trực tiếp trên trang của hãng.',
                   'This carrier is not covered by automatic tracking. Check the carrier’s own page.',
                   'この配送業者は自動追跡に対応していません。業者のサイトでご確認ください。',
+                ) : tx(
+                  'Chưa lấy được hành trình từ dịch vụ theo dõi lúc này. Đây là sự cố phía chúng tôi, không phải hãng vận chuyển. Bạn xem trực tiếp trên trang của hãng.',
+                  'We could not read the tracking service just now. That is on us, not on the carrier. Check the carrier’s own page in the meantime.',
+                  '現在、追跡サービスから履歴を取得できませんでした。配送業者ではなく当方の問題です。業者のサイトでご確認ください。',
                 )}</p>
                 {/* Viettel Post puts its lookup behind a reCAPTCHA iframe that
                     ignores every query parameter, so this link opens an empty
