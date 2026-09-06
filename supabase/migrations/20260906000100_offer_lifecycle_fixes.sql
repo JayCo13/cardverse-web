@@ -1,24 +1,28 @@
--- Make the accepted-offer lifecycle correct, and actually run it.
+-- Run the accepted-offer lifecycle, and stop it punishing the wrong buyer.
 --
--- Three faults, all visible at once on /offers?view=sent, where every open
--- offer in the database pointed at a card that had already sold:
+-- Rewritten from 20260904000100, which is the live definition — its live-order
+-- guards and its `coalesce(payment_deadline, reserved_until)` handling of
+-- partial bundle offers are carried forward here unchanged. Three things are
+-- new:
 --
--- 1. `run_offer_payment_lifecycle` (20260902000100) was written the day BEFORE
---    partial bundle offers arrived (20260903000100), so it has never known that
---    `offers.payment_deadline` exists. Its expiry test is
---    "card is not in_transaction, or its reservation lapsed" — and a partial
---    offer holds no reservation at all, leaving its card `active`. Scheduling
---    that function as written would expire every partial offer in the same
---    second the seller accepted it.
+-- 1. Nothing ever ran it. The route at /api/cron/offer-payment-lifecycle
+--    exists; no scheduler, HTTP or otherwise, was wired to it, so offers whose
+--    card went elsewhere stayed `chosen` indefinitely, still showing the buyer
+--    a "Pay now" button that 409s at checkout. Every open offer in the database
+--    pointed at a card that had already sold. pg_cron now runs the expiry, and
+--    a Netlify scheduled function posts the reminders.
 --
--- 2. Nothing ever called it. The route at /api/cron/offer-payment-lifecycle
---    exists; no scheduler, HTTP or otherwise, has ever hit it. Offers whose
---    card went elsewhere therefore stayed `chosen` forever, still showing the
---    buyer a "Pay now" button that 409s at checkout.
+-- 2. The penalty branch keyed on `payment_reminder_sent_at is not null` alone,
+--    so it could not tell "this buyer ignored their deadline" from "this
+--    buyer's card was bought by somebody else". The second is not the buyer's
+--    doing and now costs them nothing; the two also read differently in the
+--    notification, because "your payment window closed" is a lie when what
+--    happened is that they lost a race.
 --
--- 3. Its penalty branch keyed on `payment_reminder_sent_at is not null` alone.
---    A buyer whose card was bought by someone else did nothing wrong, and lost
---    five points of standing for it.
+-- 3. A partial bundle offer could only be closed by its own deadline. If the
+--    items it named were sold out of the bundle first, the buyer kept a live
+--    "Pay now" until that deadline even though checkout would reject the stale
+--    selection. `bundle_selection_available` below closes it at once.
 --
 -- The card-reservation model itself is left alone: holding a whole listing
 -- `in_transaction` for 24h is better than eBay, which leaves the listing live
@@ -107,6 +111,11 @@ begin
       -- an offer that is no longer `chosen`, against a card another buyer may
       -- already own. `release_expired_card_reservations`
       -- (20260702_expire_orphan_chosen_offers.sql:61-65) guards the same way.
+      --
+      -- Carried from 20260904000100, which added it after the sweeper closed
+      -- offers that had in fact been paid. Widened from `<> 'cancelled'` to
+      -- also let a refunded order through: by then `settle_offer_on_order_close`
+      -- has already settled the offer, so it will not be `chosen` here anyway.
       --
       -- A denylist, not an allowlist: a status added later counts as live until
       -- somebody decides otherwise, which is the safe direction to be wrong in.
@@ -223,13 +232,10 @@ begin
   select 'expired'::text, e.offer_id, e.buyer_id, e.card_id, e.card_name, e.price, e.deadline
   from public.expire_stale_chosen_offers() e;
 
-  -- An offer expresses its deadline in one of two places: a whole-listing offer
-  -- counts down its card's reservation, a partial bundle offer carries its own
-  -- `payment_deadline` and leaves the card active. The inherited query only
-  -- knew the first, because partial offers landed the day after it was written
-  -- (20260903000100), so those buyers were never reminded — and since the
-  -- penalty only lands on a buyer who was reminded, they could never be
-  -- penalised either.
+  -- Unchanged from 20260904000100. An offer expresses its deadline in one of
+  -- two places: a whole-listing offer counts down its card's reservation, a
+  -- partial bundle offer carries its own `payment_deadline` and leaves the card
+  -- active — hence the coalesce.
   return query
   update public.offers o
   set payment_reminder_sent_at = now()
@@ -237,6 +243,15 @@ begin
   where c.id = o.card_id
     and o.status = 'chosen'
     and o.payment_reminder_sent_at is null
+    -- Never chase a buyer who has already paid. Their offer sits at `chosen`
+    -- for the moment between the order being written and the payment finaliser
+    -- flipping it to `accepted`, and a reminder posted in that window tells
+    -- somebody who just paid that their window is closing.
+    and not exists (
+      select 1 from public.orders ord
+      where ord.offer_id = o.id
+        and ord.status not in ('cancelled', 'refunded')
+    )
     -- A whole-listing offer counts only while it still holds its card; a
     -- partial one holds nothing, so its own deadline is the whole story.
     and (o.payment_deadline is not null or c.status = 'in_transaction')
