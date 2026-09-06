@@ -6,8 +6,10 @@ type AddressBody = {
     phone?: string;
     province_id?: number;
     province_name?: string;
-    district_id?: number;
-    district_name?: string;
+    /** @deprecated No district level since 1/7/2025. Null on anything saved now. */
+    district_id?: number | null;
+    /** @deprecated See `district_id`. */
+    district_name?: string | null;
     ward_code?: string;
     ward_name?: string;
     detail?: string;

@@ -53,7 +53,10 @@ type CreatedOrder = Record<string, unknown>;
 
 function orderShipping(body: ShippingBody) {
   return {
-    shipping_address: body.shipping_address || `${body.to_address_detail}, ${body.to_ward_name}, ${body.to_district_name}, ${body.to_province_name}`,
+    // Joined with a filter because there is no district level any more; an
+    // address built by template used to read "detail, ward, , province".
+    shipping_address: body.shipping_address
+      || [body.to_address_detail, body.to_ward_name, body.to_district_name, body.to_province_name].filter(Boolean).join(', '),
     to_name: body.to_name,
     to_phone: body.to_phone,
     to_district_id: body.to_district_id,
@@ -70,8 +73,6 @@ function shippingIsComplete(body: Partial<ShippingBody>) {
   return !!(
     body.to_name &&
     body.to_phone &&
-    body.to_district_id &&
-    body.to_district_name &&
     body.to_province_id &&
     body.to_province_name &&
     body.to_ward_code &&

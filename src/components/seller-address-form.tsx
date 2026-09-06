@@ -74,7 +74,10 @@ export function SellerAddressForm({ onSaved, submitLabel }: SellerAddressFormPro
       const { data } = await supabase.rpc('get_my_profile' as never);
       if (!active) return;
       const p = data as Record<string, any> | null;
-      if (p?.address_district_id && p?.address_ward_code) {
+      // Province + ward is a complete address now. A row saved before the
+      // district tier was abolished still has its old district; it is loaded
+      // for display only, and saving replaces the address without one.
+      if (p?.address_province_id && p?.address_ward_code) {
         const existing: AddressData = {
           provinceId: p.address_province_id,
           provinceName: p.address_province_name || '',
@@ -110,8 +113,11 @@ export function SellerAddressForm({ onSaved, submitLabel }: SellerAddressFormPro
         .update({
           address_province_id: address.provinceId,
           address_province_name: address.provinceName,
-          address_district_id: address.districtId,
-          address_district_name: address.districtName,
+          // Explicitly cleared, not left behind: keeping the old district
+          // beside a newly chosen ward would describe a place that does not
+          // exist.
+          address_district_id: address.districtId ?? null,
+          address_district_name: address.districtName ?? null,
           address_ward_code: address.wardCode,
           address_ward_name: address.wardName,
           address_detail: address.detail,

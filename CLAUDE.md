@@ -21,7 +21,7 @@ There is no test runner configured. Standalone `.ts` scripts (crawlers, `test-eb
 
 ## Environment
 
-All secrets live in `.env` (gitignored). Required keys span several integrations — Supabase (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`), Cloudinary, Firebase (`NEXT_PUBLIC_FIREBASE_*`), eBay (`EBAY_*`), Groq (`GROQ_API_KEY`), Google GenAI (`GOOGLE_API_KEY`), PayOS (`PAYOS_*`), SMTP (`SMTP_*`), and GHN shipping (`GHN_TOKEN`, `GHN_SHOP_ID`). Many clients are lazy-initialized (e.g. `src/lib/payos.ts`) specifically so a missing key doesn't crash `next build`.
+All secrets live in `.env` (gitignored). Required keys span several integrations — Supabase (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`), Cloudinary, Firebase (`NEXT_PUBLIC_FIREBASE_*`), eBay (`EBAY_*`), Groq (`GROQ_API_KEY`), Google GenAI (`GOOGLE_API_KEY`), PayOS (`PAYOS_*`), SMTP (`SMTP_*`), and parcel tracking (`SEVENTEENTRACK_API_KEY` for the API, `SEVENTEENTRACK_WEBHOOK_TOKEN` — a secret we choose ourselves, since 17TRACK does not sign its pushes). Many clients are lazy-initialized (e.g. `src/lib/payos.ts`) specifically so a missing key doesn't crash `next build`.
 
 ## Architecture
 
@@ -68,7 +68,9 @@ before touching the seller flow.
 
 ### Payments & shipping (Vietnam-specific)
 - **PayOS** (`src/lib/payos.ts`, `/api/payos/*`) — payment links, `webhook` and `return` handlers, credit/day-pass packages.
-- **GHN — Giao Hàng Nhanh** (`src/lib/ghn.ts`, `/api/shipping`) — shipping rates/orders with card-envelope defaults; province/district/ward fields are stored on profiles.
+- **Addresses are local data, not an API** (`src/lib/vn-address.ts`, `src/data/vn-*.json`, `/api/address/*`). Two levels: province and ward. Vietnam merged 63 provinces into 34 on 12/6/2025 and abolished the district tier on 1/7/2025, so a district no longer exists to collect — the `*_district_*` columns are kept only for rows written before that. The lists used to come from GHN's master-data endpoint, and when its token stopped matching its gateway the whole address step went down; `npm run data:address` refreshes the vendored copy from provinces.open-api.vn **v2** (v1 still serves the pre-2025 structure).
+- **Shipping is quoted from the seller's own fee tiers**, not from a carrier (`src/lib/shipping-fee.ts`, `verified-shipping.ts`). The tier is intra/inter/region, resolved from province name, so adding a province name to the region lists in `shipping-fee.ts` is what makes it quotable. There is no carrier fee API in the app any more.
+- Sellers book their own shipments and paste the tracking number back; delivery status comes from 17TRACK (`src/lib/carrier-tracking.ts`), never from a carrier's own webhook. See `docs/money-flow.md`.
 
 ### Pricing data
 eBay sold-listing scraping (`/api/ebay-scrape`, `/api/search-ebay`, `cheerio` + `axios`) feeds market price comparisons. `/api/ebay-deletion` implements eBay's account-deletion notification endpoint (`EBAY_VERIFICATION_TOKEN`).

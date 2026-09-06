@@ -583,14 +583,6 @@ export default function CardDetailsPage() {
         return Array.from(new Set([card.imageUrl, ...(card.imageUrls || [])].filter(Boolean)));
     }, [card]);
 
-    const sellerAddress = useMemo(() => {
-        if (!seller?.address_district_id || !seller?.address_ward_code) return null;
-        return {
-            districtId: seller.address_district_id,
-            wardCode: seller.address_ward_code,
-        };
-    }, [seller]);
-
     const checkoutCard: CheckoutCard | null = card ? {
         id: card.id,
         name: card.name,
@@ -1348,7 +1340,6 @@ export default function CardDetailsPage() {
                 open={checkoutOpen}
                 onOpenChange={setCheckoutOpen}
                 card={checkoutCard}
-                sellerAddress={sellerAddress}
                 onSuccess={() => {
                     setCheckoutOpen(false);
                     void fetchCard();

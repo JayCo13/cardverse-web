@@ -23,7 +23,11 @@ const NORTH = [
   'Vĩnh Phúc', 'Bắc Ninh', 'Hải Dương', 'Hải Phòng', 'Hưng Yên', 'Thái Bình', 'Hà Nam', 'Nam Định', 'Ninh Bình',
 ];
 const CENTRAL = [
-  'Thanh Hóa', 'Nghệ An', 'Hà Tĩnh', 'Quảng Bình', 'Quảng Trị', 'Thừa Thiên Huế', 'Đà Nẵng', 'Quảng Nam',
+  // 'Huế' and 'Thừa Thiên Huế' are the same place either side of the 2025
+  // reorganisation. Both are listed because the province list now says
+  // "Thành phố Huế" while addresses saved before it say the old name, and a
+  // province that matches neither falls to the most expensive fee tier.
+  'Thanh Hóa', 'Nghệ An', 'Hà Tĩnh', 'Quảng Bình', 'Quảng Trị', 'Thừa Thiên Huế', 'Huế', 'Đà Nẵng', 'Quảng Nam',
   'Quảng Ngãi', 'Bình Định', 'Phú Yên', 'Khánh Hòa', 'Ninh Thuận', 'Bình Thuận', 'Kon Tum', 'Gia Lai',
   'Đắk Lắk', 'Đắk Nông', 'Lâm Đồng',
 ];

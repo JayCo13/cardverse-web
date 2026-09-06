@@ -51,8 +51,10 @@ export async function POST(
     if (!['wallet', 'direct_payos'].includes(payment_method)) {
       return NextResponse.json({ error: 'Invalid payment method' }, { status: 400 });
     }
+    // District is not part of a complete address any more: the tier was
+    // abolished on 1/7/2025, so the picker cannot supply one.
     if (
-      !to_name || !to_phone || !to_district_id || !to_district_name
+      !to_name || !to_phone
       || !to_province_id || !to_province_name || !to_ward_code
       || !to_ward_name || !to_address_detail
     ) {

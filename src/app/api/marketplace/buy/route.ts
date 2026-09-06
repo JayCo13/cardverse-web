@@ -68,11 +68,11 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Idempotency-Key is required' }, { status: 400 });
         }
 
+        // District is not part of a complete address any more: the tier was
+        // abolished on 1/7/2025, so the picker cannot supply one.
         if (
             !to_name ||
             !to_phone ||
-            !to_district_id ||
-            !to_district_name ||
             !to_province_id ||
             !to_province_name ||
             !to_ward_code ||

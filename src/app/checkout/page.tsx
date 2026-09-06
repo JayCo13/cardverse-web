@@ -39,7 +39,6 @@ type CheckoutItem = {
     sellerVerified?: boolean | null;
   /** For a bundle offer: exactly which cards this payment buys. */
   bundleSelection?: { title?: string; price?: number }[] | null;
-    sellerPickup?: { districtId: number; wardCode: string } | null;
   };
   amount: number;
   shippingFee: number | null;
@@ -270,12 +269,6 @@ export default function CheckoutPage() {
           sellerName: item.cards.profiles?.display_name,
           sellerAvatarUrl: item.cards.profiles?.profile_image_url || null,
           sellerVerified: item.cards.profiles?.seller_verified ?? false,
-          sellerPickup: item.cards.profiles?.address_district_id && item.cards.profiles?.address_ward_code
-            ? {
-              districtId: item.cards.profiles.address_district_id,
-              wardCode: item.cards.profiles.address_ward_code,
-            }
-            : null,
         },
         amount: Number(item.cards.price || 0),
         shippingFee: null,
@@ -334,12 +327,6 @@ export default function CheckoutPage() {
         sellerAvatarUrl: card.profiles?.profile_image_url || null,
         sellerVerified: card.profiles?.seller_verified ?? false,
         bundleSelection: Array.isArray(row.bundle_selection) ? row.bundle_selection : null,
-        sellerPickup: card.profiles?.address_district_id && card.profiles?.address_ward_code
-          ? {
-            districtId: card.profiles.address_district_id,
-            wardCode: card.profiles.address_ward_code,
-          }
-          : null,
       },
       amount: Number(row.price || 0),
       shippingFee: null,
@@ -539,7 +526,9 @@ export default function CheckoutPage() {
           to_ward_code: selectedAddress.ward_code,
           to_ward_name: selectedAddress.ward_name,
           to_address_detail: selectedAddress.detail,
-          shipping_address: `${selectedAddress.detail}, ${selectedAddress.ward_name}, ${selectedAddress.district_name}, ${selectedAddress.province_name}`,
+          // Filtered, not interpolated: addresses saved since the district
+          // tier was abolished have no district, and a template leaves ", ,".
+          shipping_address: [selectedAddress.detail, selectedAddress.ward_name, selectedAddress.district_name, selectedAddress.province_name].filter(Boolean).join(', '),
         }),
       });
       const payload = await response.json();

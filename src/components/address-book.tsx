@@ -212,8 +212,9 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                 phone: form.phone,
                 province_id: form.address.provinceId,
                 province_name: form.address.provinceName,
-                district_id: form.address.districtId,
-                district_name: form.address.districtName,
+                // Null once re-saved: an address picked today has no district.
+                district_id: form.address.districtId ?? null,
+                district_name: form.address.districtName ?? null,
                 ward_code: form.address.wardCode,
                 ward_name: form.address.wardName,
                 detail: form.address.detail,
@@ -402,7 +403,7 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                                         )}
                                     </div>
                                     <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">
-                                        {addr.detail}, {addr.ward_name}, {addr.district_name}, {addr.province_name}
+                                        {[addr.detail, addr.ward_name, addr.district_name, addr.province_name].filter(Boolean).join(', ')}
                                     </p>
                                     <div className="mt-1.5 flex items-center gap-3 text-xs">
                                         <button

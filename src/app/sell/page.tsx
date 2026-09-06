@@ -626,7 +626,9 @@ export default function SellPage() {
       // it stays collapsed, which is why this is set here rather than in a
       // render-time default that would fight the seller's own toggling.
       setShippingSectionOpen(!hasUsableShipping(p?.shipping_fees, p?.shipping_carriers));
-      if (p?.address_district_id && p?.address_ward_code) {
+      // Province + ward is what a complete address is now; the district
+      // column is null on anything saved since the tier was abolished.
+      if (p?.address_province_id && p?.address_ward_code) {
         setPickupAddress({
           line: [p.address_detail, p.address_ward_name, p.address_district_name, p.address_province_name]
             .filter(Boolean)

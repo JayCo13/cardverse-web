@@ -951,11 +951,13 @@ export default function CreateListingPage() {
         // filling in the whole form only to be refused at the end.
         const { data: profile } = await supabase
           .from('profiles')
-          .select('address_district_id, address_ward_code, shipping_carriers, shipping_fees')
+          .select('address_province_id, address_ward_code, shipping_carriers, shipping_fees')
           .eq('id', user.id)
           .single();
         const p = profile as Record<string, any> | null;
-        setHasPickupAddress(!!(p?.address_district_id && p?.address_ward_code));
+        // Province + ward: the district column is null on anything saved
+        // since that tier was abolished, so it can no longer gate this.
+        setHasPickupAddress(!!(p?.address_province_id && p?.address_ward_code));
         setHasShippingConfig(hasUsableShipping(p?.shipping_fees, p?.shipping_carriers));
       } catch {
         setHasSellerAccess(false);

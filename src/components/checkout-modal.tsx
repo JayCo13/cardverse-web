@@ -37,15 +37,11 @@ type CheckoutModalProps = {
   onOpenChange: (open: boolean) => void;
   card: Card | null;
   onSuccess?: () => void;
-  sellerAddress?: {
-    districtId: number;
-    wardCode: string;
-  } | null;
   /** For bundles: indices of the cards the buyer picked in the pre-checkout dialog. */
   preselectedBundle?: number[];
 };
 
-export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddress, preselectedBundle }: CheckoutModalProps) {
+export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselectedBundle }: CheckoutModalProps) {
   const { user } = useAuth();
   const supabase = useSupabase();
   const { setOpen: setAuthOpen } = useAuthModal();
@@ -351,7 +347,9 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, sellerAddre
           to_ward_code: selectedAddress.ward_code,
           to_ward_name: selectedAddress.ward_name,
           to_address_detail: selectedAddress.detail,
-          shipping_address: `${selectedAddress.detail}, ${selectedAddress.ward_name}, ${selectedAddress.district_name}, ${selectedAddress.province_name}`,
+          // Filtered, not interpolated: addresses saved since the district
+          // tier was abolished have no district, and a template leaves ", ,".
+          shipping_address: [selectedAddress.detail, selectedAddress.ward_name, selectedAddress.district_name, selectedAddress.province_name].filter(Boolean).join(', '),
         }),
       });
 

@@ -656,7 +656,7 @@ export default function OrdersPage() {
                 <div className="flex items-start gap-1.5 mt-1.5 text-xs text-muted-foreground">
                   <MapPin className="h-3 w-3 mt-0.5 flex-shrink-0" />
                   <span className="line-clamp-1">
-                    {order.to_name} • {order.to_address_detail}, {order.to_ward_name}, {order.to_district_name}, {order.to_province_name}
+                    {order.to_name} • {[order.to_address_detail, order.to_ward_name, order.to_district_name, order.to_province_name].filter(Boolean).join(', ')}
                   </span>
                 </div>
               )}
