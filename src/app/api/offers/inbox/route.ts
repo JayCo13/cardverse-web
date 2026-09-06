@@ -4,6 +4,7 @@ import { getRouteUser } from '@/lib/supabase/route-user';
 
 type OfferStatus = 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired';
 type StatusFilter = 'all' | 'pending' | 'awaiting_payment' | 'history';
+type SortOrder = 'newest' | 'price_desc' | 'price_asc';
 
 type OfferRow = {
     id: string;
@@ -35,6 +36,15 @@ type ProfileRow = {
     seller_verified: boolean | null;
 };
 
+type OfferGroupRow = {
+    card_id: string;
+    offer_ids: string[];
+    offer_count: number;
+    anchor_price: number;
+    anchor_created_at: string;
+    anchor_id: string;
+};
+
 type Cursor = { createdAt: string; id: string; price?: number };
 
 const decodeCursor = (value: string | null): Cursor | null => {
@@ -48,10 +58,16 @@ const decodeCursor = (value: string | null): Cursor | null => {
     }
 };
 
-const encodeCursor = (offer: OfferRow) => Buffer.from(JSON.stringify({
+const encodeOfferCursor = (offer: OfferRow) => Buffer.from(JSON.stringify({
     createdAt: offer.created_at,
     id: offer.id,
     price: Number(offer.price),
+})).toString('base64url');
+
+const encodeGroupCursor = (group: OfferGroupRow) => Buffer.from(JSON.stringify({
+    createdAt: group.anchor_created_at,
+    id: group.anchor_id,
+    price: Number(group.anchor_price),
 })).toString('base64url');
 
 const applyStatus = <T extends {
@@ -104,6 +120,13 @@ export async function GET(request: NextRequest) {
     }
 
     const view = params.get('view') === 'sent' ? 'sent' : 'received';
+    /**
+     * Sort is explicit now. It used to be implied by the filter — `pending`
+     * came back price-first and everything else newest-first — which is the
+     * right default for a seller triaging bids but left no way to ask for
+     * anything else. The default is kept; the caller can now override it.
+     */
+    const requestedSort = params.get('sort');
     const requestedStatus = params.get('status');
     const status: StatusFilter = ['all', 'pending', 'awaiting_payment', 'history'].includes(requestedStatus || '')
         ? requestedStatus as StatusFilter
@@ -133,37 +156,74 @@ export async function GET(request: NextRequest) {
 
     const cardIds = cards.map(card => card.id);
     if (view === 'received' && cardIds.length === 0) {
-        return NextResponse.json({ items: [], counts: { pending: 0, awaitingPayment: 0, history: 0 }, nextCursor: null });
+        return NextResponse.json({ items: [], counts: { pending: 0, awaitingPayment: 0, history: 0 }, nextCursor: null, groupCounts: {} });
     }
 
-    let offersQuery = supabase
-        .from('offers')
-        .select('id, card_id, buyer_id, price, message, status, transaction_id, bundle_selection, created_at');
-    offersQuery = view === 'received'
-        ? offersQuery.in('card_id', cardIds)
-        : offersQuery.eq('buyer_id', user.id);
-    if (view === 'sent' && cardId) offersQuery = offersQuery.eq('card_id', cardId);
-    offersQuery = applyStatus(offersQuery, status);
-    const priceSorted = status === 'pending';
-    if (cursor) {
-        offersQuery = priceSorted && cursor.price != null
-            ? offersQuery.or(
-                `price.lt.${cursor.price},and(price.eq.${cursor.price},created_at.lt.${cursor.createdAt}),and(price.eq.${cursor.price},created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`,
-            )
-            : offersQuery.or(
-                `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`,
-            );
-    }
-    if (priceSorted) offersQuery = offersQuery.order('price', { ascending: false });
-    const { data: offerData, error: offersError } = await offersQuery
-        .order('created_at', { ascending: false })
-        .order('id', { ascending: false })
-        .limit(limit + 1);
-    if (offersError) return NextResponse.json({ error: offersError.message }, { status: 400 });
+    const sort: SortOrder = requestedSort === 'newest' || requestedSort === 'price_desc' || requestedSort === 'price_asc'
+        ? requestedSort
+        : status === 'pending' ? 'price_desc' : 'newest';
+    let offers: OfferRow[] = [];
+    let nextCursor: string | null = null;
+    const groupCounts: Record<string, number> = {};
 
-    const pageRows = (offerData || []) as OfferRow[];
-    const hasMore = pageRows.length > limit;
-    const offers = pageRows.slice(0, limit);
+    if (!cardId) {
+        const { data: groupData, error: groupError } = await supabase.rpc(
+            'get_offer_inbox_card_page' as never,
+            {
+                p_view: view,
+                p_status: status,
+                p_sort: sort,
+                p_limit: limit + 1,
+                p_cursor: cursor,
+            } as never,
+        );
+        if (groupError) return NextResponse.json({ error: groupError.message }, { status: 400 });
+        const groupRows = (groupData || []) as OfferGroupRow[];
+        const hasMoreGroups = groupRows.length > limit;
+        const pageGroups = groupRows.slice(0, limit);
+        const offerIds = pageGroups.flatMap(group => group.offer_ids);
+        if (offerIds.length > 0) {
+            const { data: offerData, error: offersError } = await supabase
+                .from('offers')
+                .select('id, card_id, buyer_id, price, message, status, transaction_id, bundle_selection, created_at')
+                .in('id', offerIds);
+            if (offersError) return NextResponse.json({ error: offersError.message }, { status: 400 });
+            const offerMap = new Map(((offerData || []) as OfferRow[]).map(offer => [offer.id, offer]));
+            offers = pageGroups.flatMap(group => group.offer_ids.map(id => offerMap.get(id)).filter(Boolean) as OfferRow[]);
+        }
+        for (const group of pageGroups) groupCounts[group.card_id] = Number(group.offer_count);
+        if (hasMoreGroups && pageGroups.length > 0) nextCursor = encodeGroupCursor(pageGroups[pageGroups.length - 1]);
+    } else {
+        let offersQuery = supabase
+            .from('offers')
+            .select('id, card_id, buyer_id, price, message, status, transaction_id, bundle_selection, created_at');
+        offersQuery = view === 'received'
+            ? offersQuery.in('card_id', cardIds)
+            : offersQuery.eq('buyer_id', user.id).eq('card_id', cardId);
+        offersQuery = applyStatus(offersQuery, status);
+        const priceSorted = sort !== 'newest';
+        if (cursor) {
+            const priceLeg = sort === 'price_asc' ? 'gt' : 'lt';
+            offersQuery = priceSorted && cursor.price != null
+                ? offersQuery.or(
+                    `price.${priceLeg}.${cursor.price},and(price.eq.${cursor.price},created_at.lt.${cursor.createdAt}),and(price.eq.${cursor.price},created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`,
+                )
+                : offersQuery.or(
+                    `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`,
+                );
+        }
+        if (priceSorted) offersQuery = offersQuery.order('price', { ascending: sort === 'price_asc' });
+        const { data: offerData, error: offersError } = await offersQuery
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
+            .limit(limit + 1);
+        if (offersError) return NextResponse.json({ error: offersError.message }, { status: 400 });
+        const pageRows = (offerData || []) as OfferRow[];
+        const hasMoreOffers = pageRows.length > limit;
+        offers = pageRows.slice(0, limit);
+        groupCounts[cardId] = offers.length;
+        if (hasMoreOffers && offers.length > 0) nextCursor = encodeOfferCursor(offers[offers.length - 1]);
+    }
 
     const missingCardIds = view === 'sent'
         ? Array.from(new Set(offers.map(offer => offer.card_id).filter(id => !cardIds.includes(id))))
@@ -225,6 +285,15 @@ export async function GET(request: NextRequest) {
             countOffers(['chosen']),
             countOffers(['accepted', 'rejected', 'expired']),
         ]);
+        if (cardId) {
+            groupCounts[cardId] = status === 'pending'
+                ? pending
+                : status === 'awaiting_payment'
+                    ? awaitingPayment
+                    : status === 'history'
+                        ? history
+                        : pending + awaitingPayment + history;
+        }
 
         return NextResponse.json({
             items: offers.map(offer => {
@@ -259,7 +328,8 @@ export async function GET(request: NextRequest) {
                 };
             }),
             counts: { pending, awaitingPayment, history },
-            nextCursor: hasMore && offers.length > 0 ? encodeCursor(offers[offers.length - 1]) : null,
+            nextCursor,
+            groupCounts,
             selectedCard: cardId && cardMap.has(cardId) ? (() => {
                 const card = cardMap.get(cardId)!;
                 return { id: card.id, name: card.name, imageUrl: card.image_url, price: card.price == null ? null : Number(card.price), status: card.status, isBundle: Boolean(card.is_bundle), bundleItems: Array.isArray(card.bundle_items) ? card.bundle_items : null };
