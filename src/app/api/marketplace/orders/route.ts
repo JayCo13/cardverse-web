@@ -6,6 +6,7 @@ import { isEvidenceVideoUrl } from '@/lib/evidence-video';
 import { DEFAULT_TRACKING_LANG, registerCarrierTracking, trackableCarrier } from '@/lib/carrier-tracking';
 import { getCarrier, getTrackingUrl, getDeliveryDays } from '@/lib/shipping-carriers';
 import { sendOrderShippedEmail } from '@/lib/mail';
+import { normalizeTrackingNumber, isValidTrackingNumber, TRACKING_MIN_LENGTH, TRACKING_MAX_LENGTH } from '@/lib/tracking-number';
 import { expireUnshippedPaidOrders } from '@/lib/expire-orders';
 import type { Database } from '@/lib/supabase/database.types';
 
@@ -160,7 +161,7 @@ export async function PATCH(request: NextRequest) {
                 }
                 const carrierCode = typeof shipping_provider === 'string' ? shipping_provider.trim() : '';
                 const packingVideoUrl = evidenceVideoUrl(body.packing_video_url);
-                const trackingNo = typeof tracking_number === 'string' ? tracking_number.trim() : '';
+                const trackingNo = normalizeTrackingNumber(tracking_number);
                 const carrier = getCarrier(carrierCode);
                 if (!carrier) {
                     return NextResponse.json({ error: 'Select a valid shipping carrier.', code: 'invalid_carrier' }, { status: 400 });
@@ -169,6 +170,18 @@ export async function PATCH(request: NextRequest) {
                 // Hand delivery ('self') may skip the tracking number; carriers require it.
                 if (carrierCode !== 'self' && !trackingNo) {
                     return NextResponse.json({ error: 'Enter a tracking number.', code: 'missing_tracking' }, { status: 400 });
+                }
+                // Nothing checked the shape before, and the table shows it: over
+                // half the numbers on it are typing tests. A number that no
+                // carrier issued cannot be registered or matched, so the order
+                // silently never gets a delivery event and ends up in front of
+                // an admin — a failure the seller could have been told about
+                // here, while the field was still in front of them.
+                if (trackingNo && !isValidTrackingNumber(trackingNo)) {
+                    return NextResponse.json({
+                        error: `Mã vận đơn không hợp lệ. Mã cần ${TRACKING_MIN_LENGTH}-${TRACKING_MAX_LENGTH} ký tự, chỉ gồm chữ, số và dấu gạch ngang.`,
+                        code: 'invalid_tracking',
+                    }, { status: 400 });
                 }
 
                 // Escalation deadline = est. max delivery + 3-day buffer from now.
