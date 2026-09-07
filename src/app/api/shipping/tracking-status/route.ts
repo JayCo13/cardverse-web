@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { fetchCarrierTracking, trackableCarrier } from '@/lib/carrier-tracking';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
+import { notifyCarrierStatusChange } from '@/lib/carrier-notifications';
 
 // The parcel's journey for one order, for the buyer or the seller on it.
 //
@@ -122,13 +123,16 @@ export async function GET(request: NextRequest) {
                 throw new Error('ambiguous_tracking_number');
             }
 
-            const { error: applyError } = await service.rpc('apply_carrier_tracking_event' as never, {
+            const { data: applied, error: applyError } = await service.rpc('apply_carrier_tracking_event' as never, {
                 p_tracking_number: trackingNumber,
                 p_shipping_provider: carrier,
                 p_status: live.status,
                 p_sub_status: live.subStatus,
             } as never);
             if (applyError) throw applyError;
+            // Same mail the webhook would have sent. Reaching this line means
+            // the webhook did not, so the buyer has heard nothing yet.
+            await notifyCarrierStatusChange(service, applied as never);
             // The row moved, so the timestamp beside the status is this moment
             // rather than whenever the old status was first seen.
             at = new Date().toISOString();

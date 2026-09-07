@@ -6,6 +6,7 @@ import { isEvidenceVideoUrl } from '@/lib/evidence-video';
 import { DEFAULT_TRACKING_LANG, registerCarrierTracking, trackableCarrier, fetchCarrierTrackingBatch } from '@/lib/carrier-tracking';
 import { getCarrier, getTrackingUrl, getDeliveryDays } from '@/lib/shipping-carriers';
 import { sendOrderShippedEmail } from '@/lib/mail';
+import { notifyCarrierStatusChange } from '@/lib/carrier-notifications';
 import { normalizeTrackingNumber, isValidTrackingNumber, TRACKING_MIN_LENGTH, TRACKING_MAX_LENGTH } from '@/lib/tracking-number';
 import { expireUnshippedPaidOrders } from '@/lib/expire-orders';
 import type { Database } from '@/lib/supabase/database.types';
@@ -21,6 +22,13 @@ type OrderRow = Database['public']['Tables']['orders']['Row'];
  * a reload into a billing event.
  */
 const CARRIER_REFRESH_AFTER_MS = 15 * 60 * 1000;
+
+/**
+ * How long the refresh may spend sending catch-up mail before giving the page
+ * back. Netlify kills the function at ten seconds and the query, the upstream
+ * batch and the applies come first, so this is what is safely left over.
+ */
+const MAIL_BUDGET_MS = 4_000;
 
 /**
  * Bring this user's in-flight parcels up to date with the carrier.
@@ -71,17 +79,43 @@ async function refreshCarrierStatuses(userId: string) {
     })));
     if (live.size === 0) return;
 
+    // Apply everything first — that is the part the page depends on, and it is
+    // fast. Mail comes after, on whatever time is left.
+    const applied: unknown[] = [];
     for (const row of candidates) {
         if ((seen.get(row.tracking_number) ?? 0) > 1) continue;
         const fresh = live.get(String(row.tracking_number).toUpperCase());
         if (!fresh || fresh.status === row.carrier_status) continue;
-        const { error } = await service.rpc('apply_carrier_tracking_event' as never, {
+        const { data, error } = await service.rpc('apply_carrier_tracking_event' as never, {
             p_tracking_number: row.tracking_number,
             p_shipping_provider: row.shipping_provider,
             p_status: fresh.status,
             p_sub_status: fresh.subStatus,
         } as never);
-        if (error) console.error('[Tracking] Refresh apply failed:', error.message);
+        if (error) {
+            console.error('[Tracking] Refresh apply failed:', error.message);
+            continue;
+        }
+        applied.push(data);
+    }
+
+    // The same mail the webhook would have sent, for the changes it missed.
+    //
+    // Bounded rather than capped at a count: this runs inside a page load that
+    // Netlify kills at ten seconds, and an SMTP round trip is seconds, not
+    // milliseconds. Anything left when the budget runs out is named in the log
+    // — its status is already saved, so the screen is right either way, and
+    // only the notification is owed.
+    const mailDeadline = Date.now() + MAIL_BUDGET_MS;
+    for (let i = 0; i < applied.length; i += 1) {
+        if (Date.now() >= mailDeadline) {
+            const skipped = applied.slice(i)
+                .map((r) => (r as { order_id?: string } | null)?.order_id)
+                .filter(Boolean);
+            console.warn(`[Tracking] Mail budget spent; no notification for: ${skipped.join(', ')}`);
+            break;
+        }
+        await notifyCarrierStatusChange(service, applied[i] as never);
     }
 }
 
