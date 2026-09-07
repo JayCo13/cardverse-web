@@ -57,6 +57,7 @@ export function AddressPicker({
             selectProvince: 'Chọn Tỉnh/Thành',
             selectWard: 'Chọn Phường/Xã',
             loadError: 'Không thể tải dữ liệu địa chỉ.',
+            legacyError: 'Địa chỉ dùng mã hành chính cũ. Vui lòng chọn lại Tỉnh/Thành và Phường/Xã.',
             retry: 'Thử lại',
         }
         : locale === 'ja-JP'
@@ -68,6 +69,7 @@ export function AddressPicker({
                 selectProvince: '省・市を選択',
                 selectWard: '町・村・坊を選択',
                 loadError: '住所データを読み込めませんでした。',
+                legacyError: 'この住所は古い行政コードを使用しています。都道府県と町村を選び直してください。',
                 retry: '再試行',
             }
             : {
@@ -78,11 +80,13 @@ export function AddressPicker({
                 selectProvince: 'Select province/city',
                 selectWard: 'Select ward/commune',
                 loadError: 'Could not load address data.',
+                legacyError: 'This address uses old administrative codes. Select the province and ward again.',
                 retry: 'Retry',
             };
 
     const [provinces, setProvinces] = useState<Province[]>([]);
     const [wards, setWards] = useState<Ward[]>([]);
+    const [wardsProvince, setWardsProvince] = useState('');
 
     const [selectedProvince, setSelectedProvince] = useState<string>(value?.provinceId?.toString() || '');
     const [selectedWard, setSelectedWard] = useState<string>(value?.wardCode || '');
@@ -91,8 +95,10 @@ export function AddressPicker({
     const [loadingProvinces, setLoadingProvinces] = useState(false);
     const [loadingWards, setLoadingWards] = useState(false);
     const [loadError, setLoadError] = useState('');
+    const [isLegacyAddress, setIsLegacyAddress] = useState(false);
     const [retryNonce, setRetryNonce] = useState(0);
     const onChangeRef = useRef(onChange);
+    const selectedWardRef = useRef(selectedWard);
     const lastEmittedRef = useRef<string | null>(null);
 
     /**
@@ -118,6 +124,10 @@ export function AddressPicker({
     useEffect(() => {
         onChangeRef.current = onChange;
     }, [onChange]);
+
+    useEffect(() => {
+        selectedWardRef.current = selectedWard;
+    }, [selectedWard]);
 
     useEffect(() => {
         // Only an address arriving from outside is applied. The parent also
@@ -146,30 +156,58 @@ export function AddressPicker({
             }
         };
         fetchProvinces();
-    }, [retryNonce]);
+    }, [copy.loadError, retryNonce]);
 
     useEffect(() => {
-        if (!selectedProvince) {
+        if (!selectedProvince || loadingProvinces || provinces.length === 0) {
             setWards([]);
+            setWardsProvince('');
             return;
         }
+        const provinceIsCurrent = provinces.some(p => p.code.toString() === selectedProvince);
+        if (!provinceIsCurrent) {
+            setWards([]);
+            setWardsProvince('');
+            setLoadingWards(false);
+            setIsLegacyAddress(true);
+            setLoadError(copy.legacyError);
+            onChangeRef.current(null);
+            return;
+        }
+        const requestedProvince = selectedProvince;
+        const controller = new AbortController();
         const fetchWards = async () => {
             setLoadingWards(true);
+            setWards([]);
+            setWardsProvince('');
             setLoadError('');
+            setIsLegacyAddress(false);
             try {
-                const res = await fetch(`/api/address/wards?province_code=${selectedProvince}`);
+                const res = await fetch(`/api/address/wards?province_code=${requestedProvince}`, {
+                    signal: controller.signal,
+                });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || copy.loadError);
-                setWards(data.data || []);
+                const currentWards: Ward[] = data.data || [];
+                setWards(currentWards);
+                setWardsProvince(requestedProvince);
+                const currentWard = selectedWardRef.current;
+                if (currentWard && !currentWards.some(w => w.code.toString() === currentWard)) {
+                    setIsLegacyAddress(true);
+                    setLoadError(copy.legacyError);
+                    onChangeRef.current(null);
+                }
             } catch (err) {
+                if (controller.signal.aborted) return;
                 console.error('Failed to fetch wards:', err);
                 setLoadError(copy.loadError);
             } finally {
-                setLoadingWards(false);
+                if (!controller.signal.aborted) setLoadingWards(false);
             }
         };
-        fetchWards();
-    }, [selectedProvince, retryNonce]);
+        void fetchWards();
+        return () => controller.abort();
+    }, [copy.legacyError, copy.loadError, loadingProvinces, provinces, retryNonce, selectedProvince]);
 
     const provinceOptions = useMemo(() => {
         const saved = initialRef.current;
@@ -196,8 +234,15 @@ export function AddressPicker({
     }, [wards, selectedProvince]);
 
     const emitChange = useCallback((pId: string, wCode: string, det: string) => {
-        const province = provinceOptions.find(p => p.code.toString() === pId);
-        const ward = wardOptions.find(w => w.code.toString() === wCode);
+        // Seeded legacy options are display-only. Only values from the current
+        // official lists may leave the picker as a saveable address.
+        const province = provinces.find(p => p.code.toString() === pId);
+        // `wards` may briefly contain a response for the previous province if
+        // the user changes the first select quickly. Bind the list to the
+        // province that produced it before allowing the pair to leave.
+        const ward = wardsProvince === pId
+            ? wards.find(w => w.code.toString() === wCode)
+            : undefined;
         const nextKey = province && ward ? `${province.code}|${ward.code}|${det}` : 'null';
 
         if (lastEmittedRef.current === nextKey) return;
@@ -214,7 +259,7 @@ export function AddressPicker({
         } else {
             onChangeRef.current(null);
         }
-    }, [provinceOptions, wardOptions]);
+    }, [provinces, wards, wardsProvince]);
 
     useEffect(() => {
         if (selectedProvince && selectedWard) {
@@ -226,6 +271,9 @@ export function AddressPicker({
         setSelectedProvince(val);
         setSelectedWard('');
         setWards([]);
+        setWardsProvince('');
+        setIsLegacyAddress(false);
+        setLoadError('');
         lastEmittedRef.current = null;
         onChangeRef.current(null);
     };
@@ -251,9 +299,11 @@ export function AddressPicker({
                         <AlertCircle className="h-4 w-4 shrink-0" />
                         {loadError}
                     </span>
-                    <button type="button" className="flex shrink-0 items-center gap-1 font-medium hover:text-red-200" onClick={() => setRetryNonce(value => value + 1)}>
-                        <RefreshCw className="h-3.5 w-3.5" /> {copy.retry}
-                    </button>
+                    {!isLegacyAddress && (
+                        <button type="button" className="flex shrink-0 items-center gap-1 font-medium hover:text-red-200" onClick={() => setRetryNonce(value => value + 1)}>
+                            <RefreshCw className="h-3.5 w-3.5" /> {copy.retry}
+                        </button>
+                    )}
                 </div>
             )}
 
@@ -285,7 +335,10 @@ export function AddressPicker({
                     <Select
                         value={selectedWard}
                         onValueChange={handleWardChange}
-                        disabled={!selectedProvince}
+                        disabled={!selectedProvince || (
+                            provinces.length > 0 &&
+                            !provinces.some(p => p.code.toString() === selectedProvince)
+                        )}
                     >
                         <SelectTrigger className="w-full h-9 text-sm">
                             <SelectValue placeholder={loadingWards ? copy.loading : copy.selectWard} />

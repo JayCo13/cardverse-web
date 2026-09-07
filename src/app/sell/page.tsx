@@ -26,7 +26,7 @@ import { getCloudinarySignature, uploadImageDirectToCloudinary, type CloudinaryS
 import { getCloudinaryKycScanUrl, toDisplaySafeUrl, optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
 import { isHeicFile, convertHeicToJpeg } from '@/lib/heic';
 import { formatCompactCount } from '@/lib/format';
-import { SellerAddressForm } from '@/components/seller-address-form';
+import { AddressBook, type SavedAddress } from '@/components/address-book';
 import Link from 'next/link';
 import Image from 'next/image';
 
@@ -104,7 +104,10 @@ function OrderRow({ order, statusLabel, statusClass, unknownCard, date, price }:
   price: string;
 }) {
   return (
-    <div className="flex items-center gap-3 border-b py-2 last:border-b-0">
+    <Link
+      href={`/orders/${order.id}`}
+      className="flex items-center gap-3 border-b py-2 transition-colors last:border-b-0 hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+    >
       <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-muted">
         {order.card?.image_url ? (
           <Image src={optimizeCloudinaryUrl(order.card.image_url, 120)} alt="" fill sizes="40px" className="object-cover" />
@@ -120,7 +123,7 @@ function OrderRow({ order, statusLabel, statusClass, unknownCard, date, price }:
         <p className="text-sm font-semibold">{price}</p>
         <Badge variant="outline" className={`mt-0.5 text-[10px] ${statusClass}`}>{statusLabel}</Badge>
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -209,7 +212,6 @@ export default function SellPage() {
   const [pendingOffersTotal, setPendingOffersTotal] = useState(0);
   const [pickupAddress, setPickupAddress] = useState<{ line: string } | null>(null);
   const [isLoadingAddress, setIsLoadingAddress] = useState(false);
-  const [editingAddress, setEditingAddress] = useState(false);
   // Shop-level shipping options: selected carriers + per-carrier tiered fees
   // (formatted strings like "15.000") keyed by carrier code.
   const [shipCarriers, setShipCarriers] = useState<string[]>([]);
@@ -642,6 +644,18 @@ export default function SellPage() {
     } finally {
       setIsLoadingAddress(false);
     }
+  };
+
+  const handlePickupAddressesChange = (addresses: SavedAddress[]) => {
+    const defaultAddress = addresses.find(address => address.is_default) ?? null;
+    setPickupAddress(defaultAddress ? {
+      line: [
+        defaultAddress.detail,
+        defaultAddress.ward_name,
+        defaultAddress.district_name,
+        defaultAddress.province_name,
+      ].filter(Boolean).join(', '),
+    } : null);
   };
 
   // Format a raw money string with thousand separators, e.g. "15000" → "15.000".
@@ -1293,7 +1307,6 @@ export default function SellPage() {
                     className="hidden bg-orange-500 hover:bg-orange-600 md:inline-flex"
                     onClick={() => {
                       document.getElementById('pickup-address')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                      setEditingAddress(true);
                     }}
                   >
                     <MapPin className="mr-2 h-4 w-4" />
@@ -1357,54 +1370,21 @@ export default function SellPage() {
             {/* Pickup Address — required so shipping fees can be calculated */}
             <Card id="pickup-address" className={!pickupAddress && !isLoadingAddress ? 'border-orange-500/40 bg-orange-500/5' : ''}>
               <CardHeader>
-                <CardTitle className="flex items-center justify-between">
+                <CardTitle>
                   <span className="flex items-center gap-2">
                     <MapPin className="h-5 w-5 text-orange-400" />
                     {copy.pickupAddress}
                   </span>
-                  {pickupAddress && !editingAddress && (
-                    <Button variant="outline" size="sm" onClick={() => setEditingAddress(true)}>
-                      {copy.update}
-                    </Button>
-                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {isLoadingAddress ? (
-                  <Skeleton className="h-9 w-full rounded-lg" />
-                ) : (
-                  <>
-                    {!pickupAddress && (
-                      <div className="mb-4 flex items-start gap-2 rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-sm text-orange-300">
-                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                        <span>
-                          {copy.pickupNotice}
-                        </span>
-                      </div>
-                    )}
-                    {pickupAddress && !editingAddress ? (
-                      <div className="flex items-start gap-2 text-sm">
-                        <MapPin className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" />
-                        <span>{pickupAddress.line}</span>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <SellerAddressForm
-                          submitLabel={copy.savePickup}
-                          onSaved={() => {
-                            setEditingAddress(false);
-                            fetchPickupAddress();
-                          }}
-                        />
-                        {pickupAddress && editingAddress && (
-                          <Button variant="ghost" size="sm" onClick={() => setEditingAddress(false)}>
-                            {copy.cancel}
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </>
+                {!pickupAddress && !isLoadingAddress && (
+                  <div className="mb-4 flex items-start gap-2 rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-sm text-orange-300">
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>{copy.pickupNotice}</span>
+                  </div>
                 )}
+                <AddressBook onAddressesChange={handlePickupAddressesChange} />
               </CardContent>
             </Card>
 
@@ -1623,7 +1603,11 @@ export default function SellPage() {
                       {sellerOrders.slice(0, 5).map((order) => {
                         const statusInfo = STATUS_MAP[order.status] || { label: order.status, icon: null, color: '' };
                         return (
-                          <div key={order.id} className="flex items-center justify-between rounded-lg border bg-card p-3 transition-colors hover:bg-accent/50">
+                          <Link
+                            key={order.id}
+                            href={`/orders/${order.id}`}
+                            className="flex items-center justify-between rounded-lg border bg-card p-3 transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                          >
                             <div className="flex items-center gap-3">
                               {order.card?.image_url && (
                                 <div className="relative h-14 w-10 shrink-0 overflow-hidden rounded">
@@ -1639,7 +1623,7 @@ export default function SellPage() {
                               <p className="text-sm font-semibold">{formatVND(order.amount - order.platform_fee)}</p>
                               <p className="text-xs text-muted-foreground">{new Date(order.created_at).toLocaleDateString(locale)}</p>
                             </div>
-                          </div>
+                          </Link>
                         );
                       })}
                     </div>

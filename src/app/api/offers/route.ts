@@ -366,6 +366,7 @@ export async function POST(request: NextRequest) {
     await createServiceSupabaseClient().from('notifications').insert({
         user_id: cardRow.seller_id,
         type: 'offer_received',
+        metadata: { version: 1, amount: price, card_name: cardRow.name },
         title: 'Đề xuất giá mới',
         message: `Có người đề xuất ${formatVND(price)} cho thẻ "${cardRow.name}"`,
         card_id: cardId,

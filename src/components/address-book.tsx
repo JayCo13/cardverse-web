@@ -16,8 +16,8 @@ export type SavedAddress = {
     phone: string;
     province_id: number;
     province_name: string;
-    district_id: number;
-    district_name: string;
+    district_id: number | null;
+    district_name: string | null;
     ward_code: string;
     ward_name: string;
     detail: string;
@@ -182,15 +182,9 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
         setForm({
             name: addr.recipient_name,
             phone: addr.phone,
-            address: {
-                provinceId: addr.province_id,
-                provinceName: addr.province_name,
-                districtId: addr.district_id,
-                districtName: addr.district_name,
-                wardCode: addr.ward_code,
-                wardName: addr.ward_name,
-                detail: addr.detail,
-            },
+            // The picker will set this only after confirming that the saved
+            // province/ward still belongs to the current official dataset.
+            address: null,
             isDefault: addr.is_default,
         });
         setMode('form');
@@ -329,7 +323,15 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                     remount, not a re-render. */}
                 <AddressPicker
                     key={editing?.id ?? 'new'}
-                    value={form.address ?? undefined}
+                    value={editing ? {
+                        provinceId: editing.province_id,
+                        provinceName: editing.province_name,
+                        districtId: editing.district_id ?? undefined,
+                        districtName: editing.district_name ?? undefined,
+                        wardCode: editing.ward_code,
+                        wardName: editing.ward_name,
+                        detail: editing.detail,
+                    } : undefined}
                     onChange={handleAddressChange}
                     detailPlaceholder={copy.detailPlaceholder}
                 />
@@ -352,7 +354,7 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                     <Button
                         className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
                         onClick={handleSave}
-                        disabled={saving}
+                        disabled={saving || !form.address}
                     >
                         {copy.save}
                     </Button>

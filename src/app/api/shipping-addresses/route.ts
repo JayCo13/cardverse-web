@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getRouteUser } from '@/lib/supabase/route-user';
+import { findProvince, findWard } from '@/lib/vn-address';
 
 type AddressBody = {
     recipient_name?: string;
@@ -22,6 +23,9 @@ function validate(body: AddressBody): string | null {
     if (!body.phone?.trim()) return 'Số điện thoại là bắt buộc';
     // Two levels, not three: the district tier was abolished on 1/7/2025.
     if (!body.province_id || !body.ward_code) return 'Vui lòng chọn đầy đủ Tỉnh/Phường xã';
+    if (!findProvince(body.province_id) || !findWard(body.province_id, body.ward_code)) {
+        return 'Địa chỉ dùng mã hành chính cũ hoặc Phường/Xã không thuộc Tỉnh/Thành đã chọn';
+    }
     if (!body.detail?.trim()) return 'Vui lòng nhập địa chỉ chi tiết';
     return null;
 }
@@ -63,6 +67,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: validationError }, { status: 400 });
     }
 
+    const province = findProvince(body.province_id)!;
+    const ward = findWard(body.province_id, body.ward_code)!;
+
     const { count } = await supabase
         .from('shipping_addresses')
         .select('id', { count: 'exact', head: true })
@@ -84,15 +91,15 @@ export async function POST(request: NextRequest) {
             user_id: user.id,
             recipient_name: body.recipient_name!.trim(),
             phone: body.phone!.trim(),
-            province_id: body.province_id!,
-            province_name: body.province_name ?? '',
+            province_id: province.code,
+            province_name: province.name,
             // Null rather than an empty string: these columns now record that
             // an address predates the reorganisation, and '' would claim the
             // address has a district whose name nobody wrote down.
-            district_id: body.district_id ?? null,
-            district_name: body.district_name ?? null,
-            ward_code: body.ward_code!,
-            ward_name: body.ward_name ?? '',
+            district_id: null,
+            district_name: null,
+            ward_code: ward.code.toString(),
+            ward_name: ward.name,
             detail: body.detail!.trim(),
             is_default: makeDefault,
         } as never)

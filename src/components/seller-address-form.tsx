@@ -30,7 +30,7 @@ export function SellerAddressForm({ onSaved, submitLabel }: SellerAddressFormPro
     ? {
         submit: '集荷住所を保存',
         incompleteTitle: '住所が未入力です',
-        incompleteDesc: '都道府県、市区町村、町名をすべて選択してください。',
+        incompleteDesc: '都道府県と町村を選択してください。',
         savedTitle: '集荷住所を保存しました',
         savedDesc: 'これでカードを出品できます。',
         errorTitle: 'エラー',
@@ -41,7 +41,7 @@ export function SellerAddressForm({ onSaved, submitLabel }: SellerAddressFormPro
       ? {
           submit: 'Lưu địa chỉ lấy hàng',
           incompleteTitle: 'Địa chỉ chưa đầy đủ',
-          incompleteDesc: 'Vui lòng chọn đầy đủ Tỉnh/Thành, Quận/Huyện và Phường/Xã.',
+          incompleteDesc: 'Vui lòng chọn đầy đủ Tỉnh/Thành và Phường/Xã.',
           savedTitle: 'Đã lưu địa chỉ lấy hàng',
           savedDesc: 'Bây giờ bạn có thể đăng bán thẻ.',
           errorTitle: 'Lỗi',
@@ -51,7 +51,7 @@ export function SellerAddressForm({ onSaved, submitLabel }: SellerAddressFormPro
       : {
           submit: 'Save pickup address',
           incompleteTitle: 'Address is incomplete',
-          incompleteDesc: 'Please select province/city, district, and ward.',
+          incompleteDesc: 'Please select province/city and ward.',
           savedTitle: 'Pickup address saved',
           savedDesc: 'You can list cards now.',
           errorTitle: 'Error',
@@ -88,7 +88,9 @@ export function SellerAddressForm({ onSaved, submitLabel }: SellerAddressFormPro
           detail: p.address_detail || '',
         };
         setInitial(existing);
-        setAddress(existing);
+        // AddressPicker enables saving only after it validates this pair
+        // against the current two-level administrative dataset.
+        setAddress(null);
       }
       setIsLoading(false);
     })();
