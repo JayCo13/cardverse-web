@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button';
 import { ExternalLink } from 'lucide-react';
 import { getCarrier, getTrackingUrl, trackingPrefillsCode } from '@/lib/shipping-carriers';
+import { CARRIER_STATUS_LABELS } from '@/lib/carrier-status-labels';
 
 /**
  * The parcel's journey for one order, read live from the tracking service.
@@ -34,17 +35,6 @@ type TrackingStatus = {
 };
 
 /** The tracking service's nine main statuses, in the reader's language. */
-const CARRIER_STATUS_LABELS: Record<string, { vi: string; en: string; ja: string }> = {
-  NotFound: { vi: 'Hãng chưa có thông tin', en: 'No carrier data yet', ja: '配送業者の情報なし' },
-  InfoReceived: { vi: 'Đã tiếp nhận thông tin', en: 'Info received', ja: '情報受付済み' },
-  InTransit: { vi: 'Đang vận chuyển', en: 'In transit', ja: '輸送中' },
-  OutForDelivery: { vi: 'Đang giao đến bạn', en: 'Out for delivery', ja: '配達中' },
-  AvailableForPickup: { vi: 'Chờ nhận tại điểm giao', en: 'Available for pickup', ja: '受取可能' },
-  Delivered: { vi: 'Đã giao thành công', en: 'Delivered', ja: '配達完了' },
-  DeliveryFailure: { vi: 'Giao không thành công', en: 'Delivery failed', ja: '配達失敗' },
-  Exception: { vi: 'Có sự cố', en: 'Exception', ja: '異常' },
-  Expired: { vi: 'Quá hạn theo dõi', en: 'Tracking expired', ja: '追跡期限切れ' },
-};
 
 export function ParcelTrackingDialog({
   open, onOpenChange, orderId, locale, title, closeLabel,

@@ -19,6 +19,7 @@ import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { SHIPPING_CARRIERS, getTrackingUrl, getCarrier, sellerSuppliesTracking } from '@/lib/shipping-carriers';
+import { carrierStatusLabel } from '@/lib/carrier-status-labels';
 import { ParcelTrackingDialog } from '@/components/parcel-tracking-dialog';
 import { PackingVideoField } from '@/components/packing-video-field';
 import Image from 'next/image';
@@ -43,6 +44,8 @@ type Order = {
   shipping_address: string | null;
   ghn_order_code: string | null;
   ghn_status: string | null;
+  carrier_status: string | null;
+  carrier_status_at: string | null;
   ghn_expected_delivery: string | null;
   auto_complete_at: string | null;
   dispute_reason: string | null;
@@ -630,6 +633,21 @@ export default function OrdersPage() {
                 {order.shipping_fee > 0 && (
                   <span className="text-xs text-muted-foreground">
                     {copy.shipFeeLabel} <span className="text-foreground">{formatVND(order.shipping_fee)}</span>
+                  </span>
+                )}
+                {/* The carrier's own status, not the order's.
+                    `order.status` only ever reads "shipping" until a Delivered
+                    event flips it, so a parcel that the carrier already has out
+                    for delivery looked identical to one still sitting with the
+                    seller. This is the line that made the page disagree with
+                    17TRACK. Blank when the carrier has said nothing yet, and
+                    blank for a status we have no name for — printing a raw enum
+                    at a buyer is worse than printing nothing. */}
+                {carrierStatusLabel(order.carrier_status, locale) && (
+                  <span className={`text-xs font-medium ${order.carrier_status === 'Delivered' ? 'text-green-400'
+                    : order.carrier_status === 'DeliveryFailure' || order.carrier_status === 'Exception' ? 'text-red-400'
+                      : 'text-blue-400'}`}>
+                    {carrierStatusLabel(order.carrier_status, locale)}
                   </span>
                 )}
                 {order.ghn_order_code && (
