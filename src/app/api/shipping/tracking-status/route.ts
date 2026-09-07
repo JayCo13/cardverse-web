@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { fetchCarrierTracking, trackableCarrier } from '@/lib/carrier-tracking';
+import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
 // The parcel's journey for one order, for the buyer or the seller on it.
 //
@@ -81,8 +82,66 @@ export async function GET(request: NextRequest) {
         });
     }
 
+    // Write back what we just learned.
+    //
+    // This read is the only place that holds the carrier's current answer, and
+    // it used to throw it away — the page showed a live 'Delivered' while the
+    // row behind it still said 'InTransit'. Nothing reads carrier_status on
+    // screen, but complete_delivered_orders and dispute_evidence_verdict both
+    // do, and a stale row there is what turns a delivered parcel into an
+    // escalation and a refund recommendation against a seller who shipped.
+    //
+    // 17TRACK does not guarantee its pushes and does not retry ours, so this is
+    // the repair path for a webhook that never arrived: every time either party
+    // opens the tracking dialog, the row catches up. Best-effort and on the
+    // service role, since the RPC is granted to nobody else; a failure here
+    // must not cost the reader their timeline.
+    let at = stored.at;
+    if (live.status && live.status !== stored.status) {
+        try {
+            const service = createServiceSupabaseClient();
+
+            // The RPC finds its order by tracking number and takes the newest
+            // match, so it cannot be aimed at the order in hand. While a number
+            // is shared — nothing enforces uniqueness yet — reconciling would
+            // write this parcel's status onto somebody else's order, and a
+            // 'Delivered' there starts a 72h release clock that nobody asked
+            // for. Reading is still worth doing; writing is not, until the
+            // number identifies one order. Counted on the service role because
+            // the caller's own view is filtered to their orders.
+            const { count } = await service
+                .from('orders')
+                .select('id', { count: 'exact', head: true })
+                .eq('tracking_number', trackingNumber)
+                .eq('shipping_provider', carrier);
+
+            if ((count ?? 0) > 1) {
+                console.warn(
+                    `[Tracking] Not reconciling ${carrier} ${trackingNumber}: ${count} orders share it`,
+                );
+                throw new Error('ambiguous_tracking_number');
+            }
+
+            const { error: applyError } = await service.rpc('apply_carrier_tracking_event' as never, {
+                p_tracking_number: trackingNumber,
+                p_shipping_provider: carrier,
+                p_status: live.status,
+                p_sub_status: live.subStatus,
+            } as never);
+            if (applyError) throw applyError;
+            // The row moved, so the timestamp beside the status is this moment
+            // rather than whenever the old status was first seen.
+            at = new Date().toISOString();
+        } catch (reconcileError) {
+            // Never fatal: the reader still gets the live timeline, which is
+            // the thing they opened the dialog for.
+            console.error('[Tracking] Reconcile failed:', reconcileError);
+        }
+    }
+
     return NextResponse.json({
         ...stored,
+        at,
         supported: true,
         lookup: 'ok',
         status: live.status,
