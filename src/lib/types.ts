@@ -121,13 +121,25 @@ export interface ForumPost {
 }
 
 export interface Notification {
+  metadata?: {
+    version?: number;
+    recipient_role?: 'buyer' | 'seller';
+    counterparty_name?: string;
+    card_name?: string;
+    event?: string;
+    amount?: number;
+    tracking_number?: string;
+    shipping_provider?: string;
+    reason?: string;
+  };
   id: string;
   userId: string;
   type:
     | 'offer_received' | 'offer_accepted' | 'offer_rejected' | 'card_sold' | 'message_received'
     | 'order_new' | 'order_shipped' | 'order_completed' | 'order_refunded' | 'order_cancelled' | 'order_disputed'
     | 'shipping_update' | 'dispute_resolved' | 'withdrawal_completed' | 'withdrawal_rejected'
-    | 'kyc_identity_approved' | 'kyc_approved' | 'kyc_rejected';
+    | 'kyc_identity_approved' | 'kyc_approved' | 'kyc_rejected'
+    | 'offer_expired' | 'offer_payment_expired' | 'offer_card_taken' | 'unboxing_video_submitted';
   title: string;
   message: string;
   cardId?: string;

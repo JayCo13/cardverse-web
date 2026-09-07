@@ -20,6 +20,27 @@ import { useRouter } from "next/navigation";
 import { useLocalization } from "@/context/localization-context";
 import { localizeSystemNotification } from "@/lib/localized-notifications";
 
+type LocalizedNotification = ReturnType<typeof localizeSystemNotification>;
+
+function NotificationDetails({ localized }: { localized: LocalizedNotification }) {
+    return (
+        <>
+            {localized.contextLines.length > 0 && (
+                <div className="mt-0.5 space-y-0.5 text-xs text-muted-foreground">
+                    {localized.contextLines.map((line) => (
+                        <p key={line} className="truncate">{line}</p>
+                    ))}
+                </div>
+            )}
+            {localized.message && (
+                <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                    {localized.message}
+                </p>
+            )}
+        </>
+    );
+}
+
 export function NotificationBell() {
     const supabase = useSupabase();
     const { user } = useUser();
@@ -78,7 +99,6 @@ export function NotificationBell() {
     // viewport. Draw the signed-out shell on the first client pass too, so the
     // signed-in one arrives as an ordinary update that React does apply.
     const [hydrated, setHydrated] = useState(false);
-    const [previousUnreadCount, setPreviousUnreadCount] = useState(0);
     const [isRinging, setIsRinging] = useState(false);
     const [browserPermission, setBrowserPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
 
@@ -183,6 +203,12 @@ export function NotificationBell() {
     useEffect(() => {
         if (!user) return;
         const uid = user.id;
+        let disposed = false;
+        const loadNotifications = async (): Promise<Notification[]> => {
+            const response = await fetch('/api/notifications', { cache: 'no-store' });
+            if (!response.ok) throw new Error('Could not load notifications');
+            return (await response.json()).notifications;
+        };
 
         const fetchMutedConversationIds = async () => {
             const { data, error } = await supabase
@@ -201,37 +227,17 @@ export function NotificationBell() {
 
         // Initial fetch
         const fetchNotifications = async () => {
-            const { data, error } = await supabase
-                .from('notifications')
-                .select('*')
-                .eq('user_id', uid)
-                .order('created_at', { ascending: false })
-                .limit(20);
-
-            if (error) {
+            try {
+                const notificationsData = await loadNotifications();
+                if (disposed) return;
+                setNotifications(prev => [...new Map([...prev, ...notificationsData].map(n => [n.id, n])).values()]
+                    .sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 20));
+            } catch (error) {
                 console.error('Error fetching notifications:', error);
-                return;
             }
-
-            const notificationsData = ((data || []) as any[]).map(n => ({
-                id: n.id,
-                userId: n.user_id,
-                type: n.type as Notification['type'],
-                title: n.title,
-                message: n.message,
-                cardId: n.card_id,
-                offerId: n.offer_id,
-                orderId: n.order_id,
-                conversationId: n.conversation_id,
-                transactionId: n.transaction_id,
-                read: n.read,
-                createdAt: n.created_at,
-            }));
-
-            setNotifications(notificationsData);
-            setPreviousUnreadCount(notificationsData.filter(n => !n.read).length);
         };
 
+        setNotifications([]);
         void fetchNotifications();
         const mutedPreferencesPromise = fetchMutedConversationIds();
 
@@ -247,7 +253,7 @@ export function NotificationBell() {
                     filter: `user_id=eq.${uid}`,
                 },
                 async (payload) => {
-                    const newNotification = {
+                    let newNotification: Notification = {
                         id: payload.new.id,
                         userId: payload.new.user_id,
                         type: payload.new.type as Notification['type'],
@@ -260,9 +266,17 @@ export function NotificationBell() {
                         transactionId: payload.new.transaction_id,
                         read: payload.new.read,
                         createdAt: payload.new.created_at,
+                        metadata: payload.new.metadata,
                     };
 
-                    setNotifications(prev => [newNotification, ...prev]);
+                    if (!newNotification.metadata?.version) {
+                        try {
+                            const enriched = await loadNotifications();
+                            newNotification = enriched.find(item => item.id === newNotification.id) ?? newNotification;
+                        } catch { /* The durable notification remains visible without enrichment. */ }
+                    }
+                    if (disposed) return;
+                    setNotifications(prev => [newNotification, ...prev.filter(n => n.id !== newNotification.id)].slice(0, 20));
                     await mutedPreferencesPromise;
 
                     const isMutedMessage = newNotification.type === 'message_received'
@@ -291,7 +305,7 @@ export function NotificationBell() {
                         if (browserPermissionRef.current === 'granted' && document.hidden) {
                             const localized = localizeSystemNotification(newNotification, translateRef.current);
                             const browserNotification = new window.Notification(localized.title, {
-                                body: localized.message,
+                                body: [localized.context, localized.message].filter(Boolean).join('\n'),
                                 icon: '/assets/brow-logo.png',
                                 tag: newNotification.conversationId
                                     ? `cardverse-chat-${newNotification.conversationId}`
@@ -300,34 +314,7 @@ export function NotificationBell() {
                             browserNotification.onclick = () => {
                                 window.focus();
                                 browserNotification.close();
-                                void supabase
-                                    .from('notifications')
-                                    .update({ read: true } as never)
-                                    .eq('id', newNotification.id);
-                                setNotifications(current => current.map(notification =>
-                                    notification.id === newNotification.id ? { ...notification, read: true } : notification,
-                                ));
-
-                                if (newNotification.type.startsWith('kyc_')) {
-                                    window.location.assign('/sell');
-                                } else if (newNotification.type === 'offer_accepted' && newNotification.offerId) {
-                                    window.location.assign(`/checkout?offerId=${newNotification.offerId}`);
-                                } else if (newNotification.type === 'offer_accepted' && newNotification.transactionId) {
-                                    window.location.assign(`/transaction/${newNotification.transactionId}`);
-                                } else if (newNotification.type.startsWith('order_')) {
-                                    if (newNotification.orderId) {
-                                        window.location.assign(`/orders/${newNotification.orderId}`);
-                                    } else {
-                                        const tab = newNotification.type === 'order_new' || newNotification.type === 'order_cancelled' ? 'seller' : 'buyer';
-                                        window.location.assign(`/orders?tab=${tab}`);
-                                    }
-                                } else if (newNotification.conversationId) {
-                                    window.dispatchEvent(new CustomEvent('cardverse:open-chat', {
-                                        detail: { conversationId: newNotification.conversationId },
-                                    }));
-                                } else if (newNotification.cardId) {
-                                    window.location.assign(`/cards/${newNotification.cardId}`);
-                                }
+                                void handleNotificationClick(newNotification);
                             };
                         }
                     }
@@ -346,6 +333,7 @@ export function NotificationBell() {
             .subscribe();
 
         return () => {
+            disposed = true;
             supabase.removeChannel(channel);
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -385,7 +373,9 @@ export function NotificationBell() {
         // Accepted offer → go straight to checkout. Legacy notifications may
         // still carry a transaction id, so keep that fallback alive.
         if (notification.type === 'offer_accepted' && notification.offerId) {
-            router.push(`/checkout?offerId=${notification.offerId}`);
+            const { data } = await supabase.from('offers').select('status')
+                .eq('id', notification.offerId).maybeSingle<{ status: string }>();
+            router.push(data?.status === 'chosen' ? `/checkout?offerId=${notification.offerId}` : '/offers');
             return;
         }
 
@@ -410,7 +400,7 @@ export function NotificationBell() {
         // Order-related notifications → the order details page. Without an
         // order_id (older notifications) fall back to the orders list on the
         // right tab — "new order"/"cancelled" are seller-side events.
-        if (notification.type.startsWith('order_')) {
+        if (notification.orderId || notification.type.startsWith('order_')) {
             if (notification.orderId) {
                 router.push(`/orders/${notification.orderId}`);
             } else {
@@ -421,6 +411,10 @@ export function NotificationBell() {
         }
 
         // Fallback: the card detail page.
+        if (notification.type.startsWith('offer_')) {
+            router.push('/offers');
+            return;
+        }
         if (notification.cardId) {
             router.push(`/cards/${notification.cardId}`);
         }
@@ -462,6 +456,9 @@ export function NotificationBell() {
             case "offer_rejected":
                 return <Tag className="h-4 w-4 text-red-500" />;
             case "card_sold":
+            case "order_new":
+            case "order_shipped":
+            case "shipping_update":
                 return <Package className="h-4 w-4 text-green-500" />;
             case "message_received":
                 return <MessageCircle className="h-4 w-4 text-orange-500" />;
@@ -544,9 +541,7 @@ export function NotificationBell() {
                                             <p className={`text-sm ${!notification.read ? "font-medium" : ""}`}>
                                                 {localized.title}
                                             </p>
-                                            <p className="line-clamp-2 text-xs text-muted-foreground">
-                                                {localized.message}
-                                            </p>
+                                            <NotificationDetails localized={localized} />
                                             <p className="mt-1 text-xs text-muted-foreground">
                                                 {formatDistanceToNow(new Date(notification.createdAt), {
                                                     addSuffix: true,
@@ -626,9 +621,7 @@ export function NotificationBell() {
                                     <p className={`text-sm ${!notification.read ? "font-medium" : ""}`}>
                                         {localized.title}
                                     </p>
-                                    <p className="text-xs text-muted-foreground line-clamp-2">
-                                        {localized.message}
-                                    </p>
+                                    <NotificationDetails localized={localized} />
                                     <p className="text-xs text-muted-foreground mt-1">
                                         {formatDistanceToNow(new Date(notification.createdAt), {
                                             addSuffix: true,

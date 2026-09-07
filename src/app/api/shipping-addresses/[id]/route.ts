@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { findProvince, findWard } from '@/lib/vn-address';
 
 type AddressBody = {
     recipient_name?: string;
@@ -30,6 +31,52 @@ export async function PATCH(
     }
 
     const body = (await request.json()) as AddressBody;
+    const changesAddress = [
+        body.province_id,
+        body.province_name,
+        body.district_id,
+        body.district_name,
+        body.ward_code,
+        body.ward_name,
+        body.detail,
+    ].some(value => value !== undefined);
+    let provinceId = body.province_id;
+    let wardCode = body.ward_code;
+    let detail = body.detail;
+
+    // Promoting an existing row used to validate only values supplied in this
+    // PATCH. A legacy row promoted with `{ is_default: true }` therefore
+    // bypassed the current dataset and was copied into the seller profile by
+    // the synchronization trigger. Read the owned row first and validate the
+    // exact address that will become the default.
+    if (!changesAddress && body.is_default === true) {
+        const { data: stored, error: storedError } = await supabase
+            .from('shipping_addresses')
+            .select('province_id, ward_code, detail')
+            .eq('id', id)
+            .eq('user_id', user.id)
+            .maybeSingle<{ province_id: number; ward_code: string; detail: string }>();
+
+        if (storedError) {
+            return NextResponse.json({ error: storedError.message }, { status: 500 });
+        }
+        if (!stored) {
+            return NextResponse.json({ error: 'Không tìm thấy địa chỉ' }, { status: 404 });
+        }
+        provinceId = stored.province_id;
+        wardCode = stored.ward_code;
+        detail = stored.detail;
+    }
+
+    const validatesAddress = changesAddress || body.is_default === true;
+    const province = validatesAddress ? findProvince(provinceId) : null;
+    const ward = validatesAddress ? findWard(provinceId, wardCode) : null;
+    if (validatesAddress && (!province || !ward || !detail?.trim())) {
+        return NextResponse.json(
+            { error: 'Địa chỉ dùng mã hành chính cũ hoặc Phường/Xã không thuộc Tỉnh/Thành đã chọn' },
+            { status: 400 },
+        );
+    }
 
     // If this address is being promoted to default, demote the current one.
     if (body.is_default === true) {
@@ -44,13 +91,15 @@ export async function PATCH(
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (body.recipient_name !== undefined) updates.recipient_name = body.recipient_name.trim();
     if (body.phone !== undefined) updates.phone = body.phone.trim();
-    if (body.province_id !== undefined) updates.province_id = body.province_id;
-    if (body.province_name !== undefined) updates.province_name = body.province_name;
-    if (body.district_id !== undefined) updates.district_id = body.district_id;
-    if (body.district_name !== undefined) updates.district_name = body.district_name;
-    if (body.ward_code !== undefined) updates.ward_code = body.ward_code;
-    if (body.ward_name !== undefined) updates.ward_name = body.ward_name;
-    if (body.detail !== undefined) updates.detail = body.detail.trim();
+    if (validatesAddress && province && ward) {
+        updates.province_id = province.code;
+        updates.province_name = province.name;
+        updates.district_id = null;
+        updates.district_name = null;
+        updates.ward_code = ward.code.toString();
+        updates.ward_name = ward.name;
+        updates.detail = detail!.trim();
+    }
     if (body.is_default !== undefined) updates.is_default = body.is_default;
 
     const { data, error } = await supabase

@@ -350,8 +350,8 @@ export interface Database {
                     phone: string
                     province_id: number
                     province_name: string
-                    district_id: number
-                    district_name: string
+                    district_id: number | null
+                    district_name: string | null
                     ward_code: string
                     ward_name: string
                     detail: string
@@ -366,8 +366,8 @@ export interface Database {
                     phone: string
                     province_id: number
                     province_name: string
-                    district_id: number
-                    district_name: string
+                    district_id?: number | null
+                    district_name?: string | null
                     ward_code: string
                     ward_name: string
                     detail: string
@@ -382,8 +382,8 @@ export interface Database {
                     phone?: string
                     province_id?: number
                     province_name?: string
-                    district_id?: number
-                    district_name?: string
+                    district_id?: number | null
+                    district_name?: string | null
                     ward_code?: string
                     ward_name?: string
                     detail?: string
@@ -1033,6 +1033,8 @@ export interface Database {
             }
             notifications: {
                 Row: {
+                    order_id: string | null
+                    metadata: Json
                     id: string
                     user_id: string
                     type: string
@@ -1048,6 +1050,8 @@ export interface Database {
                     created_at: string
                 }
                 Insert: {
+                    order_id?: string | null
+                    metadata?: Json
                     id?: string
                     user_id: string
                     type: string
@@ -1063,6 +1067,8 @@ export interface Database {
                     created_at?: string
                 }
                 Update: {
+                    order_id?: string | null
+                    metadata?: Json
                     id?: string
                     user_id?: string
                     type?: string
