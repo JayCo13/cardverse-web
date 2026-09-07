@@ -143,6 +143,8 @@ export default function OrdersPage() {
         shipExpired: '発送期限切れ。自動キャンセル・返金されます。',
         trackGHN: 'GHN で追跡',
         received: '受け取りました',
+        receivedTitle: '受け取りを確認しますか？',
+        receivedMessage: 'カードに問題がなければ、72時間を待たずに取引を完了し、代金を出品者にお渡しします。確認後は取り消せません。',
         trackParcel: '配送を追跡',
         dispute: '管理者に報告',
         seller: '販売者',
@@ -221,6 +223,8 @@ export default function OrdersPage() {
           shipExpired: 'Quá hạn giao hàng. Đơn sẽ tự huỷ & hoàn tiền.',
           trackGHN: 'Theo dõi GHN',
           received: 'Đã nhận hàng',
+          receivedTitle: 'Xác nhận đã nhận hàng?',
+          receivedMessage: 'Nếu thẻ không có vấn đề gì, giao dịch sẽ kết thúc ngay và tiền được chuyển cho người bán mà không cần chờ hết 72 giờ. Thao tác này không thể hoàn tác.',
           trackParcel: 'Theo dõi đơn',
           dispute: 'Báo cáo admin',
           seller: 'Người bán',
@@ -298,6 +302,8 @@ export default function OrdersPage() {
           shipExpired: 'Overdue. The order will auto-cancel and refund.',
           trackGHN: 'Track GHN',
           received: 'Item received',
+          receivedTitle: 'Confirm you received it?',
+          receivedMessage: 'If the card is as described, this closes the transaction now and pays the seller without waiting out the 72 hours. It cannot be undone.',
           trackParcel: 'Track parcel',
           dispute: 'Report to admin',
           seller: 'Seller',
@@ -763,14 +769,35 @@ export default function OrdersPage() {
                   </Button>
                 )}
 
-                {/* Buyer actions.
+                {/* Buyer actions, both buyer-only.
 
-                    There is no "Item received" button any more: escrow releases
-                    on its own 72h after a carrier confirms delivery, so asking
-                    the buyer to press something was asking for a step that adds
-                    nothing. Reporting a problem stays buyer-only. */}
+                    Escrow still releases on its own 72h after the carrier
+                    confirms delivery; "Đã nhận hàng" only lets a satisfied
+                    buyer skip the wait. The shipped and delivered emails both
+                    tell them the button is here, so it has to be. */}
                 {isBuyer && ['shipping', 'delivered'].includes(order.status) && (
                   <>
+                    {/* Closing early is the buyer's to give, never the seller's
+                        to take: the RPC rejects confirm_received from anyone but
+                        the buyer. Offered from 'shipping' as well as
+                        'delivered', because the carrier's word is not always
+                        what arrives first — a buyer holding the card should not
+                        have to wait on a tracking event to say so, and their
+                        only other button here is a dispute they do not want. */}
+                    <Button
+                      size="sm"
+                      className="bg-green-600 hover:bg-green-700"
+                      onClick={() => setConfirmAction({
+                        orderId: order.id,
+                        action: 'confirm_received',
+                        title: copy.receivedTitle,
+                        message: copy.receivedMessage,
+                      })}
+                      disabled={actionLoading === order.id}
+                    >
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      {copy.received}
+                    </Button>
                     <Button
                       size="sm"
                       variant="destructive"

@@ -2,6 +2,76 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createHash, timingSafeEqual } from 'crypto';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { readTrackingEvent } from '@/lib/carrier-tracking';
+import { getCarrier, getTrackingUrl } from '@/lib/shipping-carriers';
+import { sendOrderInTransitEmail, sendOrderDeliveredEmail } from '@/lib/mail';
+
+/**
+ * Statuses that mean the parcel is physically moving.
+ *
+ * 17TRACK reports both, in that order, and the buyer only needs to hear "it is
+ * on its way" once — so the mail goes out on the transition into this set, not
+ * on every event inside it.
+ */
+const MOVING_STATUSES = new Set(['InTransit', 'OutForDelivery']);
+
+/**
+ * Catch-up mail for a carrier event, best-effort.
+ *
+ * Deliberately swallows its own failures and is awaited before the webhook
+ * answers: 17TRACK retries on a non-200, and re-running the whole event because
+ * a mail server was slow would re-notify rather than repair. The status change
+ * is already committed by the time this runs.
+ */
+async function notifyBuyer(
+    service: ReturnType<typeof createServiceSupabaseClient>,
+    orderId: string,
+    status: string,
+    fromStatus: string | null,
+) {
+    const delivered = status === 'Delivered';
+    const startedMoving = MOVING_STATUSES.has(status) && !MOVING_STATUSES.has(fromStatus || '');
+    if (!delivered && !startedMoving) return;
+
+    try {
+        const { data: order } = await service
+            .from('orders')
+            .select('buyer_id, card_id, shipping_provider, tracking_number, auto_complete_at')
+            .eq('id', orderId)
+            .single();
+        if (!order) return;
+
+        const [{ data: buyer }, { data: card }] = await Promise.all([
+            service.from('profiles').select('email').eq('id', (order as any).buyer_id).single(),
+            (order as any).card_id
+                ? service.from('cards').select('name').eq('id', (order as any).card_id).single()
+                : Promise.resolve({ data: null } as any),
+        ]);
+
+        const buyerEmail = (buyer as any)?.email;
+        if (!buyerEmail) return;
+        const cardName = (card as any)?.name || 'thẻ của bạn';
+
+        if (delivered) {
+            await sendOrderDeliveredEmail(buyerEmail, {
+                cardName,
+                orderId,
+                autoCompleteAt: (order as any).auto_complete_at ?? null,
+            });
+            return;
+        }
+
+        const carrierCode = (order as any).shipping_provider as string | null;
+        const trackingNo = (order as any).tracking_number as string | null;
+        await sendOrderInTransitEmail(buyerEmail, {
+            cardName,
+            carrierName: (carrierCode && getCarrier(carrierCode)?.name) || carrierCode || 'Đơn vị vận chuyển',
+            trackingNumber: trackingNo || '',
+            trackingUrl: carrierCode && trackingNo ? getTrackingUrl(carrierCode, trackingNo) : null,
+        });
+    } catch (error) {
+        console.error('[Tracking Webhook] Catch-up mail failed:', error);
+    }
+}
 
 // Delivery status pushed by the tracking service (17TRACK).
 //
@@ -52,6 +122,14 @@ export async function POST(request: NextRequest) {
             p_sub_status: event.subStatus,
         } as never);
         if (error) throw error;
+
+        // Only a real transition is worth an email. The RPC's early returns —
+        // order_not_found, terminal_order, replayed, out_of_order — carry no
+        // order_id, so this also covers the repeat pushes 17TRACK sends.
+        const result = data as { order_id?: string; status?: string; from_status?: string | null } | null;
+        if (result?.order_id && result.status) {
+            await notifyBuyer(supabase, result.order_id, result.status, result.from_status ?? null);
+        }
 
         return NextResponse.json({ success: true, result: data });
     } catch (error: any) {
