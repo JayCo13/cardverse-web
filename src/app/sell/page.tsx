@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckCircle, XCircle, Phone, FileCheck, ChevronRight, ChevronLeft, ChevronDown, Sparkles, AlertTriangle, MapPin, Truck, HandCoins } from 'lucide-react';
 import { SHIPPING_CARRIERS, carrierShortLabels } from '@/lib/shipping-carriers';
 import { PickupAddressPicker, type PickupAddress } from '@/components/pickup-address-picker';
+import { ShippingQuotePreview } from '@/components/shipping-quote-preview';
 import { getAccountSummary, invalidateAccountSummary } from '@/lib/account-summary';
 import { hasUsableShipping, isValidShippingFee, shippableCarriers, shopShippingRange, SHIPPING_FEE_MAX, SHIPPING_FEE_MIN, type ShopShippingFees } from '@/lib/shipping-fee';
 import { useAuth, useSupabase } from '@/lib/supabase';
@@ -1467,6 +1468,10 @@ export default function SellPage() {
                     <span className="text-xs text-green-400">{copy.goshipPickupHave}</span>
                   )}
                 </div>
+                {/* Only once an origin exists: the quote is measured from it,
+                    and offering the form first invites the one error it cannot
+                    answer. */}
+                {goshipPickup && <ShippingQuotePreview />}
               </CardContent>
             </Card>
 
