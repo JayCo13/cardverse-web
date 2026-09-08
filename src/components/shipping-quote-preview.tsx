@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { AlertCircle, Loader2, Truck } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useLocalization } from '@/context/localization-context';
 
 /**
@@ -28,6 +29,12 @@ type Rate = {
 
 const COPY = {
     'vi-VN': {
+        ward: 'Phường/Xã nhận', selectWard: 'Chọn phường/xã',
+        street: 'Địa chỉ cụ thể', name: 'Tên người nhận', phone: 'Số điện thoại nhận',
+        declared: 'Khai giá (đ)', declaredHint: 'Số tiền hãng đền nếu mất hàng. Bắt buộc lớn hơn 0.',
+        book: 'Đặt vận đơn', confirmTitle: 'Đặt vận đơn thật?',
+        confirmBody: 'Lệnh này tạo vận đơn thật với {carrier} ({fee}) và shipper sẽ tới địa chỉ người gửi để lấy hàng. Bạn vẫn có thể mang hàng ra bưu cục gửi bằng mã này.',
+        confirm: 'Đặt', cancel: 'Huỷ', booked: 'Đã tạo vận đơn.', bookFailed: 'Không tạo được vận đơn.',
         title: 'Thử bảng giá vận chuyển', city: 'Tỉnh/Thành nhận', district: 'Quận/Huyện nhận',
         selectCity: 'Chọn tỉnh/thành', selectDistrict: 'Chọn quận/huyện',
         weight: 'Cân nặng (gram)', submit: 'Xem giá', loading: 'Đang tính...',
@@ -37,6 +44,12 @@ const COPY = {
         hint: 'Chỉ tra giá, không tạo vận đơn và không gọi shipper.',
     },
     'en-US': {
+        ward: 'Destination ward', selectWard: 'Select ward',
+        street: 'Street address', name: 'Recipient name', phone: 'Recipient phone',
+        declared: 'Declared value (đ)', declaredHint: 'What the carrier pays if the parcel is lost. Must be above 0.',
+        book: 'Book shipment', confirmTitle: 'Book a real shipment?',
+        confirmBody: 'This creates a real waybill with {carrier} ({fee}) and a courier will come to the sender address. You can still drop the parcel off using this code.',
+        confirm: 'Book', cancel: 'Cancel', booked: 'Shipment created.', bookFailed: 'Could not create the shipment.',
         title: 'Try the shipping rates', city: 'Destination province/city', district: 'Destination district',
         selectCity: 'Select province/city', selectDistrict: 'Select district',
         weight: 'Weight (grams)', submit: 'Get rates', loading: 'Calculating...',
@@ -46,6 +59,12 @@ const COPY = {
         hint: 'Rates only — nothing is booked and no courier is called.',
     },
     'ja-JP': {
+        ward: '配送先の坊/社', selectWard: '坊/社を選択',
+        street: '詳細住所', name: '受取人名', phone: '受取人の電話番号',
+        declared: '申告価格（đ）', declaredHint: '紛失時に業者が支払う金額。0より大きい必要があります。',
+        book: '送り状を作成', confirmTitle: '実際に送り状を作成しますか？',
+        confirmBody: '{carrier}（{fee}）で実際の送り状を作成し、集荷に伺います。この番号で窓口へ持ち込むこともできます。',
+        confirm: '作成', cancel: 'キャンセル', booked: '送り状を作成しました。', bookFailed: '作成できませんでした。',
         title: '配送料金を試算', city: '配送先の省/市', district: '配送先の郡/区',
         selectCity: '省/市を選択', selectDistrict: '郡/区を選択',
         weight: '重量（グラム）', submit: '料金を見る', loading: '計算中...',
@@ -65,6 +84,15 @@ export function ShippingQuotePreview() {
     const [city, setCity] = useState('');
     const [district, setDistrict] = useState('');
     const [weight, setWeight] = useState('200');
+    const [wards, setWards] = useState<Option[]>([]);
+    const [ward, setWard] = useState('');
+    const [street, setStreet] = useState('');
+    const [name, setName] = useState('');
+    const [phone, setPhone] = useState('');
+    const [declared, setDeclared] = useState('');
+    const [confirming, setConfirming] = useState<Rate | null>(null);
+    const [booking, setBooking] = useState(false);
+    const [booked, setBooked] = useState<Record<string, unknown> | null>(null);
     const [rates, setRates] = useState<Rate[] | null>(null);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -81,6 +109,13 @@ export function ShippingQuotePreview() {
         fetch(`/api/shipping/address/districts?city_code=${encodeURIComponent(city)}`, { cache: 'force-cache' })
             .then((r) => r.json()).then((b) => setDistricts(b.data ?? [])).catch(() => {});
     }, [city]);
+
+    useEffect(() => {
+        setWard('');
+        if (!district) { setWards([]); return; }
+        fetch(`/api/shipping/address/wards?district_code=${encodeURIComponent(district)}`, { cache: 'force-cache' })
+            .then((r) => r.json()).then((b) => setWards(b.data ?? [])).catch(() => {});
+    }, [district]);
 
     const run = async () => {
         setBusy(true); setError(null); setRates(null);
@@ -101,6 +136,33 @@ export function ShippingQuotePreview() {
             setError(copy.failed);
         } finally {
             setBusy(false);
+        }
+    };
+
+    const canBook = !!ward && street.trim().length > 0 && name.trim().length > 0
+        && /^0[0-9]{8,10}$/.test(phone.replace(/\s+/g, '')) && Number(declared) > 0;
+
+    const book = async (rate: Rate) => {
+        setBooking(true); setError(null);
+        try {
+            const res = await fetch('/api/shipping/book', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    rateId: rate.id,
+                    weight: Number(weight) || 200,
+                    declaredValue: Number(declared),
+                    to: { city, district, ward, street, name, phone },
+                }),
+            });
+            const body = await res.json();
+            if (!res.ok) { setError(body.error || copy.bookFailed); return; }
+            setBooked(body.data);
+        } catch {
+            setError(copy.bookFailed);
+        } finally {
+            setBooking(false);
+            setConfirming(null);
         }
     };
 
@@ -152,6 +214,45 @@ export function ShippingQuotePreview() {
                 <p className="text-sm text-muted-foreground">{copy.none}</p>
             )}
 
+            {/* Only asked for once there is something to book: a quote needs a
+                district, a waybill needs a person to hand the parcel to. */}
+            {rates && rates.length > 0 && (
+                <div className="space-y-3 rounded-md border border-border/60 p-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                            <Label htmlFor="q-ward">{copy.ward}</Label>
+                            <Select value={ward || undefined} onValueChange={setWard}>
+                                <SelectTrigger id="q-ward"><SelectValue placeholder={copy.selectWard} /></SelectTrigger>
+                                <SelectContent>
+                                    {wards.map((w) => <SelectItem key={w.code} value={w.code}>{w.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="q-street">{copy.street}</Label>
+                            <Input id="q-street" value={street} maxLength={255}
+                                onChange={(e) => setStreet(e.target.value)} />
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="q-name">{copy.name}</Label>
+                            <Input id="q-name" value={name} maxLength={120}
+                                onChange={(e) => setName(e.target.value)} />
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="q-phone">{copy.phone}</Label>
+                            <Input id="q-phone" value={phone} inputMode="tel" maxLength={15}
+                                onChange={(e) => setPhone(e.target.value)} />
+                        </div>
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label htmlFor="q-declared">{copy.declared}</Label>
+                        <Input id="q-declared" value={declared} inputMode="numeric"
+                            onChange={(e) => setDeclared(e.target.value.replace(/\D/g, '').slice(0, 9))} />
+                        <p className="text-xs text-muted-foreground">{copy.declaredHint}</p>
+                    </div>
+                </div>
+            )}
+
             {rates && rates.length > 0 && (
                 <ul className="divide-y divide-border/60 rounded-md border border-border/60">
                     {rates.map((r) => (
@@ -163,13 +264,47 @@ export function ShippingQuotePreview() {
                                         .filter(Boolean).join(' · ')}
                                 </p>
                             </div>
-                            <span className="shrink-0 font-semibold text-orange-400">
-                                {r.totalFee.toLocaleString('vi-VN')}đ
-                            </span>
+                            <div className="flex shrink-0 items-center gap-3">
+                                <span className="font-semibold text-orange-400">
+                                    {r.totalFee.toLocaleString('vi-VN')}đ
+                                </span>
+                                <Button size="sm" variant="outline"
+                                    disabled={!canBook}
+                                    onClick={() => setConfirming(r)}>
+                                    {copy.book}
+                                </Button>
+                            </div>
                         </li>
                     ))}
                 </ul>
             )}
+            {booked && (
+                <pre className="max-h-72 overflow-auto rounded-md bg-muted/40 p-3 text-xs">
+                    {JSON.stringify(booked, null, 2)}
+                </pre>
+            )}
+
+            <Dialog open={!!confirming} onOpenChange={(o) => !o && setConfirming(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>{copy.confirmTitle}</DialogTitle>
+                        <DialogDescription>
+                            {copy.confirmBody
+                                .replace('{carrier}', confirming?.carrierName ?? '')
+                                .replace('{fee}', `${(confirming?.totalFee ?? 0).toLocaleString('vi-VN')}đ`)}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setConfirming(null)} disabled={booking}>
+                            {copy.cancel}
+                        </Button>
+                        <Button className="bg-orange-500 hover:bg-orange-600" disabled={booking}
+                            onClick={() => confirming && book(confirming)}>
+                            {booking ? <Loader2 className="h-4 w-4 animate-spin" /> : copy.confirm}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
