@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 
 const EBAY_APP_ID = process.env.EBAY_APP_ID || '';
@@ -51,7 +52,7 @@ async function getEbayToken(): Promise<string> {
     return data.access_token;
 }
 
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('q') || '';
     const limit = searchParams.get('limit') || '20';
@@ -134,3 +135,5 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Search failed' }, { status: 500 });
     }
 }
+
+export const GET = accountRoute(handleGET);

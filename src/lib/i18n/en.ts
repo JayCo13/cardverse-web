@@ -1,4 +1,17 @@
 export const en = {
+  accountBannedTitle: "Your account has been restricted",
+  accountBanReason: "Reason",
+  accountBanTime: "Restricted at",
+  accountBanExplanation: "Your account remains restricted until it is restored. If you have an order or funds being processed, please contact support.",
+  accountContact: "Contact support",
+  accountCheckAgain: "Check status again",
+  accountSignOut: "Sign out",
+  accountStatusLoading: "Checking account status…",
+  accountStatusError: "Unable to check your account. Please retry.",
+  accountLanguage: "Language",
+  accountTerms: "Terms",
+  accountPrivacy: "Privacy policy",
+
   notification_context_refund: 'The refund was credited to your wallet.',
   notification_context_payout: 'The sale proceeds were credited to your wallet.',
   notification_context_resolved_refund: 'The administrator approved a refund to the buyer.',

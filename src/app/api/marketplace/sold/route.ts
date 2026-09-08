@@ -1,9 +1,10 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextResponse } from 'next/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
 // Public aggregated "sold cards" feed: card + asking price + actual sold price
 // (an accepted offer shows as a lower sold price). No buyer/seller PII.
-export async function GET() {
+async function handleGET() {
     const service = createServiceSupabaseClient();
 
     // A real sale = a non-cancelled, paid-or-later order. Cancelled orders relist
@@ -46,3 +47,5 @@ export async function GET() {
 
     return NextResponse.json({ items });
 }
+
+export const GET = accountRoute(handleGET);

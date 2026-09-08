@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
@@ -106,7 +107,7 @@ const isOwnedCloudinaryImage = (value: string) => {
     }
 };
 
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -203,7 +204,7 @@ export async function GET(request: NextRequest) {
  * The body is erased rather than flagged, because realtime delivers the updated
  * row to the other participant verbatim.
  */
-export async function PATCH(request: NextRequest) {
+async function handlePATCH(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -245,7 +246,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ success: true, id: data.id });
 }
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -422,3 +423,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ message, flaggedTerms });
 }
+
+export const GET = accountRoute(handleGET);
+export const PATCH = accountRoute(handlePATCH);
+export const POST = accountRoute(handlePOST);

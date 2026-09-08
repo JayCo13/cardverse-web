@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
@@ -34,7 +35,7 @@ export type CatalogSearchResult = {
 
 const escapeIlike = (value: string) => value.replace(/[%_,()]/g, ' ').trim();
 
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
     try {
         const supabase = await createServerSupabaseClient();
         const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -107,3 +108,5 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
     }
 }
+
+export const GET = accountRoute(handleGET);

@@ -1,10 +1,11 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { getRequestLocale } from '@/lib/request-localization';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 
 // Generate a marketplace description in the seller's selected UI language
 // from the attributes they already filled in. Groq (OpenAI-compatible) model.
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
     const groqApiKey = process.env.GROQ_API_KEY;
     if (!groqApiKey) {
         return NextResponse.json({ error: 'GROQ_API_KEY not configured' }, { status: 500 });
@@ -141,3 +142,5 @@ function normalise(raw: string) {
         .replace(/^["']|["']$/g, '')
         .trim();
 }
+
+export const POST = accountRoute(handlePOST);

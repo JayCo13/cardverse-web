@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextResponse } from 'next/server';
 import { v2 as cloudinary } from 'cloudinary';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
@@ -21,7 +22,7 @@ const ALLOWED_FOLDERS = new Set([
     EVIDENCE_VIDEO_FOLDER,
 ]);
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
     try {
         if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
             return NextResponse.json({ error: 'Cloudinary is not configured on the server.' }, { status: 500 });
@@ -65,3 +66,5 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
     }
 }
+
+export const POST = accountRoute(handlePOST);

@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
@@ -36,7 +37,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 // Reserve a seller's funds while an admin reviews the payout. The atomic RPC
 // moves available -> held and snapshots the approved KYC bank account; no
 // negative wallet transaction is recorded until the admin confirms transfer.
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
     try {
         const supabase = await createServerSupabaseClient();
         const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -130,3 +131,5 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: message }, { status: 500 });
     }
 }
+
+export const POST = accountRoute(handlePOST);

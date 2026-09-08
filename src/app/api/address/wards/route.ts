@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { listWards } from '@/lib/vn-address';
 
@@ -8,7 +9,7 @@ import { listWards } from '@/lib/vn-address';
  * Served per province rather than all 3,321 at once: the whole set is 213KB and
  * a picker only ever needs the one province in front of the reader.
  */
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
     const provinceCode = Number(request.nextUrl.searchParams.get('province_code'));
     if (!Number.isSafeInteger(provinceCode) || provinceCode <= 0) {
         return NextResponse.json({ error: 'province_code is required' }, { status: 400 });
@@ -26,3 +27,5 @@ export async function GET(request: NextRequest) {
         { headers: { 'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800' } },
     );
 }
+
+export const GET = accountRoute(handleGET);

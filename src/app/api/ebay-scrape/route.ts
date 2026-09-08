@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextResponse } from 'next/server';
 
 // eBay Production Credentials from environment variables
@@ -34,7 +35,7 @@ async function getEbayToken() {
     }
 }
 
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('q');
     const limit = searchParams.get('limit') || '30';
@@ -100,3 +101,5 @@ export async function GET(request: Request) {
         }, { status: 500 });
     }
 }
+
+export const GET = accountRoute(handleGET);

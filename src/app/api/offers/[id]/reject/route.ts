@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
@@ -12,7 +13,7 @@ type OfferActionResult = {
     seller_id: string;
 };
 
-export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function handlePOST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const { id: offerId } = await params;
     const idempotencyKey = request.headers.get('idempotency-key');
     if (!idempotencyKey || !UUID_PATTERN.test(idempotencyKey)) {
@@ -78,3 +79,5 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     return NextResponse.json({ offerId: result.offer_id, conversationId, replayed: !!result.replayed });
 }
+
+export const POST = accountRoute(handlePOST);

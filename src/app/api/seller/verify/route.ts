@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
@@ -103,7 +104,7 @@ function identityFromSession(session: KycSessionRow): KycIdentity {
  * binds that identity to payout details, then either auto-approves or files the
  * submission for manual review.
  */
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
     try {
         const supabase = await createServerSupabaseClient();
         const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -357,7 +358,7 @@ export async function POST(request: NextRequest) {
 }
 
 // GET: check verification status
-export async function GET() {
+async function handleGET() {
     try {
         const supabase = await createServerSupabaseClient();
         const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -411,3 +412,6 @@ export async function GET() {
         return NextResponse.json({ error: message }, { status: 500 });
     }
 }
+
+export const POST = accountRoute(handlePOST);
+export const GET = accountRoute(handleGET);

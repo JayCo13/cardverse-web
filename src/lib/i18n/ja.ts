@@ -1,4 +1,17 @@
 export const ja = {
+  accountBannedTitle: "アカウントが制限されています",
+  accountBanReason: "理由",
+  accountBanTime: "制限日時",
+  accountBanExplanation: "制限が解除されるまでアカウントは利用できません。処理中の注文や資金がある場合は、サポートにお問い合わせください。",
+  accountContact: "サポートに連絡",
+  accountCheckAgain: "状態を再確認",
+  accountSignOut: "ログアウト",
+  accountStatusLoading: "アカウントの状態を確認しています…",
+  accountStatusError: "アカウントの状態を確認できません。再試行してください。",
+  accountLanguage: "言語",
+  accountTerms: "利用規約",
+  accountPrivacy: "プライバシーポリシー",
+
   notification_context_refund: '返金がウォレットに入金されました。',
   notification_context_payout: '売上金がウォレットに入金されました。',
   notification_context_resolved_refund: '管理者が購入者への返金を承認しました。',

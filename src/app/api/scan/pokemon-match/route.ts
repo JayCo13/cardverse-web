@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
@@ -12,7 +13,7 @@ import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
 const SEL = 'product_id,name,image_url,set_name,rarity,market_price,low_price,mid_price,high_price,number,tcgplayer_url,extended_data,category_id';
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
     try {
         const body = await req.json().catch(() => ({}));
         const catIds: number[] = Array.isArray(body.catIds) ? body.catIds.filter((n: unknown) => typeof n === 'number') : [];
@@ -63,3 +64,5 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ products: [], error: (e as Error)?.message || 'error' }, { status: 200 });
     }
 }
+
+export const POST = accountRoute(handlePOST);

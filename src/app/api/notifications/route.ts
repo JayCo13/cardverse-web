@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
@@ -6,7 +7,7 @@ type Related = { id: string; buyer_id: string; seller_id: string; card_id: strin
 
 // Read through the user's RLS session, including all related records. Never
 // accept a recipient id from the browser or use service-role enrichment here.
-export async function GET() {
+async function handleGET() {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -56,7 +57,7 @@ export async function GET() {
 // supabase/migrations/20260702_p0_money_and_notifications.sql), so the row is
 // removed through the service-role client — with `user_id` pinned to the
 // authenticated caller, never to an id sent by the browser.
-export async function DELETE(request: Request) {
+async function handleDELETE(request: Request) {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -80,3 +81,6 @@ export async function DELETE(request: Request) {
 
   return NextResponse.json({ success: true });
 }
+
+export const GET = accountRoute(handleGET);
+export const DELETE = accountRoute(handleDELETE);

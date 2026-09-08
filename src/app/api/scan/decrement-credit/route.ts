@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
@@ -11,7 +12,7 @@ type ConsumeCreditResult = {
   credits_remaining?: number;
 };
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   try {
     const supabase = await createServerSupabaseClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -64,3 +65,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to decrement credit' }, { status: 500 });
   }
 }
+
+export const POST = accountRoute(handlePOST);

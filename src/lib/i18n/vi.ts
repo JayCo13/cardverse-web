@@ -1,4 +1,17 @@
 export const vi = {
+  accountBannedTitle: "Tài khoản của bạn đã bị khóa",
+  accountBanReason: "Lý do",
+  accountBanTime: "Thời điểm khóa",
+  accountBanExplanation: "Tài khoản bị hạn chế cho đến khi được mở lại. Nếu có đơn hàng hoặc tiền đang xử lý, vui lòng liên hệ hỗ trợ.",
+  accountContact: "Liên hệ hỗ trợ",
+  accountCheckAgain: "Kiểm tra lại trạng thái",
+  accountSignOut: "Đăng xuất",
+  accountStatusLoading: "Đang kiểm tra trạng thái tài khoản…",
+  accountStatusError: "Không thể kiểm tra tài khoản. Vui lòng thử lại.",
+  accountLanguage: "Ngôn ngữ",
+  accountTerms: "Điều khoản",
+  accountPrivacy: "Chính sách bảo mật",
+
   notification_context_refund: 'Tiền hoàn đã được cộng vào ví của bạn.',
   notification_context_payout: 'Tiền bán hàng đã được cộng vào ví của bạn.',
   notification_context_resolved_refund: 'Quản trị viên đã quyết định hoàn tiền cho người mua.',

@@ -32,6 +32,10 @@ async function finalizeMarketplaceOrders(supabase: SupabaseClient, paymentOrderI
   );
 
   for (const order of paidOrders) {
+    const { data: holds, error: holdError } = await supabase.from('account_review_holds').select('id').eq('order_id', order.id).is('resolved_at', null).limit(1);
+    if (holdError) throw holdError;
+    if (holds?.length) continue;
+
     const { data: existingNotification } = await supabase
       .from('notifications')
       .select('id')

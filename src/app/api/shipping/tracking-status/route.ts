@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { fetchCarrierTracking, trackableCarrier } from '@/lib/carrier-tracking';
@@ -8,7 +9,7 @@ import { fetchCarrierTracking, trackableCarrier } from '@/lib/carrier-tracking';
 // order after the caller is checked against it. A carrier tracking number
 // exposes the recipient's name and address, so answering for an arbitrary
 // number would hand anyone a lookup tool over other people's deliveries.
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -90,3 +91,5 @@ export async function GET(request: NextRequest) {
         events: live.events,
     });
 }
+
+export const GET = accountRoute(handleGET);

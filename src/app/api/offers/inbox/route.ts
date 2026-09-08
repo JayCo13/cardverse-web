@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getRouteUser } from '@/lib/supabase/route-user';
@@ -84,7 +85,7 @@ const applyStatus = <T extends {
     return query;
 };
 
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     const user = await getRouteUser(supabase);
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -342,3 +343,5 @@ export async function GET(request: NextRequest) {
         );
     }
 }
+
+export const GET = accountRoute(handleGET);

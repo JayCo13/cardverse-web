@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextResponse } from 'next/server';
 import { listProvinces } from '@/lib/vn-address';
 
@@ -8,9 +9,11 @@ import { listProvinces } from '@/lib/vn-address';
  * the edge for a day. The list changes when the National Assembly says so, and
  * `npm run data:address` is what moves it.
  */
-export async function GET() {
+async function handleGET() {
     return NextResponse.json(
         { data: listProvinces() },
         { headers: { 'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800' } },
     );
 }
+
+export const GET = accountRoute(handleGET);

@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
@@ -111,7 +112,7 @@ function toClientShape(row: KycSessionRow) {
 }
 
 // POST: open a hosted identity-verification session and return its URL.
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
     const startedAt = Date.now();
     const remainingMs = () => FUNCTION_BUDGET_MS - (Date.now() - startedAt);
 
@@ -292,7 +293,7 @@ export async function POST(request: NextRequest) {
  * has no grants for `authenticated`, so the decision payload (document images,
  * MRZ, scores) can never be pulled client-side.
  */
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
     const startedAt = Date.now();
     const remainingMs = () => FUNCTION_BUDGET_MS - (Date.now() - startedAt);
 
@@ -414,3 +415,6 @@ export async function GET(request: NextRequest) {
         );
     }
 }
+
+export const POST = accountRoute(handlePOST);
+export const GET = accountRoute(handleGET);

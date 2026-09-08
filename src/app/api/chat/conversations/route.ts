@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
@@ -74,7 +75,7 @@ const mapConversation = (
     };
 };
 
-export async function GET() {
+async function handleGET() {
     const supabase = await createServerSupabaseClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -148,7 +149,7 @@ export async function GET() {
     });
 }
 
-export async function PATCH(request: NextRequest) {
+async function handlePATCH(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -195,7 +196,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ conversationId, muted });
 }
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -303,7 +304,7 @@ export async function POST(request: NextRequest) {
  * role once the caller's own client has proved — through RLS — that they are in
  * this conversation.
  */
-export async function DELETE(request: NextRequest) {
+async function handleDELETE(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -355,3 +356,8 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true });
 }
+
+export const GET = accountRoute(handleGET);
+export const PATCH = accountRoute(handlePATCH);
+export const POST = accountRoute(handlePOST);
+export const DELETE = accountRoute(handleDELETE);

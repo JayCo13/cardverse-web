@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getRouteUser } from '@/lib/supabase/route-user';
@@ -5,7 +6,7 @@ import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import type { Tables } from '@/lib/supabase/database.types';
 
 // GET: Get wallet balance
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
     try {
         const supabase = await createServerSupabaseClient();
         const user = await getRouteUser(supabase);
@@ -123,3 +124,5 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
     }
 }
+
+export const GET = accountRoute(handleGET);

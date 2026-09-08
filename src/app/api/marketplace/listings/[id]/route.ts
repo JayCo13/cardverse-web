@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
@@ -56,7 +57,7 @@ const getOwnListing = async (id: string) => {
     return { supabase, listing, hasOpenOffers: openOfferCount > 0, openOfferCount, pendingOfferCount } as const;
 };
 
-export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
+async function handleGET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
     const { id } = await context.params;
     const result = await getOwnListing(id);
     if ('error' in result) return NextResponse.json({ error: result.error }, { status: result.status });
@@ -68,7 +69,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
     });
 }
 
-export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+async function handlePATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
     const startedAt = performance.now();
     const { id } = await context.params;
     const body = await request.json();
@@ -133,3 +134,6 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     response.headers.set('Server-Timing', `listing-db;dur=${dbDuration.toFixed(1)}, total;dur=${(performance.now() - startedAt).toFixed(1)}`);
     return response;
 }
+
+export const GET = accountRoute(handleGET);
+export const PATCH = accountRoute(handlePATCH);
