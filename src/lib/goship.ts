@@ -132,6 +132,12 @@ export async function goshipRates(input: {
     from: Pick<GoshipAddress, 'city' | 'district'>;
     to: Pick<GoshipAddress, 'city' | 'district'>;
     parcel: GoshipParcel;
+    /**
+     * Declared value, in VND. Carriers charge for it above a threshold — SPX a
+     * flat 25,000đ, GHN half a percent — so a quote taken without it is not the
+     * price of a booking made with it.
+     */
+    declaredValue?: number;
 }): Promise<{ ok: true; rates: GoshipRate[] } | { ok: false; reason: string }> {
     type Raw = {
         id: string;
@@ -149,7 +155,11 @@ export async function goshipRates(input: {
             shipment: {
                 address_from: { city: input.from.city, district: input.from.district },
                 address_to: { city: input.to.city, district: input.to.district },
-                parcel: input.parcel,
+                parcel: {
+                    ...input.parcel,
+                    cod: 0,
+                    amount: Math.max(0, Math.round(input.declaredValue ?? 0)),
+                },
             },
         },
     });
@@ -176,21 +186,17 @@ export async function goshipRates(input: {
  * and passing an unknown id with "Không tìm thấy dịch vụ phù hợp". Quotes go
  * stale, so re-quote rather than storing an id for later.
  *
- * `declaredValue` is sent as `parcel.amount`, which the API reference calls
- * khai giá — the figure a carrier pays out when a parcel is lost.
+ * `declaredValue` is sent as `parcel.amount` — khai giá, the figure a carrier
+ * pays out when a parcel is lost, and the one the API reference names.
  *
- * IT DOES NOT CURRENTLY TAKE EFFECT, and nothing here should be read as
- * insuring a parcel. A shipment created with it comes back with no `amount` on
- * its parcel and insurrance_fee at 0, and no other field name moves that fee
- * either — amount, insurance, declared_amount, value and insurrance were all
- * tried at both parcel and shipment level, against live quotes. Either the
- * reference is wrong about the name or declared value is arranged some other
- * way, and only GoShip can say which.
+ * It has a price. Above a threshold the carrier charges for it, and the
+ * threshold and the rate are the carrier's own: SPX adds a flat 25,000đ over
+ * roughly two million, GHN charges half a percent with no flat step. So a quote
+ * taken without a declared value is not the price of a booking made with one,
+ * which is why goshipRates takes it too.
  *
- * It is still collected and still required. The value is the one a seller would
- * declare, so it costs nothing to keep sending and everything to have to ask
- * for again later. But until a created shipment echoes it back, no interface
- * above this may tell anyone their card is covered.
+ * Required rather than optional: a parcel booked at zero is one the carrier
+ * owes nothing for, and that should be a decision somebody wrote down.
  *
  * `orderId` rides along as GoShip's `order_id`. If their webhook echoes it, an
  * event identifies its order outright instead of being matched on a tracking

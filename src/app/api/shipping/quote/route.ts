@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => null) as {
         to?: { city?: unknown; district?: unknown };
         weight?: unknown;
+        declaredValue?: unknown;
     } | null;
 
     const toCity = typeof body?.to?.city === 'string' ? body.to.city.trim() : '';
@@ -62,10 +63,14 @@ export async function POST(request: NextRequest) {
         );
     }
 
+    // Quoted with the declared value, because the carrier charges for it: a
+    // price shown without one is not the price of a booking made with one.
+    const declaredValue = Number(body?.declaredValue);
     const result = await goshipRates({
         from: { city: pickup.city, district: pickup.district },
         to: { city: toCity, district: toDistrict },
         parcel,
+        declaredValue: Number.isFinite(declaredValue) && declaredValue > 0 ? declaredValue : 0,
     });
 
     if (!result.ok) {

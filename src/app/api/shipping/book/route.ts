@@ -13,11 +13,10 @@ import { createServiceSupabaseClient } from '@/lib/supabase/service';
  * Origin is the caller's saved sender address, never the request: a seller
  * cannot book a pickup from an address they have not proved is theirs.
  *
- * `declaredValue` is required and must be positive. It is sent as GoShip's
- * parcel.amount, which their reference calls khai giá — but a created shipment
- * comes back without it and with insurrance_fee at 0, so it does not currently
- * insure anything. See the note in lib/goship.ts. It stays required because the
- * figure is the right one to hold, not because it protects a parcel today.
+ * `declaredValue` is required and must be positive. It is GoShip's
+ * parcel.amount — khai giá — and it is what the carrier pays if the parcel is
+ * lost. It also costs: above a threshold the carrier charges for it, so the
+ * quote the seller chose from was priced with the same figure.
  */
 
 const ID = /^[0-9]{1,12}$/;

@@ -32,7 +32,7 @@ const COPY = {
         missing: 'Còn thiếu: {fields}', fWard: 'phường/xã', fStreet: 'địa chỉ', fName: 'tên người nhận', fPhone: 'số điện thoại hợp lệ', fDeclared: 'khai giá',
         ward: 'Phường/Xã nhận', selectWard: 'Chọn phường/xã',
         street: 'Địa chỉ cụ thể', name: 'Tên người nhận', phone: 'Số điện thoại nhận',
-        declared: 'Khai giá (đ)', declaredHint: 'Giá trị hàng khai với đơn vị vận chuyển. Lưu ý: bồi thường khi mất hàng chưa được xác nhận có hiệu lực — đừng coi đây là bảo hiểm.',
+        declared: 'Khai giá (đ)', declaredHint: 'Giá trị hàng khai với hãng, dùng để bồi thường nếu mất. Trên ngưỡng nhất định hãng thu thêm phí bảo hiểm. Đổi số này rồi bấm Xem giá lại để thấy giá đúng.',
         book: 'Đặt vận đơn', confirmTitle: 'Đặt vận đơn thật?',
         confirmBody: 'Lệnh này tạo vận đơn thật với {carrier} ({fee}) và shipper sẽ tới địa chỉ người gửi để lấy hàng. Bạn vẫn có thể mang hàng ra bưu cục gửi bằng mã này.',
         confirm: 'Đặt', cancel: 'Huỷ', booked: 'Đã tạo vận đơn.', bookFailed: 'Không tạo được vận đơn.',
@@ -48,7 +48,7 @@ const COPY = {
         missing: 'Still needed: {fields}', fWard: 'ward', fStreet: 'street address', fName: 'recipient name', fPhone: 'a valid phone number', fDeclared: 'declared value',
         ward: 'Destination ward', selectWard: 'Select ward',
         street: 'Street address', name: 'Recipient name', phone: 'Recipient phone',
-        declared: 'Declared value (đ)', declaredHint: 'The value declared to the carrier. Note: compensation for a lost parcel is not confirmed to be in effect — do not treat this as insurance.',
+        declared: 'Declared value (đ)', declaredHint: 'Declared to the carrier and what it pays if the parcel is lost. Above a threshold the carrier charges for it — re-run the quote after changing this.',
         book: 'Book shipment', confirmTitle: 'Book a real shipment?',
         confirmBody: 'This creates a real waybill with {carrier} ({fee}) and a courier will come to the sender address. You can still drop the parcel off using this code.',
         confirm: 'Book', cancel: 'Cancel', booked: 'Shipment created.', bookFailed: 'Could not create the shipment.',
@@ -64,7 +64,7 @@ const COPY = {
         missing: '不足: {fields}', fWard: '坊/社', fStreet: '住所', fName: '受取人名', fPhone: '有効な電話番号', fDeclared: '申告価格',
         ward: '配送先の坊/社', selectWard: '坊/社を選択',
         street: '詳細住所', name: '受取人名', phone: '受取人の電話番号',
-        declared: '申告価格（đ）', declaredHint: '業者に申告する価格。紛失時の補償が有効かは未確認です。保険とみなさないでください。',
+        declared: '申告価格（đ）', declaredHint: '業者への申告価格で、紛失時の補償額です。一定額を超えると保険料が加算されます。変更後は再度料金を確認してください。',
         book: '送り状を作成', confirmTitle: '実際に送り状を作成しますか？',
         confirmBody: '{carrier}（{fee}）で実際の送り状を作成し、集荷に伺います。この番号で窓口へ持ち込むこともできます。',
         confirm: '作成', cancel: 'キャンセル', booked: '送り状を作成しました。', bookFailed: '作成できませんでした。',
@@ -126,7 +126,11 @@ export function ShippingQuotePreview() {
             const res = await fetch('/api/shipping/quote', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ to: { city, district }, weight: Number(weight) || 200 }),
+                body: JSON.stringify({
+                    to: { city, district },
+                    weight: Number(weight) || 200,
+                    declaredValue: Number(declared) || 0,
+                }),
             });
             const body = await res.json();
             if (!res.ok) {

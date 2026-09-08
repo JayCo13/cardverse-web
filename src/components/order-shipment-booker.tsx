@@ -32,7 +32,7 @@ const COPY = {
         title: 'Tạo vận đơn', open: 'Tạo vận đơn',
         desc: 'Chọn đơn vị vận chuyển. Sau khi tạo, bạn mang mã ra bưu cục gửi hoặc chờ shipper tới lấy.',
         weight: 'Cân nặng (gram)', declared: 'Khai giá (đ)',
-        declaredHint: 'Giá trị hàng khai với đơn vị vận chuyển. Mặc định theo giá trị đơn.',
+        declaredHint: 'Giá trị hàng khai với hãng, dùng để bồi thường nếu mất. Trên ngưỡng nhất định hãng thu thêm phí bảo hiểm — giá bên dưới đã gồm khoản đó.',
         loading: 'Đang lấy bảng giá...', none: 'Không có hãng nào phục vụ tuyến này.',
         book: 'Đặt', booking: 'Đang tạo...', cancel: 'Đóng',
         noPickup: 'Bạn cần lưu Thông tin người gửi ở trang Bán hàng trước.',
@@ -44,7 +44,7 @@ const COPY = {
         title: 'Create waybill', open: 'Create waybill',
         desc: 'Pick a carrier. Once created, drop the parcel off with the code or wait for the courier.',
         weight: 'Weight (grams)', declared: 'Declared value (đ)',
-        declaredHint: 'The value declared to the carrier. Defaults to the order total.',
+        declaredHint: 'Declared to the carrier and what it pays if the parcel is lost. Above a threshold the carrier charges for it — the prices below already include that.',
         loading: 'Fetching rates...', none: 'No carrier serves this route.',
         book: 'Book', booking: 'Creating...', cancel: 'Close',
         noPickup: 'Save your sender details on the Sell page first.',
@@ -56,7 +56,7 @@ const COPY = {
         title: '送り状を作成', open: '送り状を作成',
         desc: '配送業者を選んでください。作成後は窓口へ持ち込むか集荷をお待ちください。',
         weight: '重量（グラム）', declared: '申告価格（đ）',
-        declaredHint: '業者に申告する価格。既定は注文金額です。',
+        declaredHint: '業者への申告価格で、紛失時の補償額です。一定額を超えると保険料が加算され、下の料金に含まれます。',
         loading: '料金を取得中...', none: 'この経路に対応する業者がありません。',
         book: '作成', booking: '作成中...', cancel: '閉じる',
         noPickup: '先に販売ページで差出人情報を保存してください。',
@@ -96,7 +96,13 @@ export function OrderShipmentBooker({
             const res = await fetch('/api/shipping/quote', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ to: destination, weight: Number(weight) || 200 }),
+                body: JSON.stringify({
+                    to: destination,
+                    weight: Number(weight) || 200,
+                    // Priced with the declared value: the carrier charges for it
+                    // above a threshold, so a quote without one understates.
+                    declaredValue: Number(declared) || 0,
+                }),
             });
             const body = await res.json();
             if (!res.ok) {
@@ -109,7 +115,7 @@ export function OrderShipmentBooker({
         } finally {
             setBusy(false);
         }
-    }, [destination, weight, copy.noPickup, copy.failed]);
+    }, [destination, weight, declared, copy.noPickup, copy.failed]);
 
     // Quotes go stale, so they are taken when the dialog opens rather than held
     // from an earlier visit.
@@ -174,7 +180,8 @@ export function OrderShipmentBooker({
                                 <div className="space-y-1.5">
                                     <Label htmlFor="osb-declared">{copy.declared}</Label>
                                     <Input id="osb-declared" value={declared} inputMode="numeric"
-                                        onChange={(e) => setDeclared(e.target.value.replace(/\D/g, '').slice(0, 9))} />
+                                        onChange={(e) => setDeclared(e.target.value.replace(/\D/g, '').slice(0, 9))}
+                                        onBlur={() => void quote()} />
                                     <p className="text-xs text-muted-foreground">{copy.declaredHint}</p>
                                 </div>
                             </div>
