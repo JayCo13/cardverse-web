@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { goshipCreateShipment } from '@/lib/goship';
+import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
 /**
  * Book a parcel with a carrier.
@@ -85,13 +86,46 @@ export async function POST(request: NextRequest) {
         );
     }
 
+    // Booking against an order, or standing alone.
+    //
+    // Standing alone is the test path that proved this flow; an order is what
+    // makes a waybill mean anything. When one is named, the caller must be the
+    // seller on it and it must be waiting to ship — a second waybill on an
+    // order already moving is how two couriers get sent for one card.
+    const orderId = str(body?.orderId);
+    let order: { id: string; goship_code: string | null } | null = null;
+    if (orderId) {
+        const { data } = await supabase
+            .from('orders')
+            .select('id, seller_id, status, goship_code')
+            .eq('id', orderId)
+            .maybeSingle();
+        const row = data as { id: string; seller_id: string; status: string; goship_code: string | null } | null;
+        if (!row || row.seller_id !== user.id) {
+            return NextResponse.json({ error: 'Không tìm thấy đơn hàng.' }, { status: 404 });
+        }
+        if (row.goship_code) {
+            return NextResponse.json(
+                { error: 'Đơn này đã có vận đơn.', code: 'already_booked' },
+                { status: 409 },
+            );
+        }
+        if (row.status !== 'paid') {
+            return NextResponse.json(
+                { error: 'Chỉ tạo vận đơn cho đơn đã thanh toán và chưa gửi.', code: 'not_bookable' },
+                { status: 409 },
+            );
+        }
+        order = { id: row.id, goship_code: row.goship_code };
+    }
+
     const result = await goshipCreateShipment({
         from: from as never,
         to: dest,
         parcel,
         rateId,
         declaredValue,
-        orderId: str(body?.orderId) || undefined,
+        orderId: order?.id,
         note: str(body?.note) || undefined,
     });
 
@@ -111,5 +145,36 @@ export async function POST(request: NextRequest) {
         );
     }
 
-    return NextResponse.json({ data: result.data });
+    // GoShip's own code for the shipment. This, not the carrier's number, is
+    // what their webhooks are matched on.
+    const created = result.data as Record<string, unknown>;
+    const gcode = typeof created?.id === 'string' ? created.id
+        : typeof created?.gcode === 'string' ? created.gcode
+            : null;
+
+    if (order && gcode) {
+        // Service role: the seller may write this column on their own order,
+        // but the write must not depend on a policy that could change under it.
+        const service = createServiceSupabaseClient();
+        const { error: linkError } = await service
+            .from('orders')
+            .update({ goship_code: gcode } as never)
+            .eq('id', order.id)
+            .is('goship_code', null);
+
+        if (linkError) {
+            // The parcel is booked and the order does not know. Loud, with the
+            // code in it: a courier is already coming, and this is the only
+            // record of which shipment belongs to which order.
+            console.error(
+                `[Book] ORPHAN SHIPMENT ${gcode} for order ${order.id}: ${linkError.message}`,
+            );
+            return NextResponse.json(
+                { error: 'Đã tạo vận đơn nhưng chưa gắn được vào đơn hàng. Liên hệ hỗ trợ kèm mã ' + gcode, code: 'link_failed', gcode },
+                { status: 500 },
+            );
+        }
+    }
+
+    return NextResponse.json({ data: result.data, gcode });
 }
