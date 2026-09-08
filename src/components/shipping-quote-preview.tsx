@@ -29,6 +29,7 @@ type Rate = {
 
 const COPY = {
     'vi-VN': {
+        missing: 'Còn thiếu: {fields}', fWard: 'phường/xã', fStreet: 'địa chỉ', fName: 'tên người nhận', fPhone: 'số điện thoại hợp lệ', fDeclared: 'khai giá',
         ward: 'Phường/Xã nhận', selectWard: 'Chọn phường/xã',
         street: 'Địa chỉ cụ thể', name: 'Tên người nhận', phone: 'Số điện thoại nhận',
         declared: 'Khai giá (đ)', declaredHint: 'Số tiền hãng đền nếu mất hàng. Bắt buộc lớn hơn 0.',
@@ -44,6 +45,7 @@ const COPY = {
         hint: 'Chỉ tra giá, không tạo vận đơn và không gọi shipper.',
     },
     'en-US': {
+        missing: 'Still needed: {fields}', fWard: 'ward', fStreet: 'street address', fName: 'recipient name', fPhone: 'a valid phone number', fDeclared: 'declared value',
         ward: 'Destination ward', selectWard: 'Select ward',
         street: 'Street address', name: 'Recipient name', phone: 'Recipient phone',
         declared: 'Declared value (đ)', declaredHint: 'What the carrier pays if the parcel is lost. Must be above 0.',
@@ -59,6 +61,7 @@ const COPY = {
         hint: 'Rates only — nothing is booked and no courier is called.',
     },
     'ja-JP': {
+        missing: '不足: {fields}', fWard: '坊/社', fStreet: '住所', fName: '受取人名', fPhone: '有効な電話番号', fDeclared: '申告価格',
         ward: '配送先の坊/社', selectWard: '坊/社を選択',
         street: '詳細住所', name: '受取人名', phone: '受取人の電話番号',
         declared: '申告価格（đ）', declaredHint: '紛失時に業者が支払う金額。0より大きい必要があります。',
@@ -139,8 +142,17 @@ export function ShippingQuotePreview() {
         }
     };
 
-    const canBook = !!ward && street.trim().length > 0 && name.trim().length > 0
-        && /^0[0-9]{8,10}$/.test(phone.replace(/\s+/g, '')) && Number(declared) > 0;
+    // Naming what is missing rather than greying the button out and leaving the
+    // reader to guess. A disabled control with no reason is the same as a
+    // broken one to whoever is looking at it.
+    const missingFields = [
+        !ward && copy.fWard,
+        !street.trim() && copy.fStreet,
+        !name.trim() && copy.fName,
+        !/^0[0-9]{8,10}$/.test(phone.replace(/\s+/g, '')) && copy.fPhone,
+        !(Number(declared) > 0) && copy.fDeclared,
+    ].filter(Boolean) as string[];
+    const canBook = missingFields.length === 0;
 
     const book = async (rate: Rate) => {
         setBooking(true); setError(null);
@@ -250,6 +262,12 @@ export function ShippingQuotePreview() {
                             onChange={(e) => setDeclared(e.target.value.replace(/\D/g, '').slice(0, 9))} />
                         <p className="text-xs text-muted-foreground">{copy.declaredHint}</p>
                     </div>
+                    {missingFields.length > 0 && (
+                        <p className="flex items-center gap-2 text-xs text-amber-400">
+                            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                            {copy.missing.replace('{fields}', missingFields.join(', '))}
+                        </p>
+                    )}
                 </div>
             )}
 
