@@ -22,6 +22,15 @@ export type SavedAddress = {
     ward_name: string;
     detail: string;
     is_default: boolean;
+    /**
+     * The carrier's own ids for this address, when the buyer has picked them.
+     *
+     * Never derived from province_id/ward_code: those are the 2025 structure
+     * and GoShip routes on the pre-2025 one, so a translation books a courier
+     * to the wrong city. Null means this address cannot have a waybill booked
+     * against it yet.
+     */
+    goship: { city: string; district: string; ward: string } | null;
 };
 
 type AddressBookProps = {

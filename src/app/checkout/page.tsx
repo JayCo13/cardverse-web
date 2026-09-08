@@ -526,6 +526,9 @@ export default function CheckoutPage() {
           to_ward_code: selectedAddress.ward_code,
           to_ward_name: selectedAddress.ward_name,
           to_address_detail: selectedAddress.detail,
+          // Null until the buyer picks them; an order without these simply
+          // cannot have a GoShip waybill booked until they do.
+          to_goship: selectedAddress.goship ?? null,
           // Filtered, not interpolated: addresses saved since the district
           // tier was abolished have no district, and a template leaves ", ,".
           shipping_address: [selectedAddress.detail, selectedAddress.ward_name, selectedAddress.district_name, selectedAddress.province_name].filter(Boolean).join(', '),
