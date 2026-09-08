@@ -77,6 +77,9 @@ export async function POST(request: NextRequest) {
             p_status: event.carrierStatus,
             p_sub_status: event.statusText,
             p_carrier_code: event.carrierCode,
+            // The carrier the seller actually booked. Checkout no longer picks
+            // one, and the buyer's tracking link is built from this.
+            p_carrier_slug: event.carrierSlug,
         } as never);
         if (error) throw error;
 

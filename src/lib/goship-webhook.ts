@@ -1,5 +1,6 @@
 import { goshipStatusToCarrierStatus, goshipTerminalFailure } from '@/lib/goship-status';
 import type { CarrierStatus } from '@/lib/carrier-tracking';
+import { goshipCarrierToApp } from '@/lib/goship';
 
 /**
  * What GoShip pushes when a shipment moves.
@@ -20,6 +21,8 @@ export type GoshipWebhookEvent = {
     gcode: string;
     carrierCode: string | null;
     orderRef: string | null;
+    /** GoShip's carrier code, mapped to the app's own. */
+    carrierSlug: string | null;
     statusCode: number;
     statusText: string | null;
     carrierStatus: CarrierStatus;
@@ -62,6 +65,7 @@ export function readGoshipEvent(body: unknown): GoshipWebhookEvent | null {
         gcode,
         carrierCode: str(b.code),
         orderRef: str(b.order_id),
+        carrierSlug: str(b.carrier_short_name) ? goshipCarrierToApp(str(b.carrier_short_name) as string) : null,
         statusCode,
         statusText: str(b.status_text),
         carrierStatus,
