@@ -68,7 +68,20 @@ type GoshipEnvelope<T> = { code?: number; status?: string; data?: T; message?: s
 
 async function call<T>(
     path: string,
-    init: { method?: 'GET' | 'POST'; body?: unknown; timeoutMs?: number } = {},
+    init: {
+        method?: 'GET' | 'POST';
+        body?: unknown;
+        timeoutMs?: number;
+        /**
+         * Read the answer from the root of the response instead of `data`.
+         *
+         * Creating a shipment returns both: an envelope with `data` set to an
+         * empty array, and the shipment's own fields beside it. Guessing from
+         * the shape does not work — `data: []` is also what an empty list looks
+         * like — so the caller says which it expects.
+         */
+        root?: boolean;
+    } = {},
 ): Promise<{ ok: true; data: T } | { ok: false; reason: string }> {
     const bearer = token();
     if (!bearer) return { ok: false, reason: 'not_configured' };
@@ -97,12 +110,7 @@ async function call<T>(
                 : JSON.stringify(raw ?? {}).slice(0, 300);
             return { ok: false, reason: detail || `http_${response.status}` };
         }
-        // Most endpoints wrap their answer in `data`; creating a shipment does
-        // not — it returns the shipment at the root. Reading `data` blindly
-        // yielded undefined there, which looked like a booking that produced no
-        // code rather than one this code could not read.
-        const unwrapped = (payload as { data?: unknown }).data;
-        return { ok: true, data: (unwrapped === undefined ? payload : unwrapped) as T };
+        return { ok: true, data: (init.root ? payload : payload.data) as T };
     } catch (error) {
         return { ok: false, reason: error instanceof Error ? error.message : 'request_failed' };
     }
@@ -237,6 +245,8 @@ export async function goshipCreateShipment(input: {
     note?: string;
 }) {
     return call<GoshipCreatedShipment>('/shipments', {
+        // The shipment comes back at the root, beside an empty `data`.
+        root: true,
         method: 'POST',
         body: {
             shipment: {
