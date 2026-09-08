@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckCircle, XCircle, Phone, FileCheck, ChevronRight, ChevronLeft, ChevronDown, Sparkles, AlertTriangle, MapPin, Truck, HandCoins } from 'lucide-react';
 import { SHIPPING_CARRIERS, carrierShortLabels } from '@/lib/shipping-carriers';
+import { PickupAddressPicker, type PickupAddress } from '@/components/pickup-address-picker';
 import { getAccountSummary, invalidateAccountSummary } from '@/lib/account-summary';
 import { hasUsableShipping, isValidShippingFee, shippableCarriers, shopShippingRange, SHIPPING_FEE_MAX, SHIPPING_FEE_MIN, type ShopShippingFees } from '@/lib/shipping-fee';
 import { useAuth, useSupabase } from '@/lib/supabase';
@@ -212,12 +213,26 @@ export default function SellPage() {
   const [pendingOffersTotal, setPendingOffersTotal] = useState(0);
   const [pickupAddress, setPickupAddress] = useState<{ line: string } | null>(null);
   const [isLoadingAddress, setIsLoadingAddress] = useState(false);
+  // The carrier's own address, kept apart from pickupAddress above: that one is
+  // the 2025 structure, this one is GoShip's pre-2025 ids. Draft is null until
+  // every field is valid, which is what disables the save button.
+  const [goshipPickup, setGoshipPickup] = useState<PickupAddress | null>(null);
+  const [goshipPickupDraft, setGoshipPickupDraft] = useState<PickupAddress | null>(null);
   // Shop-level shipping options: selected carriers + per-carrier tiered fees
   // (formatted strings like "15.000") keyed by carrier code.
   const [shipCarriers, setShipCarriers] = useState<string[]>([]);
   const [shipFees, setShipFees] = useState<Record<string, { intra: string; inter: string; region: string }>>({});
   const [savingShipping, setSavingShipping] = useState(false);
   const [shippingConfigOpen, setShippingConfigOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/shipping/pickup-address')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => { if (!cancelled && body?.data) setGoshipPickup(body.data); })
+      .catch(() => { /* optional section; a failed read just leaves it empty */ });
+    return () => { cancelled = true; };
+  }, []);
   const [shippingSectionOpen, setShippingSectionOpen] = useState(false);
 
   /**
@@ -283,6 +298,12 @@ export default function SellPage() {
         completed: '完了',
         totalEarnings: '総収益',
         pickupAddress: '集荷先住所',
+        goshipPickupTitle: '集荷先住所（配送業者の区分）',
+        goshipPickupDesc: '当サイト経由で送り状を作成する場合に使います。任意です。',
+        goshipPickupSave: '保存',
+        goshipPickupSaved: '集荷先住所を保存しました。',
+        goshipPickupFailed: '保存できませんでした。',
+        goshipPickupHave: '登録済み',
         update: '更新',
         pickupNotice: 'カードを出品する前に集荷先住所を設定してください。この住所を使って購入者向けの送料を計算します。',
         savePickup: '集荷先住所を保存',
@@ -323,6 +344,12 @@ export default function SellPage() {
           completed: 'Hoàn tất',
           totalEarnings: 'Tổng thu nhập',
           pickupAddress: 'Địa chỉ lấy hàng',
+          goshipPickupTitle: 'Địa chỉ lấy hàng (theo đơn vị vận chuyển)',
+          goshipPickupDesc: 'Dùng khi bạn đặt vận đơn qua sàn. Không bắt buộc.',
+          goshipPickupSave: 'Lưu địa chỉ',
+          goshipPickupSaved: 'Đã lưu địa chỉ lấy hàng.',
+          goshipPickupFailed: 'Không lưu được địa chỉ.',
+          goshipPickupHave: 'Đã có địa chỉ',
           update: 'Cập nhật',
           pickupNotice: 'Bạn cần thiết lập địa chỉ lấy hàng trước khi đăng bán thẻ. Chúng tôi dùng địa chỉ này để tính cước phí ship cho người mua.',
           savePickup: 'Lưu địa chỉ lấy hàng',
@@ -362,6 +389,12 @@ export default function SellPage() {
           completed: 'Completed',
           totalEarnings: 'Total earnings',
           pickupAddress: 'Pickup address',
+          goshipPickupTitle: 'Pickup address (carrier divisions)',
+          goshipPickupDesc: 'Used when you book a shipment through the platform. Optional.',
+          goshipPickupSave: 'Save address',
+          goshipPickupSaved: 'Pickup address saved.',
+          goshipPickupFailed: 'Could not save the address.',
+          goshipPickupHave: 'Saved',
           update: 'Update',
           pickupNotice: 'Set a pickup address before listing cards. We use this address to calculate shipping fees for buyers.',
           savePickup: 'Save pickup address',
@@ -1385,6 +1418,55 @@ export default function SellPage() {
                   </div>
                 )}
                 <AddressBook onAddressesChange={handlePickupAddressesChange} />
+              </CardContent>
+            </Card>
+
+            {/* Pickup address in the carrier's own geography.
+                Optional for now: nothing books through GoShip yet, so this
+                collects the address ahead of the flow that will need it rather
+                than standing between a seller and their first listing. It sits
+                beside the card above and not inside it because the two are
+                different address systems — the one above is the 2025 structure
+                Vietnam has, this one is the pre-2025 structure the carrier
+                network still routes on, and merging them sends a driver to the
+                wrong city. */}
+            <Card id="goship-pickup">
+              <CardHeader>
+                <CardTitle>
+                  <span className="flex items-center gap-2">
+                    <Truck className="h-5 w-5 text-orange-400" />
+                    {copy.goshipPickupTitle}
+                  </span>
+                </CardTitle>
+                <CardDescription>{copy.goshipPickupDesc}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <PickupAddressPicker value={goshipPickup} onChange={setGoshipPickupDraft} />
+                <div className="flex items-center gap-3">
+                  <Button
+                    disabled={!goshipPickupDraft}
+                    onClick={async () => {
+                      if (!goshipPickupDraft) return;
+                      const res = await fetch('/api/shipping/pickup-address', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(goshipPickupDraft),
+                      });
+                      const body = await res.json();
+                      if (!res.ok) {
+                        toast({ variant: 'destructive', description: body.error || copy.goshipPickupFailed });
+                        return;
+                      }
+                      setGoshipPickup(body.data);
+                      toast({ description: copy.goshipPickupSaved });
+                    }}
+                  >
+                    {copy.goshipPickupSave}
+                  </Button>
+                  {goshipPickup && (
+                    <span className="text-xs text-green-400">{copy.goshipPickupHave}</span>
+                  )}
+                </div>
               </CardContent>
             </Card>
 
