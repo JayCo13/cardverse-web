@@ -46,26 +46,59 @@ export function localizeSystemNotification(notification: Notification, t: Transl
     completed_confirmed: 'notification_context_confirmed',
   };
   if (metadata.event && eventKeys[metadata.event]) message = t(eventKeys[metadata.event]);
-  if (notification.type === 'shipping_update' && metadata.event === 'delivered') {
-    title = t('notification_context_delivered');
-    message = t(metadata.recipient_role === 'seller'
-      ? 'notification_context_delivered_seller' : 'notification_context_delivered_buyer');
+  // A shipping notification's news IS the state the parcel reached, so it
+  // belongs in the title. "Cập nhật vận chuyển" is a category, not an event —
+  // it tells the reader only that something happened, which is the one thing
+  // the notification's presence already told them.
+  const shippingTitles: Record<string, TranslationKey> = {
+    info_received: 'notification_shipping_info_received',
+    picking: 'notification_shipping_picking',
+    picked: 'notification_shipping_picked',
+    in_transit: 'notification_shipping_in_transit',
+    out_for_delivery: 'notification_shipping_out_for_delivery',
+    available_for_pickup: 'notification_shipping_available_for_pickup',
+    failed: 'notification_shipping_failed',
+    exception: 'notification_shipping_exception',
+  };
+  if (notification.type === 'shipping_update') {
+    const shippingTitle = metadata.shipping_status
+      ? shippingTitles[metadata.shipping_status] : undefined;
+    if (shippingTitle) { title = t(shippingTitle); message = ''; }
+    // Delivered keeps its own wording: it is the one shipping state that asks
+    // something of the reader, and what it asks differs by side.
+    if (metadata.event === 'delivered') {
+      title = t('notification_context_delivered');
+      message = t(metadata.recipient_role === 'seller'
+        ? 'notification_context_delivered_seller' : 'notification_context_delivered_buyer');
+    }
   }
-  // Keep each fact independent. A single "order · person · card" sentence
-  // makes unrelated values read like generated prose, especially when names
-  // wrap on a narrow notification panel.
+  // What a person uses to recognise a notification is the card and the other
+  // party, never `#4E7CD474`. Pairing the reference with the name on one line
+  // spent twenty characters before the name even began, and in a panel this
+  // narrow the name — the only part worth reading — was what got clipped. So
+  // the reference is dropped from the in-app lines and kept only for the
+  // browser notification below, where width is not contested.
+  //
+  // The labels stay. On a soccer listing the card name and the person's name
+  // are both human names — "Samuel Inacio" beside "Tyler Tai" is unreadable
+  // without them.
+  const orderRef = notification.orderId ? `#${notification.orderId.slice(0, 8).toUpperCase()}` : '';
   const contextLines = [
-    notification.orderId ? `#${notification.orderId.slice(0, 8).toUpperCase()}` : undefined,
     metadata.counterparty_name ? `${t(metadata.recipient_role === 'seller'
-      ? 'notification_context_buyer' : 'notification_context_seller')}: ${metadata.counterparty_name}` : undefined,
-    metadata.card_name ? `${t('notification_context_card')}: ${metadata.card_name}` : undefined,
+      ? 'notification_context_buyer' : 'notification_context_seller')}: ${metadata.counterparty_name}` : '',
+    metadata.card_name ? `${t('notification_context_card')}: ${metadata.card_name}` : '',
   ].filter((line): line is string => Boolean(line));
-  if (metadata.tracking_number) message += ` ${t('notification_context_tracking')}: ${metadata.tracking_number}`;
-  if (metadata.reason) message += ` ${metadata.reason}`;
-  if (typeof metadata.amount === 'number' && Number.isFinite(metadata.amount) && metadata.amount > 0) {
-    message += ` ${new Intl.NumberFormat('vi-VN').format(metadata.amount)} ₫`;
-  }
+  // Assemble rather than append: a base message is deliberately empty whenever
+  // its title already carried the news, and `+=` onto '' left the line opening
+  // with a stray space.
+  message = [
+    message,
+    metadata.tracking_number ? `${t('notification_context_tracking')}: ${metadata.tracking_number}` : '',
+    metadata.reason ?? '',
+    typeof metadata.amount === 'number' && Number.isFinite(metadata.amount) && metadata.amount > 0
+      ? `${new Intl.NumberFormat('vi-VN').format(metadata.amount)} ₫` : '',
+  ].filter(Boolean).join(' ').trim();
   // `context` remains useful for the browser notification body. The in-app
   // bell renders `contextLines` as distinct, scannable details.
-  return { title, message, context: contextLines.join('\n'), contextLines };
+  return { title, message, context: [orderRef, ...contextLines].filter(Boolean).join('\n'), contextLines };
 }
