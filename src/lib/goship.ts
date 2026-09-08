@@ -176,12 +176,21 @@ export async function goshipRates(input: {
  * and passing an unknown id with "Không tìm thấy dịch vụ phù hợp". Quotes go
  * stale, so re-quote rather than storing an id for later.
  *
- * `declaredValue` is the one field here that decides money. It is GoShip's
- * `parcel.amount` — "khai giá" — and it is what a carrier pays out when a parcel
- * is lost or destroyed. It defaults to zero, which on a marketplace selling
- * cards worth millions of đồng means a lost card is compensated at nothing. The
- * caller passes the card's price, and the parameter is required here rather
- * than optional so that omitting it has to be a decision somebody wrote down.
+ * `declaredValue` is sent as `parcel.amount`, which the API reference calls
+ * khai giá — the figure a carrier pays out when a parcel is lost.
+ *
+ * IT DOES NOT CURRENTLY TAKE EFFECT, and nothing here should be read as
+ * insuring a parcel. A shipment created with it comes back with no `amount` on
+ * its parcel and insurrance_fee at 0, and no other field name moves that fee
+ * either — amount, insurance, declared_amount, value and insurrance were all
+ * tried at both parcel and shipment level, against live quotes. Either the
+ * reference is wrong about the name or declared value is arranged some other
+ * way, and only GoShip can say which.
+ *
+ * It is still collected and still required. The value is the one a seller would
+ * declare, so it costs nothing to keep sending and everything to have to ask
+ * for again later. But until a created shipment echoes it back, no interface
+ * above this may tell anyone their card is covered.
  *
  * `orderId` rides along as GoShip's `order_id`. If their webhook echoes it, an
  * event identifies its order outright instead of being matched on a tracking

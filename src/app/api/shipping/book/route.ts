@@ -12,10 +12,11 @@ import { goshipCreateShipment } from '@/lib/goship';
  * Origin is the caller's saved sender address, never the request: a seller
  * cannot book a pickup from an address they have not proved is theirs.
  *
- * `declaredValue` is required and must be positive. It is GoShip's parcel.amount
- * — khai giá — and it is what the carrier pays if the parcel is lost. Zero is
- * the API's default, which on a marketplace selling cards worth millions of
- * đồng would insure one at nothing.
+ * `declaredValue` is required and must be positive. It is sent as GoShip's
+ * parcel.amount, which their reference calls khai giá — but a created shipment
+ * comes back without it and with insurrance_fee at 0, so it does not currently
+ * insure anything. See the note in lib/goship.ts. It stays required because the
+ * figure is the right one to hold, not because it protects a parcel today.
  */
 
 const ID = /^[0-9]{1,12}$/;
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
     const declaredValue = Number(body?.declaredValue);
     if (!Number.isFinite(declaredValue) || declaredValue <= 0 || declaredValue > 500_000_000) {
         return NextResponse.json(
-            { error: 'Khai giá phải lớn hơn 0 — đây là số tiền hãng đền nếu mất hàng.' },
+            { error: 'Khai giá phải lớn hơn 0.' },
             { status: 400 },
         );
     }
