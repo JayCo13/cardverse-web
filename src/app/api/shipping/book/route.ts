@@ -40,6 +40,54 @@ export async function POST(request: NextRequest) {
         street: str(to.street), name: str(to.name), phone: str(to.phone).replace(/\s+/g, ''),
     };
 
+    const orderId = str(body?.orderId);
+    let order: { id: string; goship_code: string | null } | null = null;
+
+    // The order is the authority on who receives the parcel.
+    //
+    // Name, phone and street were snapshotted at checkout and are what the buyer
+    // actually gave; a seller retyping them into a booking form is a chance to
+    // get them wrong. Only the carrier's three ids can come from the request,
+    // and only because an order placed before checkout collected them has none.
+    if (orderId) {
+        const { data } = await supabase
+            .from('orders')
+            .select('id, seller_id, status, goship_code, to_goship, to_name, to_phone, to_address_detail')
+            .eq('id', orderId)
+            .maybeSingle();
+        const row = data as {
+            id: string; seller_id: string; status: string; goship_code: string | null;
+            to_goship: { city?: string; district?: string; ward?: string } | null;
+            to_name: string | null; to_phone: string | null; to_address_detail: string | null;
+        } | null;
+
+        if (!row || row.seller_id !== user.id) {
+            return NextResponse.json({ error: 'Không tìm thấy đơn hàng.' }, { status: 404 });
+        }
+        if (row.goship_code) {
+            return NextResponse.json({ error: 'Đơn này đã có vận đơn.', code: 'already_booked' }, { status: 409 });
+        }
+        if (row.status !== 'paid') {
+            return NextResponse.json(
+                { error: 'Chỉ tạo vận đơn cho đơn đã thanh toán và chưa gửi.', code: 'not_bookable' },
+                { status: 409 },
+            );
+        }
+
+        dest.name = str(row.to_name);
+        dest.phone = str(row.to_phone).replace(/\s+/g, '');
+        dest.street = str(row.to_address_detail);
+
+        // The order's own ids win; the request only fills in for an order that
+        // predates them.
+        if (row.to_goship?.city && row.to_goship?.district && row.to_goship?.ward) {
+            dest.city = String(row.to_goship.city);
+            dest.district = String(row.to_goship.district);
+            dest.ward = String(row.to_goship.ward);
+        }
+        order = { id: row.id, goship_code: row.goship_code };
+    }
+
     if (!ID.test(dest.city) || !ID.test(dest.district) || !ID.test(dest.ward)) {
         return NextResponse.json({ error: 'Chưa chọn đủ tỉnh/thành, quận/huyện, phường/xã của người nhận.' }, { status: 400 });
     }
@@ -84,39 +132,6 @@ export async function POST(request: NextRequest) {
             { error: 'Bạn cần lưu đầy đủ thông tin người gửi trước khi đặt vận đơn.', code: 'missing_goship_pickup' },
             { status: 409 },
         );
-    }
-
-    // Booking against an order, or standing alone.
-    //
-    // Standing alone is the test path that proved this flow; an order is what
-    // makes a waybill mean anything. When one is named, the caller must be the
-    // seller on it and it must be waiting to ship — a second waybill on an
-    // order already moving is how two couriers get sent for one card.
-    const orderId = str(body?.orderId);
-    let order: { id: string; goship_code: string | null } | null = null;
-    if (orderId) {
-        const { data } = await supabase
-            .from('orders')
-            .select('id, seller_id, status, goship_code')
-            .eq('id', orderId)
-            .maybeSingle();
-        const row = data as { id: string; seller_id: string; status: string; goship_code: string | null } | null;
-        if (!row || row.seller_id !== user.id) {
-            return NextResponse.json({ error: 'Không tìm thấy đơn hàng.' }, { status: 404 });
-        }
-        if (row.goship_code) {
-            return NextResponse.json(
-                { error: 'Đơn này đã có vận đơn.', code: 'already_booked' },
-                { status: 409 },
-            );
-        }
-        if (row.status !== 'paid') {
-            return NextResponse.json(
-                { error: 'Chỉ tạo vận đơn cho đơn đã thanh toán và chưa gửi.', code: 'not_bookable' },
-                { status: 409 },
-            );
-        }
-        order = { id: row.id, goship_code: row.goship_code };
     }
 
     const result = await goshipCreateShipment({
@@ -168,6 +183,9 @@ export async function POST(request: NextRequest) {
             .from('orders')
             .update({
                 goship_code: gcode,
+                // Remember the ids for this order, so a retry or a later read
+                // does not depend on the form that supplied them.
+                to_goship: { city: dest.city, district: dest.district, ward: dest.ward },
                 ...(packingVideoUrl ? { seller_packing_video_url: packingVideoUrl } : {}),
             } as never)
             .eq('id', order.id)

@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { AlertCircle, Loader2, Truck } from 'lucide-react';
 import { useLocalization } from '@/context/localization-context';
 import { PackingVideoField } from '@/components/packing-video-field';
+import { GoshipRegionPicker, type GoshipRegion } from '@/components/goship-region-picker';
 
 /**
  * Create the waybill for one paid order.
@@ -30,6 +31,7 @@ type Rate = {
 
 const COPY = {
     'vi-VN': {
+        pickRegion: 'Đơn này chưa có địa giới theo đơn vị vận chuyển. Chọn theo địa chỉ người nhận trên đơn:',
         buyerPaid: 'Người mua đã trả', youPay: 'Bạn trả thêm', youKeep: 'Bạn dư',
         title: 'Tạo vận đơn', open: 'Tạo vận đơn',
         desc: 'Chọn đơn vị vận chuyển. Sau khi tạo, bạn mang mã ra bưu cục gửi hoặc chờ shipper tới lấy.',
@@ -43,6 +45,7 @@ const COPY = {
         success: 'giao thành công',
     },
     'en-US': {
+        pickRegion: 'This order has no carrier divisions yet. Pick them from the delivery address on the order:',
         buyerPaid: 'Buyer paid', youPay: 'You cover', youKeep: 'You keep',
         title: 'Create waybill', open: 'Create waybill',
         desc: 'Pick a carrier. Once created, drop the parcel off with the code or wait for the courier.',
@@ -56,6 +59,7 @@ const COPY = {
         success: 'delivered',
     },
     'ja-JP': {
+        pickRegion: 'この注文には配送業者の行政区分がありません。注文の配送先に合わせて選んでください：',
         buyerPaid: '購入者支払い', youPay: '差額負担', youKeep: '差額',
         title: '送り状を作成', open: '送り状を作成',
         desc: '配送業者を選んでください。作成後は窓口へ持ち込むか集荷をお待ちください。',
@@ -98,16 +102,21 @@ export function OrderShipmentBooker({
     // Evidence, carried over from the ship form this replaces:
     // dispute_evidence_verdict reads it as the seller's side of the story.
     const [packingVideo, setPackingVideo] = useState<string | null>(null);
+    // Only used when the order has none. The seller is holding the buyer's
+    // address on the order in front of them, so they are the one who can say
+    // which of the carrier's districts it falls in.
+    const [pickedRegion, setPickedRegion] = useState<GoshipRegion | null>(null);
+    const region = destination ?? pickedRegion;
 
     const quote = useCallback(async () => {
-        if (!destination) return;
+        if (!region) return;
         setBusy(true); setError(null); setRates(null);
         try {
             const res = await fetch('/api/shipping/quote', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    to: destination,
+                    to: region,
                     weight: Number(weight) || 200,
                     // Priced with the declared value: the carrier charges for it
                     // above a threshold, so a quote without one understates.
@@ -125,7 +134,7 @@ export function OrderShipmentBooker({
         } finally {
             setBusy(false);
         }
-    }, [destination, weight, declared, copy.noPickup, copy.failed]);
+    }, [region, weight, declared, copy.noPickup, copy.failed]);
 
     // Quotes go stale, so they are taken when the dialog opens rather than held
     // from an earlier visit.
@@ -142,7 +151,7 @@ export function OrderShipmentBooker({
                     rateId: rate.id,
                     weight: Number(weight) || 200,
                     declaredValue: Number(declared) || defaultDeclaredValue,
-                    to: destination,
+                    to: region,
                     packingVideoUrl: packingVideo,
                 }),
             });
@@ -175,10 +184,13 @@ export function OrderShipmentBooker({
                         <DialogDescription>{copy.desc}</DialogDescription>
                     </DialogHeader>
 
-                    {!destination ? (
-                        <p className="flex items-center gap-2 text-sm text-amber-400">
-                            <AlertCircle className="h-4 w-4 shrink-0" />{copy.noDest}
-                        </p>
+                    {!region ? (
+                        <div className="space-y-3">
+                            <p className="flex items-start gap-2 text-sm text-amber-400">
+                                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />{copy.pickRegion}
+                            </p>
+                            <GoshipRegionPicker idPrefix={`osb-${orderId}`} onChange={setPickedRegion} />
+                        </div>
                     ) : (
                         <div className="space-y-4">
                             <div className="grid gap-3 sm:grid-cols-2">

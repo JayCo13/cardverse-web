@@ -747,7 +747,12 @@ export default function OrdersPage() {
                     carrier's ids have no to_goship and can only be shipped the
                     old way, and a seller with one of each in their list should
                     not have to know why. The old path goes when none are left. */}
-                {!isBuyer && order.status === 'paid' && !order.goship_code && order.to_goship && (
+                {/* Every paid order, not only those whose buyer supplied the
+                    carrier's ids. An order without them asks the seller to pick
+                    the district inside the dialog — they are holding the
+                    delivery address on the order, and the alternative is an
+                    order nobody can ship. */}
+                {!isBuyer && order.status === 'paid' && !order.goship_code && (
                   <OrderShipmentBooker
                     orderId={order.id}
                     destination={order.to_goship}
