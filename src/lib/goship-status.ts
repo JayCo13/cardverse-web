@@ -61,3 +61,38 @@ export function goshipStatusToCarrierStatus(code: unknown): CarrierStatus | null
 
 /** Every code this file knows, for tests and for logging what it does not. */
 export const KNOWN_GOSHIP_CODES = Object.keys(STATUS_BY_CODE).map(Number);
+
+/**
+ * Codes that end an order's journey, and should not wait for its clock.
+ *
+ * complete_delivered_orders already escalates anything undelivered, but only
+ * once auto_complete_at passes — days away. These three are not going to become
+ * delivered in the meantime, so waiting only delays whoever has to resolve it:
+ *
+ *   908  Chuyển hoàn      the parcel is back with the seller
+ *   917  Thất lạc hàng    the carrier has lost it
+ *   1000 Đơn lỗi          the waybill itself is broken
+ *
+ * 906 (giao thất bại) is deliberately absent: a failed attempt is followed by
+ * another attempt, and escalating on the first miss would call a dispute on a
+ * parcel that arrives the next morning. 907 (đang chuyển hoàn) is absent too —
+ * the return is under way but not finished, and 908 follows it.
+ *
+ * 916 (giao hàng một phần) needs no entry: partial delivery is an opt-in
+ * checkbox on GoShip's booking form, off by default, so it cannot arise unless
+ * somebody asks for it.
+ */
+export const GOSHIP_TERMINAL_FAILURE_CODES = new Set([908, 917, 1000]);
+
+/** Human reason recorded on the order, per code. Vietnamese: an admin reads it. */
+const FAILURE_REASON: Record<number, string> = {
+    908: 'Đơn vị vận chuyển đã chuyển hoàn kiện hàng về người bán.',
+    917: 'Đơn vị vận chuyển báo thất lạc kiện hàng.',
+    1000: 'Vận đơn bị lỗi ở phía đơn vị vận chuyển.',
+};
+
+export function goshipTerminalFailure(code: unknown): { reason: string } | null {
+    const n = typeof code === 'number' ? code : Number(String(code ?? '').trim());
+    if (!Number.isInteger(n) || !GOSHIP_TERMINAL_FAILURE_CODES.has(n)) return null;
+    return { reason: FAILURE_REASON[n] };
+}
