@@ -20,6 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { SHIPPING_CARRIERS, getTrackingUrl, getCarrier, sellerSuppliesTracking } from '@/lib/shipping-carriers';
 import { carrierStatusLabel } from '@/lib/carrier-status-labels';
+import { OrderShipmentBooker } from '@/components/order-shipment-booker';
 import { ParcelTrackingDialog } from '@/components/parcel-tracking-dialog';
 import { PackingVideoField } from '@/components/packing-video-field';
 import Image from 'next/image';
@@ -46,6 +47,10 @@ type Order = {
   ghn_status: string | null;
   carrier_status: string | null;
   carrier_status_at: string | null;
+  /** GoShip's ids for the delivery address, captured at checkout. */
+  to_goship: { city: string; district: string; ward: string } | null;
+  /** Set once a waybill exists. The key GoShip's events are matched on. */
+  goship_code: string | null;
   ghn_expected_delivery: string | null;
   auto_complete_at: string | null;
   dispute_reason: string | null;
@@ -742,7 +747,22 @@ export default function OrdersPage() {
               {/* Actions */}
               <div className="flex gap-2 mt-3 flex-wrap" onClick={e => e.stopPropagation()}>
                 {/* Seller: create shipment + upload tracking */}
-                {!isBuyer && order.status === 'paid' && (
+                {/* Booking through the platform where the order allows it, and
+                    the old type-in-a-number dialog where it does not.
+
+                    Both, not one: orders placed before checkout collected the
+                    carrier's ids have no to_goship and can only be shipped the
+                    old way, and a seller with one of each in their list should
+                    not have to know why. The old path goes when none are left. */}
+                {!isBuyer && order.status === 'paid' && !order.goship_code && order.to_goship && (
+                  <OrderShipmentBooker
+                    orderId={order.id}
+                    destination={order.to_goship}
+                    defaultDeclaredValue={order.amount}
+                    onBooked={() => { void fetchOrders(activeTab); }}
+                  />
+                )}
+                {!isBuyer && order.status === 'paid' && !order.to_goship && (
                   <Button
                     size="sm"
                     onClick={() => { setShipCarrier(order.metadata?.shipping_carrier || ''); setShipTracking(''); setShipPackingVideo(null); setShipDialog({ open: true, orderId: order.id }); }}
