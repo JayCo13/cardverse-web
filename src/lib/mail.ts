@@ -206,6 +206,96 @@ export async function sendOrderShippedEmail(
     }
 }
 
+/**
+ * The parcel has started moving.
+ *
+ * Sent once, on the first carrier event that means "in motion" — 17TRACK
+ * reports both InTransit and OutForDelivery and a buyer does not need to hear
+ * the same news twice. The webhook route decides; this only writes it.
+ */
+export async function sendOrderInTransitEmail(
+    buyerEmail: string,
+    params: { cardName: string; carrierName: string; trackingNumber: string; trackingUrl: string | null },
+) {
+    try {
+        const transporter = createMailTransporter();
+        const from = getFromAddress();
+        const appUrl = getAppUrl();
+        const { cardName, carrierName, trackingNumber, trackingUrl } = params;
+
+        const trackingBlock = trackingUrl
+            ? `<a href="${trackingUrl}" target="_blank" style="display:inline-block; margin-top:10px; background:#f97316; color:#fff; text-decoration:none; font-weight:700; padding:12px 22px; border-radius:10px; font-size:14px;">Theo dõi đơn: ${trackingNumber}</a>`
+            : `<p style="margin:8px 0 0; color:#e4e4e7; font-weight:700; font-size:16px;">${trackingNumber}</p>`;
+
+        await transporter.sendMail({
+            from,
+            to: buyerEmail,
+            subject: '🚚 Đơn hàng đang trên đường tới bạn | CardVerseHub',
+            html: buildTemplate(
+                '🚚 Đơn hàng đang được giao',
+                `<p style="color:#e4e4e7;">Thẻ <strong style="color:#f97316;">${escapeHtml(cardName)}</strong> đã rời kho và đang trên đường tới bạn.</p>
+                <div style="background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.2); border-radius: 8px; padding: 16px; margin: 20px 0;">
+                    <p style="margin:0; color:#a1a1aa; font-size:13px;">Đơn vị vận chuyển</p>
+                    <p style="margin:2px 0 12px; color:#fff; font-weight:700;">${escapeHtml(carrierName)}</p>
+                    <p style="margin:0; color:#a1a1aa; font-size:13px;">Mã vận đơn</p>
+                    ${trackingBlock}
+                </div>
+                <p>Bạn theo dõi hành trình chi tiết tại <a href="${appUrl}/orders" style="color:#f97316; text-decoration:none;">Đơn hàng của tôi</a>.</p>
+                <p style="color:#71717a; font-size:13px; margin-top:24px;">Tiền của bạn vẫn được CardVerseHub giữ cho tới khi bạn xác nhận đã nhận thẻ.</p>`
+            ),
+        });
+        console.log(`[Mail] Order in-transit notification sent to ${buyerEmail}`);
+    } catch (error) {
+        console.error('[Mail] Failed to send order in-transit email:', error);
+    }
+}
+
+/**
+ * The carrier says it arrived, which starts the 72h inspection window.
+ *
+ * This is the one email in the flow that costs the buyer money to ignore, so it
+ * states the deadline as a date rather than as "72 hours" — a buyer reading it
+ * two days later should not have to do the arithmetic.
+ */
+export async function sendOrderDeliveredEmail(
+    buyerEmail: string,
+    params: { cardName: string; orderId: string; autoCompleteAt: string | null },
+) {
+    try {
+        const transporter = createMailTransporter();
+        const from = getFromAddress();
+        const appUrl = getAppUrl();
+        const { cardName, orderId, autoCompleteAt } = params;
+
+        const deadline = autoCompleteAt
+            ? new Date(autoCompleteAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })
+            : null;
+
+        await transporter.sendMail({
+            from,
+            to: buyerEmail,
+            subject: '✅ Đơn hàng đã giao thành công | CardVerseHub',
+            html: buildTemplate(
+                '✅ Đơn hàng đã giao thành công',
+                `<p style="color:#e4e4e7;">Đơn vị vận chuyển xác nhận đã giao thẻ <strong style="color:#f97316;">${escapeHtml(cardName)}</strong> cho bạn.</p>
+                <div style="background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.2); border-radius: 8px; padding: 16px; margin: 20px 0;">
+                    <p style="margin:0 0 8px; color:#e4e4e7;">Bạn có <strong style="color:#fff;">72 giờ</strong> để kiểm tra thẻ.</p>
+                    ${deadline ? `<p style="margin:0; color:#a1a1aa; font-size:13px;">Hạn kiểm tra: <strong style="color:#fff;">${deadline}</strong></p>` : ''}
+                </div>
+                <p>Thẻ đúng như mô tả? Bấm <strong>"Đã nhận hàng"</strong> để hoàn tất ngay và chuyển tiền cho người bán — không cần chờ hết 72 giờ.</p>
+                <p>Thẻ có vấn đề? Bấm <strong>"Báo admin"</strong> trong thời gian này. Tiền vẫn được giữ trong lúc chúng tôi xem xét.</p>
+                <div style="text-align:center; margin:24px 0;">
+                    <a href="${appUrl}/orders/${encodeURIComponent(orderId)}" style="display:inline-block; background:#f97316; color:#fff; padding:12px 32px; border-radius:8px; text-decoration:none; font-weight:600; font-size:14px;">Xem đơn hàng →</a>
+                </div>
+                <p style="color:#71717a; font-size:13px;">Hết 72 giờ mà bạn không thao tác gì, đơn sẽ tự hoàn tất và tiền chuyển cho người bán.</p>`
+            ),
+        });
+        console.log(`[Mail] Order delivered notification sent to ${buyerEmail}`);
+    } catch (error) {
+        console.error('[Mail] Failed to send order delivered email:', error);
+    }
+}
+
 export async function sendKYCSubmittedToAdmin(fullName: string, userEmail: string, adminEmails: string[]) {
     try {
         if (!adminEmails || adminEmails.length === 0) return;

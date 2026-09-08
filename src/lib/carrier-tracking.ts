@@ -232,6 +232,61 @@ const NOT_REGISTERED_CODE = -18019902;
  * carrier has no updates yet" — blaming the carrier for our own missing
  * configuration. The caller gets the reason and can say something true.
  */
+/**
+ * Current status for many parcels in one call.
+ *
+ * `gettrackinfo` takes an array — the single-parcel read above already sends
+ * one — so refreshing a page of orders costs one request rather than one per
+ * order, which is what makes it affordable to do on every orders fetch.
+ *
+ * Unlike that read, this one is bounded: it runs inside a request that has a
+ * function timeout to answer within, and an upstream that hangs must cost the
+ * refresh rather than the page. Returns only what came back, keyed by the
+ * number 17TRACK echoed — which is upper case, hence the normalising at the
+ * call site.
+ */
+export async function fetchCarrierTrackingBatch(
+    items: Array<{ carrier: string; trackingNumber: string }>,
+    timeoutMs = 4_000,
+): Promise<Map<string, { status: string; subStatus: string | null }>> {
+    const out = new Map<string, { status: string; subStatus: string | null }>();
+    const apiKey = process.env.SEVENTEENTRACK_API_KEY;
+    if (!apiKey || items.length === 0) return out;
+
+    // 17TRACK caps a batch at 40. Anything past that is dropped rather than
+    // split into a second request: this runs on a page load, and a caller with
+    // more than forty parcels in flight is better served by the webhook.
+    const payload = items
+        .map(({ carrier, trackingNumber }) => ({ number: trackingNumber, carrier: CARRIER_CODES[carrier] }))
+        .filter((entry) => !!entry.carrier && !!entry.number)
+        .slice(0, 40);
+    if (payload.length === 0) return out;
+
+    try {
+        const response = await fetch(`${API_BASE}/gettrackinfo`, {
+            method: 'POST',
+            headers: { '17token': apiKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(timeoutMs),
+        });
+        const body = await response.json();
+        for (const item of body?.data?.accepted ?? []) {
+            const number = item?.number;
+            const status = item?.track_info?.latest_status?.status;
+            if (!number || !status) continue;
+            out.set(String(number).toUpperCase(), {
+                status,
+                subStatus: item?.track_info?.latest_status?.sub_status || null,
+            });
+        }
+    } catch (error) {
+        // A refresh that fails is a refresh that did not happen. The caller
+        // still has whatever the last webhook left behind.
+        console.warn('[Tracking] Batch refresh failed:', error);
+    }
+    return out;
+}
+
 export async function fetchCarrierTracking(
     carrier: string,
     trackingNumber: string,

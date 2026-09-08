@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
 import { hashFinancialRequest } from '@/lib/financial-idempotency';
+import { resolveListingError } from '@/lib/listing-errors';
 
 const MIN_MARKETPLACE_PRICE_VND = 1000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -146,12 +147,10 @@ async function handlePOST(request: NextRequest) {
         }
 
         if (createError) {
-            const code = [
-                'unauthorized', 'seller_verification_required', 'missing_seller_address',
-                'missing_shipping_config', 'idempotency_conflict', 'invalid_listing_request',
-                'invalid_listing_payload', 'invalid_listing_price', 'invalid_listing_auction',
-                'invalid_listing_razz',
-            ].find(value => createError.message.includes(value));
+            const { code, message } = resolveListingError(createError.message);
+            // An unrecognised failure still has to be findable, just not by the
+            // seller: they get the fallback sentence, the server keeps the text.
+            if (!code) console.error('Unmapped listing create failure:', createError.message);
             const status = code === 'unauthorized' ? 401
                 : code === 'seller_verification_required' ? 403
                     : code === 'idempotency_conflict' ? 409
@@ -159,10 +158,7 @@ async function handlePOST(request: NextRequest) {
             const responseCode = code === 'missing_seller_address' ? 'MISSING_SELLER_ADDRESS'
                 : code === 'missing_shipping_config' ? 'MISSING_SHIPPING_CONFIG'
                     : code;
-            const response = NextResponse.json(
-                { error: createError.message || 'Failed to create listing', code: responseCode },
-                { status },
-            );
+            const response = NextResponse.json({ error: message, code: responseCode }, { status });
             response.headers.set('Server-Timing', `listing-db;dur=${dbDuration.toFixed(1)}, total;dur=${(performance.now() - startedAt).toFixed(1)}`);
             return response;
         }

@@ -19,6 +19,7 @@ import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { SHIPPING_CARRIERS, getTrackingUrl, getCarrier, sellerSuppliesTracking } from '@/lib/shipping-carriers';
+import { carrierStatusLabel } from '@/lib/carrier-status-labels';
 import { ParcelTrackingDialog } from '@/components/parcel-tracking-dialog';
 import { PackingVideoField } from '@/components/packing-video-field';
 import Image from 'next/image';
@@ -43,6 +44,8 @@ type Order = {
   shipping_address: string | null;
   ghn_order_code: string | null;
   ghn_status: string | null;
+  carrier_status: string | null;
+  carrier_status_at: string | null;
   ghn_expected_delivery: string | null;
   auto_complete_at: string | null;
   dispute_reason: string | null;
@@ -143,6 +146,8 @@ export default function OrdersPage() {
         shipExpired: '発送期限切れ。自動キャンセル・返金されます。',
         trackGHN: 'GHN で追跡',
         received: '受け取りました',
+        receivedTitle: '受け取りを確認しますか？',
+        receivedMessage: 'カードに問題がなければ、72時間を待たずに取引を完了し、代金を出品者にお渡しします。確認後は取り消せません。',
         trackParcel: '配送を追跡',
         dispute: '管理者に報告',
         seller: '販売者',
@@ -221,6 +226,8 @@ export default function OrdersPage() {
           shipExpired: 'Quá hạn giao hàng. Đơn sẽ tự huỷ & hoàn tiền.',
           trackGHN: 'Theo dõi GHN',
           received: 'Đã nhận hàng',
+          receivedTitle: 'Xác nhận đã nhận hàng?',
+          receivedMessage: 'Nếu thẻ không có vấn đề gì, giao dịch sẽ kết thúc ngay và tiền được chuyển cho người bán mà không cần chờ hết 72 giờ. Thao tác này không thể hoàn tác.',
           trackParcel: 'Theo dõi đơn',
           dispute: 'Báo cáo admin',
           seller: 'Người bán',
@@ -298,6 +305,8 @@ export default function OrdersPage() {
           shipExpired: 'Overdue. The order will auto-cancel and refund.',
           trackGHN: 'Track GHN',
           received: 'Item received',
+          receivedTitle: 'Confirm you received it?',
+          receivedMessage: 'If the card is as described, this closes the transaction now and pays the seller without waiting out the 72 hours. It cannot be undone.',
           trackParcel: 'Track parcel',
           dispute: 'Report to admin',
           seller: 'Seller',
@@ -626,6 +635,21 @@ export default function OrdersPage() {
                     {copy.shipFeeLabel} <span className="text-foreground">{formatVND(order.shipping_fee)}</span>
                   </span>
                 )}
+                {/* The carrier's own status, not the order's.
+                    `order.status` only ever reads "shipping" until a Delivered
+                    event flips it, so a parcel that the carrier already has out
+                    for delivery looked identical to one still sitting with the
+                    seller. This is the line that made the page disagree with
+                    17TRACK. Blank when the carrier has said nothing yet, and
+                    blank for a status we have no name for — printing a raw enum
+                    at a buyer is worse than printing nothing. */}
+                {carrierStatusLabel(order.carrier_status, locale) && (
+                  <span className={`text-xs font-medium ${order.carrier_status === 'Delivered' ? 'text-green-400'
+                    : order.carrier_status === 'DeliveryFailure' || order.carrier_status === 'Exception' ? 'text-red-400'
+                      : 'text-blue-400'}`}>
+                    {carrierStatusLabel(order.carrier_status, locale)}
+                  </span>
+                )}
                 {order.ghn_order_code && (
                   <span className="text-xs text-blue-400 font-mono">
                     GHN: {order.ghn_order_code}
@@ -763,14 +787,35 @@ export default function OrdersPage() {
                   </Button>
                 )}
 
-                {/* Buyer actions.
+                {/* Buyer actions, both buyer-only.
 
-                    There is no "Item received" button any more: escrow releases
-                    on its own 72h after a carrier confirms delivery, so asking
-                    the buyer to press something was asking for a step that adds
-                    nothing. Reporting a problem stays buyer-only. */}
+                    Escrow still releases on its own 72h after the carrier
+                    confirms delivery; "Đã nhận hàng" only lets a satisfied
+                    buyer skip the wait. The shipped and delivered emails both
+                    tell them the button is here, so it has to be. */}
                 {isBuyer && ['shipping', 'delivered'].includes(order.status) && (
                   <>
+                    {/* Closing early is the buyer's to give, never the seller's
+                        to take: the RPC rejects confirm_received from anyone but
+                        the buyer. Offered from 'shipping' as well as
+                        'delivered', because the carrier's word is not always
+                        what arrives first — a buyer holding the card should not
+                        have to wait on a tracking event to say so, and their
+                        only other button here is a dispute they do not want. */}
+                    <Button
+                      size="sm"
+                      className="bg-green-600 hover:bg-green-700"
+                      onClick={() => setConfirmAction({
+                        orderId: order.id,
+                        action: 'confirm_received',
+                        title: copy.receivedTitle,
+                        message: copy.receivedMessage,
+                      })}
+                      disabled={actionLoading === order.id}
+                    >
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      {copy.received}
+                    </Button>
                     <Button
                       size="sm"
                       variant="destructive"

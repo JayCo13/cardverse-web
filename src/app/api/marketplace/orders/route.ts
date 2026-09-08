@@ -4,15 +4,122 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getRouteUser } from '@/lib/supabase/route-user';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { isEvidenceVideoUrl } from '@/lib/evidence-video';
-import { DEFAULT_TRACKING_LANG, registerCarrierTracking, trackableCarrier } from '@/lib/carrier-tracking';
+import { DEFAULT_TRACKING_LANG, registerCarrierTracking, trackableCarrier, fetchCarrierTrackingBatch } from '@/lib/carrier-tracking';
 import { getCarrier, getTrackingUrl, getDeliveryDays } from '@/lib/shipping-carriers';
 import { sendOrderShippedEmail } from '@/lib/mail';
+import { notifyCarrierStatusChange } from '@/lib/carrier-notifications';
+import { normalizeTrackingNumber, isValidTrackingNumber, TRACKING_MIN_LENGTH, TRACKING_MAX_LENGTH } from '@/lib/tracking-number';
 import { expireUnshippedPaidOrders } from '@/lib/expire-orders';
 import type { Database } from '@/lib/supabase/database.types';
 
 type OrderRow = Database['public']['Tables']['orders']['Row'];
 
 // GET: Fetch orders for current user
+/**
+ * How stale a carrier status has to be before a page load pays to refresh it.
+ *
+ * A parcel does not change status every minute, and every refresh is upstream
+ * quota. Fifteen minutes keeps a watched order visibly current without turning
+ * a reload into a billing event.
+ */
+const CARRIER_REFRESH_AFTER_MS = 15 * 60 * 1000;
+
+/**
+ * How long the refresh may spend sending catch-up mail before giving the page
+ * back. Netlify kills the function at ten seconds and the query, the upstream
+ * batch and the applies come first, so this is what is safely left over.
+ */
+const MAIL_BUDGET_MS = 4_000;
+
+/**
+ * Bring this user's in-flight parcels up to date with the carrier.
+ *
+ * Only their own orders, only ones with a trackable carrier and a number, and
+ * only ones nothing has heard about recently. Statuses that did not change are
+ * not written: apply_carrier_tracking_event returns `replayed` for those, but
+ * not calling it at all is cheaper and keeps carrier_status_at meaning what it
+ * says.
+ *
+ * Orders sharing a tracking number are skipped, for the same reason the
+ * tracking-status route skips them: the RPC finds its order by number and takes
+ * the newest match, so it cannot be aimed, and a Delivered written onto the
+ * wrong order starts a 72h release clock nobody asked for.
+ */
+async function refreshCarrierStatuses(userId: string) {
+    const service = createServiceSupabaseClient();
+    const staleBefore = new Date(Date.now() - CARRIER_REFRESH_AFTER_MS).toISOString();
+
+    const { data: rows } = await service
+        .from('orders')
+        .select('id, tracking_number, shipping_provider, carrier_status, carrier_status_at')
+        .in('status', ['shipping', 'delivered'])
+        .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
+        .not('tracking_number', 'is', null)
+        .or(`carrier_status_at.is.null,carrier_status_at.lt.${staleBefore}`)
+        .limit(40);
+
+    type CarrierRow = {
+        id: string;
+        tracking_number: string | null;
+        shipping_provider: string | null;
+        carrier_status: string | null;
+    };
+    const candidates = ((rows ?? []) as unknown as CarrierRow[]).filter(
+        (row): row is CarrierRow & { tracking_number: string; shipping_provider: string } =>
+            !!row.tracking_number && trackableCarrier(row.shipping_provider),
+    );
+    if (candidates.length === 0) return;
+
+    // A number carried by more than one order cannot be reconciled safely.
+    const seen = new Map<string, number>();
+    for (const row of candidates) seen.set(row.tracking_number, (seen.get(row.tracking_number) ?? 0) + 1);
+
+    const live = await fetchCarrierTrackingBatch(candidates.map((row) => ({
+        carrier: row.shipping_provider,
+        trackingNumber: row.tracking_number,
+    })));
+    if (live.size === 0) return;
+
+    // Apply everything first — that is the part the page depends on, and it is
+    // fast. Mail comes after, on whatever time is left.
+    const applied: unknown[] = [];
+    for (const row of candidates) {
+        if ((seen.get(row.tracking_number) ?? 0) > 1) continue;
+        const fresh = live.get(String(row.tracking_number).toUpperCase());
+        if (!fresh || fresh.status === row.carrier_status) continue;
+        const { data, error } = await service.rpc('apply_carrier_tracking_event' as never, {
+            p_tracking_number: row.tracking_number,
+            p_shipping_provider: row.shipping_provider,
+            p_status: fresh.status,
+            p_sub_status: fresh.subStatus,
+        } as never);
+        if (error) {
+            console.error('[Tracking] Refresh apply failed:', error.message);
+            continue;
+        }
+        applied.push(data);
+    }
+
+    // The same mail the webhook would have sent, for the changes it missed.
+    //
+    // Bounded rather than capped at a count: this runs inside a page load that
+    // Netlify kills at ten seconds, and an SMTP round trip is seconds, not
+    // milliseconds. Anything left when the budget runs out is named in the log
+    // — its status is already saved, so the screen is right either way, and
+    // only the notification is owed.
+    const mailDeadline = Date.now() + MAIL_BUDGET_MS;
+    for (let i = 0; i < applied.length; i += 1) {
+        if (Date.now() >= mailDeadline) {
+            const skipped = applied.slice(i)
+                .map((r) => (r as { order_id?: string } | null)?.order_id)
+                .filter(Boolean);
+            console.warn(`[Tracking] Mail budget spent; no notification for: ${skipped.join(', ')}`);
+            break;
+        }
+        await notifyCarrierStatusChange(service, applied[i] as never);
+    }
+}
+
 async function handleGET(request: NextRequest) {
     try {
         const supabase = await createServerSupabaseClient();
@@ -33,6 +140,23 @@ async function handleGET(request: NextRequest) {
             await expireUnshippedPaidOrders(createServiceSupabaseClient());
         } catch (e) {
             console.error('expireUnshippedPaidOrders failed:', e);
+        }
+
+        // Self-healing: pull the carrier's current status for parcels in flight.
+        //
+        // 17TRACK's webhook is the primary signal, but it is a push with no
+        // signature, no delivery guarantee and no retry from us — a dropped one
+        // is dropped for good, and until now nothing ever asked again. So the
+        // page that displays the status also refreshes it, which is the moment
+        // it matters and the moment someone is there to see the result.
+        //
+        // One batched upstream call for the whole page, only for rows that have
+        // gone stale, and never blocking: a refresh that fails leaves the last
+        // known status exactly where it was.
+        try {
+            await refreshCarrierStatuses(user.id);
+        } catch (e) {
+            console.error('refreshCarrierStatuses failed:', e);
         }
 
         const { searchParams } = new URL(request.url);
@@ -161,7 +285,7 @@ async function handlePATCH(request: NextRequest) {
                 }
                 const carrierCode = typeof shipping_provider === 'string' ? shipping_provider.trim() : '';
                 const packingVideoUrl = evidenceVideoUrl(body.packing_video_url);
-                const trackingNo = typeof tracking_number === 'string' ? tracking_number.trim() : '';
+                const trackingNo = normalizeTrackingNumber(tracking_number);
                 const carrier = getCarrier(carrierCode);
                 if (!carrier) {
                     return NextResponse.json({ error: 'Select a valid shipping carrier.', code: 'invalid_carrier' }, { status: 400 });
@@ -170,6 +294,18 @@ async function handlePATCH(request: NextRequest) {
                 // Hand delivery ('self') may skip the tracking number; carriers require it.
                 if (carrierCode !== 'self' && !trackingNo) {
                     return NextResponse.json({ error: 'Enter a tracking number.', code: 'missing_tracking' }, { status: 400 });
+                }
+                // Nothing checked the shape before, and the table shows it: over
+                // half the numbers on it are typing tests. A number that no
+                // carrier issued cannot be registered or matched, so the order
+                // silently never gets a delivery event and ends up in front of
+                // an admin — a failure the seller could have been told about
+                // here, while the field was still in front of them.
+                if (trackingNo && !isValidTrackingNumber(trackingNo)) {
+                    return NextResponse.json({
+                        error: `Mã vận đơn không hợp lệ. Mã cần ${TRACKING_MIN_LENGTH}-${TRACKING_MAX_LENGTH} ký tự, chỉ gồm chữ, số và dấu gạch ngang.`,
+                        code: 'invalid_tracking',
+                    }, { status: 400 });
                 }
 
                 // Escalation deadline = est. max delivery + 3-day buffer from now.

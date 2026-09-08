@@ -1,0 +1,209 @@
+/**
+ * GoShip — multi-carrier shipment booking for Vietnam.
+ *
+ * Where 17TRACK only watches a parcel somebody else booked, GoShip books it.
+ * That difference is the point: a shipment created here has a tracking number
+ * we issued, on a carrier we chose, with webhooks addressed to us — none of
+ * which is true of a number a seller types into a form.
+ *
+ * Everything below was read off the live API rather than off documentation
+ * (doc.goship.io publishes no endpoint reference, and its webhook page 404s).
+ * Where a shape is asserted here, it was confirmed by calling the endpoint;
+ * where it was not, the function says so.
+ */
+
+const BASE_URL = 'https://api.goship.io/api/v2';
+
+/** Sandbox rejects this token, so there is one environment and it is live. */
+const token = () => process.env.GOSHIP_API?.trim() || '';
+
+export type GoshipAddress = {
+    /** GoShip's own ids, from cities/districts/wards — not the app's. */
+    city: string;
+    district: string;
+    ward: string;
+    street: string;
+    name: string;
+    phone: string;
+};
+
+/** Grams and centimetres. A slabbed card in a bubble mailer is ~100g. */
+export type GoshipParcel = {
+    weight: number;
+    width: number;
+    height: number;
+    length: number;
+};
+
+export type GoshipRate = {
+    /** Opaque token to hand back as `shipment.rate`. Not a carrier id. */
+    id: string;
+    carrierName: string;
+    /** `shopee`, `vtp`, `ghnv3`, … — GoShip's code, not ours. */
+    carrierCode: string;
+    service: string;
+    /** VND, already including GoShip's fees. */
+    totalFee: number;
+    expected: string | null;
+    /** Carrier's own delivery success rate, when GoShip reports it. */
+    successPercent: number | null;
+};
+
+/**
+ * GoShip carrier codes to the ones the app already stores.
+ *
+ * GHN is `ghnv3` there and `ghn` here; the other two happen to agree. Anything
+ * unmapped is returned as-is and simply will not match a carrier the app knows,
+ * which is the safe direction to fail in.
+ */
+const CARRIER_CODE_TO_APP: Record<string, string> = {
+    ghnv3: 'ghn',
+    vtp: 'vtp',
+    shopee: 'shopee',
+};
+
+export const goshipCarrierToApp = (code: string): string => CARRIER_CODE_TO_APP[code] ?? code;
+
+type GoshipEnvelope<T> = { code?: number; status?: string; data?: T; message?: string };
+
+async function call<T>(
+    path: string,
+    init: { method?: 'GET' | 'POST'; body?: unknown; timeoutMs?: number } = {},
+): Promise<{ ok: true; data: T } | { ok: false; reason: string }> {
+    const bearer = token();
+    if (!bearer) return { ok: false, reason: 'not_configured' };
+
+    try {
+        const response = await fetch(`${BASE_URL}${path}`, {
+            method: init.method ?? 'GET',
+            headers: {
+                Authorization: `Bearer ${bearer}`,
+                Accept: 'application/json',
+                ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+            },
+            ...(init.body ? { body: JSON.stringify(init.body) } : {}),
+            // Bounded on purpose: these run inside request handlers that
+            // Netlify kills at ten seconds.
+            signal: AbortSignal.timeout(init.timeoutMs ?? 6_000),
+        });
+
+        const payload = (await response.json()) as GoshipEnvelope<T>;
+        if (!response.ok || (payload.code && payload.code >= 400)) {
+            // Validation errors arrive as an object of field -> messages, or a
+            // bare array. Flatten either into something a log can carry.
+            const raw = payload.data ?? payload.message;
+            const detail = typeof raw === 'string'
+                ? raw
+                : JSON.stringify(raw ?? {}).slice(0, 300);
+            return { ok: false, reason: detail || `http_${response.status}` };
+        }
+        return { ok: true, data: payload.data as T };
+    } catch (error) {
+        return { ok: false, reason: error instanceof Error ? error.message : 'request_failed' };
+    }
+}
+
+/** GoShip's own geography, three levels deep. See the note in goshipRates. */
+export const goshipCities = () =>
+    call<Array<{ id: string; name: string }>>('/cities');
+
+export const goshipDistricts = (cityId: string) =>
+    call<Array<{ id: string; name: string }>>(`/cities/${encodeURIComponent(cityId)}/districts`);
+
+export const goshipWards = (districtId: string) =>
+    call<Array<{ id: number; name: string }>>(`/districts/${encodeURIComponent(districtId)}/wards`);
+
+/**
+ * What the carriers would charge for this parcel, cheapest first.
+ *
+ * Only city and district are consulted for a quote — ward and street are not
+ * required until the shipment is actually booked — so this can be quoted from
+ * an address the seller has not finished typing.
+ *
+ * The addresses are GoShip's ids, and they are NOT the app's. GoShip still
+ * models Vietnam as 63 provinces with a district level; the app's own data is
+ * the 2025 structure, 34 provinces and no districts at all. Ho Chi Minh City
+ * now contains wards called Bà Rịa and Vũng Tàu, which GoShip still files under
+ * a separate province — so translating one to the other by name puts a parcel
+ * in the wrong city. Callers must supply GoShip ids that came from the three
+ * functions above.
+ */
+export async function goshipRates(input: {
+    from: Pick<GoshipAddress, 'city' | 'district'>;
+    to: Pick<GoshipAddress, 'city' | 'district'>;
+    parcel: GoshipParcel;
+}): Promise<{ ok: true; rates: GoshipRate[] } | { ok: false; reason: string }> {
+    type Raw = {
+        id: string;
+        carrier_name?: string;
+        carrier_short_name?: string;
+        service?: string;
+        total_fee?: number;
+        expected?: string;
+        report?: { success_percent?: number };
+    };
+
+    const result = await call<Raw[]>('/rates', {
+        method: 'POST',
+        body: {
+            shipment: {
+                address_from: { city: input.from.city, district: input.from.district },
+                address_to: { city: input.to.city, district: input.to.district },
+                parcel: input.parcel,
+            },
+        },
+    });
+    if (!result.ok) return result;
+
+    const rates = (result.data ?? []).map((r) => ({
+        id: r.id,
+        carrierName: r.carrier_name ?? '',
+        carrierCode: goshipCarrierToApp(r.carrier_short_name ?? ''),
+        service: r.service ?? '',
+        totalFee: Number(r.total_fee ?? 0),
+        expected: r.expected ?? null,
+        successPercent: typeof r.report?.success_percent === 'number' ? r.report.success_percent : null,
+    })).sort((a, b) => a.totalFee - b.totalFee);
+
+    return { ok: true, rates };
+}
+
+/**
+ * Book the parcel.
+ *
+ * `rate` is the opaque id from goshipRates, not a carrier code — passing a
+ * carrier code is answered with "Thiếu thông tin dịch vụ và hãng vận chuyển",
+ * and passing an unknown id with "Không tìm thấy dịch vụ phù hợp". Quotes go
+ * stale, so re-quote rather than storing an id for later.
+ *
+ * This is the one call here that costs money and sends a courier to a seller's
+ * door. Nothing calls it yet.
+ */
+export async function goshipCreateShipment(input: {
+    from: GoshipAddress;
+    to: GoshipAddress;
+    parcel: GoshipParcel;
+    rateId: string;
+}) {
+    return call<Record<string, unknown>>('/shipments', {
+        method: 'POST',
+        body: {
+            shipment: {
+                address_from: input.from,
+                address_to: input.to,
+                parcel: input.parcel,
+                rate: input.rateId,
+            },
+        },
+        timeoutMs: 9_000,
+    });
+}
+
+/**
+ * Point GoShip's status pushes at us. Idempotent from our side only in that
+ * listing first shows what is already registered — GoShip does not de-duplicate.
+ */
+export const goshipListWebhooks = () => call<Array<Record<string, unknown>>>('/webhooks');
+
+export const goshipRegisterWebhook = (endpoint: string) =>
+    call<Record<string, unknown>>('/webhooks', { method: 'POST', body: { endpoint } });

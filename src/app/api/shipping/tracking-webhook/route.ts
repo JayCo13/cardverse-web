@@ -2,18 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createHash, timingSafeEqual } from 'crypto';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { readTrackingEvent } from '@/lib/carrier-tracking';
-
-// Delivery status pushed by the tracking service (17TRACK).
-//
-// Register the URL at admin.17track.net → Settings → Package Webhook:
-//   https://cardversehub.com/api/shipping/tracking-webhook?token=<SEVENTEENTRACK_WEBHOOK_TOKEN>
-//
-// Security: 17TRACK does not sign its pushes — no HMAC, no signature header,
-// nothing (confirmed against their v2.4 documentation). Anyone who learns the
-// URL could otherwise post a fake 'Delivered' and start the 72h clock that pays
-// a seller out. So the URL carries a secret, compared in constant time, and the
-// route fails closed when the secret is unset: an absent token must never mean
-// an open door.
+import { notifyCarrierStatusChange } from '@/lib/carrier-notifications';
 
 const sha256 = (value: string) => createHash('sha256').update(value).digest();
 
@@ -52,6 +41,11 @@ export async function POST(request: NextRequest) {
             p_sub_status: event.subStatus,
         } as never);
         if (error) throw error;
+
+        // Only a real transition is worth an email. The RPC's early returns —
+        // order_not_found, terminal_order, replayed, out_of_order — carry no
+        // order_id, so this also covers the repeat pushes 17TRACK sends.
+        await notifyCarrierStatusChange(supabase, data as never);
 
         return NextResponse.json({ success: true, result: data });
     } catch (error: any) {
