@@ -130,8 +130,16 @@ void (async () => {
     }
 
     console.log(`\nĐặt: ${chosen.carrier_name} — ${chosen.service}, ${chosen.total_fee}đ`);
+    // amount is khai giá: what the carrier owes if the parcel is lost. Zero is
+    // the default and would insure a card at nothing.
+    const declared = Number(arg('declared') ?? 0);
+    if (!declared) console.log('CẢNH BÁO: chưa khai giá (--declared), mất hàng sẽ không được đền.');
     const created = await api('/shipments', {
-        shipment: { address_from: f, address_to: t, parcel, rate: chosen.id },
+        shipment: {
+            address_from: f, address_to: t,
+            parcel: { ...parcel, cod: 0, amount: Math.round(declared) },
+            rate: chosen.id, payer: 1,
+        },
     });
     console.log(JSON.stringify(created, null, 2).slice(0, 2000));
 })();

@@ -176,6 +176,21 @@ export async function goshipRates(input: {
  * and passing an unknown id with "Không tìm thấy dịch vụ phù hợp". Quotes go
  * stale, so re-quote rather than storing an id for later.
  *
+ * `declaredValue` is the one field here that decides money. It is GoShip's
+ * `parcel.amount` — "khai giá" — and it is what a carrier pays out when a parcel
+ * is lost or destroyed. It defaults to zero, which on a marketplace selling
+ * cards worth millions of đồng means a lost card is compensated at nothing. The
+ * caller passes the card's price, and the parameter is required here rather
+ * than optional so that omitting it has to be a decision somebody wrote down.
+ *
+ * `orderId` rides along as GoShip's `order_id`. If their webhook echoes it, an
+ * event identifies its order outright instead of being matched on a tracking
+ * number — which is the whole class of bug that has three orders on this
+ * database sharing one number today.
+ *
+ * `payer: 1` is the sender. The buyer has already paid shipping into escrow, so
+ * the parcel must not arrive asking them for it again.
+ *
  * This is the one call here that costs money and sends a courier to a seller's
  * door. Nothing calls it yet.
  */
@@ -184,6 +199,12 @@ export async function goshipCreateShipment(input: {
     to: GoshipAddress;
     parcel: GoshipParcel;
     rateId: string;
+    /** VND. What the carrier owes if the parcel never arrives. */
+    declaredValue: number;
+    /** Our own order id, echoed back on GoShip's events if they carry it. */
+    orderId?: string;
+    /** Handling instructions printed for the courier. */
+    note?: string;
 }) {
     return call<Record<string, unknown>>('/shipments', {
         method: 'POST',
@@ -191,8 +212,18 @@ export async function goshipCreateShipment(input: {
             shipment: {
                 address_from: input.from,
                 address_to: input.to,
-                parcel: input.parcel,
+                parcel: {
+                    ...input.parcel,
+                    // Never collect on delivery: everything here is paid before
+                    // the parcel moves, and a courier asking for money again
+                    // would be charging twice.
+                    cod: 0,
+                    amount: Math.max(0, Math.round(input.declaredValue)),
+                    ...(input.note ? { metadata: input.note } : {}),
+                },
                 rate: input.rateId,
+                payer: 1,
+                ...(input.orderId ? { order_id: input.orderId } : {}),
             },
         },
         timeoutMs: 9_000,
