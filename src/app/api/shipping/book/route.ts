@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { goshipCreateShipment, goshipCarrierToApp } from '@/lib/goship';
+import { goshipCreateShipment, goshipCarrierToApp, goshipFindShipmentByOrderId } from '@/lib/goship';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { isEvidenceVideoUrl } from '@/lib/evidence-video';
 
@@ -25,6 +25,53 @@ const PHONE = /^0[0-9]{8,10}$/;
 
 /** A slabbed card in a bubble mailer; overridable, but bounded. */
 const DEFAULT_PARCEL = { weight: 200, width: 15, height: 3, length: 20 };
+
+
+/**
+ * Write a booked shipment onto its order.
+ *
+ * Returns a response only when something went wrong; null means it was filed.
+ * Shared between a fresh booking and the recovery of one whose answer was lost,
+ * so both leave the order in the same state.
+ */
+async function linkShipmentToOrder(
+    orderId: string,
+    created: { id?: string; tracking_number?: string; carrier_short_name?: string },
+    body: Record<string, any> | null,
+    destination?: { city: string; district: string; ward: string } | null,
+) {
+    const gcode = created.id as string;
+    const raw = body?.packingVideoUrl;
+    const packingVideoUrl = isEvidenceVideoUrl(raw, process.env.CLOUDINARY_CLOUD_NAME)
+        ? (raw as string) : null;
+
+    const service = createServiceSupabaseClient();
+    const { error } = await service
+        .from('orders')
+        .update({
+            goship_code: gcode,
+            // Remember the ids used, so a retry or a later read does not depend
+            // on the form that supplied them.
+            ...(destination ? { to_goship: destination } : {}),
+            ...(created.tracking_number ? { tracking_number: created.tracking_number } : {}),
+            ...(created.carrier_short_name
+                ? { shipping_provider: goshipCarrierToApp(created.carrier_short_name) } : {}),
+            ...(packingVideoUrl ? { seller_packing_video_url: packingVideoUrl } : {}),
+        } as never)
+        .eq('id', orderId)
+        .is('goship_code', null);
+
+    if (error) {
+        // A courier is already coming and this is the only record of which
+        // shipment belongs to which order.
+        console.error(`[Book] ORPHAN SHIPMENT ${gcode} for order ${orderId}: ${error.message}`);
+        return NextResponse.json(
+            { error: 'Đã tạo vận đơn nhưng chưa gắn được vào đơn hàng. Liên hệ hỗ trợ kèm mã ' + gcode, code: 'link_failed', gcode },
+            { status: 500 },
+        );
+    }
+    return null;
+}
 
 export async function POST(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
@@ -134,6 +181,21 @@ export async function POST(request: NextRequest) {
         );
     }
 
+    // Recover a booking whose answer was lost.
+    //
+    // Creating a shipment is not idempotent and the call is not reliable:
+    // GoShip can accept one and answer slower than the function may wait,
+    // leaving a real parcel upstream and an order that never heard. Looking
+    // first turns a retry into recovery instead of a second courier.
+    if (order) {
+        const existing = await goshipFindShipmentByOrderId(order.id);
+        if (existing.ok && existing.data?.id) {
+            const linked = await linkShipmentToOrder(order.id, existing.data, body);
+            if (linked) return linked;
+            return NextResponse.json({ data: existing.data, gcode: existing.data.id, recovered: true });
+        }
+    }
+
     const result = await goshipCreateShipment({
         from: from as never,
         to: dest,
@@ -181,47 +243,12 @@ export async function POST(request: NextRequest) {
         );
     }
 
+    // Same path as recovery, so a fresh booking and a recovered one leave the
+    // order in exactly the same state.
     if (order) {
-        // Service role: the seller may write this column on their own order,
-        // but the write must not depend on a policy that could change under it.
-        const service = createServiceSupabaseClient();
-        // The packing video rides along with the booking now. It used to be
-        // uploaded on the old ship form, which this replaces, and it is what
-        // dispute_evidence_verdict reads as the seller's side of the story —
-        // losing it with the form would have quietly weakened every dispute.
-        const raw = body?.packingVideoUrl;
-        const packingVideoUrl = isEvidenceVideoUrl(raw, process.env.CLOUDINARY_CLOUD_NAME)
-            ? (raw as string) : null;
-
-        const { error: linkError } = await service
-            .from('orders')
-            .update({
-                goship_code: gcode,
-                // Remember the ids for this order, so a retry or a later read
-                // does not depend on the form that supplied them.
-                to_goship: { city: dest.city, district: dest.district, ward: dest.ward },
-                // Both arrive with the booking, so the buyer has a number to
-                // look up before any webhook fires.
-                ...(created.tracking_number ? { tracking_number: created.tracking_number } : {}),
-                ...(created.carrier_short_name
-                    ? { shipping_provider: goshipCarrierToApp(created.carrier_short_name) } : {}),
-                ...(packingVideoUrl ? { seller_packing_video_url: packingVideoUrl } : {}),
-            } as never)
-            .eq('id', order.id)
-            .is('goship_code', null);
-
-        if (linkError) {
-            // The parcel is booked and the order does not know. Loud, with the
-            // code in it: a courier is already coming, and this is the only
-            // record of which shipment belongs to which order.
-            console.error(
-                `[Book] ORPHAN SHIPMENT ${gcode} for order ${order.id}: ${linkError.message}`,
-            );
-            return NextResponse.json(
-                { error: 'Đã tạo vận đơn nhưng chưa gắn được vào đơn hàng. Liên hệ hỗ trợ kèm mã ' + gcode, code: 'link_failed', gcode },
-                { status: 500 },
-            );
-        }
+        const linked = await linkShipmentToOrder(order.id, created, body,
+            { city: dest.city, district: dest.district, ward: dest.ward });
+        if (linked) return linked;
     }
 
     return NextResponse.json({ data: result.data, gcode });

@@ -261,6 +261,29 @@ export async function goshipCreateShipment(input: {
 }
 
 /**
+ * The shipment already booked against one of our orders, if there is one.
+ *
+ * Creating a shipment is not idempotent and the call is not reliable: GoShip
+ * can accept a booking and answer slower than the function is allowed to wait,
+ * leaving a real parcel upstream and an order that knows nothing about it. That
+ * is what order_id is for — it is our id, echoed back, and it is the only way
+ * to recognise our own shipment after the answer was lost.
+ *
+ * Filtered here as well as in the query string: the parameter may or may not be
+ * honoured, and a wrong match would attach somebody else's parcel to this
+ * order.
+ */
+export async function goshipFindShipmentByOrderId(orderId: string) {
+    const result = await call<Array<Record<string, unknown>>>(
+        `/shipments?order_id=${encodeURIComponent(orderId)}`,
+        { timeoutMs: 5_000 },
+    );
+    if (!result.ok) return result;
+    const match = (result.data ?? []).find((row) => row?.order_id === orderId) ?? null;
+    return { ok: true as const, data: match as GoshipCreatedShipment | null };
+}
+
+/**
  * Point GoShip's status pushes at us. Idempotent from our side only in that
  * listing first shows what is already registered — GoShip does not de-duplicate.
  */
