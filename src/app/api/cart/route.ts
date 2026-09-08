@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getRouteUser } from '@/lib/supabase/route-user';
@@ -9,7 +10,7 @@ type CartCard = {
   listing_type: string | null;
 };
 
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const user = await getRouteUser(supabase);
   if (!user) {
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ items: data || [] });
 }
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -112,7 +113,7 @@ export async function POST(request: NextRequest) {
  * someone else's cart simply matches nothing rather than deleting it. The
  * removed ids come back so the client can reconcile without refetching.
  */
-export async function DELETE(request: NextRequest) {
+async function handleDELETE(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -151,3 +152,7 @@ export async function DELETE(request: NextRequest) {
 
   return NextResponse.json({ success: true, removed });
 }
+
+export const GET = accountRoute(handleGET);
+export const POST = accountRoute(handlePOST);
+export const DELETE = accountRoute(handleDELETE);

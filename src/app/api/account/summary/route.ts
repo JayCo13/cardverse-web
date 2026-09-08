@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getRouteUser } from '@/lib/supabase/route-user';
@@ -21,7 +22,7 @@ import { getRouteUser } from '@/lib/supabase/route-user';
  * The individual endpoints stay: they are still the right shape for the pages
  * that need the full cart or the full offer inbox.
  */
-export async function GET() {
+async function handleGET() {
     const supabase = await createServerSupabaseClient();
     const user = await getRouteUser(supabase);
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -67,3 +68,5 @@ export async function GET() {
         cardPendingCounts,
     }, { headers: { 'Cache-Control': 'private, no-store' } });
 }
+
+export const GET = accountRoute(handleGET);

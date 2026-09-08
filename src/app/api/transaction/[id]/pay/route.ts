@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { randomInt } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
@@ -22,7 +23,7 @@ type TransactionRow = {
   expires_at: string;
 };
 
-export async function POST(
+async function handlePOST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -302,3 +303,5 @@ export async function POST(
     return NextResponse.json({ error: message || 'Internal server error' }, { status: 500 });
   }
 }
+
+export const POST = accountRoute(handlePOST);

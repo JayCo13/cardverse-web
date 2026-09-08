@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { findProvince, findWard } from '@/lib/vn-address';
@@ -19,7 +20,7 @@ type AddressBody = {
 
 // PATCH — update an address, and/or make it the default. RLS already scopes
 // rows to the owner; the explicit user_id filter is belt-and-suspenders.
-export async function PATCH(
+async function handlePATCH(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> },
 ) {
@@ -122,7 +123,7 @@ export async function PATCH(
 
 // DELETE — remove an address. If it was the default, promote the most recent
 // remaining address so the buyer always has a default to fall back on.
-export async function DELETE(
+async function handleDELETE(
     _request: NextRequest,
     { params }: { params: Promise<{ id: string }> },
 ) {
@@ -165,3 +166,6 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
 }
+
+export const PATCH = accountRoute(handlePATCH);
+export const DELETE = accountRoute(handleDELETE);

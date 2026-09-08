@@ -1,11 +1,13 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import type { Database } from '@/lib/supabase/database.types';
 type Related = { id: string; buyer_id: string; seller_id: string; card_id: string | null };
 
 // Read through the user's RLS session, including all related records. Never
 // accept a recipient id from the browser or use service-role enrichment here.
-export async function GET() {
+async function handleGET() {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -48,3 +50,37 @@ export async function GET() {
       transactionId: row.transaction_id, read: row.read, createdAt: row.created_at, metadata };
   }) }, { headers: { 'Cache-Control': 'private, no-store' } });
 }
+
+// Delete one of the caller's own notifications.
+//
+// `notifications` has no RLS delete policy on purpose (see
+// supabase/migrations/20260702_p0_money_and_notifications.sql), so the row is
+// removed through the service-role client — with `user_id` pinned to the
+// authenticated caller, never to an id sent by the browser.
+async function handleDELETE(request: Request) {
+  const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  let id: unknown;
+  try {
+    ({ id } = await request.json());
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
+  if (typeof id !== 'string' || !id) {
+    return NextResponse.json({ error: 'Missing notification id' }, { status: 400 });
+  }
+
+  const { error } = await createServiceSupabaseClient()
+    .from('notifications')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', user.id);
+  if (error) return NextResponse.json({ error: 'Could not delete notification' }, { status: 500 });
+
+  return NextResponse.json({ success: true });
+}
+
+export const GET = accountRoute(handleGET);
+export const DELETE = accountRoute(handleDELETE);

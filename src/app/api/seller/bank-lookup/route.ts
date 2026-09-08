@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
@@ -13,7 +14,7 @@ type KycSessionRow = { verified_full_name: string | null; status: string };
  * lookup and its own comparison — nothing decided here is carried over on the
  * client's word.
  */
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
     try {
         const supabase = await createServerSupabaseClient();
         const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -82,3 +83,5 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Không thể tra cứu tài khoản.' }, { status: 500 });
     }
 }
+
+export const POST = accountRoute(handlePOST);

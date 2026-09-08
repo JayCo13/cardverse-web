@@ -1,3 +1,4 @@
+import { AccountRestrictionProvider } from '@/components/account-restriction-provider';
 import type { Metadata, Viewport } from 'next';
 import { Inter, Orbitron, Quantico } from 'next/font/google';
 import './globals.css';
@@ -15,7 +16,9 @@ import { Footer } from '@/components/layout/footer';
 import { SubscriptionProvider } from '@/hooks/useSubscription';
 
 const inter = Inter({
-  subsets: ['latin'],
+  // Vietnamese is the primary audience: without this subset every diacritic
+  // falls back to a system font, so headings render as two mixed typefaces.
+  subsets: ['latin', 'vietnamese'],
   variable: '--font-inter',
   display: 'swap',
   preload: true,
@@ -77,11 +80,13 @@ export default function RootLayout({
       </head>
       <body className={`${inter.variable} ${orbitron.variable} ${quantico.variable} font-body antialiased`}>
         <SupabaseAuthProvider>
-          <SubscriptionProvider>
+
           <AuthReady>
             <AuthModalProvider>
               <CurrencyProvider>
                 <LocalizationProvider>
+                  <AccountRestrictionProvider allowedContent={children}>
+                  <SubscriptionProvider>
                   <TransactionLockProvider>
                     <CardCacheProvider>
                       {/*
@@ -113,11 +118,13 @@ export default function RootLayout({
                     </CardCacheProvider>
                   </TransactionLockProvider>
                   <AuthModal />
+                  </SubscriptionProvider>
+                  </AccountRestrictionProvider>
                 </LocalizationProvider>
               </CurrencyProvider>
             </AuthModalProvider>
           </AuthReady>
-          </SubscriptionProvider>
+
         </SupabaseAuthProvider>
         <Toaster />
         <ScrollToTop />

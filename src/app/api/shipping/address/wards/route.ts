@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { goshipWards } from '@/lib/goship';
 
@@ -7,7 +8,7 @@ import { goshipWards } from '@/lib/goship';
  * because the 2025 structure has nothing in between. The two are not
  * interchangeable — see the note in ../cities.
  */
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
     const districtCode = (request.nextUrl.searchParams.get('district_code') || '').trim();
     if (!/^\d{1,12}$/.test(districtCode)) {
         return NextResponse.json({ error: 'district_code is required' }, { status: 400 });
@@ -27,3 +28,5 @@ export async function GET(request: NextRequest) {
         { headers: { 'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800' } },
     );
 }
+
+export const GET = accountRoute(handleGET);

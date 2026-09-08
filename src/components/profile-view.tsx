@@ -396,12 +396,12 @@ export function ProfileView({
                     : copy.processing;
 
     return (
-        <main className="container mx-auto px-4 py-8">
+        <main className="container mx-auto px-3 sm:px-4 py-6 sm:py-8">
             {/* ── Identity ───────────────────────────────────────────── */}
-            <section className="rounded-2xl border bg-gradient-to-br from-primary/10 via-background to-background p-6 md:p-8 mb-6">
-                <div className="flex flex-col sm:flex-row items-start gap-6">
+            <section className="rounded-2xl border bg-gradient-to-br from-primary/10 via-background to-background p-4 sm:p-6 md:p-8 mb-6">
+                <div className="flex flex-col sm:flex-row items-start gap-4 sm:gap-6">
                     <div className="relative shrink-0">
-                        <div className={`relative w-24 h-24 md:w-28 md:h-28 rounded-full overflow-hidden bg-muted ring-4 ring-offset-2 ring-offset-background ${SHOW_ACCOUNT_RANK ? rank.ring : "ring-border"}`}>
+                        <div className={`relative w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 rounded-full overflow-hidden bg-muted ring-4 ring-offset-2 ring-offset-background ${SHOW_ACCOUNT_RANK ? rank.ring : "ring-border"}`}>
                             {identity.profileImageUrl ? (
                                 <Image
                                     src={identity.profileImageUrl}
@@ -412,7 +412,7 @@ export function ProfileView({
                                 />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center">
-                                    <User className="h-10 w-10 text-muted-foreground" />
+                                    <User className="h-8 w-8 sm:h-10 sm:w-10 text-muted-foreground" />
                                 </div>
                             )}
                         </div>
@@ -421,31 +421,31 @@ export function ProfileView({
                             not read at all. */}
                         {SHOW_ACCOUNT_RANK && (
                             <div
-                                className={`absolute -bottom-1 -right-1 grid place-items-center h-9 w-9 rounded-full
+                                className={`absolute -bottom-1 -right-1 grid place-items-center h-8 w-8 sm:h-9 sm:w-9 rounded-full
                                     ${rank.medal} ${rank.glow} ring-[3px] ring-background`}
                                 title={rank.name}
                             >
-                                <RankIcon className="h-[18px] w-[18px] text-black/75" strokeWidth={2.5} />
+                                <RankIcon className="h-4 w-4 sm:h-[18px] sm:w-[18px] text-black/75" strokeWidth={2.5} />
                             </div>
                         )}
                     </div>
 
                     <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2 mb-1">
-                            <h1 className="text-2xl md:text-3xl font-bold truncate">
+                            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold break-words line-clamp-2" title={identity.displayName || copy.newSeller}>
                                 {identity.displayName || copy.newSeller}
                             </h1>
                             {identity.sellerVerified && (
                                 <Badge className="gap-1 border-0 pl-1.5 pr-2.5 text-black font-semibold
                                     bg-[linear-gradient(135deg,#7dd3fc_0%,#0ea5e9_50%,#0369a1_100%)]
-                                    shadow-[0_0_14px_-2px_rgba(14,165,233,0.6)]">
+                                    shadow-[0_0_14px_-2px_rgba(14,165,233,0.6)] text-xs">
                                     <BadgeCheck className="h-3.5 w-3.5" strokeWidth={2.5} />
                                     {copy.verifiedSeller}
                                 </Badge>
                             )}
                             {SHOW_ACCOUNT_RANK && (
                                 <Badge className={`gap-1 border-0 pl-1.5 pr-2.5 text-black font-semibold uppercase tracking-wide
-                                    ${rank.medal} ${rank.glow}`}>
+                                    ${rank.medal} ${rank.glow} text-xs`}>
                                     <RankIcon className="h-3.5 w-3.5" strokeWidth={2.5} />
                                     {rank.name}
                                 </Badge>
@@ -454,12 +454,12 @@ export function ProfileView({
 
                         {/* The owner's own address, and nobody else's. */}
                         {isOwner && identity.email && (
-                            <p className="text-sm text-muted-foreground mb-3 truncate">{identity.email}</p>
+                            <p className="text-xs sm:text-sm text-muted-foreground mb-2 sm:mb-3 truncate" title={identity.email}>{identity.email}</p>
                         )}
 
-                        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+                        <div className="flex flex-wrap items-center gap-x-4 sm:gap-x-5 gap-y-1.5 sm:gap-y-2 text-xs sm:text-sm">
                             <span className="flex items-center gap-1.5">
-                                <ShieldCheck className={`h-4 w-4 ${identity.sellerRating > 0 ? "text-green-500" : "text-muted-foreground"}`} />
+                                <ShieldCheck className={`h-4 w-4 shrink-0 ${identity.sellerRating > 0 ? "text-green-500" : "text-muted-foreground"}`} />
                                 <span className="font-semibold">{reputationText}</span>
                                 <span className="text-muted-foreground">
                                     · {formatCompactCount(soldCount, locale)} {copy.itemsSold}
@@ -467,7 +467,7 @@ export function ProfileView({
                             </span>
                             {joinedAt && (
                                 <span className="flex items-center gap-1.5 text-muted-foreground">
-                                    <CalendarDays className="h-4 w-4" />
+                                    <CalendarDays className="h-4 w-4 shrink-0" />
                                     {fill(copy.memberSince, { date: joinedAt })}
                                 </span>
                             )}
@@ -482,7 +482,7 @@ export function ProfileView({
             {/* A visitor gets reputation only. eBay publishes a seller's
                 feedback and registration date and never their takings; the
                 RLS on `transactions` says the same thing in SQL. */}
-            <section className={`grid gap-4 mb-6 ${isOwner ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-1 sm:grid-cols-3"}`}>
+            <section className={`grid gap-3 sm:gap-4 mb-6 ${isOwner ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-1 sm:grid-cols-3"}`}>
                 {isOwner && owner && (
                     <>
                         <StatTile
@@ -532,10 +532,10 @@ export function ProfileView({
             {/* ── Rank progress ──────────────────────────────────────── */}
             {SHOW_ACCOUNT_RANK && (
                 <CardUI className="mb-8">
-                    <CardContent className="p-5">
-                        <div className="flex items-center justify-between gap-4 mb-3">
+                    <CardContent className="p-4 sm:p-5">
+                        <div className="flex items-center justify-between gap-3 sm:gap-4 mb-3">
                             <div className="flex items-center gap-3 min-w-0">
-                                <div className={`grid place-items-center h-11 w-11 rounded-xl ${rank.medal} ${rank.glow}`}>
+                                <div className={`grid place-items-center h-10 w-10 sm:h-11 sm:w-11 rounded-xl ${rank.medal} ${rank.glow}`}>
                                     <RankIcon className="h-5 w-5 text-black/75" strokeWidth={2.5} />
                                 </div>
                                 <div className="min-w-0">
@@ -543,7 +543,7 @@ export function ProfileView({
                                     <p className={`font-bold ${rank.text}`}>{rank.name}</p>
                                 </div>
                             </div>
-                            <p className="text-sm text-muted-foreground text-right">
+                            <p className="text-xs sm:text-sm text-muted-foreground text-right">
                                 {nextRank
                                     ? fill(copy.toRankUp, {
                                         count: Math.max(0, nextRank.minSales - soldCount),
@@ -567,24 +567,36 @@ export function ProfileView({
 
             {/* ── Activity ───────────────────────────────────────────── */}
             <Tabs defaultValue="selling" className="w-full">
-                <TabsList className={`grid w-full mb-6 ${isOwner ? "grid-cols-4" : "grid-cols-2"}`}>
-                    <TabsTrigger value="selling" className="gap-2">
-                        <Tag className="h-4 w-4" />
-                        <span className="hidden sm:inline">{copy.sellingTab}</span>
+                <TabsList className={`grid w-full h-auto p-1 mb-6 ${isOwner ? "grid-cols-4" : "grid-cols-2"}`}>
+                    <TabsTrigger
+                        value="selling"
+                        className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 py-2 px-1 sm:px-3 text-[11px] sm:text-sm font-medium transition-all hover:bg-orange-500 hover:text-white data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow-sm"
+                    >
+                        <Tag className="h-4 w-4 shrink-0" />
+                        <span className="truncate max-w-full">{copy.sellingTab}</span>
                     </TabsTrigger>
-                    <TabsTrigger value="sold" className="gap-2">
-                        <CheckCircle className="h-4 w-4" />
-                        <span className="hidden sm:inline">{copy.soldTab}</span>
+                    <TabsTrigger
+                        value="sold"
+                        className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 py-2 px-1 sm:px-3 text-[11px] sm:text-sm font-medium transition-all hover:bg-orange-500 hover:text-white data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow-sm"
+                    >
+                        <CheckCircle className="h-4 w-4 shrink-0" />
+                        <span className="truncate max-w-full">{copy.soldTab}</span>
                     </TabsTrigger>
                     {isOwner && (
                         <>
-                            <TabsTrigger value="bought" className="gap-2">
-                                <ShoppingBag className="h-4 w-4" />
-                                <span className="hidden sm:inline">{copy.boughtTab}</span>
+                            <TabsTrigger
+                                value="bought"
+                                className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 py-2 px-1 sm:px-3 text-[11px] sm:text-sm font-medium transition-all hover:bg-orange-500 hover:text-white data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow-sm"
+                            >
+                                <ShoppingBag className="h-4 w-4 shrink-0" />
+                                <span className="truncate max-w-full">{copy.boughtTab}</span>
                             </TabsTrigger>
-                            <TabsTrigger value="transactions" className="gap-2">
-                                <Clock className="h-4 w-4" />
-                                <span className="hidden sm:inline">{copy.transactionsTab}</span>
+                            <TabsTrigger
+                                value="transactions"
+                                className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 py-2 px-1 sm:px-3 text-[11px] sm:text-sm font-medium transition-all hover:bg-orange-500 hover:text-white data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow-sm"
+                            >
+                                <Clock className="h-4 w-4 shrink-0" />
+                                <span className="truncate max-w-full">{copy.transactionsTab}</span>
                             </TabsTrigger>
                         </>
                     )}
@@ -610,7 +622,11 @@ export function ProfileView({
                         <EmptyState
                             icon={<Tag className="h-10 w-10" />}
                             message={isOwner ? copy.noSelling : copy.noSellingOther}
-                            action={isOwner ? <Button asChild><Link href="/sell/create">{copy.listNow}</Link></Button> : undefined}
+                            action={isOwner ? (
+                                <Button className="hover:bg-orange-500 hover:border-orange-500 transition-colors" asChild>
+                                    <Link href="/sell/create">{copy.listNow}</Link>
+                                </Button>
+                            ) : undefined}
                         />
                     )}
                 </TabsContent>
@@ -656,8 +672,15 @@ export function ProfileView({
                                     ))}
                                 </div>
                             ) : (
-                                <EmptyState icon={<ShoppingBag className="h-10 w-10" />} message={copy.noBought}
-                                    action={<Button asChild><Link href="/buy">{copy.exploreNow}</Link></Button>} />
+                                <EmptyState
+                                    icon={<ShoppingBag className="h-10 w-10" />}
+                                    message={copy.noBought}
+                                    action={
+                                        <Button className="hover:bg-orange-500 hover:border-orange-500 transition-colors" asChild>
+                                            <Link href="/buy">{copy.exploreNow}</Link>
+                                        </Button>
+                                    }
+                                />
                             )}
                         </TabsContent>
 
@@ -703,7 +726,7 @@ export function ProfileView({
                                                     </p>
                                                     <Link
                                                         href={`/transaction/${tx.id}`}
-                                                        className="text-xs text-primary hover:underline inline-flex items-center gap-0.5"
+                                                        className="text-xs text-primary hover:text-orange-500 hover:underline inline-flex items-center gap-0.5 transition-colors"
                                                     >
                                                         {copy.details}<ChevronRight className="h-3 w-3" />
                                                     </Link>
@@ -733,22 +756,38 @@ function StatTile({ icon, label, value, hint, suffix, accent, progress }: {
     progress?: number;
 }) {
     return (
-        <CardUI>
-            <CardContent className="p-5">
-                <div className="flex items-center gap-2 text-muted-foreground mb-2">
-                    {icon}
-                    <span className="text-xs font-medium uppercase tracking-wide">{label}</span>
+        <CardUI className="h-full">
+            <CardContent className="p-3.5 sm:p-5 flex flex-col justify-between h-full">
+                <div>
+                    <div className="flex items-center gap-1.5 sm:gap-2 text-muted-foreground mb-1.5 sm:mb-2">
+                        <span className="shrink-0">{icon}</span>
+                        <span className="text-[11px] sm:text-xs font-medium uppercase tracking-wide truncate" title={label}>
+                            {label}
+                        </span>
+                    </div>
+                    <div className="flex items-baseline gap-1 flex-wrap">
+                        {/* Money strings run long in VND; let them shrink rather than
+                            overflow the tile on a phone. */}
+                        <span
+                            className={`text-lg sm:text-xl md:text-2xl font-bold tabular-nums break-all sm:break-normal ${accent ?? ""}`}
+                            title={value}
+                        >
+                            {value}
+                        </span>
+                        {suffix && <span className="text-xs sm:text-sm text-muted-foreground shrink-0">{suffix}</span>}
+                    </div>
                 </div>
-                <div className="flex items-baseline gap-1">
-                    {/* Money strings run long in VND; let them shrink rather than
-                        overflow the tile on a phone. */}
-                    <span className={`text-xl md:text-2xl font-bold tabular-nums truncate ${accent ?? ""}`}>
-                        {value}
-                    </span>
-                    {suffix && <span className="text-sm text-muted-foreground">{suffix}</span>}
+                <div className="mt-2 sm:mt-2.5 space-y-1.5 sm:space-y-2">
+                    {progress !== undefined && <Progress value={progress} className="h-1.5" />}
+                    {hint && (
+                        <p
+                            className="text-[11px] sm:text-xs text-muted-foreground leading-snug break-words"
+                            title={hint}
+                        >
+                            {hint}
+                        </p>
+                    )}
                 </div>
-                {progress !== undefined && <Progress value={progress} className="h-1.5 mt-2" />}
-                {hint && <p className="text-xs text-muted-foreground mt-2 truncate">{hint}</p>}
             </CardContent>
         </CardUI>
     );

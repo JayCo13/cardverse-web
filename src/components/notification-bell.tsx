@@ -13,8 +13,8 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Bell, CheckCircle, MessageCircle, Tag, Package } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { Bell, CheckCircle, MessageCircle, Tag, Package, X } from "lucide-react";
+import { formatDistanceToNowStrict } from "date-fns";
 import { enUS, ja, vi } from "date-fns/locale";
 import { useRouter } from "next/navigation";
 import { useLocalization } from "@/context/localization-context";
@@ -53,6 +53,7 @@ export function NotificationBell() {
             enableBrowser: 'ブラウザ通知を有効にする',
             browserBlocked: 'ブラウザ通知がブロックされています。ブラウザの設定で有効にしてください。',
             empty: '通知はありません',
+            delete: 'この通知を削除',
             unreadTitle: '新しい通知が{count}件あります',
         }
         : locale === 'vi-VN'
@@ -62,6 +63,7 @@ export function NotificationBell() {
                 enableBrowser: 'Bật thông báo trên trình duyệt',
                 browserBlocked: 'Thông báo trình duyệt đang bị chặn. Hãy bật lại trong cài đặt của trình duyệt.',
                 empty: 'Không có thông báo',
+                delete: 'Xoá thông báo này',
                 unreadTitle: 'Có ({count}) thông báo mới',
             }
             : {
@@ -70,6 +72,7 @@ export function NotificationBell() {
                 enableBrowser: 'Enable browser notifications',
                 browserBlocked: 'Browser notifications are blocked. Enable them in your browser settings.',
                 empty: 'No notifications',
+                delete: 'Delete this notification',
                 unreadTitle: '{count} new notification(s)',
             };
     const distanceLocale = locale === 'ja-JP' ? ja : locale === 'vi-VN' ? vi : enUS;
@@ -433,6 +436,24 @@ export function NotificationBell() {
         setNotifications(prev => prev.map(n => ({ ...n, read: true })));
     };
 
+    // Remove a single notification. Optimistic: the row disappears immediately
+    // and comes back if the server refuses the delete.
+    const deleteNotification = async (notificationId: string) => {
+        const previous = notifications;
+        setNotifications(prev => prev.filter(n => n.id !== notificationId));
+        try {
+            const response = await fetch('/api/notifications', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: notificationId }),
+            });
+            if (!response.ok) throw new Error('Could not delete notification');
+        } catch (error) {
+            console.error('Error deleting notification:', error);
+            setNotifications(previous);
+        }
+    };
+
     const unreadCount = notifications.filter((n) => !n.read).length;
 
     useEffect(() => {
@@ -528,31 +549,45 @@ export function NotificationBell() {
                             {notifications.slice(0, 10).map((notification) => {
                                 const localized = localizeSystemNotification(notification, t);
                                 return (
-                                    <button
-                                        key={notification.id}
-                                        type="button"
-                                        className={`flex w-full items-start gap-3 border-b p-4 text-left ${!notification.read ? "bg-primary/5" : ""}`}
-                                        onClick={() => void handleNotificationClick(notification)}
-                                    >
-                                        <div className="mt-0.5 flex-shrink-0">
-                                            {getNotificationIcon(notification.type)}
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                            <p className={`text-sm ${!notification.read ? "font-medium" : ""}`}>
-                                                {localized.title}
-                                            </p>
-                                            <NotificationDetails localized={localized} />
-                                            <p className="mt-1 text-xs text-muted-foreground">
-                                                {formatDistanceToNow(new Date(notification.createdAt), {
-                                                    addSuffix: true,
-                                                    locale: distanceLocale,
-                                                })}
-                                            </p>
-                                        </div>
-                                        {!notification.read && (
-                                            <div className="h-2 w-2 flex-shrink-0 rounded-full bg-primary" />
-                                        )}
-                                    </button>
+                                    <div key={notification.id} className="relative border-b">
+                                        <button
+                                            type="button"
+                                            className={`flex w-full items-start gap-3 p-4 pr-12 text-left ${!notification.read ? "bg-primary/5" : ""}`}
+                                            onClick={() => void handleNotificationClick(notification)}
+                                        >
+                                            <div className="mt-0.5 flex-shrink-0">
+                                                {getNotificationIcon(notification.type)}
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-baseline gap-2">
+                                                    <p className={`min-w-0 flex-1 truncate text-sm ${!notification.read ? "font-medium" : ""}`}>
+                                                        {localized.title}
+                                                    </p>
+                                                    <span className="flex-shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                                                        {formatDistanceToNowStrict(new Date(notification.createdAt), {
+                                                            locale: distanceLocale,
+                                                        })}
+                                                    </span>
+                                                </div>
+                                                <NotificationDetails localized={localized} />
+                                            </div>
+                                            {!notification.read && (
+                                                <div className="h-2 w-2 flex-shrink-0 rounded-full bg-primary" />
+                                            )}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            aria-label={copy.delete}
+                                            title={copy.delete}
+                                            className="absolute right-2 top-3 rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                void deleteNotification(notification.id);
+                                            }}
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </button>
+                                    </div>
                                 );
                             })}
                         </div>
@@ -567,7 +602,7 @@ export function NotificationBell() {
             <DropdownMenuTrigger asChild>
                 {notificationTrigger}
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-80">
+            <DropdownMenuContent align="end" className="w-96 max-w-[calc(100vw-2rem)]">
                 <DropdownMenuLabel className="flex items-center justify-between">
                     <span>{copy.title}</span>
                     {unreadCount > 0 && (
@@ -608,9 +643,9 @@ export function NotificationBell() {
                     <div className="max-h-80 overflow-y-auto">
                         {notifications.slice(0, 10).map((notification) => {
                             const localized = localizeSystemNotification(notification, t);
-                            return <DropdownMenuItem
-                                key={notification.id}
-                                className={`flex items-start gap-3 p-3 cursor-pointer ${!notification.read ? "bg-primary/5" : ""
+                            return <div key={notification.id} className="group relative">
+                                <DropdownMenuItem
+                                className={`flex items-start gap-3 p-3 pr-10 cursor-pointer ${!notification.read ? "bg-primary/5" : ""
                                     }`}
                                 onClick={() => handleNotificationClick(notification)}
                             >
@@ -618,21 +653,47 @@ export function NotificationBell() {
                                     {getNotificationIcon(notification.type)}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className={`text-sm ${!notification.read ? "font-medium" : ""}`}>
-                                        {localized.title}
-                                    </p>
+                                    <div className="flex items-baseline gap-2">
+                                        <p className={`min-w-0 flex-1 truncate text-sm ${!notification.read ? "font-medium" : ""}`}>
+                                            {localized.title}
+                                        </p>
+                                        <span className="flex-shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                                            {formatDistanceToNowStrict(new Date(notification.createdAt), {
+                                                locale: distanceLocale,
+                                            })}
+                                        </span>
+                                    </div>
                                     <NotificationDetails localized={localized} />
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        {formatDistanceToNow(new Date(notification.createdAt), {
-                                            addSuffix: true,
-                                            locale: distanceLocale,
-                                        })}
-                                    </p>
                                 </div>
                                 {!notification.read && (
-                                    <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
+                                    <div className="mt-1.5 h-2 w-2 flex-shrink-0 self-start rounded-full bg-primary" />
                                 )}
-                            </DropdownMenuItem>;
+                                </DropdownMenuItem>
+                                {/*
+                                  A sibling of the menu item, never a child of it.
+                                  Radix selects an item on `pointerup`, and when the
+                                  preceding `pointerdown` did not reach that item it
+                                  concludes the press began elsewhere and synthesises
+                                  `currentTarget.click()` on the item itself. So a
+                                  nested button that stops `pointerdown` — the obvious
+                                  way to keep the press to yourself — is precisely what
+                                  makes the row navigate: the click Radix fires is its
+                                  own, on the item, with nothing left to stop it.
+                                  Outside the item there is no such interaction.
+                                */}
+                                <button
+                                    type="button"
+                                    aria-label={copy.delete}
+                                    title={copy.delete}
+                                    className="absolute right-1 top-2 rounded-md p-1.5 text-muted-foreground opacity-50 hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        void deleteNotification(notification.id);
+                                    }}
+                                >
+                                    <X className="h-3.5 w-3.5" />
+                                </button>
+                            </div>;
                         })}
                     </div>
                 )}

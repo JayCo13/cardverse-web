@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
@@ -86,7 +87,7 @@ async function getUserAndCard(request: NextRequest) {
     return { supabase, user, card: card as any, error: null };
 }
 
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
     const { supabase, user, card, error } = await getUserAndCard(request);
     if (error) return error;
     if (!user || !card) {
@@ -125,7 +126,7 @@ export async function GET(request: NextRequest) {
     });
 }
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -395,3 +396,6 @@ export async function POST(request: NextRequest) {
         conversationId,
     });
 }
+
+export const GET = accountRoute(handleGET);
+export const POST = accountRoute(handlePOST);

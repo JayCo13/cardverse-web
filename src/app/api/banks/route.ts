@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextResponse } from 'next/server';
 import { getVietQrBanks } from '@/lib/vietqr';
 
@@ -6,7 +7,7 @@ import { getVietQrBanks } from '@/lib/vietqr';
 // per visitor, and so a VietQR outage surfaces as our error, not a CORS one.
 export const revalidate = 86400;
 
-export async function GET() {
+async function handleGET() {
     try {
         const banks = await getVietQrBanks();
         return NextResponse.json({
@@ -19,3 +20,5 @@ export async function GET() {
         return NextResponse.json({ error: 'Không tải được danh sách ngân hàng.' }, { status: 502 });
     }
 }
+
+export const GET = accountRoute(handleGET);

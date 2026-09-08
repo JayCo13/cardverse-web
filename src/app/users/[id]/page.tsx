@@ -195,10 +195,10 @@ export default function PublicProfilePage() {
 
     if (isLoading) {
         return (
-            <div className="container mx-auto px-4 py-8 space-y-6">
-                <Skeleton className="h-48 w-full rounded-2xl" />
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {[0, 1, 2].map((i) => <Skeleton key={i} className="h-32 rounded-xl" />)}
+            <div className="container mx-auto px-3 sm:px-4 py-6 sm:py-8 space-y-6">
+                <Skeleton className="h-40 sm:h-48 w-full rounded-2xl" />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                    {[0, 1, 2].map((i) => <Skeleton key={i} className="h-28 sm:h-32 rounded-xl" />)}
                 </div>
                 <Skeleton className="h-96 w-full rounded-xl" />
             </div>
@@ -226,7 +226,7 @@ export default function PublicProfilePage() {
                 action={chatCard ? (
                     <Button
                         variant="outline"
-                        className="shrink-0 w-full sm:w-auto border-primary text-primary hover:bg-primary/10"
+                        className="shrink-0 w-full sm:w-auto border-primary text-primary hover:bg-orange-500 hover:text-white hover:border-orange-500 transition-colors"
                         onClick={handleStartChat}
                         loading={startingChat}
                         disabled={startingChat}

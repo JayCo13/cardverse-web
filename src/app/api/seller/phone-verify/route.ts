@@ -1,9 +1,10 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createPhoneVerificationToken } from '@/lib/kyc-verification';
 import { verifyFirebasePhoneIdToken } from '@/lib/firebase-server';
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
     try {
         const supabase = await createServerSupabaseClient();
         const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -28,3 +29,5 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: error.message || 'Phone verification failed' }, { status: 500 });
     }
 }
+
+export const POST = accountRoute(handlePOST);

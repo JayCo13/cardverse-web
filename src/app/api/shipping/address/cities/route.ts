@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextResponse } from 'next/server';
 import { goshipCities } from '@/lib/goship';
 
@@ -18,7 +19,7 @@ import { goshipCities } from '@/lib/goship';
  * Proxied rather than called from the browser because the API token must not
  * leave the server, and cached hard because provinces do not move.
  */
-export async function GET() {
+async function handleGET() {
     const result = await goshipCities();
     if (!result.ok) {
         console.error('[Address] GoShip cities failed:', result.reason);
@@ -30,3 +31,5 @@ export async function GET() {
         { headers: { 'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800' } },
     );
 }
+
+export const GET = accountRoute(handleGET);

@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getRouteUser } from '@/lib/supabase/route-user';
@@ -31,7 +32,7 @@ function validate(body: AddressBody): string | null {
 }
 
 // GET — list the current user's saved addresses (default first, then newest).
-export async function GET() {
+async function handleGET() {
     const supabase = await createServerSupabaseClient();
     const user = await getRouteUser(supabase);
     if (!user) {
@@ -54,7 +55,7 @@ export async function GET() {
 
 // POST — create a new address. The first address (or one flagged is_default)
 // becomes the default; setting a new default clears the previous one.
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -112,3 +113,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ address: data }, { status: 201 });
 }
+
+export const GET = accountRoute(handleGET);
+export const POST = accountRoute(handlePOST);

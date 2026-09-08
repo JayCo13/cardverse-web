@@ -35,6 +35,10 @@ export async function announceOrderPaidInChat(
     order: PaidOrderForChat,
 ) {
     try {
+        const { data: holds, error: holdError } = await service.from('account_review_holds').select('id').eq('order_id', order.id).is('resolved_at', null).limit(1);
+        if (holdError) throw holdError;
+        if (holds?.length) return;
+
         // The conversation's natural key — the same lookup the offer routes use,
         // and backed by `conversations_context_unique (buyer_id, seller_id, card_id)`.
         const { data: conversation } = await service

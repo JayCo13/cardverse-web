@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { goshipDistricts } from '@/lib/goship';
 
@@ -5,7 +6,7 @@ import { goshipDistricts } from '@/lib/goship';
  * The districts of one city — the level Vietnam abolished in 2025 and the
  * carrier network still runs on. See the note in ../cities.
  */
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
     const cityCode = (request.nextUrl.searchParams.get('city_code') || '').trim();
     if (!/^\d{1,12}$/.test(cityCode)) {
         return NextResponse.json({ error: 'city_code is required' }, { status: 400 });
@@ -25,3 +26,5 @@ export async function GET(request: NextRequest) {
         { headers: { 'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800' } },
     );
 }
+
+export const GET = accountRoute(handleGET);

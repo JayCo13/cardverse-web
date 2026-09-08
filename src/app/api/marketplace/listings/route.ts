@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
@@ -7,7 +8,7 @@ import { resolveListingError } from '@/lib/listing-errors';
 const MIN_MARKETPLACE_PRICE_VND = 1000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
     const startedAt = performance.now();
     try {
         const authClient = await createServerSupabaseClient();
@@ -173,3 +174,5 @@ export async function POST(request: NextRequest) {
         );
     }
 }
+
+export const POST = accountRoute(handlePOST);

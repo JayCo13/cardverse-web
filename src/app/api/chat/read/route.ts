@@ -1,8 +1,9 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -52,3 +53,5 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true, readAt });
 }
+
+export const POST = accountRoute(handlePOST);

@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
@@ -18,7 +19,7 @@ const supabaseAdmin = createClient(
 // Basic email validation regex
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
     try {
         const body = await request.json();
         const { email } = body;
@@ -75,3 +76,5 @@ export async function POST(request: NextRequest) {
         );
     }
 }
+
+export const POST = accountRoute(handlePOST);

@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
@@ -5,7 +6,7 @@ import { getPayOS, PACKAGES, type PackageType } from '@/lib/payos';
 import { randomInt } from 'crypto';
 import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link-claim';
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
     try {
         const supabase = await createServerSupabaseClient();
         const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -118,3 +119,5 @@ export async function POST(request: NextRequest) {
         }, { status });
     }
 }
+
+export const POST = accountRoute(handlePOST);

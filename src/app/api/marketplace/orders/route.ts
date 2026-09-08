@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getRouteUser } from '@/lib/supabase/route-user';
@@ -119,7 +120,7 @@ async function refreshCarrierStatuses(userId: string) {
     }
 }
 
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
     try {
         const supabase = await createServerSupabaseClient();
         const user = await getRouteUser(supabase);
@@ -231,7 +232,7 @@ export async function GET(request: NextRequest) {
 }
 
 // PATCH: Update order status
-export async function PATCH(request: NextRequest) {
+async function handlePATCH(request: NextRequest) {
     try {
         const supabase = await createServerSupabaseClient();
         const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -538,3 +539,6 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
     }
 }
+
+export const GET = accountRoute(handleGET);
+export const PATCH = accountRoute(handlePATCH);
