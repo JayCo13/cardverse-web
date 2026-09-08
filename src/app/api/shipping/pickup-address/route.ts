@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServiceSupabaseClient } from '@/lib/supabase/service';
+import { quoteSellerTiers } from '@/lib/goship-tiers';
+import { SHIPPING_CARRIERS } from '@/lib/shipping-carriers';
 
 /**
  * The seller's pickup address, in GoShip's geography.
@@ -92,5 +95,40 @@ export async function PUT(request: NextRequest) {
         console.error('[Pickup] Save failed:', error.message);
         return NextResponse.json({ error: 'Không lưu được địa chỉ lấy hàng.' }, { status: 500 });
     }
+
+    // Reprice the shop from the new address.
+    //
+    // Here rather than on a schedule, because this is the only moment the
+    // answer changes: a listing's fee range is measured from where the parcel
+    // leaves, and that is what just moved. Three upstream calls, awaited so a
+    // seller who saves and looks at their listings sees the new numbers.
+    //
+    // Best-effort. A pricing refresh that fails must not undo an address that
+    // saved: the fees fall back to whatever the seller typed, which is what
+    // they were before.
+    try {
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('address_province_name')
+            .eq('id', user.id)
+            .single();
+
+        const fees = await quoteSellerTiers({
+            pickup: { city: parsed.value.city, district: parsed.value.district },
+            provinceName: (profile as { address_province_name: string | null } | null)?.address_province_name,
+            allowedCarriers: SHIPPING_CARRIERS.map((c) => c.code).filter((c) => c !== 'self'),
+        });
+
+        if (Object.keys(fees).length > 0) {
+            const service = createServiceSupabaseClient();
+            await service
+                .from('profiles')
+                .update({ goship_tier_fees: fees, goship_tier_fees_at: new Date().toISOString() } as never)
+                .eq('id', user.id);
+        }
+    } catch (repriceError) {
+        console.error('[Pickup] Could not reprice tiers:', repriceError);
+    }
+
     return NextResponse.json({ data: parsed.value });
 }

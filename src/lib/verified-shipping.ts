@@ -14,6 +14,17 @@ type CheapestConfiguredShippingQuoteInput = Omit<ConfiguredShippingQuoteInput, '
 type SellerShippingProfile = {
   shipping_carriers: string[] | null;
   shipping_fees: ShopShippingFees | null;
+  /**
+   * The same shape, quoted from GoShip against the seller's real pickup
+   * address. Preferred over shipping_fees wherever it covers the carrier being
+   * quoted: those are nine numbers a seller guessed, these are what the parcel
+   * costs.
+   *
+   * Per carrier, not all or nothing — GoShip does not reach every carrier from
+   * every province, and falling back for one should not discard the real prices
+   * for the others.
+   */
+  goship_tier_fees?: ShopShippingFees | null;
   address_province_id: number | null;
   address_province_name: string | null;
 };
@@ -26,13 +37,28 @@ export async function quoteConfiguredShipping(input: ConfiguredShippingQuoteInpu
   const service = createServiceSupabaseClient();
   const { data, error } = await service
     .from('profiles')
-    .select('shipping_carriers, shipping_fees, address_province_id, address_province_name')
+    .select('shipping_carriers, shipping_fees, goship_tier_fees, address_province_id, address_province_name')
     .eq('id', input.sellerId)
     .single<SellerShippingProfile>();
 
   if (error || !data) throw new Error('seller_shipping_configuration_missing');
 
   return configuredShippingFromProfile(input, data);
+}
+
+
+/**
+ * The fees to charge from, real ones where they exist.
+ *
+ * Merged per carrier rather than chosen wholesale: GoShip does not reach every
+ * carrier from every province — a seller in Tây Ninh is offered no SPX where
+ * one in Ho Chi Minh City is — and falling back for that carrier should not
+ * throw away the real prices for the others.
+ */
+function effectiveFees(data: SellerShippingProfile): ShopShippingFees {
+  const typed = (data.shipping_fees ?? {}) as ShopShippingFees;
+  const real = (data.goship_tier_fees ?? {}) as ShopShippingFees;
+  return { ...typed, ...real };
 }
 
 function configuredShippingFromProfile(input: ConfiguredShippingQuoteInput, data: SellerShippingProfile): number {
@@ -58,7 +84,7 @@ function configuredShippingFromProfile(input: ConfiguredShippingQuoteInput, data
       provinceName: input.toProvinceName,
     },
   );
-  const fee = data.shipping_fees?.[carrier]?.[tier];
+  const fee = effectiveFees(data)?.[carrier]?.[tier];
   // Same bounds the shop form enforces. A row outside them predates the rule
   // (or was written around the form) and must not become a buyer's charge.
   if (!isValidShippingFee(fee)) {
@@ -83,7 +109,7 @@ export async function quoteCheapestConfiguredShipping(
   const service = createServiceSupabaseClient();
   const { data, error } = await service
     .from('profiles')
-    .select('shipping_carriers, shipping_fees, address_province_id, address_province_name')
+    .select('shipping_carriers, shipping_fees, goship_tier_fees, address_province_id, address_province_name')
     .eq('id', input.sellerId)
     .single<SellerShippingProfile>();
 
@@ -122,7 +148,7 @@ export async function quoteCheckoutConfiguredShippingBatch(
   const service = createServiceSupabaseClient();
   const { data, error } = await service
     .from('profiles')
-    .select('id, display_name, shipping_carriers, shipping_fees, address_province_id, address_province_name')
+    .select('id, display_name, shipping_carriers, shipping_fees, goship_tier_fees, address_province_id, address_province_name')
     .in('id', [...new Set(inputs.map(input => input.sellerId))])
     .returns<(SellerShippingProfile & { id: string; display_name: string | null })[]>();
   // A failed query says nothing about any seller's configuration.
@@ -176,7 +202,7 @@ function cheapestConfiguredShippingFromProfile(
   );
   const carriers = (Array.isArray(data.shipping_carriers) ? data.shipping_carriers : [])
     .filter((carrier): carrier is string => typeof carrier === 'string' && carrier !== 'self');
-  const option = cheapestTierOption(data.shipping_fees, carriers, tier);
+  const option = cheapestTierOption(effectiveFees(data), carriers, tier);
   if (option === null) throw new Error('shipping_fee_not_configured');
 
   return option;
