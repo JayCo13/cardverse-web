@@ -17,7 +17,6 @@ import { optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
 import { getCarrier, getTrackingUrl, getDeliveryDays, SHIPPING_CARRIERS, sellerSuppliesTracking } from '@/lib/shipping-carriers';
 import { VerifiedSellerBadge } from '@/components/verified-seller-badge';
 import { UserLink } from '@/components/user-link';
-import { ParcelTrackingDialog } from '@/components/parcel-tracking-dialog';
 import { PackingVideoField } from '@/components/packing-video-field';
 import { getCloudinarySignature, uploadVideoDirectToCloudinary } from '@/lib/cloudinary-direct';
 import {
@@ -581,14 +580,7 @@ export default function OrderDetailsPage() {
         </DialogContent>
       </Dialog>
 
-      <ParcelTrackingDialog
-        open={trackOpen}
-        onOpenChange={setTrackOpen}
-        orderId={id}
-        locale={locale}
-        title={tx('Theo dõi đơn', 'Track parcel', '配送を追跡')}
-        closeLabel={tx('Đóng', 'Close', '閉じる')}
-      />
+      
 
     </div>
   );

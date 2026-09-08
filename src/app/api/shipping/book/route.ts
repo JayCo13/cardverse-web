@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { goshipCreateShipment } from '@/lib/goship';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
+import { isEvidenceVideoUrl } from '@/lib/evidence-video';
 
 /**
  * Book a parcel with a carrier.
@@ -155,9 +156,20 @@ export async function POST(request: NextRequest) {
         // Service role: the seller may write this column on their own order,
         // but the write must not depend on a policy that could change under it.
         const service = createServiceSupabaseClient();
+        // The packing video rides along with the booking now. It used to be
+        // uploaded on the old ship form, which this replaces, and it is what
+        // dispute_evidence_verdict reads as the seller's side of the story —
+        // losing it with the form would have quietly weakened every dispute.
+        const raw = body?.packingVideoUrl;
+        const packingVideoUrl = isEvidenceVideoUrl(raw, process.env.CLOUDINARY_CLOUD_NAME)
+            ? (raw as string) : null;
+
         const { error: linkError } = await service
             .from('orders')
-            .update({ goship_code: gcode } as never)
+            .update({
+                goship_code: gcode,
+                ...(packingVideoUrl ? { seller_packing_video_url: packingVideoUrl } : {}),
+            } as never)
             .eq('id', order.id)
             .is('goship_code', null);
 

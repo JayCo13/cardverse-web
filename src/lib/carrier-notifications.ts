@@ -5,9 +5,9 @@ import { sendOrderInTransitEmail, sendOrderDeliveredEmail } from '@/lib/mail';
 /**
  * Statuses that mean the parcel is physically moving.
  *
- * 17TRACK reports both, in that order, and the buyer only needs to hear "it is
- * on its way" once — so the mail goes out on the transition into this set, not
- * on every event inside it.
+ * A carrier reports both, in that order, and the buyer only needs to hear "it
+ * is on its way" once — so the mail goes out on the transition into this set,
+ * not on every event inside it.
  */
 const MOVING_STATUSES = new Set(['InTransit', 'OutForDelivery']);
 
@@ -21,12 +21,11 @@ export type CarrierEventResult = {
 /**
  * Tell the buyer their parcel moved, for whichever path noticed.
  *
- * Three things call apply_carrier_tracking_event now — the 17TRACK webhook, the
- * tracking dialog reconciling on open, and the orders page refreshing what it
- * is about to show. Only the webhook used to send mail, so a status change that
- * the webhook missed and a backstop caught would update the screen and tell the
- * buyer nothing. The decision belongs with the event, not with the route that
- * happened to see it.
+ * Kept apart from the route that receives the event so the decision travels
+ * with the event rather than with whichever path noticed it. That mattered when
+ * three paths could apply a status and only one of them mailed; it still holds
+ * now that GoShip's webhook is the only one, because the next path added should
+ * not have to remember.
  *
  * Driven by the RPC's own result rather than by a status the caller read
  * beforehand: the row can move between a caller's read and its write, and the

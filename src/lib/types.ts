@@ -128,7 +128,7 @@ export interface Notification {
     card_name?: string;
     event?: string;
     /**
-     * Which carrier state the parcel reached, normalised across the 17TRACK
+     * Which carrier state the parcel reached, normalised across the carrier
      * and legacy GHN vocabularies by `snapshot_notification_context()`.
      * Absent when the status has no wording of its own to show.
      */

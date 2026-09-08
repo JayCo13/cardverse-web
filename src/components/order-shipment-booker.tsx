@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AlertCircle, Loader2, Truck } from 'lucide-react';
 import { useLocalization } from '@/context/localization-context';
+import { PackingVideoField } from '@/components/packing-video-field';
 
 /**
  * Create the waybill for one paid order.
@@ -94,6 +95,9 @@ export function OrderShipmentBooker({
     const [busy, setBusy] = useState(false);
     const [bookingId, setBookingId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    // Evidence, carried over from the ship form this replaces:
+    // dispute_evidence_verdict reads it as the seller's side of the story.
+    const [packingVideo, setPackingVideo] = useState<string | null>(null);
 
     const quote = useCallback(async () => {
         if (!destination) return;
@@ -139,6 +143,7 @@ export function OrderShipmentBooker({
                     weight: Number(weight) || 200,
                     declaredValue: Number(declared) || defaultDeclaredValue,
                     to: destination,
+                    packingVideoUrl: packingVideo,
                 }),
             });
             const body = await res.json();
@@ -191,6 +196,8 @@ export function OrderShipmentBooker({
                                     <p className="text-xs text-muted-foreground">{copy.declaredHint}</p>
                                 </div>
                             </div>
+
+                            <PackingVideoField value={packingVideo} onChange={setPackingVideo} locale={locale} />
 
                             {error && (
                                 <p className="flex items-center gap-2 text-sm text-destructive">
