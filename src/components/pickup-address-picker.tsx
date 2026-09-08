@@ -8,7 +8,11 @@ import { AlertCircle, Loader2 } from 'lucide-react';
 import { useLocalization } from '@/context/localization-context';
 
 /**
- * Where a courier collects from, picked in the courier's own geography.
+ * The sender block on a waybill, picked in the carrier's own geography.
+ *
+ * Not a pickup request. Most Vietnamese sellers drop parcels at a branch rather
+ * than wait for a courier, so this is what gets printed on the label and where
+ * a failed delivery returns to — which the carrier needs either way.
  *
  * Deliberately not AddressPicker. That one serves the structure Vietnam
  * actually has since Nghị quyết 202/2025/QH15 — 34 provinces, no districts —
@@ -40,7 +44,7 @@ const COPY = {
         street: 'Địa chỉ cụ thể', streetPlaceholder: 'Số nhà, tên đường...',
         name: 'Tên người gửi', phone: 'Số điện thoại',
         loading: 'Đang tải...', loadError: 'Không tải được danh sách. Thử lại sau.',
-        note: 'Danh mục địa giới do đơn vị vận chuyển cung cấp nên có thể khác địa chỉ trong hồ sơ của bạn. Chọn theo đúng nơi shipper đến lấy hàng.',
+        note: 'Danh mục địa giới do đơn vị vận chuyển cung cấp nên có thể khác địa chỉ trong hồ sơ của bạn. Chọn theo địa chỉ bạn muốn in trên vận đơn — bạn vẫn có thể mang hàng ra bưu cục gửi.',
         phoneHint: 'Bắt đầu bằng 0, 9-11 chữ số.',
     },
     'en-US': {
@@ -49,7 +53,7 @@ const COPY = {
         street: 'Street address', streetPlaceholder: 'House number, street...',
         name: 'Sender name', phone: 'Phone number',
         loading: 'Loading...', loadError: 'Could not load the list. Try again later.',
-        note: "These divisions come from the carrier, so they may differ from the address on your profile. Pick where the courier actually collects.",
+        note: 'These divisions come from the carrier, so they may differ from the address on your profile. Pick the address to print on the waybill — you can still drop the parcel off at a branch.',
         phoneHint: 'Starts with 0, 9-11 digits.',
     },
     'ja-JP': {
@@ -58,7 +62,7 @@ const COPY = {
         street: '詳細住所', streetPlaceholder: '番地、通り名...',
         name: '差出人名', phone: '電話番号',
         loading: '読み込み中...', loadError: 'リストを取得できませんでした。',
-        note: 'この行政区分は配送業者のもので、プロフィールの住所と異なる場合があります。集荷先に合わせて選んでください。',
+        note: 'この行政区分は配送業者のもので、プロフィールの住所と異なる場合があります。送り状に印字する住所を選んでください。窓口へ持ち込むこともできます。',
         phoneHint: '0で始まる9〜11桁。',
     },
 } as const;
