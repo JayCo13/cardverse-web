@@ -759,6 +759,7 @@ export default function OrdersPage() {
                     orderId={order.id}
                     destination={order.to_goship}
                     defaultDeclaredValue={order.amount}
+                    buyerPaidShipping={order.shipping_fee}
                     onBooked={() => { void fetchOrders(activeTab); }}
                   />
                 )}

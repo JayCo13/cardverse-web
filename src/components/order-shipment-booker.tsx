@@ -29,6 +29,7 @@ type Rate = {
 
 const COPY = {
     'vi-VN': {
+        buyerPaid: 'Người mua đã trả', youPay: 'Bạn trả thêm', youKeep: 'Bạn dư',
         title: 'Tạo vận đơn', open: 'Tạo vận đơn',
         desc: 'Chọn đơn vị vận chuyển. Sau khi tạo, bạn mang mã ra bưu cục gửi hoặc chờ shipper tới lấy.',
         weight: 'Cân nặng (gram)', declared: 'Khai giá (đ)',
@@ -41,6 +42,7 @@ const COPY = {
         success: 'giao thành công',
     },
     'en-US': {
+        buyerPaid: 'Buyer paid', youPay: 'You cover', youKeep: 'You keep',
         title: 'Create waybill', open: 'Create waybill',
         desc: 'Pick a carrier. Once created, drop the parcel off with the code or wait for the courier.',
         weight: 'Weight (grams)', declared: 'Declared value (đ)',
@@ -53,6 +55,7 @@ const COPY = {
         success: 'delivered',
     },
     'ja-JP': {
+        buyerPaid: '購入者支払い', youPay: '差額負担', youKeep: '差額',
         title: '送り状を作成', open: '送り状を作成',
         desc: '配送業者を選んでください。作成後は窓口へ持ち込むか集荷をお待ちください。',
         weight: '重量（グラム）', declared: '申告価格（đ）',
@@ -70,12 +73,15 @@ export function OrderShipmentBooker({
     orderId,
     destination,
     defaultDeclaredValue,
+    buyerPaidShipping,
     onBooked,
 }: {
     orderId: string;
     /** The order's to_goship. Null means it predates the carrier ids. */
     destination: { city: string; district: string; ward: string } | null;
     defaultDeclaredValue: number;
+    /** What the buyer already paid for shipping on this order. */
+    buyerPaidShipping: number;
     onBooked: (gcode: string) => void;
 }) {
     const { locale } = useLocalization();
@@ -203,6 +209,12 @@ export function OrderShipmentBooker({
                             )}
 
                             {rates && rates.length > 0 && (
+                                <p className="text-xs text-muted-foreground">
+                                    {copy.buyerPaid}: <span className="text-foreground">{buyerPaidShipping.toLocaleString('vi-VN')}đ</span>
+                                </p>
+                            )}
+
+                            {rates && rates.length > 0 && (
                                 <ul className="divide-y divide-border/60 rounded-md border border-border/60">
                                     {rates.map((r) => (
                                         <li key={r.id} className="flex items-center justify-between gap-3 p-3 text-sm">
@@ -215,9 +227,21 @@ export function OrderShipmentBooker({
                                                 </p>
                                             </div>
                                             <div className="flex shrink-0 items-center gap-3">
-                                                <span className="font-semibold text-orange-400">
-                                                    {r.totalFee.toLocaleString('vi-VN')}đ
-                                                </span>
+                                                <div className="text-right">
+                                                    <span className="font-semibold text-orange-400">
+                                                        {r.totalFee.toLocaleString('vi-VN')}đ
+                                                    </span>
+                                                    {/* The seller's GoShip account is billed, not the
+                                                        buyer's payment, so the gap between the two is
+                                                        theirs either way. Shown per option because it
+                                                        is what makes one carrier cheaper than another
+                                                        for them, not for the buyer. */}
+                                                    <p className={`text-xs ${r.totalFee > buyerPaidShipping ? 'text-amber-400' : 'text-green-400'}`}>
+                                                        {r.totalFee > buyerPaidShipping
+                                                            ? `${copy.youPay} ${(r.totalFee - buyerPaidShipping).toLocaleString('vi-VN')}đ`
+                                                            : `${copy.youKeep} ${(buyerPaidShipping - r.totalFee).toLocaleString('vi-VN')}đ`}
+                                                    </p>
+                                                </div>
                                                 <Button size="sm" disabled={!!bookingId}
                                                     onClick={() => book(r)}>
                                                     {bookingId === r.id
