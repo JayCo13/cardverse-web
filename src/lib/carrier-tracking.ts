@@ -36,10 +36,19 @@ const CARRIER_CODES: Record<string, number> = {
 export const trackableCarrier = (code: string | null | undefined): boolean =>
     !!code && code in CARRIER_CODES;
 
-/** 17TRACK's nine main statuses. */
+/**
+ * The statuses this app stores against an order.
+ *
+ * The first nine are 17TRACK's. `Delayed` is not: GoShip reports a parcel that
+ * has missed its schedule (code 915) and neither of the alternatives told the
+ * truth — `Exception` reads as "Có sự cố" and alarms a buyer whose parcel is
+ * merely late, `InTransit` hides that the carrier itself has flagged it. It is
+ * additive and nothing compares against it: only `Delivered` decides money.
+ */
 export type CarrierStatus =
     | 'NotFound' | 'InfoReceived' | 'InTransit' | 'Expired' | 'AvailableForPickup'
-    | 'OutForDelivery' | 'DeliveryFailure' | 'Delivered' | 'Exception';
+    | 'OutForDelivery' | 'DeliveryFailure' | 'Delivered' | 'Exception'
+    | 'Delayed';
 
 /**
  * Register a tracking number so the service starts following it.

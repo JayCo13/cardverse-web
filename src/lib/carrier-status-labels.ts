@@ -5,7 +5,7 @@
  * 17TRACK and reads the API key, so importing it from a client component would
  * pull server code into the browser bundle. These are only strings.
  *
- * The nine keys are the statuses 17TRACK reports. Anything outside them
+ * The keys are the statuses 17TRACK reports, plus Delayed from GoShip. Anything outside them
  * resolves to null, and the caller decides what to show instead — a status we
  * cannot name is better left blank than printed raw.
  */
@@ -19,6 +19,9 @@ export const CARRIER_STATUS_LABELS: Record<string, { vi: string; en: string; ja:
   DeliveryFailure: { vi: 'Giao không thành công', en: 'Delivery failed', ja: '配達失敗' },
   Exception: { vi: 'Có sự cố', en: 'Exception', ja: '異常' },
   Expired: { vi: 'Quá hạn theo dõi', en: 'Tracking expired', ja: '追跡期限切れ' },
+  // Not a 17TRACK status: GoShip flags a parcel behind schedule, which is
+  // neither an exception nor plain transit. See CarrierStatus.
+  Delayed: { vi: 'Chậm lấy/giao', en: 'Delayed', ja: '集荷/配達の遅延' },
 };
 
 export function carrierStatusLabel(status: string | null | undefined, locale: string): string | null {

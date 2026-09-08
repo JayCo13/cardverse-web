@@ -38,7 +38,7 @@ const STATUS_BY_CODE: Record<number, CarrierStatus> = {
     912: 'Delivered',         // Chờ thanh toán COD
     913: 'Delivered',         // Hoàn thành
     914: 'Exception',         // Đơn hủy
-    915: 'Exception',         // Chậm lấy/giao
+    915: 'Delayed',           // Chậm lấy/giao — late, not broken; see CarrierStatus
     916: 'Exception',         // Giao hàng một phần — see the note above
     917: 'Exception',         // Thất lạc hàng
     918: 'InTransit',         // Đang lưu kho
