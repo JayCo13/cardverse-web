@@ -97,7 +97,12 @@ async function call<T>(
                 : JSON.stringify(raw ?? {}).slice(0, 300);
             return { ok: false, reason: detail || `http_${response.status}` };
         }
-        return { ok: true, data: payload.data as T };
+        // Most endpoints wrap their answer in `data`; creating a shipment does
+        // not — it returns the shipment at the root. Reading `data` blindly
+        // yielded undefined there, which looked like a booking that produced no
+        // code rather than one this code could not read.
+        const unwrapped = (payload as { data?: unknown }).data;
+        return { ok: true, data: (unwrapped === undefined ? payload : unwrapped) as T };
     } catch (error) {
         return { ok: false, reason: error instanceof Error ? error.message : 'request_failed' };
     }
@@ -209,6 +214,16 @@ export async function goshipRates(input: {
  * This is the one call here that costs money and sends a courier to a seller's
  * door. Nothing calls it yet.
  */
+export type GoshipCreatedShipment = {
+    /** GoShip's own code — the key their webhooks are matched on. */
+    id?: string;
+    /** The carrier's own number, available immediately rather than on a push. */
+    tracking_number?: string;
+    /** GoShip's carrier code, e.g. `ghnv3`. */
+    carrier_short_name?: string;
+    shipment_status?: number;
+};
+
 export async function goshipCreateShipment(input: {
     from: GoshipAddress;
     to: GoshipAddress;
@@ -221,7 +236,7 @@ export async function goshipCreateShipment(input: {
     /** Handling instructions printed for the courier. */
     note?: string;
 }) {
-    return call<Record<string, unknown>>('/shipments', {
+    return call<GoshipCreatedShipment>('/shipments', {
         method: 'POST',
         body: {
             shipment: {

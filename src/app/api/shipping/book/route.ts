@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { goshipCreateShipment } from '@/lib/goship';
+import { goshipCreateShipment, goshipCarrierToApp } from '@/lib/goship';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { isEvidenceVideoUrl } from '@/lib/evidence-video';
 
@@ -162,12 +162,26 @@ export async function POST(request: NextRequest) {
 
     // GoShip's own code for the shipment. This, not the carrier's number, is
     // what their webhooks are matched on.
-    const created = result.data as Record<string, unknown>;
+    const created = result.data as {
+        id?: string; gcode?: string; tracking_number?: string; carrier_short_name?: string;
+    };
     const gcode = typeof created?.id === 'string' ? created.id
         : typeof created?.gcode === 'string' ? created.gcode
             : null;
 
-    if (order && gcode) {
+    // A booking that produced no code we can recognise is not a success. The
+    // parcel exists upstream and nothing here can match its events, so say so
+    // loudly rather than answering 200 with a null — which is how the first
+    // real booking got lost.
+    if (!gcode) {
+        console.error('[Book] No shipment code in GoShip response:', JSON.stringify(created).slice(0, 400));
+        return NextResponse.json(
+            { error: 'Đã tạo vận đơn nhưng không đọc được mã. Liên hệ hỗ trợ.', code: 'no_gcode' },
+            { status: 502 },
+        );
+    }
+
+    if (order) {
         // Service role: the seller may write this column on their own order,
         // but the write must not depend on a policy that could change under it.
         const service = createServiceSupabaseClient();
@@ -186,6 +200,11 @@ export async function POST(request: NextRequest) {
                 // Remember the ids for this order, so a retry or a later read
                 // does not depend on the form that supplied them.
                 to_goship: { city: dest.city, district: dest.district, ward: dest.ward },
+                // Both arrive with the booking, so the buyer has a number to
+                // look up before any webhook fires.
+                ...(created.tracking_number ? { tracking_number: created.tracking_number } : {}),
+                ...(created.carrier_short_name
+                    ? { shipping_provider: goshipCarrierToApp(created.carrier_short_name) } : {}),
                 ...(packingVideoUrl ? { seller_packing_video_url: packingVideoUrl } : {}),
             } as never)
             .eq('id', order.id)
