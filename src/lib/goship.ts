@@ -6,15 +6,25 @@
  * we issued, on a carrier we chose, with webhooks addressed to us — none of
  * which is true of a number a seller types into a form.
  *
- * Everything below was read off the live API rather than off documentation
- * (doc.goship.io publishes no endpoint reference, and its webhook page 404s).
- * Where a shape is asserted here, it was confirmed by calling the endpoint;
+ * Everything below was read off the live API rather than off documentation,
+ * because the reference was not found at first. It does exist, under
+ * doc.goship.io/api/shipment/*, and it says one thing the responses do not:
+ * creating a shipment "returns HTTP 200 OK regardless of failure", with the
+ * real outcome arriving later by webhook. A 200 here is therefore an
+ * acknowledgement, not a booking.
+ *
+ * Where a shape is asserted below, it was confirmed by calling the endpoint;
  * where it was not, the function says so.
  */
 
 const BASE_URL = 'https://api.goship.io/api/v2';
 
-/** Sandbox rejects this token, so there is one environment and it is live. */
+/**
+ * The live token. Sandbox is a real environment — sandbox.goship.io answers,
+ * and every example in the documentation is written against it — but it
+ * rejects this token, so it takes credentials of its own that we do not have.
+ * Until then every test booking here is a real waybill.
+ */
 const token = () => process.env.GOSHIP_API?.trim() || '';
 
 export type GoshipAddress = {
