@@ -20,7 +20,7 @@ import { useRouter } from "next/navigation";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { getCategoryCode } from "@/lib/category-code";
 import { getCarrier } from "@/lib/shipping-carriers";
-import { shopShippingRange } from "@/lib/shipping-fee";
+import { listingShippingFee } from "@/lib/shipping-fee";
 import { UserLink } from "@/components/user-link";
 import { ReputationBadge } from '@/components/reputation-badge';
 import { NewSellerFrame } from '@/components/new-seller-frame';
@@ -160,6 +160,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
         available: '在庫あり',
         payment: '支払い',
         shipping: '配送',
+        freeShipping: '送料無料',
         ghnReady: 'GHN対応',
         price: '価格',
         lastSold: '直近販売',
@@ -188,6 +189,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           available: 'có sẵn',
           payment: 'Thanh toán',
           shipping: 'Vận chuyển',
+          freeShipping: 'Miễn phí',
           ghnReady: 'Sẵn sàng GHN',
           price: 'Giá',
           lastSold: 'Đã bán gần nhất',
@@ -215,6 +217,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           available: 'available',
           payment: 'Payment',
           shipping: 'Ship',
+          freeShipping: 'Free',
           ghnReady: 'GHN ready',
           price: 'Price',
           lastSold: 'Last sold',
@@ -551,27 +554,15 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                 PayOS / Wallet
               </span>
               {(() => {
-                const carriers = (card.shippingCarriers || []).filter(c => c !== 'self');
-                const range = shopShippingRange(card.shippingFees, carriers);
-                if (!card.shippingCarriers || card.shippingCarriers.length === 0) return null;
+                // One number, set by the seller on this listing. Free is worth
+                // saying in words rather than as "0đ": it is the thing a buyer
+                // scanning a grid is looking for.
+                const fee = listingShippingFee(card.shippingFee);
                 return (
                   <span className="inline-flex items-center gap-1.5">
                     <span>{copy.shipping}:</span>
-                    {range && (
-                      <span className="font-medium text-foreground">
-                        {range.min === range.max
-                          ? `${range.min.toLocaleString('vi-VN')}đ`
-                          : `${range.min.toLocaleString('vi-VN')}–${range.max.toLocaleString('vi-VN')}đ`}
-                      </span>
-                    )}
-                    <span className="flex items-center gap-1">
-                      {card.shippingCarriers.map(code => {
-                        const c = getCarrier(code);
-                        return c?.logo ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img key={code} src={c.logo} alt={c.short} title={c.name} className="h-4 w-4 rounded-sm" />
-                        ) : null;
-                      })}
+                    <span className={`font-medium ${fee === 0 ? 'text-green-400' : 'text-foreground'}`}>
+                      {fee === 0 ? copy.freeShipping : `${fee.toLocaleString('vi-VN')}đ`}
                     </span>
                   </span>
                 );

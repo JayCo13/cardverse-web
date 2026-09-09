@@ -113,3 +113,24 @@ export const carrierShortLabels = (codes: string[] | null | undefined): string =
     .map((c) => getCarrier(c)?.short)
     .filter(Boolean)
     .join(', ');
+
+/**
+ * Where to send someone to follow a parcel, or null when nowhere yet.
+ *
+ * The stored link first, because GoShip gives the right one and gives it only
+ * once the carrier has accepted the shipment. Before that there is genuinely
+ * nothing to track: GoShip reports carrier_code and tracking_url both null, its
+ * own tracker does not know the shipment either, and a link built from the
+ * carrier plus GoShip's code sends the buyer to a 404.
+ *
+ * So null is an answer, not a gap — the caller shows no button rather than a
+ * broken one.
+ */
+export const parcelTrackingUrl = (
+  carrier: string | null | undefined,
+  trackingNumber: string | null | undefined,
+  carrierTrackingUrl: string | null | undefined,
+): string | null => {
+  if (carrierTrackingUrl) return carrierTrackingUrl;
+  return trackingNumber ? getTrackingUrl(carrier, trackingNumber) : null;
+};

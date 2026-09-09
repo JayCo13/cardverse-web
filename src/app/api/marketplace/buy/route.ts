@@ -37,6 +37,29 @@ type WalletOrderResult = {
     replayed: boolean;
 };
 
+/**
+ * File the carrier's ids for the delivery address onto a new order.
+ *
+ * Written after the order exists rather than inside the RPC that creates it.
+ * That function moves money and is the one this codebase guards hardest; a
+ * snapshot of three address ids is not a reason to reopen it. Nothing needs
+ * these until the seller books a waybill, which is hours later, and an order
+ * that lacks them asks the seller to supply them rather than losing anything.
+ */
+async function attachGoshipDestination(
+    service: ReturnType<typeof createServiceSupabaseClient>,
+    orderId: unknown,
+    destination: { city: string; district: string; ward: string } | null,
+) {
+    if (!destination || typeof orderId !== 'string') return;
+    const { error } = await service
+        .from('orders')
+        .update({ to_goship: destination } as never)
+        .eq('id', orderId)
+        .is('to_goship', null);
+    if (error) console.error('[Buy] Could not attach GoShip destination:', error.message);
+}
+
 async function handlePOST(request: NextRequest) {
     try {
         const supabase = await createServerSupabaseClient();
@@ -56,7 +79,29 @@ async function handlePOST(request: NextRequest) {
             to_province_id, to_province_name,
             to_ward_code, to_ward_name,
             to_address_detail,
+            to_goship,
         } = body;
+
+        /**
+         * GoShip's own ids for the delivery address, if the buyer picked them.
+         *
+         * Not derived from to_province_id / to_ward_code and never can be:
+         * those are the 2025 structure and GoShip routes on the pre-2025 one.
+         * Optional for now — an order without them simply cannot have a waybill
+         * booked through GoShip until the buyer supplies them.
+         */
+        const goshipDestination = (() => {
+            const g = to_goship as { city?: unknown; district?: unknown; ward?: unknown } | null | undefined;
+            if (!g || typeof g !== 'object') return null;
+            const id = /^[0-9]{1,12}$/;
+            const city = String(g.city ?? '').trim();
+            const district = String(g.district ?? '').trim();
+            const ward = String(g.ward ?? '').trim();
+            // All three or none: a partial set looks bookable and is not.
+            return id.test(city) && id.test(district) && id.test(ward)
+                ? { city, district, ward }
+                : null;
+        })();
 
         if (!card_id || !payment_method) {
             return NextResponse.json({ error: 'card_id and payment_method are required' }, { status: 400 });
@@ -106,6 +151,7 @@ async function handlePOST(request: NextRequest) {
             to_ward_code,
             to_ward_name,
             to_address_detail,
+            to_goship: goshipDestination,
             bundle_selection: selection,
         });
         const service = createServiceSupabaseClient();
@@ -230,6 +276,7 @@ async function handlePOST(request: NextRequest) {
         try {
             shippingFee = await quoteConfiguredShipping({
                 sellerId: card.seller_id,
+                cardIds: [card.id],
                 carrier: String(clientCarrier || ''),
                 toProvinceId: Number(to_province_id),
                 toProvinceName: String(to_province_name),
@@ -319,6 +366,8 @@ async function handlePOST(request: NextRequest) {
             const order = walletResult.orders?.[0];
             if (!order) throw new Error('Atomic wallet order did not return an order');
 
+            await attachGoshipDestination(service, (order as any).id, goshipDestination);
+
             const soldLabel = isBundle ? `${selection.length} cards from bundle "${card.name}"` : `Card "${card.name}"`;
             const { error: notificationError } = await service.from('notifications').insert({
                 user_id: card.seller_id,
@@ -404,6 +453,8 @@ async function handlePOST(request: NextRequest) {
             if (stageError || !paymentOrder || !order) {
                 throw stageError || new Error('Could not stage PayOS marketplace checkout');
             }
+            await attachGoshipDestination(service, (order as Record<string, unknown>).id, goshipDestination);
+
             const persistedOrderCode = Number(paymentOrder.order_code);
             if (paymentOrder.payos_checkout_url) {
                 return NextResponse.json({

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AddressPicker, type AddressData } from '@/components/address-picker';
+import { GoshipRegionPicker, type GoshipRegion } from '@/components/goship-region-picker';
 import { useToast } from '@/hooks/use-toast';
 import { useLocalization } from '@/context/localization-context';
 import {
@@ -22,6 +23,15 @@ export type SavedAddress = {
     ward_name: string;
     detail: string;
     is_default: boolean;
+    /**
+     * The carrier's own ids for this address, when the buyer has picked them.
+     *
+     * Never derived from province_id/ward_code: those are the 2025 structure
+     * and GoShip routes on the pre-2025 one, so a translation books a courier
+     * to the wrong city. Null means this address cannot have a waybill booked
+     * against it yet.
+     */
+    goship: { city: string; district: string; ward: string } | null;
 };
 
 type AddressBookProps = {
@@ -38,9 +48,10 @@ type FormState = {
     phone: string;
     address: AddressData | null;
     isDefault: boolean;
+    goship: GoshipRegion | null;
 };
 
-const emptyForm: FormState = { name: '', phone: '', address: null, isDefault: false };
+const emptyForm: FormState = { name: '', phone: '', address: null, goship: null, isDefault: false };
 
 export function AddressBook({ selectable = false, selectedId, onSelect, onAddressesChange }: AddressBookProps) {
     const { toast } = useToast();
@@ -71,6 +82,8 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
             delete: '削除',
             addNew: '新しい住所を追加',
             detailPlaceholder: '番地、通り名...',
+                goshipTitle: '配送業者の行政区分（送り状作成用）',
+                goshipHint: 'この区分は配送業者のもので、上の住所と異なる場合があります。任意です。',
           }
         : locale === 'vi-VN'
             ? {
@@ -98,6 +111,8 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                 delete: 'Xóa',
                 addNew: 'Thêm địa chỉ mới',
                 detailPlaceholder: 'Số nhà, tên đường...',
+                  goshipTitle: 'Địa giới theo đơn vị vận chuyển (để đặt vận đơn qua sàn)',
+                  goshipHint: 'Danh mục này do đơn vị vận chuyển cung cấp nên có thể khác địa chỉ ở trên. Không bắt buộc — chỉ cần khi đặt vận đơn qua sàn.',
               }
             : {
                 missingTitle: 'Missing information',
@@ -124,6 +139,8 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                 delete: 'Delete',
                 addNew: 'Add new address',
                 detailPlaceholder: 'Street number, street name...',
+                goshipTitle: 'Carrier divisions (for platform booking)',
+                goshipHint: 'These come from the carrier and may differ from the address above. Optional — needed only to book a waybill through the platform.',
               };
     const [addresses, setAddresses] = useState<SavedAddress[]>([]);
     const [loading, setLoading] = useState(true);
@@ -185,10 +202,15 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
             // The picker will set this only after confirming that the saved
             // province/ward still belongs to the current official dataset.
             address: null,
+            goship: addr.goship,
             isDefault: addr.is_default,
         });
         setMode('form');
     };
+
+    const handleGoshipChange = useCallback((region: GoshipRegion | null) => {
+        setForm(f => ({ ...f, goship: region }));
+    }, []);
 
     const handleAddressChange = useCallback((addr: AddressData | null) => {
         setForm(f => ({ ...f, address: addr }));
@@ -212,6 +234,9 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                 ward_code: form.address.wardCode,
                 ward_name: form.address.wardName,
                 detail: form.address.detail,
+                // Null unless all three were chosen. Two of three is not an
+                // address, and storing it would look bookable.
+                goship: form.goship,
                 is_default: form.isDefault,
             };
             const res = await fetch(
@@ -335,6 +360,28 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
                     onChange={handleAddressChange}
                     detailPlaceholder={copy.detailPlaceholder}
                 />
+
+                {/* The same address again, in the carrier's geography.
+                    Two pickers because the two disagree about the country:
+                    above is the 2025 structure — 34 provinces, no districts —
+                    and this is the pre-2025 one GoShip still routes on. They
+                    are never translated into each other; Ho Chi Minh City now
+                    holds wards that GoShip files under a province of their own,
+                    so a name match would send a courier to the wrong city and
+                    report success.
+
+                    Optional: an address without it still works everywhere
+                    except booking a waybill through the platform. */}
+                <div className="rounded-lg border border-border/60 p-3 space-y-2">
+                    <p className="text-sm font-medium">{copy.goshipTitle}</p>
+                    <p className="text-xs text-muted-foreground">{copy.goshipHint}</p>
+                    <GoshipRegionPicker
+                        key={`goship-${editing?.id ?? 'new'}`}
+                        idPrefix={`ab-${editing?.id ?? 'new'}`}
+                        value={editing?.goship ?? null}
+                        onChange={handleGoshipChange}
+                    />
+                </div>
 
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                     <input

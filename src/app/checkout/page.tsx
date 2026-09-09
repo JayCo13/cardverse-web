@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AddressBook, type SavedAddress } from "@/components/address-book";
-import { resolveShippingTier, shippableCarriers, isValidShippingFee } from "@/lib/shipping-fee";
+import { parcelShippingFee } from "@/lib/shipping-fee";
 import { getCarrier } from "@/lib/shipping-carriers";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -41,6 +41,8 @@ type CheckoutItem = {
     /** Already derived; null when the query carried no reputation columns. */
     sellerStanding?: ReputationStanding | null;
     sellerVerified?: boolean | null;
+    /** What the seller charges to send this listing. 0 is free, null falls back. */
+    listingShippingFee?: number | null;
   /** For a bundle offer: exactly which cards this payment buys. */
   bundleSelection?: { title?: string; price?: number }[] | null;
   };
@@ -91,7 +93,8 @@ export default function CheckoutPage() {
       emptyTitle: "Không có sản phẩm để checkout",
       backToCart: "Về giỏ hàng",
       shippingAddress: "Địa chỉ nhận hàng",
-      shippingCarrier: "Chọn đơn vị vận chuyển",
+      shippingCarrier: "Phí vận chuyển",
+      shippingNote: "Người bán chọn đơn vị vận chuyển khi gửi hàng.",
       groupedShippingHint: "Gộp chung lô · Phí ship chỉ tính một lần cho người bán này.",
       missingPickup: "Một số seller chưa cập nhật địa chỉ gửi hàng. Vui lòng chọn sản phẩm khác hoặc liên hệ seller.",
       products: "Sản phẩm",
@@ -141,7 +144,8 @@ export default function CheckoutPage() {
         emptyTitle: "チェックアウトする商品がありません",
         backToCart: "カートへ戻る",
         shippingAddress: "配送先住所",
-        shippingCarrier: "配送業者を選択",
+        shippingCarrier: "送料",
+        shippingNote: "配送業者は出品者が発送時に選びます。",
         groupedShippingHint: "同梱配送 · この販売者の送料は一度だけ加算されます。",
         missingPickup: "一部の販売者が発送元住所を未設定です。別の商品を選ぶか販売者に連絡してください。",
         products: "商品",
@@ -190,7 +194,8 @@ export default function CheckoutPage() {
         emptyTitle: "No items to checkout",
         backToCart: "Back to cart",
         shippingAddress: "Shipping address",
-        shippingCarrier: "Choose a shipping carrier",
+        shippingCarrier: "Shipping",
+        shippingNote: "The seller picks the carrier when they ship.",
         groupedShippingHint: "Combined shipment · Shipping is charged once for this seller.",
         missingPickup: "Some sellers have not added a pickup address. Please choose another item or contact the seller.",
         products: "Products",
@@ -275,6 +280,7 @@ export default function CheckoutPage() {
           sellerAvatarUrl: item.cards.profiles?.profile_image_url || null,
           sellerStanding: standingFromProfile(item.cards.profiles as Record<string, unknown> | null),
           sellerVerified: item.cards.profiles?.seller_verified ?? false,
+          listingShippingFee: typeof item.cards.shipping_fee === 'number' ? item.cards.shipping_fee : null,
         },
         amount: Number(item.cards.price || 0),
         shippingFee: null,
@@ -337,6 +343,7 @@ export default function CheckoutPage() {
         sellerAvatarUrl: card.profiles?.profile_image_url || null,
         sellerStanding: standingFromProfile(card.profiles as Record<string, unknown> | null),
         sellerVerified: card.profiles?.seller_verified ?? false,
+        listingShippingFee: typeof card.shipping_fee === 'number' ? card.shipping_fee : null,
         bundleSelection: Array.isArray(row.bundle_selection) ? row.bundle_selection : null,
       },
       amount: Number(row.price || 0),
@@ -379,33 +386,30 @@ export default function CheckoutPage() {
     setShippingOptions({});
     try {
       const sellerIds = [...new Set(currentItems.map(item => item.card.sellerId))];
+      // The seller still has to have somewhere for a courier to collect from,
+      // which is the only thing left worth reading. The price no longer depends
+      // on the seller, the carrier, or how far the parcel goes.
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, shipping_carriers, shipping_fees, address_province_id, address_province_name')
+        .select('id, address_province_id, address_province_name')
         .in('id', sellerIds);
       if (error) throw error;
       if (requestId !== feeRequestRef.current) return;
 
       const feeBySeller = new Map<string, number | null>();
       const nextOptions: Record<string, { carrier: string; fee: number }[]> = {};
-      const nextCarriers: Record<string, string> = {};
-      (data || []).forEach((p: any) => {
-        const tier = resolveShippingTier(
-          { provinceId: p.address_province_id, provinceName: p.address_province_name },
-          { provinceId: address.province_id, provinceName: address.province_name },
-        );
-        const options = shippableCarriers(p.shipping_carriers).flatMap(carrier => {
-          const fee = p.shipping_fees?.[carrier]?.[tier];
-          return isValidShippingFee(fee) ? [{ carrier, fee }] : [];
-        }).sort((a, b) => a.fee - b.fee);
-        const selected = options.find(option => option.carrier === selectedCarriersRef.current[p.id]) || options[0];
-        nextOptions[p.id] = options;
-        if (selected) nextCarriers[p.id] = selected.carrier;
-        feeBySeller.set(p.id, selected?.fee ?? null);
+      (data || []).forEach((p: { id: string; address_province_id: number | null; address_province_name: string | null }) => {
+        const canCollect = !!p.address_province_id && !!p.address_province_name?.trim();
+        nextOptions[p.id] = [];
+        // One parcel per seller, priced from the listings bought from them.
+        // The server recomputes this the same way; what is shown here is a
+        // preview of that, not the figure the order is charged.
+        const fees = currentItems
+          .filter(item => item.card.sellerId === p.id)
+          .map(item => item.card.listingShippingFee);
+        feeBySeller.set(p.id, canCollect ? parcelShippingFee(fees) : null);
       });
       setShippingOptions(nextOptions);
-      selectedCarriersRef.current = nextCarriers;
-      setSelectedCarriers(nextCarriers);
 
       // Shipping is charged once per seller, so only the first item of each
       // seller carries the fee — but an unconfigured seller poisons every one of
@@ -448,22 +452,6 @@ export default function CheckoutPage() {
     return () => { ++feeRequestRef.current; };
   }, [calculateFees, isLoadingData, checkoutItemsKey, selectedAddress]);
 
-  const selectCarrier = (sellerId: string, carrier: string) => {
-    const option = shippingOptions[sellerId]?.find(option => option.carrier === carrier);
-    if (!option || isLoadingFee || isPaying) return;
-    const nextCarriers = { ...selectedCarriersRef.current, [sellerId]: carrier };
-    selectedCarriersRef.current = nextCarriers;
-    setSelectedCarriers(nextCarriers);
-    setItems(current => {
-      let charged = false;
-      return current.map(item => {
-        if (item.card.sellerId !== sellerId) return item;
-        const shippingFee = charged ? 0 : option.fee;
-        charged = true;
-        return { ...item, shippingFee };
-      });
-    });
-  };
 
   const subtotal = useMemo(() => items.reduce((sum, item) => sum + item.amount, 0), [items]);
   const shippingTotal = useMemo(() => items.reduce((sum, item) => sum + (item.shippingFee || 0), 0), [items]);
@@ -538,6 +526,9 @@ export default function CheckoutPage() {
           to_ward_code: selectedAddress.ward_code,
           to_ward_name: selectedAddress.ward_name,
           to_address_detail: selectedAddress.detail,
+          // Null until the buyer picks them; an order without these simply
+          // cannot have a GoShip waybill booked until they do.
+          to_goship: selectedAddress.goship ?? null,
           // Filtered, not interpolated: addresses saved since the district
           // tier was abolished have no district, and a template leaves ", ,".
           shipping_address: [selectedAddress.detail, selectedAddress.ward_name, selectedAddress.district_name, selectedAddress.province_name].filter(Boolean).join(', '),
@@ -644,22 +635,13 @@ export default function CheckoutPage() {
                         {isLoadingFee ? <p role="status" className="text-sm text-muted-foreground">{copy.calculating}</p> : !selectedAddress ? (
                           <p className="text-sm text-muted-foreground">{copy.chooseAddressForFee}</p>
                         ) : (
-                          <RadioGroup aria-labelledby={`shipping-heading-${group.id}`} value={selectedCarriers[group.id] || ""} onValueChange={carrier => selectCarrier(group.id, carrier)} disabled={isPaying} className="gap-2">
-                            {(shippingOptions[group.id] || []).map(option => {
-                              const carrier = getCarrier(option.carrier);
-                              const selected = selectedCarriers[group.id] === option.carrier;
-                              return (
-                                <label key={option.carrier} className={`flex min-h-14 cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-3 transition-colors focus-within:ring-2 focus-within:ring-orange-400/60 sm:gap-3 ${selected ? "border-orange-500 bg-orange-500/10" : "border-zinc-800 bg-background/30 hover:border-zinc-600 hover:bg-muted/30"} ${isPaying ? "pointer-events-none opacity-60" : ""}`}>
-                                  <RadioGroupItem value={option.carrier} id={`carrier-${group.id}-${option.carrier}`} className="shrink-0" />
-                                  {carrier?.logo ? (
-                                    <Image src={carrier.logo} alt="" width={32} height={32} className="h-8 w-8 shrink-0 rounded-lg object-contain" />
-                                  ) : <Truck aria-hidden="true" className="h-8 w-8 shrink-0 text-muted-foreground" />}
-                                  <span className="min-w-0 flex-1 text-sm font-medium leading-5">{carrier?.name || option.carrier}</span>
-                                  <span className={`shrink-0 whitespace-nowrap text-sm font-semibold tabular-nums ${selected ? "text-orange-300" : "text-foreground"}`}>{formatVND(option.fee)}</span>
-                                </label>
-                              );
-                            })}
-                          </RadioGroup>
+                          <div className="flex min-h-14 items-center gap-2.5 rounded-xl border border-zinc-800 bg-background/30 px-3 py-3 sm:gap-3">
+                            <Truck aria-hidden="true" className="h-8 w-8 shrink-0 text-muted-foreground" />
+                            <span className="min-w-0 flex-1 text-sm leading-5 text-muted-foreground">{copy.shippingNote}</span>
+                            <span className="shrink-0 whitespace-nowrap text-sm font-semibold tabular-nums text-foreground">
+                              {formatVND((shippingOptions[group.id] || [])[0]?.fee ?? 0)}
+                            </span>
+                          </div>
                         )}
                       </div>
 

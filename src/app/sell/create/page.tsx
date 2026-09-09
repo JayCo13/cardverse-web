@@ -3,7 +3,6 @@
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
-import { hasUsableShipping } from '@/lib/shipping-fee';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -157,6 +156,12 @@ type LocaleCopy = {
   acceptOffersDesc: string;
   bundleOfferNote: string;
   minOffer: string;
+  shippingTitle: string;
+  shippingHint: string;
+  shippingFeeLabel: string;
+  freeShippingLabel: string;
+  freeShippingHint: string;
+  shippingCostNote: string;
   acceptAllOffers: string;
   nearOriginalPrice: string;
   payoutNote: string;
@@ -276,6 +281,12 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       acceptOffersDesc: '購入者が価格提案を送れるようにします',
       bundleOfferNote: 'オファーはセット全体（ロット単位）に適用され、カード単位ではありません。',
       minOffer: 'この割合未満のオファーは受けない',
+      shippingTitle: '送料',
+      shippingHint: '購入者が支払う金額です。実際の配送料がこれを上回った分は、あなたの受取額から差し引かれます。',
+      shippingFeeLabel: '送料（đ）',
+      freeShippingLabel: '送料無料',
+      freeShippingHint: '配送料は全額あなたの負担になります。商品価格に含めてください。',
+      shippingCostNote: '実際の配送料の目安：カード1枚（200g）でベトナム国内 15.400〜18.900đ。申告価格が 2.500.000đ を超えると保険料が約 25.000đ 加算されます。',
       acceptAllOffers: 'すべてのオファーを受ける',
       nearOriginalPrice: '元値に近いオファーのみ',
       payoutNote: '売上に関する注意',
@@ -395,6 +406,12 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       acceptOffersDesc: 'Cho phép người mua gửi đề nghị giá cho thẻ này',
       bundleOfferNote: 'Offer áp dụng cho CẢ LÔ (toàn bộ bundle), không theo từng thẻ.',
       minOffer: 'Không nhận offer dưới',
+      shippingTitle: 'Phí vận chuyển',
+      shippingHint: 'Số tiền người mua trả. Nếu cước thật cao hơn mức này, phần vượt sẽ trừ vào tiền bạn nhận được.',
+      shippingFeeLabel: 'Phí ship người mua trả (đ)',
+      freeShippingLabel: 'Miễn phí vận chuyển',
+      freeShippingHint: 'Bạn chịu toàn bộ cước. Nhớ tính sẵn vào giá bán.',
+      shippingCostNote: 'Cước thật tham khảo: một thẻ (200g) gửi trong nước 15.400–18.900đ tuỳ nơi gửi. Khai giá trên 2.500.000đ hãng thu thêm khoảng 25.000đ bảo hiểm.',
       acceptAllOffers: 'Nhận mọi offer',
       nearOriginalPrice: 'Chỉ nhận gần giá gốc',
       payoutNote: 'Lưu ý về tiền bán',
@@ -513,6 +530,12 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
     acceptOffersDesc: 'Allow buyers to send price offers for this card',
     bundleOfferNote: 'Offers apply to the WHOLE LOT (entire bundle), not per card.',
     minOffer: 'Do not accept offers below',
+    shippingTitle: 'Shipping',
+    shippingHint: 'What the buyer pays. If the carrier costs more than this, the difference comes off your payout.',
+    shippingFeeLabel: 'Shipping charged to the buyer (đ)',
+    freeShippingLabel: 'Free shipping',
+    freeShippingHint: 'You carry the whole carrier bill. Price it into the item.',
+    shippingCostNote: 'For reference: one card (200g) costs 15,400–18,900đ to send anywhere in Vietnam. Declared value above 2,500,000đ adds about 25,000đ of insurance.',
     acceptAllOffers: 'Accept all offers',
     nearOriginalPrice: 'Only near original price',
     payoutNote: 'Seller payout note',
@@ -631,6 +654,17 @@ const getFormSchema = (copy: LocaleCopy) => z.object({
   ),
   description: z.string().min(DESCRIPTION_MIN, { message: copy.descriptionMin }).max(DESCRIPTION_MAX, { message: copy.descriptionMax }),
   images: z.array(z.instanceof(File)).min(1, copy.minImages).max(4, copy.maxImages),
+  // Shipping the buyer pays. Free is a choice, so 0 is valid and distinct
+  // from "not answered" — the form always sends a number.
+  freeShipping: z.boolean().default(false),
+  shippingFee: z.preprocess(
+    (a) => {
+      if (typeof a === 'number') return a;
+      if (typeof a === 'string') return parseInt(a.replace(/[^\d]/g, ''), 10) || 0;
+      return 0;
+    },
+    z.number().int().min(0).max(99999).default(25000),
+  ),
   // Offer settings
   acceptOffers: z.boolean().default(false),
   minOfferPercent: z.preprocess(
@@ -710,7 +744,6 @@ export default function CreateListingPage() {
   const [isCheckingSellerAccess, setIsCheckingSellerAccess] = useState(true);
   const [hasSellerAccess, setHasSellerAccess] = useState(false);
   const [hasPickupAddress, setHasPickupAddress] = useState(false);
-  const [hasShippingConfig, setHasShippingConfig] = useState(false);
   const supabase = useSupabase();
 
   const copy = getLocaleCopy(locale);
@@ -742,6 +775,8 @@ export default function CreateListingPage() {
       isBundle: false,
       acceptOffers: false,
       minOfferPercent: 0,
+      freeShipping: false,
+      shippingFee: 25000,
       freePublisher: "",
       freeSetName: "",
       freeSeason: "",
@@ -951,14 +986,13 @@ export default function CreateListingPage() {
         // filling in the whole form only to be refused at the end.
         const { data: profile } = await supabase
           .from('profiles')
-          .select('address_province_id, address_ward_code, shipping_carriers, shipping_fees')
+          .select('address_province_id, address_ward_code')
           .eq('id', user.id)
           .single();
         const p = profile as Record<string, any> | null;
         // Province + ward: the district column is null on anything saved
         // since that tier was abolished, so it can no longer gate this.
         setHasPickupAddress(!!(p?.address_province_id && p?.address_ward_code));
-        setHasShippingConfig(hasUsableShipping(p?.shipping_fees, p?.shipping_carriers));
       } catch {
         setHasSellerAccess(false);
         router.replace('/sell');
@@ -1362,6 +1396,9 @@ export default function CreateListingPage() {
         grading_company: values.gradingCompany,
         grade: values.gradingCompany !== 'raw' ? values.grade : null,
         finish: values.finish,
+        // Free shipping is zero, not absent: the seller chose to carry the
+        // carrier bill themselves, and settlement nets it off their payout.
+        shipping_fee: values.freeShipping ? 0 : (values.shippingFee ?? 25000),
       };
 
       // Add offer fields if enabled
@@ -1525,32 +1562,6 @@ export default function CreateListingPage() {
               submitLabel={copy.saveAndContinue}
               onSaved={() => setHasPickupAddress(true)}
             />
-          </div>
-        </div>
-      );
-    }
-
-    // Carriers and fees are the other half. The form is long, so refusing here
-    // beats letting a seller fill all of it and rejecting the submit — which is
-    // what the API would otherwise do. Configured on /sell, not inline, because
-    // it is a shop-wide setting rather than a per-listing one.
-    if (!hasShippingConfig) {
-      return (
-        <div className="space-y-6 py-4">
-          <div className="flex flex-col items-center text-center">
-            <div className="h-14 w-14 rounded-full bg-orange-500/10 flex items-center justify-center mb-3">
-              <Truck className="h-7 w-7 text-orange-500" />
-            </div>
-            <h2 className="text-2xl font-semibold mb-1">{copy.addShipping}</h2>
-            <p className="text-muted-foreground max-w-md">{copy.addShippingDesc}</p>
-            <Button
-              type="button"
-              className="mt-6 bg-orange-500 hover:bg-orange-600"
-              onClick={() => router.push('/sell#shop-shipping')}
-            >
-              {copy.addShipping}
-              <ArrowRight className="ml-2 h-4 w-4" aria-hidden />
-            </Button>
           </div>
         </div>
       );
@@ -2485,6 +2496,59 @@ export default function CreateListingPage() {
                   </FormItem>
                 )}
               />
+
+              {/* Shipping the seller sets. Its own card rather than a line in
+                  the price group: it is the one number here the seller pays for
+                  getting wrong, since anything the carrier charges above it
+                  comes off their payout. */}
+              <div className="space-y-3 rounded-lg border border-border/60 bg-background/50 p-4">
+                <div>
+                  <p className="text-sm font-medium">{copy.shippingTitle}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{copy.shippingHint}</p>
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="freeShipping"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center justify-between gap-3 space-y-0">
+                      <div className="min-w-0">
+                        <FormLabel className="text-sm font-medium">{copy.freeShippingLabel}</FormLabel>
+                        {field.value && (
+                          <p className="mt-0.5 text-xs text-amber-400">{copy.freeShippingHint}</p>
+                        )}
+                      </div>
+                      <FormControl>
+                        <Switch checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
+                {!form.watch('freeShipping') && (
+                  <FormField
+                    control={form.control}
+                    name="shippingFee"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{copy.shippingFeeLabel}</FormLabel>
+                        <FormControl>
+                          <Input
+                            inputMode="numeric"
+                            value={Number(field.value || 0).toLocaleString('vi-VN')}
+                            onChange={(e) => field.onChange(parseInt(e.target.value.replace(/[^\d]/g, ''), 10) || 0)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                <p className="border-t border-border/60 pt-3 text-xs leading-5 text-muted-foreground">
+                  {copy.shippingCostNote}
+                </p>
+              </div>
 
               {isBundle && (
                 <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-600">

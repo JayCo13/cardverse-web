@@ -6,16 +6,60 @@
  * we issued, on a carrier we chose, with webhooks addressed to us — none of
  * which is true of a number a seller types into a form.
  *
- * Everything below was read off the live API rather than off documentation
- * (doc.goship.io publishes no endpoint reference, and its webhook page 404s).
- * Where a shape is asserted here, it was confirmed by calling the endpoint;
+ * Everything below was read off the live API rather than off documentation,
+ * because the reference was not found at first. It does exist, under
+ * doc.goship.io/api/shipment/*, and it says one thing the responses do not:
+ * creating a shipment "returns HTTP 200 OK regardless of failure", with the
+ * real outcome arriving later by webhook. A 200 here is therefore an
+ * acknowledgement, not a booking.
+ *
+ * Where a shape is asserted below, it was confirmed by calling the endpoint;
  * where it was not, the function says so.
  */
 
-const BASE_URL = 'https://api.goship.io/api/v2';
+/**
+ * Which GoShip account this process talks to.
+ *
+ * Sandbox is a genuinely separate installation with its own credentials — its
+ * own token, its own client secret, its own shipments — reached at a different
+ * host. Its city ids are identical to the live ones (700000 is Ho Chi Minh City
+ * in both), so addresses collected against one resolve against the other.
+ *
+ * That similarity is exactly why the host and the token are returned together
+ * and never read apart. A live token against the sandbox host is a 401, which
+ * is merely annoying; the reverse pairing would be a real waybill created by
+ * something that believed it was rehearsing. Nothing in this file may pick one
+ * without the other.
+ */
+export type GoshipEnv = 'sandbox' | 'live';
 
-/** Sandbox rejects this token, so there is one environment and it is live. */
-const token = () => process.env.GOSHIP_API?.trim() || '';
+export const goshipEnv = (): GoshipEnv =>
+    process.env.GOSHIP_ENV?.trim().toLowerCase() === 'sandbox' ? 'sandbox' : 'live';
+
+const environment = (): { env: GoshipEnv; baseUrl: string; token: string } =>
+    goshipEnv() === 'sandbox'
+        ? {
+            env: 'sandbox',
+            baseUrl: 'https://sandbox.goship.io/api/v2',
+            token: process.env.GOSHIP_API_SANDBOX?.trim() || '',
+        }
+        : {
+            env: 'live',
+            baseUrl: 'https://api.goship.io/api/v2',
+            token: process.env.GOSHIP_API?.trim() || '',
+        };
+
+/**
+ * The secret GoShip signs its webhooks with, for one environment.
+ *
+ * Each account has its own, so an event signed by sandbox will not verify
+ * against the live secret. The webhook route needs to check both, because both
+ * accounts point at the same public URL.
+ */
+export const goshipClientSecret = (env: GoshipEnv): string =>
+    (env === 'sandbox'
+        ? process.env.GOSHIP_SANDBOX_CLIENT_SECRET
+        : process.env.GOSHIP_CLIENT_SECRET)?.trim() || '';
 
 export type GoshipAddress = {
     /** GoShip's own ids, from cities/districts/wards — not the app's. */
@@ -68,13 +112,26 @@ type GoshipEnvelope<T> = { code?: number; status?: string; data?: T; message?: s
 
 async function call<T>(
     path: string,
-    init: { method?: 'GET' | 'POST'; body?: unknown; timeoutMs?: number } = {},
+    init: {
+        method?: 'GET' | 'POST';
+        body?: unknown;
+        timeoutMs?: number;
+        /**
+         * Read the answer from the root of the response instead of `data`.
+         *
+         * Creating a shipment returns both: an envelope with `data` set to an
+         * empty array, and the shipment's own fields beside it. Guessing from
+         * the shape does not work — `data: []` is also what an empty list looks
+         * like — so the caller says which it expects.
+         */
+        root?: boolean;
+    } = {},
 ): Promise<{ ok: true; data: T } | { ok: false; reason: string }> {
-    const bearer = token();
+    const { baseUrl, token: bearer } = environment();
     if (!bearer) return { ok: false, reason: 'not_configured' };
 
     try {
-        const response = await fetch(`${BASE_URL}${path}`, {
+        const response = await fetch(`${baseUrl}${path}`, {
             method: init.method ?? 'GET',
             headers: {
                 Authorization: `Bearer ${bearer}`,
@@ -97,7 +154,7 @@ async function call<T>(
                 : JSON.stringify(raw ?? {}).slice(0, 300);
             return { ok: false, reason: detail || `http_${response.status}` };
         }
-        return { ok: true, data: payload.data as T };
+        return { ok: true, data: (init.root ? payload : payload.data) as T };
     } catch (error) {
         return { ok: false, reason: error instanceof Error ? error.message : 'request_failed' };
     }
@@ -132,6 +189,12 @@ export async function goshipRates(input: {
     from: Pick<GoshipAddress, 'city' | 'district'>;
     to: Pick<GoshipAddress, 'city' | 'district'>;
     parcel: GoshipParcel;
+    /**
+     * Declared value, in VND. Carriers charge for it above a threshold — SPX a
+     * flat 25,000đ, GHN half a percent — so a quote taken without it is not the
+     * price of a booking made with it.
+     */
+    declaredValue?: number;
 }): Promise<{ ok: true; rates: GoshipRate[] } | { ok: false; reason: string }> {
     type Raw = {
         id: string;
@@ -149,7 +212,11 @@ export async function goshipRates(input: {
             shipment: {
                 address_from: { city: input.from.city, district: input.from.district },
                 address_to: { city: input.to.city, district: input.to.district },
-                parcel: input.parcel,
+                parcel: {
+                    ...input.parcel,
+                    cod: 0,
+                    amount: Math.max(0, Math.round(input.declaredValue ?? 0)),
+                },
             },
         },
     });
@@ -176,27 +243,130 @@ export async function goshipRates(input: {
  * and passing an unknown id with "Không tìm thấy dịch vụ phù hợp". Quotes go
  * stale, so re-quote rather than storing an id for later.
  *
+ * `declaredValue` is sent as `parcel.amount` — khai giá, the figure a carrier
+ * pays out when a parcel is lost, and the one the API reference names.
+ *
+ * It has a price. Above a threshold the carrier charges for it, and the
+ * threshold and the rate are the carrier's own: SPX adds a flat 25,000đ over
+ * roughly two million, GHN charges half a percent with no flat step. So a quote
+ * taken without a declared value is not the price of a booking made with one,
+ * which is why goshipRates takes it too.
+ *
+ * Required rather than optional: a parcel booked at zero is one the carrier
+ * owes nothing for, and that should be a decision somebody wrote down.
+ *
+ * `orderId` rides along as GoShip's `order_id`. If their webhook echoes it, an
+ * event identifies its order outright instead of being matched on a tracking
+ * number — which is the whole class of bug that has three orders on this
+ * database sharing one number today.
+ *
+ * `payer: 1` is the sender. The buyer has already paid shipping into escrow, so
+ * the parcel must not arrive asking them for it again.
+ *
  * This is the one call here that costs money and sends a courier to a seller's
  * door. Nothing calls it yet.
  */
+export type GoshipCreatedShipment = {
+    /** GoShip's own code — the key their webhooks are matched on. */
+    id?: string;
+    /** The carrier's own number, available immediately rather than on a push. */
+    tracking_number?: string;
+    /** GoShip's carrier code, e.g. `ghnv3`. */
+    carrier_short_name?: string;
+    shipment_status?: number;
+};
+
 export async function goshipCreateShipment(input: {
     from: GoshipAddress;
     to: GoshipAddress;
     parcel: GoshipParcel;
     rateId: string;
+    /** VND. What the carrier owes if the parcel never arrives. */
+    declaredValue: number;
+    /** Our own order id, echoed back on GoShip's events if they carry it. */
+    orderId?: string;
+    /** Handling instructions printed for the courier. */
+    note?: string;
 }) {
-    return call<Record<string, unknown>>('/shipments', {
+    return call<GoshipCreatedShipment>('/shipments', {
+        // The shipment comes back at the root, beside an empty `data`.
+        root: true,
         method: 'POST',
         body: {
             shipment: {
                 address_from: input.from,
                 address_to: input.to,
-                parcel: input.parcel,
+                parcel: {
+                    ...input.parcel,
+                    // Never collect on delivery: everything here is paid before
+                    // the parcel moves, and a courier asking for money again
+                    // would be charging twice.
+                    cod: 0,
+                    amount: Math.max(0, Math.round(input.declaredValue)),
+                    ...(input.note ? { metadata: input.note } : {}),
+                },
                 rate: input.rateId,
+                payer: 1,
+                ...(input.orderId ? { order_id: input.orderId } : {}),
             },
         },
         timeoutMs: 9_000,
     });
+}
+
+/**
+ * The shipment already booked against one of our orders, if there is one.
+ *
+ * Creating a shipment is not idempotent and the call is not reliable: GoShip
+ * can accept a booking and answer slower than the function is allowed to wait,
+ * leaving a real parcel upstream and an order that knows nothing about it. That
+ * is what order_id is for — it is our id, echoed back, and it is the only way
+ * to recognise our own shipment after the answer was lost.
+ *
+ * Filtered here as well as in the query string: the parameter may or may not be
+ * honoured, and a wrong match would attach somebody else's parcel to this
+ * order.
+ */
+export async function goshipFindShipmentByOrderId(orderId: string) {
+    const result = await call<Array<Record<string, unknown>>>(
+        `/shipments?order_id=${encodeURIComponent(orderId)}`,
+        { timeoutMs: 5_000 },
+    );
+    if (!result.ok) return result;
+    const match = (result.data ?? []).find((row) => row?.order_id === orderId) ?? null;
+    return { ok: true as const, data: match as GoshipCreatedShipment | null };
+}
+
+/**
+ * One shipment and everything GoShip knows about its journey.
+ *
+ * Read on demand rather than from what the webhooks left behind: an order row
+ * holds only the latest status, and somebody asking "where is my parcel" is
+ * asking for the sequence. GoShip keeps the whole history against the shipment,
+ * so it is fetched when someone looks instead of mirrored into a table that
+ * could fall behind.
+ *
+ * Matched on GoShip's own code, which is what identifies a shipment to them —
+ * the carrier's number does not exist until the carrier accepts it.
+ */
+export async function goshipShipmentByCode(gcode: string) {
+    const result = await call<Array<Record<string, unknown>>>(
+        `/shipments?code=${encodeURIComponent(gcode)}`,
+        { timeoutMs: 6_000 },
+    );
+    if (!result.ok) return result;
+    const match = (result.data ?? []).find((row) => row?.id === gcode) ?? null;
+    return { ok: true as const, data: match as (GoshipCreatedShipment & {
+        status_code?: number;
+        status_text?: string;
+        status_desc?: string;
+        carrier_name?: string;
+        carrier_code?: string | null;
+        tracking_url?: string | null;
+        total_fee?: number;
+        expected_delivery_date?: string;
+        history?: Array<{ status?: number; status_text?: string; status_desc?: string; message?: string | null; updated_at?: string; updated_time?: number }>;
+    }) | null };
 }
 
 /**

@@ -6,6 +6,12 @@ import { findProvince, findWard } from '@/lib/vn-address';
 type AddressBody = {
     recipient_name?: string;
     phone?: string;
+    /**
+     * GoShip's own city/district/ward ids. Never derived from the fields below:
+     * GoShip routes on the pre-2025 structure and those are the 34-province
+     * one, so a translated id books a courier to the wrong city.
+     */
+    goship?: { city?: string; district?: string; ward?: string } | null;
     province_id?: number;
     province_name?: string;
     /** @deprecated No district level since 1/7/2025. Null on anything saved now. */
@@ -100,6 +106,24 @@ async function handlePATCH(
         updates.ward_code = ward.code.toString();
         updates.ward_name = ward.name;
         updates.detail = detail!.trim();
+    }
+    if (body.goship !== undefined) {
+        // Explicit null clears it. A partial object is treated as no address at
+        // all rather than stored: half a set of ids looks bookable and is not.
+        const g = body.goship;
+        const id3 = /^[0-9]{1,12}$/;
+        const city = String(g?.city ?? '').trim();
+        const district = String(g?.district ?? '').trim();
+        const ward = String(g?.ward ?? '').trim();
+        updates.goship = id3.test(city) && id3.test(district) && id3.test(ward)
+            ? { city, district, ward }
+            : null;
+    }
+    // Moving the address invalidates ids picked for the old one. Clearing is
+    // the safe direction: an unbookable address asks the buyer to choose again,
+    // where a stale one sends a courier somewhere they no longer live.
+    if (validatesAddress && province && ward && body.goship === undefined) {
+        updates.goship = null;
     }
     if (body.is_default !== undefined) updates.is_default = body.is_default;
 

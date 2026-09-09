@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { LiveClock } from '@/components/live-clock';
+import { OrderShippingDesk } from '@/components/order-shipping-desk';
+import { ShipmentTrackingDialog } from '@/components/shipment-tracking-dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -14,12 +16,11 @@ import { useLocalization } from '@/context/localization-context';
 import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { useToast } from '@/hooks/use-toast';
 import { optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
-import { getCarrier, getTrackingUrl, getDeliveryDays, SHIPPING_CARRIERS, sellerSuppliesTracking } from '@/lib/shipping-carriers';
+import { getCarrier, getTrackingUrl, getDeliveryDays, parcelTrackingUrl, SHIPPING_CARRIERS, sellerSuppliesTracking } from '@/lib/shipping-carriers';
 import { VerifiedSellerBadge } from '@/components/verified-seller-badge';
 import { ReputationBadge } from '@/components/reputation-badge';
 import { NewSellerFrame } from '@/components/new-seller-frame';
 import { UserLink } from '@/components/user-link';
-import { ParcelTrackingDialog } from '@/components/parcel-tracking-dialog';
 import { PackingVideoField } from '@/components/packing-video-field';
 import { getCloudinarySignature, uploadVideoDirectToCloudinary } from '@/lib/cloudinary-direct';
 import {
@@ -84,13 +85,22 @@ export default function OrderDetailsPage() {
 
   const isBuyer = role === 'buyer';
   const carrier = order ? getCarrier(order.metadata?.shipping_carrier) : undefined;
-  const trackingUrl = order ? getTrackingUrl(order.metadata?.shipping_carrier, order.tracking_number) : null;
+  // shipping_provider first: it is the carrier actually booked, kept in step by
+  // GoShip's webhooks, where metadata holds whatever checkout guessed before
+  // the buyer stopped choosing one.
+  const trackingUrl = order
+    ? parcelTrackingUrl(order.shipping_provider || order.metadata?.shipping_carrier, order.tracking_number, order.carrier_tracking_url)
+    : null;
+  // The only thing that widens this page. A buyer, or a seller whose waybill
+  // already exists, has nothing to put in a second column — and a lone narrow
+  // column adrift in a wide page reads as a layout mistake.
+  const showDesk = !!order && !isBuyer && order.status === 'paid' && !order.goship_code;
   const bundleSel: { title: string; price: number }[] = Array.isArray(order?.metadata?.bundle_selection) ? order.metadata.bundle_selection : [];
   const counterparty = order ? (isBuyer ? order.seller : order.buyer) : null;
   const counterpartyId: string | null = counterparty?.id ?? null;
 
   // Shipping timing (from carrier pickup → delivery estimate).
-  const estDays = order ? getDeliveryDays(order.metadata?.shipping_carrier || order.shipping_provider) : null;
+  const estDays = order ? getDeliveryDays(order.shipping_provider || order.metadata?.shipping_carrier) : null;
   // The order escalates to admin review at auto_complete_at if the buyer never
   // confirms (money is held, not paid to the seller). Nudge the buyer as that
   // deadline approaches (within the last 2 days).
@@ -100,17 +110,17 @@ export default function OrderDetailsPage() {
   // Actions + confirm dialog.
   const [acting, setActing] = useState(false);
   const [confirm, setConfirm] = useState<{ action: string; title: string; message: string; extra?: any } | null>(null);
-  const [shipOpen, setShipOpen] = useState(false);
-  const [trackingInput, setTrackingInput] = useState('');
   // Orders placed before checkout recorded the quoted carrier have none, so the
   // seller picks the one they actually shipped with. Seeded from the order when
   // it does carry one, in which case the dialog just shows it.
-  const [shipCarrier, setShipCarrier] = useState('');
   const [packingVideoUrl, setPackingVideoUrl] = useState<string | null>(null);
   const [videoBusy, setVideoBusy] = useState(false);
   const [trackOpen, setTrackOpen] = useState(false);
   const orderCarrier: string | undefined = order?.metadata?.shipping_carrier;
-  const effectiveCarrier = orderCarrier || shipCarrier;
+  // The carrier is whatever was booked; there is no picker on this page any
+  // more. shipping_provider is filled from GoShip's answer and then kept in
+  // step by its webhooks.
+  const effectiveCarrier = order?.shipping_provider || orderCarrier;
   const actionKeys = useRef<Record<string, string>>({});
 
   /** Signed direct upload to the evidence folder. Returns null on any failure. */
@@ -159,7 +169,7 @@ export default function OrderDetailsPage() {
       }
       delete actionKeys.current[fingerprint];
       toast({ title: tx('Thành công', 'Done', '完了') });
-      setConfirm(null); setShipOpen(false); setTrackingInput(''); setPackingVideoUrl(null);
+      setConfirm(null); setPackingVideoUrl(null);
       await load();
     } catch (e: any) {
       toast({ variant: 'destructive', title: tx('Lỗi', 'Error', 'エラー'), description: e.message });
@@ -170,7 +180,7 @@ export default function OrderDetailsPage() {
 
   return (
     <div className="flex flex-1 flex-col bg-background">
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 sm:px-6">
+      <main className={`mx-auto w-full flex-1 px-4 py-6 sm:px-6 ${showDesk ? 'max-w-[88rem]' : 'max-w-3xl'}`}>
         <Button variant="ghost" onClick={() => router.back()} className="mb-4 h-9 px-2 text-muted-foreground">
           <ArrowLeft className="mr-2 h-4 w-4" /> {tx('Quay lại', 'Back', '戻る')}
         </Button>
@@ -184,7 +194,15 @@ export default function OrderDetailsPage() {
         ) : error ? (
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-5 text-sm text-red-300">{error}</div>
         ) : order ? (
-          <div className="space-y-4">
+          <div className={showDesk ? 'grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,36rem)]' : 'space-y-4'}>
+            {/* Left: what this order is. Right: what to do about it.
+                Each column scrolls on its own from lg up. The header is 4rem
+                and sticky, so both start 1rem below it and are capped to what
+                is left of the viewport — which keeps the booking form in view
+                while the seller reads down the order, and the order in view
+                while they read down the form. Below lg there is only one
+                column, and the page scrolls as normal. */}
+            <div className="space-y-4 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-2">
             {/* Header */}
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-5">
               <div>
@@ -195,7 +213,10 @@ export default function OrderDetailsPage() {
             </div>
 
             {/* Countdown */}
-            {order.status === 'paid' && <LiveClock until={order.ship_deadline ? Date.parse(order.ship_deadline) : Date.parse(order.created_at) + 86400000}>{nowTs => {
+            {/* Until a waybill exists, not until the status changes: an order
+                stays 'paid' after booking and only becomes 'shipping' once the
+                carrier has the parcel. */}
+            {order.status === 'paid' && !order.goship_code && <LiveClock until={order.ship_deadline ? Date.parse(order.ship_deadline) : Date.parse(order.created_at) + 86400000}>{nowTs => {
               const deadlineTs = order.ship_deadline ? new Date(order.ship_deadline).getTime() : new Date(order.created_at).getTime() + 24 * 3600 * 1000;
               const rem = deadlineTs - nowTs;
               if (rem <= 0) {
@@ -205,7 +226,7 @@ export default function OrderDetailsPage() {
               return (
                 <div className="flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
                   <Clock className="h-4 w-4" />
-                  {isBuyer ? tx('Người bán cần giao trong', 'Seller must ship within', '販売者の発送期限まで') : tx('Bạn cần nhập mã vận đơn trong', 'You must upload tracking within', '追跡番号を入力する残り時間')}{' '}
+                  {isBuyer ? tx('Người bán cần giao trong', 'Seller must ship within', '販売者の発送期限まで') : tx('Bạn cần tạo vận đơn trong', 'You must create the waybill within', '送り状を作成する残り時間')}{' '}
                   <b className="tabular-nums">{h}h {String(m).padStart(2, '0')}m {String(s).padStart(2, '0')}s</b>
                 </div>
               );
@@ -289,6 +310,38 @@ export default function OrderDetailsPage() {
               <div className="flex justify-between text-sm"><span className="text-muted-foreground">{tx('Phí vận chuyển', 'Shipping fee', '送料')}</span><span>{fmt(order.shipping_fee)}</span></div>
               <div className="flex justify-between border-t pt-2 text-base font-bold"><span>{tx('Tổng', 'Total', '合計')}</span><span className="text-orange-500">{fmt(order.total_paid)}</span></div>
               <p className="pt-1 text-xs text-muted-foreground">{tx('Phương thức', 'Method', '方法')}: {order.payment_method === 'wallet' ? tx('Ví CardVerseHub', 'CardVerseHub wallet', 'CardVerseHubウォレット') : 'PayOS'}</p>
+
+              {/* The seller's side of the same order. Two numbers above are what
+                  the buyer paid; this is what arrives, and it differs whenever
+                  the carrier they picked cost more than the shipping collected.
+                  Said here rather than discovered in the wallet later. */}
+              {!isBuyer && typeof order.goship_fee === 'number' && (() => {
+                const excess = Math.max(0, order.goship_fee - (order.shipping_fee || 0));
+                const payout = Math.max(0, order.amount - Math.min(order.amount, excess));
+                return (
+                  <div className="mt-3 space-y-2 rounded-lg border border-border/60 bg-background/40 p-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {tx('Bạn nhận được', 'Your payout', '受取額')}
+                    </p>
+                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">{tx('Tiền hàng', 'Item price', '商品代金')}</span><span>{fmt(order.amount)}</span></div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">{tx('Cước vận chuyển thực tế', 'Actual carrier cost', '実際の送料')}</span>
+                      <span>{fmt(order.goship_fee)}</span>
+                    </div>
+                    {excess > 0 ? (
+                      <div className="flex justify-between text-sm text-amber-300">
+                        <span>{tx('Trừ phần vượt phí ship', 'Less shipping over the fee collected', '送料超過分の差引')}</span>
+                        <span>−{fmt(excess)}</span>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        {tx('Cước nằm trong phí ship người mua đã trả, không trừ gì thêm.', 'Within the shipping the buyer paid, so nothing is deducted.', '購入者が支払った送料の範囲内のため、差引はありません。')}
+                      </p>
+                    )}
+                    <div className="flex justify-between border-t pt-2 text-base font-bold"><span>{tx('Thực nhận', 'Net payout', '受取額')}</span><span className="text-orange-500">{fmt(payout)}</span></div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Counterparty */}
@@ -351,7 +404,8 @@ export default function OrderDetailsPage() {
               const windowOpen = !order.auto_complete_at || new Date(order.auto_complete_at).getTime() > Date.now();
               // Nothing to film yet at 'paid' — the parcel has not moved. What
               // each side needs at that point is the warning, not the control.
-              const beforeDispatch = order.status === 'paid';
+              // Dispatch is having booked, not having changed status.
+              const beforeDispatch = order.status === 'paid' && !order.goship_code;
               const canUpload = isBuyer && !buyerVideo && windowOpen && !beforeDispatch;
               const row = (label: string, url: string | null, missingHint: string) => (
                 <div className="flex items-center gap-2 text-sm">
@@ -372,8 +426,12 @@ export default function OrderDetailsPage() {
 
                   {/* The moment each side can still act on this. A packing video
                       is only accepted at dispatch, so telling the seller once
-                      they are already at the ship dialog is telling them late. */}
-                  {beforeDispatch && !isBuyer && (
+                      they are already at the ship dialog is telling them late.
+                      Suppressed while the booking desk is open beside this,
+                      because the desk's upload field carries the same warning
+                      inches away — said twice on one screen it reads as two
+                      different rules rather than one. */}
+                  {beforeDispatch && !isBuyer && !showDesk && (
                     <p className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-2.5 text-xs leading-5 text-orange-200">
                       {tx(
                         'Quay video khi bạn đang đóng gói. Hệ thống chỉ nhận video ở đúng bước bấm “Giao hàng”, không đính thêm được về sau. Nếu có tranh chấp mà bạn không có video còn người mua có, phần thua thuộc về bạn.',
@@ -450,14 +508,9 @@ export default function OrderDetailsPage() {
             {/* Actions */}
             {(() => {
               const btns: ReactNode[] = [];
-              // Seller: upload tracking to ship (carrier already chosen by buyer).
-              if (!isBuyer && order.status === 'paid') {
-                btns.push(
-                  <Button key="ship" className="flex-1 bg-orange-500 hover:bg-orange-600" onClick={() => setShipOpen(true)}>
-                    <Truck className="mr-2 h-4 w-4" />{tx('Nhập mã vận đơn & giao', 'Enter tracking & ship', '追跡番号を入力して発送')}
-                  </Button>,
-                );
-              }
+              // Booking lives in its own panel at the top of the page, not
+              // among the buttons: it is the whole job on a paid order, and a
+              // row of equal-weight buttons said otherwise.
               // Follow the parcel — both sides. Delivery is what starts the
               // seller's 72h payout clock, and an unconfirmed parcel goes to an
               // administrator instead of paying out, so the seller has as much
@@ -505,9 +558,34 @@ export default function OrderDetailsPage() {
             <Button variant="outline" className="w-full" onClick={() => router.push(`/orders?tab=${role}`)}>
               {tx('Về danh sách đơn hàng', 'Back to orders', '注文一覧へ')}
             </Button>
+            </div>
+
+            {/* Right: the seller's whole job on a paid order. */}
+            {showDesk && (
+              <div className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1">
+                <OrderShippingDesk
+                  orderId={order.id}
+                  destination={order.to_goship ?? null}
+                  defaultDeclaredValue={order.amount}
+                  buyerPaidShipping={order.shipping_fee}
+                  recipient={{
+                    name: order.to_name,
+                    phone: order.to_phone,
+                    address: [order.to_address_detail, order.to_ward_name, order.to_district_name, order.to_province_name].filter(Boolean).join(', '),
+                  }}
+                  itemName={order.card?.name ?? ''}
+                  onBooked={() => load()}
+                />
+              </div>
+            )}
           </div>
         ) : null}
       </main>
+
+      {/* The parcel's journey, in a dialog rather than the carrier's site. */}
+      {order && (
+        <ShipmentTrackingDialog orderId={order.id} open={trackOpen} onOpenChange={setTrackOpen} />
+      )}
 
       {/* Confirm dialog for lifecycle actions */}
       <Dialog open={!!confirm} onOpenChange={o => !o && setConfirm(null)}>
@@ -526,77 +604,6 @@ export default function OrderDetailsPage() {
       </Dialog>
 
       {/* Ship dialog — carrier already chosen by the buyer, seller enters tracking */}
-      <Dialog open={shipOpen} onOpenChange={setShipOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{tx('Nhập mã vận đơn', 'Enter tracking number', '追跡番号を入力')}</DialogTitle>
-            <DialogDescription>{tx('Người mua sẽ nhận email + thông báo với mã vận đơn.', 'The buyer will be notified by email with the tracking number.', '購入者に追跡番号がメールで通知されます。')}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            {orderCarrier ? (
-              <div className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
-                {carrier?.logo && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={carrier.logo} alt="" className="h-5 w-5 rounded" />
-                )}
-                <span>{carrier?.name || orderCarrier}</span>
-                <span className="ml-auto text-xs text-muted-foreground">{tx('Người mua đã chọn', 'Chosen by buyer', '購入者が選択')}</span>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-sm font-medium">{tx('Đơn vị vận chuyển', 'Carrier', '配送業者')}</p>
-                <div className="flex flex-wrap gap-2">
-                  {SHIPPING_CARRIERS.map(c => (
-                    <button
-                      key={c.code}
-                      type="button"
-                      onClick={() => setShipCarrier(c.code)}
-                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors ${shipCarrier === c.code ? 'border-orange-500 bg-orange-500/15 text-orange-300' : 'border-border/60 text-muted-foreground hover:border-orange-500/40'}`}
-                    >
-                      {c.logo ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={c.logo} alt="" className="h-5 w-5 rounded" />
-                      ) : (
-                        <Truck className="h-4 w-4" />
-                      )}
-                      {c.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {sellerSuppliesTracking(effectiveCarrier) && (
-              <Input value={trackingInput} onChange={e => setTrackingInput(e.target.value)} placeholder={tx('VD: LWtxxxxxxx', 'e.g. LWtxxxxxxx', '例: LWtxxxxxxx')} />
-            )}
-            {effectiveCarrier && (
-              <PackingVideoField value={packingVideoUrl} onChange={setPackingVideoUrl} locale={locale} disabled={acting} />
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShipOpen(false)} disabled={acting}>{tx('Huỷ', 'Cancel', 'キャンセル')}</Button>
-            <Button
-              className="bg-orange-500 hover:bg-orange-600"
-              disabled={acting || !effectiveCarrier || (sellerSuppliesTracking(effectiveCarrier) && !trackingInput.trim())}
-              onClick={() => runAction('ship', {
-                shipping_provider: effectiveCarrier,
-                tracking_number: trackingInput.trim(),
-                packing_video_url: packingVideoUrl,
-              })}
-            >
-              {tx('Giao hàng', 'Ship', '発送')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <ParcelTrackingDialog
-        open={trackOpen}
-        onOpenChange={setTrackOpen}
-        orderId={id}
-        locale={locale}
-        title={tx('Theo dõi đơn', 'Track parcel', '配送を追跡')}
-        closeLabel={tx('Đóng', 'Close', '閉じる')}
-      />
 
     </div>
   );

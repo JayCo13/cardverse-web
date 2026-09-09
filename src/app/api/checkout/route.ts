@@ -37,7 +37,54 @@ type ShippingBody = {
   to_ward_name: string;
   to_address_detail: string;
   shipping_address?: string;
+  /**
+   * GoShip's own city/district/ward ids for this address.
+   *
+   * Never derived from to_province_id / to_ward_code: those are the 2025
+   * structure and GoShip routes on the pre-2025 one. Optional — an order
+   * without them asks its seller to pick the district when they book.
+   */
+  to_goship?: { city?: unknown; district?: unknown; ward?: unknown } | null;
 };
+
+const GOSHIP_ID = /^[0-9]{1,12}$/;
+
+/** All three ids or none: a partial set looks bookable and is not. */
+function goshipDestination(input: ShippingBody['to_goship']) {
+  if (!input || typeof input !== 'object') return null;
+  const city = String(input.city ?? '').trim();
+  const district = String(input.district ?? '').trim();
+  const ward = String(input.ward ?? '').trim();
+  return GOSHIP_ID.test(city) && GOSHIP_ID.test(district) && GOSHIP_ID.test(ward)
+    ? { city, district, ward }
+    : null;
+}
+
+/**
+ * File the carrier's ids on orders once they exist.
+ *
+ * After creation rather than inside the RPC that creates them: that function
+ * moves money, and three address ids are not a reason to reopen it. Nothing
+ * reads them until the seller books, and an order missing them asks the seller
+ * to supply them rather than losing anything.
+ */
+async function attachGoshipDestination(
+  service: ReturnType<typeof createServiceSupabaseClient>,
+  orders: unknown,
+  destination: { city: string; district: string; ward: string } | null,
+) {
+  if (!destination || !Array.isArray(orders)) return;
+  const ids = orders
+    .map((o) => (o as { id?: unknown })?.id)
+    .filter((id): id is string => typeof id === 'string');
+  if (ids.length === 0) return;
+  const { error } = await service
+    .from('orders')
+    .update({ to_goship: destination } as never)
+    .in('id', ids)
+    .is('to_goship', null);
+  if (error) console.error('[Checkout] Could not attach GoShip destination:', error.message);
+}
 
 type CheckoutCard = {
   id: string;
@@ -363,6 +410,9 @@ async function handlePOST(request: NextRequest) {
     try {
       shippingQuotes = await quoteCheckoutConfiguredShippingBatch(checkoutSellerIds.map(sellerId => ({
         sellerId,
+        // Every listing bought from this seller. One parcel, priced from the
+        // dearest of them — see parcelShippingFee.
+        cardIds: checkoutItems.filter(item => item.card.seller_id === sellerId).map(item => item.card.id),
         carrier: mode === 'offer'
           ? (body.shipping_carrier ? String(body.shipping_carrier).trim() : undefined)
           : (cartCarriers !== undefined ? cartCarriers[sellerId].trim() : undefined),
@@ -468,6 +518,7 @@ async function handlePOST(request: NextRequest) {
         }
         const walletResult = walletResultData as unknown as { orders?: CreatedOrder[] };
         const orders = walletResult.orders || [];
+        await attachGoshipDestination(service, orders, goshipDestination(body.to_goship));
         if (orders.length !== checkoutItems.length) {
           throw new Error('Atomic wallet checkout returned an inconsistent order count');
         }
@@ -520,6 +571,7 @@ async function handlePOST(request: NextRequest) {
       };
       const paymentOrder = staged?.payment_order;
       const orders = staged?.orders || [];
+      await attachGoshipDestination(service, orders, goshipDestination(body.to_goship));
       if (stageError) {
         console.error('Atomic PayOS checkout staging failed:', stageError);
         const mapped = walletCheckoutError(stageError);

@@ -17,7 +17,30 @@ type AddressBody = {
     ward_name?: string;
     detail?: string;
     is_default?: boolean;
+    /**
+     * GoShip's own city/district/ward ids for this address.
+     *
+     * Optional, and never derived from the fields above. GoShip routes on the
+     * pre-2025 structure while those are the 34-province one, and Ho Chi Minh
+     * City now contains wards GoShip still files under a province of their own
+     * — so a translated id books a courier to the wrong city and reports
+     * success. Present only when the buyer picked it from GoShip's own lists.
+     */
+    goship?: { city?: string; district?: string; ward?: string } | null;
 };
+
+const GOSHIP_ID = /^[0-9]{1,12}$/;
+
+/** Null unless all three ids are there and well formed — a half address is worse
+ *  than none, because it looks bookable. */
+function normalizeGoship(input: AddressBody['goship']): { city: string; district: string; ward: string } | null {
+    if (!input || typeof input !== 'object') return null;
+    const city = String(input.city ?? '').trim();
+    const district = String(input.district ?? '').trim();
+    const ward = String(input.ward ?? '').trim();
+    if (!GOSHIP_ID.test(city) || !GOSHIP_ID.test(district) || !GOSHIP_ID.test(ward)) return null;
+    return { city, district, ward };
+}
 
 function validate(body: AddressBody): string | null {
     if (!body.recipient_name?.trim()) return 'Tên người nhận là bắt buộc';
@@ -102,6 +125,7 @@ async function handlePOST(request: NextRequest) {
             ward_code: ward.code.toString(),
             ward_name: ward.name,
             detail: body.detail!.trim(),
+            goship: normalizeGoship(body.goship),
             is_default: makeDefault,
         } as never)
         .select('*')

@@ -4,6 +4,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
 import { hashFinancialRequest } from '@/lib/financial-idempotency';
 import { resolveListingError } from '@/lib/listing-errors';
+import { isValidListingShippingFee } from '@/lib/shipping-fee';
 
 const MIN_MARKETPLACE_PRICE_VND = 1000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -73,6 +74,13 @@ async function handlePOST(request: NextRequest) {
             finish: optionalString(body.finish),
             accept_offers: body.accept_offers === true,
             min_offer_percent: body.accept_offers === true ? minOfferPercent : 0,
+            // What the buyer pays to have this sent. Zero is free shipping and
+            // is kept as zero; anything outside the range becomes null and the
+            // listing falls back to the platform figure, because a listing must
+            // not fail to exist over a shipping price.
+            shipping_fee: isValidListingShippingFee(Number(body.shipping_fee))
+                ? Number(body.shipping_fee)
+                : null,
         };
 
         if (body.is_bundle === true) {

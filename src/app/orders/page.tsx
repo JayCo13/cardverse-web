@@ -20,7 +20,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { SHIPPING_CARRIERS, getTrackingUrl, getCarrier, sellerSuppliesTracking } from '@/lib/shipping-carriers';
 import { carrierStatusLabel } from '@/lib/carrier-status-labels';
-import { ParcelTrackingDialog } from '@/components/parcel-tracking-dialog';
+import { ShipmentTrackingDialog } from '@/components/shipment-tracking-dialog';
+import Link from 'next/link';
 import { PackingVideoField } from '@/components/packing-video-field';
 import Image from 'next/image';
 import { UserLink } from "@/components/user-link";
@@ -47,6 +48,12 @@ type Order = {
   ghn_status: string | null;
   carrier_status: string | null;
   carrier_status_at: string | null;
+  /** GoShip's own link. Null until the carrier accepts the shipment. */
+  carrier_tracking_url: string | null;
+  /** GoShip's ids for the delivery address, captured at checkout. */
+  to_goship: { city: string; district: string; ward: string } | null;
+  /** Set once a waybill exists. The key GoShip's events are matched on. */
+  goship_code: string | null;
   ghn_expected_delivery: string | null;
   auto_complete_at: string | null;
   dispute_reason: string | null;
@@ -140,7 +147,7 @@ export default function OrdersPage() {
         cancelOrder: '注文をキャンセル',
         shipOrder: '発送する',
         confirm: '確認',
-        shipCountdownSeller: '追跡番号を入力する残り時間:',
+        shipCountdownSeller: '送り状を作成する残り時間:',
         shipCountdownBuyer: '販売者の発送期限まで:',
         shipCountdownNoteBuyer: '期限超過で自動キャンセル・あなたのウォレットへ返金・販売者の評価減点。',
         shipCountdownNoteSeller: '期限超過で自動キャンセル・購入者へ返金・あなたの評価が減点されます。',
@@ -150,6 +157,7 @@ export default function OrdersPage() {
         receivedTitle: '受け取りを確認しますか？',
         receivedMessage: 'カードに問題がなければ、72時間を待たずに取引を完了し、代金を出品者にお渡しします。確認後は取り消せません。',
         trackParcel: '配送を追跡',
+        createWaybill: '送り状を作成',
         dispute: '管理者に報告',
         seller: '販売者',
         buyer: '購入者',
@@ -220,7 +228,7 @@ export default function OrdersPage() {
           cancelOrder: 'Hủy đơn',
           shipOrder: 'Giao hàng',
           confirm: 'Xác nhận',
-          shipCountdownSeller: 'Bạn cần cập nhật mã vận đơn trong',
+          shipCountdownSeller: 'Bạn cần tạo vận đơn trong',
           shipCountdownBuyer: 'Người bán cần giao hàng trong',
           shipCountdownNoteBuyer: 'Quá hạn: đơn tự huỷ, tiền hoàn về ví bạn, người bán bị trừ uy tín.',
           shipCountdownNoteSeller: 'Quá hạn: đơn tự huỷ, tiền hoàn cho người mua, bạn bị trừ điểm uy tín.',
@@ -230,6 +238,7 @@ export default function OrdersPage() {
           receivedTitle: 'Xác nhận đã nhận hàng?',
           receivedMessage: 'Nếu thẻ không có vấn đề gì, giao dịch sẽ kết thúc ngay và tiền được chuyển cho người bán mà không cần chờ hết 72 giờ. Thao tác này không thể hoàn tác.',
           trackParcel: 'Theo dõi đơn',
+          createWaybill: 'Tạo vận đơn',
           dispute: 'Báo cáo admin',
           seller: 'Người bán',
           buyer: 'Người mua',
@@ -299,7 +308,7 @@ export default function OrdersPage() {
           cancelOrder: 'Cancel order',
           shipOrder: 'Ship order',
           confirm: 'Confirm',
-          shipCountdownSeller: 'You must upload tracking within',
+          shipCountdownSeller: 'You must create the waybill within',
           shipCountdownBuyer: 'The seller must ship within',
           shipCountdownNoteBuyer: 'If overdue: the order auto-cancels, is refunded to your wallet, and the seller loses reputation.',
           shipCountdownNoteSeller: 'If overdue: the order auto-cancels, the buyer is refunded, and you lose reputation.',
@@ -309,6 +318,7 @@ export default function OrdersPage() {
           receivedTitle: 'Confirm you received it?',
           receivedMessage: 'If the card is as described, this closes the transaction now and pays the seller without waiting out the 72 hours. It cannot be undone.',
           trackParcel: 'Track parcel',
+          createWaybill: 'Create waybill',
           dispute: 'Report to admin',
           seller: 'Seller',
           buyer: 'Buyer',
@@ -372,6 +382,7 @@ export default function OrdersPage() {
   // so waiting one request costs nothing on screen.
   const searchParams = useSearchParams();
   const tabParam = searchParams.get('tab');
+  const [trackOrderId, setTrackOrderId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<OrderTab | null>(
     tabParam === 'seller' ? 'seller' : tabParam === 'buyer' ? 'buyer' : null,
   );
@@ -389,15 +400,10 @@ export default function OrdersPage() {
   const [disputeDialog, setDisputeDialog] = useState<{ open: boolean; orderId: string }>({ open: false, orderId: '' });
   const [disputeReason, setDisputeReason] = useState('');
   // Ship dialog — seller picks carrier + uploads tracking number
-  const [shipDialog, setShipDialog] = useState<{ open: boolean; orderId: string }>({ open: false, orderId: '' });
-  const [shipCarrier, setShipCarrier] = useState('');
-  const [shipTracking, setShipTracking] = useState('');
-  const [shipPackingVideo, setShipPackingVideo] = useState<string | null>(null);
   // Generic confirm dialog for lifecycle actions (confirm received / cancel).
   const [confirmAction, setConfirmAction] = useState<{ orderId: string; action: string; title: string; message: string } | null>(null);
 
   // Tracking dialog
-  const [trackingDialog, setTrackingDialog] = useState<{ open: boolean; order: Order | null }>({ open: false, order: null });
 
   useEffect(() => {
     if (!authLoading && !user) setOpen(true);
@@ -548,7 +554,6 @@ export default function OrdersPage() {
 
       toast({ title: copy.success, description: copy.updated });
       delete actionKeys.current[fingerprint];
-      setShipDialog({ open: false, orderId: '' });
       fetchOrders(activeTab);
     } catch (err: any) {
       toast({ variant: 'destructive', title: copy.errorTitle, description: err.message });
@@ -641,7 +646,7 @@ export default function OrdersPage() {
                     event flips it, so a parcel that the carrier already has out
                     for delivery looked identical to one still sitting with the
                     seller. This is the line that made the page disagree with
-                    17TRACK. Blank when the carrier has said nothing yet, and
+                    the carrier. Blank when it has said nothing yet, and
                     blank for a status we have no name for — printing a raw enum
                     at a buyer is worse than printing nothing. */}
                 {carrierStatusLabel(order.carrier_status, locale) && (
@@ -708,8 +713,13 @@ export default function OrdersPage() {
                 )}
               </p>
 
-              {/* 24h ship-deadline countdown (paid, not yet shipped) */}
-              {order.status === 'paid' && <LiveClock until={order.ship_deadline ? Date.parse(order.ship_deadline) : Date.parse(order.created_at) + 86400000}>{nowTs => {
+              {/* The 24h deadline, until a waybill exists.
+                  An order keeps status 'paid' after booking — it only becomes
+                  'shipping' once the carrier has the parcel — so counting on
+                  status alone kept telling a seller to enter a tracking number
+                  they had already produced, and to do it in a form that no
+                  longer exists. */}
+              {order.status === 'paid' && !order.goship_code && <LiveClock until={order.ship_deadline ? Date.parse(order.ship_deadline) : Date.parse(order.created_at) + 86400000}>{nowTs => {
                 // Older orders (created before the ship_deadline column) fall back
                 // to created_at + 24h so the countdown still shows.
                 const deadlineTs = order.ship_deadline
@@ -744,15 +754,29 @@ export default function OrdersPage() {
               {/* Actions */}
               <div className="flex gap-2 mt-3 flex-wrap" onClick={e => e.stopPropagation()}>
                 {/* Seller: create shipment + upload tracking */}
-                {!isBuyer && order.status === 'paid' && (
-                  <Button
-                    size="sm"
-                    onClick={() => { setShipCarrier(order.metadata?.shipping_carrier || ''); setShipTracking(''); setShipPackingVideo(null); setShipDialog({ open: true, orderId: order.id }); }}
-                    disabled={actionLoading === order.id}
-                    className="bg-orange-500 hover:bg-orange-600"
-                  >
-                    <Truck className="h-3 w-3 mr-1" />
-                    {copy.shipOrder}
+                {/* Booking through the platform where the order allows it, and
+                    the old type-in-a-number dialog where it does not.
+
+                    Both, not one: orders placed before checkout collected the
+                    carrier's ids have no to_goship and can only be shipped the
+                    old way, and a seller with one of each in their list should
+                    not have to know why. The old path goes when none are left. */}
+                {/* Every paid order, not only those whose buyer supplied the
+                    carrier's ids. An order without them asks the seller to pick
+                    the district inside the dialog — they are holding the
+                    delivery address on the order, and the alternative is an
+                    order nobody can ship. */}
+                {/* A link, not a dialog. Booking dispatches a courier and
+                    bills the seller's GoShip account, and the details they
+                    should check first — where it is going, what is in it, what
+                    the buyer paid — are on the order page. A dialog over a list
+                    invited a glance at the price and a press. */}
+                {!isBuyer && order.status === 'paid' && !order.goship_code && (
+                  <Button size="sm" asChild className="bg-orange-500 hover:bg-orange-600">
+                    <Link href={`/orders/${order.id}`}>
+                      <Truck className="h-3 w-3 mr-1" />
+                      {copy.createWaybill}
+                    </Link>
                   </Button>
                 )}
 
@@ -768,22 +792,18 @@ export default function OrdersPage() {
                   </Button>
                 )}
 
-                {/* Track the parcel — both sides.
+                                {/* Shown whenever there is something to track, not from
+                    status: a booked parcel sits at 'paid' until the carrier
+                    collects it, and that is exactly when a seller wants to
+                    check on it.
 
-                    The seller needs this as much as the buyer: delivery is what
-                    starts their 72h payout clock, and a parcel no carrier
-                    confirms goes to an administrator instead of paying out. The
-                    button was buyer-only even though
-                    /api/shipping/tracking-status has always authorised "the
-                    buyer or the seller on it", so the seller's only tracking
-                    was the GHN stepper above, which renders off ghn_order_code
-                    — a column nothing writes any more. */}
-                {['shipping', 'delivered'].includes(order.status) && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setTrackingDialog({ open: true, order })}
-                  >
+                    The button opens the journey in a dialog rather than the
+                    carrier's own site. Offered whenever a waybill exists, not
+                    only once a link does: the first hours of a shipment have no
+                    carrier code and no page to send anyone to, and that is
+                    precisely when people look. */}
+                {order.goship_code && (
+                  <Button size="sm" variant="outline" onClick={() => setTrackOrderId(order.id)}>
                     <Truck className="h-3 w-3 mr-1" />
                     {copy.trackParcel}
                   </Button>
@@ -1032,98 +1052,6 @@ export default function OrdersPage() {
       </Dialog>
 
       {/* Ship Dialog */}
-      <Dialog open={shipDialog.open} onOpenChange={open => setShipDialog({ ...shipDialog, open })}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {locale === 'ja-JP' ? '追跡番号を入力' : locale === 'en-US' ? 'Enter tracking number' : 'Nhập mã vận đơn'}
-            </DialogTitle>
-            <DialogDescription>
-              {locale === 'ja-JP'
-                ? '追跡番号を入力すると、購入者にメールで通知されます。'
-                : locale === 'en-US'
-                  ? 'Enter the tracking number. The buyer will be notified by email.'
-                  : 'Nhập mã vận đơn để giao hàng. Người mua sẽ nhận email thông báo.'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            {shipCarrier ? (
-              <div className="space-y-1.5">
-                <p className="text-sm font-medium">
-                  {locale === 'ja-JP' ? '配送業者（購入者が選択）' : locale === 'en-US' ? 'Carrier (chosen by buyer)' : 'Đơn vị vận chuyển (người mua đã chọn)'}
-                </p>
-                {(() => {
-                  const c = getCarrier(shipCarrier);
-                  return (
-                    <div className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
-                      {c?.logo ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={c.logo} alt="" className="h-5 w-5 rounded" />
-                      ) : (
-                        <Truck className="h-4 w-4" />
-                      )}
-                      {c?.name || shipCarrier}
-                    </div>
-                  );
-                })()}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-sm font-medium">
-                  {locale === 'ja-JP' ? '配送業者' : locale === 'en-US' ? 'Carrier' : 'Đơn vị vận chuyển'}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {SHIPPING_CARRIERS.map(c => (
-                    <button
-                      key={c.code}
-                      type="button"
-                      onClick={() => setShipCarrier(c.code)}
-                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors ${shipCarrier === c.code ? 'border-orange-500 bg-orange-500/15 text-orange-300' : 'border-border/60 text-muted-foreground hover:border-orange-500/40'}`}
-                    >
-                      {c.logo ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={c.logo} alt="" className="h-5 w-5 rounded" />
-                      ) : (
-                        <Truck className="h-4 w-4" />
-                      )}
-                      {c.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {sellerSuppliesTracking(shipCarrier) && (
-              <div className="space-y-1.5">
-                <p className="text-sm font-medium">
-                  {locale === 'ja-JP' ? '追跡番号' : locale === 'en-US' ? 'Tracking number' : 'Mã vận đơn'}
-                </p>
-                <Input
-                  value={shipTracking}
-                  onChange={e => setShipTracking(e.target.value)}
-                  placeholder={locale === 'ja-JP' ? '例: LWtxxxxxxx' : locale === 'en-US' ? 'e.g. LWtxxxxxxx' : 'VD: LWtxxxxxxx'}
-                />
-              </div>
-            )}
-            {shipCarrier && (
-              <PackingVideoField value={shipPackingVideo} onChange={setShipPackingVideo} locale={locale} />
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShipDialog({ open: false, orderId: '' })}>{copy.cancel}</Button>
-            <Button
-              className="bg-orange-500 hover:bg-orange-600"
-              onClick={() => handleAction(shipDialog.orderId, 'ship', {
-                shipping_provider: shipCarrier,
-                tracking_number: shipTracking.trim(),
-                packing_video_url: shipPackingVideo,
-              })}
-              disabled={!shipCarrier || (sellerSuppliesTracking(shipCarrier) && !shipTracking.trim()) || actionLoading === shipDialog.orderId}
-            >
-              {copy.shipOrder}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={disputeDialog.open} onOpenChange={open => setDisputeDialog({ ...disputeDialog, open })}>
         <DialogContent>
@@ -1150,14 +1078,14 @@ export default function OrdersPage() {
         </DialogContent>
       </Dialog>
 
-      <ParcelTrackingDialog
-        open={trackingDialog.open}
-        onOpenChange={open => setTrackingDialog({ open, order: open ? trackingDialog.order : null })}
-        orderId={trackingDialog.order?.id ?? null}
-        locale={locale}
-        title={copy.trackParcel}
-        closeLabel={copy.closeDialog}
-      />
+      {/* One dialog for the list, opened against whichever order was pressed. */}
+      {trackOrderId && (
+        <ShipmentTrackingDialog
+          orderId={trackOrderId}
+          open={!!trackOrderId}
+          onOpenChange={(open) => { if (!open) setTrackOrderId(null); }}
+        />
+      )}
     </div>
   );
 }
