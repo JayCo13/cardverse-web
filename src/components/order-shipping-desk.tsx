@@ -248,166 +248,175 @@ export function OrderShippingDesk({
                 <p className="mt-1 text-sm text-muted-foreground">{copy.lead}</p>
             </header>
 
-            <div className="space-y-6 p-5">
-                {/* ── 1. Đối soát ────────────────────────────────────────── */}
-                <div className="space-y-3">
-                    {stepLabel(1, copy.step1)}
-                    <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-lg border border-border/60 bg-background/40 p-3">
-                            <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                <Package className="h-3.5 w-3.5" />{copy.sender}
-                            </p>
-                            {pickup === 'missing' ? (
-                                <p className="text-sm text-amber-300">{copy.senderMissing}</p>
-                            ) : pickup === null ? (
-                                <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />…
+            {/* Two columns from lg up. What the seller checks and fills in is
+                one task, and choosing a carrier is another — side by side they
+                fit on a screen together, stacked they made the page long enough
+                that the price list fell below the fold. */}
+            <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
+                {/* ── trái: đối soát + gói hàng ─────────────────────────── */}
+                <div className="space-y-6 p-5 lg:border-r lg:border-border/60">
+                    <div className="space-y-3">
+                        {stepLabel(1, copy.step1)}
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="rounded-lg border border-border/60 bg-background/40 p-3">
+                                <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                    <Package className="h-3.5 w-3.5" />{copy.sender}
                                 </p>
+                                {pickup === 'missing' ? (
+                                    <p className="text-sm text-amber-300">{copy.senderMissing}</p>
+                                ) : pickup === null ? (
+                                    <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />…
+                                    </p>
+                                ) : (
+                                    <>
+                                        <p className="text-sm font-medium">{pickup.name} · {pickup.phone}</p>
+                                        <p className="text-sm text-muted-foreground">{pickupPlace || pickup.street}</p>
+                                    </>
+                                )}
+                                <Link href="/sell#shop-shipping" className="mt-2 inline-flex items-center gap-1 text-xs text-orange-400 hover:underline">
+                                    <PencilLine className="h-3 w-3" />{copy.editSender}
+                                </Link>
+                            </div>
+
+                            <div className="rounded-lg border border-border/60 bg-background/40 p-3">
+                                <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                    <MapPin className="h-3.5 w-3.5" />{copy.recipient}
+                                </p>
+                                <p className="text-sm font-medium">{recipient.name} · {recipient.phone}</p>
+                                <p className="text-sm text-muted-foreground">{recipient.address}</p>
+                                <p className="mt-2 text-xs text-muted-foreground/70">{copy.fromOrder}</p>
+                            </div>
+                        </div>
+                        <p className="text-sm">
+                            <span className="text-muted-foreground">{copy.item}: </span>
+                            <span className="font-medium">{itemName}</span>
+                        </p>
+                    </div>
+
+                    <div className="space-y-3">
+                        {stepLabel(2, copy.step2)}
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="osd-weight">{copy.weight}</Label>
+                                <Input id="osd-weight" value={weight} inputMode="numeric"
+                                    onChange={(e) => setWeight(e.target.value.replace(/\D/g, '').slice(0, 5))} />
+                                <p className="text-xs text-muted-foreground">{copy.weightHint}</p>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="osd-declared">{copy.declared}</Label>
+                                <Input id="osd-declared" value={declared} inputMode="numeric"
+                                    onChange={(e) => setDeclared(e.target.value.replace(/\D/g, '').slice(0, 9))} />
+                                <p className="text-xs text-muted-foreground">{copy.declaredHint}</p>
+                            </div>
+                        </div>
+                        <PackingVideoField value={packingVideo} onChange={setPackingVideo} locale={locale} />
+                    </div>
+                </div>
+
+                {/* ── phải: chọn hãng, dính theo màn hình ───────────────── */}
+                <div className="border-t border-border/60 bg-background/40 lg:border-t-0">
+                    <div className="lg:sticky lg:top-4">
+                        <div className="space-y-3 p-5">
+                            {stepLabel(3, copy.step3)}
+
+                            {!region ? (
+                                <div className="space-y-3">
+                                    <p className="flex items-start gap-2 text-sm text-amber-400">
+                                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{copy.pickRegion}
+                                    </p>
+                                    <GoshipRegionPicker idPrefix={`osd-${orderId}`} onChange={setPickedRegion} />
+                                </div>
                             ) : (
                                 <>
-                                    <p className="text-sm font-medium">{pickup.name} · {pickup.phone}</p>
-                                    <p className="text-sm text-muted-foreground">{pickupPlace || pickup.street}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {copy.buyerPaid}: <span className="font-medium text-foreground">{money(buyerPaidShipping)}</span>
+                                    </p>
+
+                                    {busy && (
+                                        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                                            <Loader2 className="h-4 w-4 animate-spin" />{copy.loading}
+                                        </p>
+                                    )}
+
+                                    {rates && rates.length === 0 && !busy && (
+                                        <p className="text-sm text-muted-foreground">{copy.none}</p>
+                                    )}
+
+                                    {rates && rates.length > 0 && (
+                                        // Capped and scrollable: five carriers is common and the
+                                        // column should not outgrow the form beside it.
+                                        <ul className="max-h-[22rem] space-y-2 overflow-y-auto pr-1">
+                                            {rates.map((r) => {
+                                                const isChosen = r.id === chosen;
+                                                const over = r.totalFee > buyerPaidShipping;
+                                                return (
+                                                    <li key={r.id}>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setChosen(r.id)}
+                                                            aria-pressed={isChosen}
+                                                            className={`w-full rounded-lg border p-3 text-left transition-colors ${
+                                                                isChosen
+                                                                    ? 'border-orange-500 bg-orange-500/10'
+                                                                    : 'border-border/60 hover:border-orange-500/40 hover:bg-accent/40'
+                                                            }`}
+                                                        >
+                                                            <span className="flex items-center gap-2">
+                                                                <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${isChosen ? 'border-orange-500 bg-orange-500 text-black' : 'border-muted-foreground/40'}`}>
+                                                                    {isChosen && <Check className="h-3 w-3" />}
+                                                                </span>
+                                                                <span className="min-w-0 flex-1 truncate font-medium">{r.carrierName}</span>
+                                                                <span className="shrink-0 font-semibold text-orange-400">{money(r.totalFee)}</span>
+                                                            </span>
+                                                            <span className="mt-1 flex items-center justify-between gap-2 pl-6">
+                                                                <span className="min-w-0 truncate text-xs text-muted-foreground">
+                                                                    {[r.service, r.expected,
+                                                                      r.successPercent != null ? `${r.successPercent}% ${copy.success}` : null]
+                                                                        .filter(Boolean).join(' · ')}
+                                                                </span>
+                                                                {/* The seller's GoShip account is billed, not the
+                                                                    buyer's payment, so the gap between the two is
+                                                                    theirs either way — and it is what makes one
+                                                                    carrier cheaper than another for them. */}
+                                                                <span className={`shrink-0 text-xs ${over ? 'text-amber-400' : 'text-green-400'}`}>
+                                                                    {over
+                                                                        ? `${copy.youPay} ${money(r.totalFee - buyerPaidShipping)}`
+                                                                        : `${copy.youKeep} ${money(buyerPaidShipping - r.totalFee)}`}
+                                                                </span>
+                                                            </span>
+                                                        </button>
+                                                    </li>
+                                                );
+                                            })}
+                                        </ul>
+                                    )}
                                 </>
                             )}
-                            <Link href="/sell#shop-shipping" className="mt-2 inline-flex items-center gap-1 text-xs text-orange-400 hover:underline">
-                                <PencilLine className="h-3 w-3" />{copy.editSender}
-                            </Link>
-                        </div>
 
-                        <div className="rounded-lg border border-border/60 bg-background/40 p-3">
-                            <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                <MapPin className="h-3.5 w-3.5" />{copy.recipient}
-                            </p>
-                            <p className="text-sm font-medium">{recipient.name} · {recipient.phone}</p>
-                            <p className="text-sm text-muted-foreground">{recipient.address}</p>
-                            <p className="mt-2 text-xs text-muted-foreground/70">{copy.fromOrder}</p>
-                        </div>
-                    </div>
-                    <p className="text-sm">
-                        <span className="text-muted-foreground">{copy.item}: </span>
-                        <span className="font-medium">{itemName}</span>
-                    </p>
-                </div>
-
-                {/* ── 2. Gói hàng ────────────────────────────────────────── */}
-                <div className="space-y-3">
-                    {stepLabel(2, copy.step2)}
-                    <div className="grid gap-4 sm:grid-cols-2">
-                        <div className="space-y-1.5">
-                            <Label htmlFor="osd-weight">{copy.weight}</Label>
-                            <Input id="osd-weight" value={weight} inputMode="numeric"
-                                onChange={(e) => setWeight(e.target.value.replace(/\D/g, '').slice(0, 5))} />
-                            <p className="text-xs text-muted-foreground">{copy.weightHint}</p>
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label htmlFor="osd-declared">{copy.declared}</Label>
-                            <Input id="osd-declared" value={declared} inputMode="numeric"
-                                onChange={(e) => setDeclared(e.target.value.replace(/\D/g, '').slice(0, 9))} />
-                            <p className="text-xs text-muted-foreground">{copy.declaredHint}</p>
-                        </div>
-                    </div>
-                    <PackingVideoField value={packingVideo} onChange={setPackingVideo} locale={locale} />
-                </div>
-
-                {/* ── 3. Chọn hãng ───────────────────────────────────────── */}
-                <div className="space-y-3">
-                    {stepLabel(3, copy.step3)}
-
-                    {!region ? (
-                        <div className="space-y-3">
-                            <p className="flex items-start gap-2 text-sm text-amber-400">
-                                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{copy.pickRegion}
-                            </p>
-                            <GoshipRegionPicker idPrefix={`osd-${orderId}`} onChange={setPickedRegion} />
-                        </div>
-                    ) : (
-                        <>
-                            <p className="text-xs text-muted-foreground">
-                                {copy.buyerPaid}: <span className="font-medium text-foreground">{money(buyerPaidShipping)}</span>
-                            </p>
-
-                            {busy && (
-                                <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                                    <Loader2 className="h-4 w-4 animate-spin" />{copy.loading}
+                            {error && (
+                                <p className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}
                                 </p>
                             )}
+                        </div>
 
-                            {rates && rates.length === 0 && !busy && (
-                                <p className="text-sm text-muted-foreground">{copy.none}</p>
-                            )}
-
-                            {rates && rates.length > 0 && (
-                                <ul className="space-y-2">
-                                    {rates.map((r) => {
-                                        const isChosen = r.id === chosen;
-                                        const over = r.totalFee > buyerPaidShipping;
-                                        return (
-                                            <li key={r.id}>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setChosen(r.id)}
-                                                    aria-pressed={isChosen}
-                                                    className={`flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left transition-colors ${
-                                                        isChosen
-                                                            ? 'border-orange-500 bg-orange-500/10'
-                                                            : 'border-border/60 hover:border-orange-500/40 hover:bg-accent/40'
-                                                    }`}
-                                                >
-                                                    <span className="flex min-w-0 items-center gap-3">
-                                                        <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${isChosen ? 'border-orange-500 bg-orange-500 text-black' : 'border-muted-foreground/40'}`}>
-                                                            {isChosen && <Check className="h-3 w-3" />}
-                                                        </span>
-                                                        <span className="min-w-0">
-                                                            <span className="block truncate font-medium">{r.carrierName}</span>
-                                                            <span className="block truncate text-xs text-muted-foreground">
-                                                                {[r.service, r.expected,
-                                                                  r.successPercent != null ? `${r.successPercent}% ${copy.success}` : null]
-                                                                    .filter(Boolean).join(' · ')}
-                                                            </span>
-                                                        </span>
-                                                    </span>
-                                                    <span className="shrink-0 text-right">
-                                                        <span className="block font-semibold text-orange-400">{money(r.totalFee)}</span>
-                                                        {/* The seller's GoShip account is billed, not the
-                                                            buyer's payment, so the gap between the two is
-                                                            theirs either way — and it is what makes one
-                                                            carrier cheaper than another for them. */}
-                                                        <span className={`block text-xs ${over ? 'text-amber-400' : 'text-green-400'}`}>
-                                                            {over
-                                                                ? `${copy.youPay} ${money(r.totalFee - buyerPaidShipping)}`
-                                                                : `${copy.youKeep} ${money(buyerPaidShipping - r.totalFee)}`}
-                                                        </span>
-                                                    </span>
-                                                </button>
-                                            </li>
-                                        );
-                                    })}
-                                </ul>
-                            )}
-                        </>
-                    )}
+                        {/* A courier gets dispatched from here, so the last press is
+                            its own deliberate one rather than a row in a list. */}
+                        <div className="space-y-3 border-t border-border/60 px-5 py-4">
+                            <p className="text-sm text-muted-foreground">
+                                {selected
+                                    ? <>{copy.chosen}: <span className="font-medium text-foreground">{selected.carrierName}</span> · <span className="font-semibold text-orange-400">{money(selected.totalFee)}</span></>
+                                    : copy.pickFirst}
+                            </p>
+                            <Button disabled={!selected} onClick={() => setConfirming(true)} className="w-full bg-orange-500 hover:bg-orange-600">
+                                <Truck className="mr-2 h-4 w-4" />{copy.book}
+                                <ArrowRight className="ml-2 h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
                 </div>
-
-                {error && (
-                    <p className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}
-                    </p>
-                )}
             </div>
-
-            {/* A courier gets dispatched from here, so the last press is its own
-                deliberate one rather than a row in a list. */}
-            <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 bg-background/40 px-5 py-4">
-                <p className="text-sm text-muted-foreground">
-                    {selected
-                        ? <>{copy.chosen}: <span className="font-medium text-foreground">{selected.carrierName}</span> · <span className="font-semibold text-orange-400">{money(selected.totalFee)}</span></>
-                        : copy.pickFirst}
-                </p>
-                <Button disabled={!selected} onClick={() => setConfirming(true)} className="bg-orange-500 hover:bg-orange-600">
-                    <Truck className="mr-2 h-4 w-4" />{copy.book}
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-            </footer>
 
             <Dialog open={confirming} onOpenChange={(o) => { if (!booking) setConfirming(o); }}>
                 <DialogContent className="max-w-md">
