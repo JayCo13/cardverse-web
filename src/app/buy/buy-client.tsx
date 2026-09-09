@@ -123,7 +123,7 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
     const controller = new AbortController();
     const queryCards = () => supabase
       .from('cards')
-      .select('*, profiles:seller_id(display_name, profile_image_url, seller_verified, seller_rating, seller_review_count, shipping_carriers, shipping_fees)')
+      .select('*, profiles:seller_id(display_name, profile_image_url, seller_verified, seller_rating, seller_review_count, shipping_carriers)')
       .eq('listing_type', 'sale')
       .eq('status', 'active')
       .abortSignal(controller.signal);

@@ -10,11 +10,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckCircle, XCircle, Phone, FileCheck, ChevronRight, ChevronLeft, ChevronDown, Sparkles, AlertTriangle, MapPin, Truck, HandCoins } from 'lucide-react';
-import { SHIPPING_CARRIERS, carrierShortLabels } from '@/lib/shipping-carriers';
 import { PickupAddressPicker, type PickupAddress } from '@/components/pickup-address-picker';
 import { ShippingQuotePreview } from '@/components/shipping-quote-preview';
 import { getAccountSummary, invalidateAccountSummary } from '@/lib/account-summary';
-import { hasUsableShipping, isValidShippingFee, shippableCarriers, shopShippingRange, SHIPPING_FEE_MAX, SHIPPING_FEE_MIN, type ShopShippingFees } from '@/lib/shipping-fee';
+import { PLATFORM_SHIPPING_FEE } from '@/lib/shipping-fee';
 import { useAuth, useSupabase } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
@@ -221,9 +220,6 @@ export default function SellPage() {
   const [goshipPickupDraft, setGoshipPickupDraft] = useState<PickupAddress | null>(null);
   // Shop-level shipping options: selected carriers + per-carrier tiered fees
   // (formatted strings like "15.000") keyed by carrier code.
-  const [shipCarriers, setShipCarriers] = useState<string[]>([]);
-  const [shipFees, setShipFees] = useState<Record<string, { intra: string; inter: string; region: string }>>({});
-  const [savingShipping, setSavingShipping] = useState(false);
   const [shippingConfigOpen, setShippingConfigOpen] = useState(false);
 
   useEffect(() => {
@@ -647,21 +643,6 @@ export default function SellPage() {
       // owner check itself.
       const { data } = await supabase.rpc('get_my_profile' as never);
       const p = data as Record<string, any> | null;
-      setShipCarriers(p?.shipping_carriers || []);
-      const savedFees = (p?.shipping_fees || {}) as Record<string, any>;
-      const formatted: Record<string, { intra: string; inter: string; region: string }> = {};
-      for (const [code, f] of Object.entries(savedFees)) {
-        // 0 is free shipping, a fee the server accepts — it must render as "0",
-        // not as an empty box the save step would then reject as missing.
-        const fmt = (n: any) => (typeof n === 'number' ? n.toLocaleString('vi-VN') : '');
-        formatted[code] = { intra: fmt(f?.intra), inter: fmt(f?.inter), region: fmt(f?.region) };
-      }
-      setShipFees(formatted);
-      // A shop that cannot list yet should land on the form, not on a
-      // collapsed box the seller has to guess is pressable. Once configured
-      // it stays collapsed, which is why this is set here rather than in a
-      // render-time default that would fight the seller's own toggling.
-      setShippingSectionOpen(!hasUsableShipping(p?.shipping_fees, p?.shipping_carriers));
       // Province + ward is what a complete address is now; the district
       // column is null on anything saved since the tier was abolished.
       if (p?.address_province_id && p?.address_ward_code) {
@@ -696,85 +677,6 @@ export default function SellPage() {
   const formatVndInput = (v: string) => {
     const d = (v || '').replace(/[^\d]/g, '');
     return d ? Number(d).toLocaleString('vi-VN') : '';
-  };
-
-  const toggleShipCarrier = (code: string) => {
-    setShipCarriers(prev => (prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]));
-    // Seed an empty fee form when a fee-bearing carrier is first selected.
-    if (code !== 'self') {
-      setShipFees(prev => (prev[code] ? prev : { ...prev, [code]: { intra: '', inter: '', region: '' } }));
-    }
-  };
-
-  const setShipFee = (code: string, tier: 'intra' | 'inter' | 'region', raw: string) => {
-    setShipFees(prev => {
-      const cur = prev[code] || { intra: '', inter: '', region: '' };
-      return { ...prev, [code]: { ...cur, [tier]: formatVndInput(raw) } };
-    });
-  };
-
-  const saveShippingOptions = async () => {
-    if (!user) return;
-    // 'Tự giao' carries no fee table and the server refuses to quote it, so a
-    // shop offering only hand delivery is a shop nobody can check out from.
-    if (shippableCarriers(shipCarriers).length === 0) {
-      toast({
-        variant: 'destructive',
-        title: tx('Thiếu đơn vị vận chuyển', 'Missing carrier', '配送業者が未選択'),
-        description: tx(
-          'Tự giao / Gặp mặt chỉ là hình thức đi kèm. Chọn thêm ít nhất 1 đơn vị vận chuyển thì người mua mới thanh toán được.',
-          'Hand delivery only works alongside a carrier. Add at least one so buyers can check out.',
-          '手渡しは配送業者と併用するものです。購入者が決済できるよう1つ以上選んでください。',
-        ),
-      });
-      return;
-    }
-    // Every non-self carrier must have all three tier fees filled.
-    const feesObj: Record<string, { intra: number; inter: number; region: number }> = {};
-    for (const code of shipCarriers) {
-      if (code === 'self') continue;
-      const f = shipFees[code] || { intra: '', inter: '', region: '' };
-      const parse = (raw: string) => {
-        const digits = raw.replace(/[^\d]/g, '');
-        return digits === '' ? null : parseInt(digits, 10);
-      };
-      const intra = parse(f.intra);
-      const inter = parse(f.inter);
-      const region = parse(f.region);
-      const name = SHIPPING_CARRIERS.find(c => c.code === code)?.name || code;
-      if (intra === null || inter === null || region === null) {
-        toast({ variant: 'destructive', title: tx('Thiếu phí ship', 'Missing shipping fee', '送料が未入力'), description: tx(`Điền đủ 3 mức phí cho ${name}.`, `Fill all three fees for ${name}.`, `${name} の3つの料金をすべて入力してください。`) });
-        return;
-      }
-      // Buyers pay these, so a 0 or a mistyped 1.500.000 is caught here rather
-      // than at a checkout the seller never sees.
-      if (![intra, inter, region].every(isValidShippingFee)) {
-        toast({
-          variant: 'destructive',
-          title: tx('Phí ship không hợp lệ', 'Shipping fee out of range', '送料が範囲外です'),
-          description: tx(
-            `Phí cho ${name} phải lớn hơn 0đ và nhỏ hơn ${formatVND(SHIPPING_FEE_MAX + 1)}.`,
-            `Fees for ${name} must be above 0đ and below ${formatVND(SHIPPING_FEE_MAX + 1)}.`,
-            `${name} の料金は0đより大きく、${formatVND(SHIPPING_FEE_MAX + 1)}未満である必要があります。`,
-          ),
-        });
-        return;
-      }
-      feesObj[code] = { intra, inter, region };
-    }
-    setSavingShipping(true);
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ shipping_carriers: shipCarriers, shipping_fees: feesObj } as never)
-        .eq('id', user.id);
-      if (error) throw error;
-      toast({ title: tx('Đã lưu vận chuyển', 'Shipping saved', '配送を保存しました') });
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: tx('Lỗi', 'Error', 'エラー'), description: err.message || 'Failed' });
-    } finally {
-      setSavingShipping(false);
-    }
   };
 
   const uploadBankScreenshot = async (bankFile: File) => {
@@ -1070,130 +972,37 @@ export default function SellPage() {
   // card and the save button read it from one place, through the same predicate
   // the checkout routes use. The form keeps fees as formatted strings; parse
   // them back, keeping a typed 0 (free shipping) distinct from a blank box.
-  const numericShipFees: ShopShippingFees = Object.fromEntries(
-    Object.entries(shipFees).map(([code, fee]) => {
-      const parse = (raw: string) => {
-        const digits = raw.replace(/[^\d]/g, '');
-        return digits === '' ? undefined : parseInt(digits, 10);
-      };
-      return [code, { intra: parse(fee.intra), inter: parse(fee.inter), region: parse(fee.region) }];
-    }),
-  );
-  const shippingReady = hasUsableShipping(numericShipFees, shipCarriers);
-  // Saveable is stricter than ready: EVERY selected carrier must be complete,
-  // not just one of them, which is exactly what saveShippingOptions enforces.
-  /**
-   * The message for one fee box, or '' when it is fine.
-   *
-   * Empty stays silent: a seller who has not reached the box yet is not making
-   * a mistake, and the disabled save button already says the form is unfinished.
-   * A filled box that is out of range gets told exactly which bound it broke.
-   */
-  const shipFeeError = (raw: string): string => {
-    const digits = raw.replace(/[^\d]/g, '');
-    if (digits === '') return '';
-    const value = parseInt(digits, 10);
-    if (value < SHIPPING_FEE_MIN) {
-      return tx('Phải lớn hơn 0đ.', 'Must be above 0đ.', '0đより大きい必要があります。');
-    }
-    if (value > SHIPPING_FEE_MAX) {
-      return tx(
-        `Phải nhỏ hơn ${formatVND(SHIPPING_FEE_MAX + 1)}.`,
-        `Must be below ${formatVND(SHIPPING_FEE_MAX + 1)}.`,
-        `${formatVND(SHIPPING_FEE_MAX + 1)} 未満である必要があります。`,
-      );
-    }
-    return '';
-  };
 
-  const shippingSaveable = shippableCarriers(shipCarriers).length > 0
-    && shippableCarriers(shipCarriers).every(code =>
-      (['intra', 'inter', 'region'] as const).every(tier => isValidShippingFee(numericShipFees[code]?.[tier])));
-  const shippingFeeRange = shopShippingRange(numericShipFees, shippableCarriers(shipCarriers));
-
+  // Nothing to configure any more. Sellers used to declare three fees per
+  // carrier here — nội tỉnh, ngoại tỉnh, liên miền, nine numbers in all — and
+  // whichever tier applied became the buyer's charge. Quoted against GoShip,
+  // distance does not move what a 200g card costs to send: 15,385đ across Ho
+  // Chi Minh City, 15,700đ from there to Hanoi. So those numbers sorted
+  // guesses rather than costs, and one set below the real floor lost money on
+  // every order it priced. The panel stays, because sellers come looking for
+  // it; it reports the arrangement instead of asking them to invent it.
   const renderShippingConfigForm = () => (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <Label>{tx('Đơn vị vận chuyển', 'Carriers', '配送業者')}</Label>
-        <div className="flex flex-wrap gap-2">
-          {SHIPPING_CARRIERS.map(c => (
-            <button
-              key={c.code}
-              type="button"
-              onClick={() => toggleShipCarrier(c.code)}
-              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors ${shipCarriers.includes(c.code) ? 'border-orange-500 bg-orange-500/15 text-orange-300' : 'border-border/60 text-muted-foreground hover:border-orange-500/40'}`}
-            >
-              {c.logo ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={c.logo} alt="" className="h-5 w-5 rounded" />
-              ) : (
-                <Truck className="h-4 w-4" />
-              )}
-              {c.name}
-            </button>
-          ))}
-        </div>
+    <div className="space-y-3 text-sm">
+      <div className="rounded-lg border border-border/60 bg-background/40 p-3">
+        <p className="text-muted-foreground">
+          {tx('Phí vận chuyển người mua trả', 'Shipping charged to the buyer', '購入者が支払う送料')}
+        </p>
+        <p className="mt-1 text-2xl font-semibold text-orange-400">{formatVND(PLATFORM_SHIPPING_FEE)}</p>
       </div>
-      {shipCarriers.some(c => c !== 'self') && (
-        <div className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            {tx(`Nội tỉnh = cùng tỉnh · Ngoại tỉnh = khác tỉnh, cùng miền · Liên miền = khác miền (Bắc/Trung/Nam). Điền phí riêng cho từng đơn vị, mỗi mức trên 0đ và dưới ${formatVND(SHIPPING_FEE_MAX + 1)}.`,
-              `Same province · same region (different province) · cross-region (North/Central/South). Fill fees per carrier, each above 0đ and below ${formatVND(SHIPPING_FEE_MAX + 1)}.`,
-              `同一省内 · 同一地域（別の省）· 地域間（北/中/南）。配送業者ごとに、0đより大きく ${formatVND(SHIPPING_FEE_MAX + 1)} 未満の料金を入力してください。`)}
-          </p>
-          {shipCarriers.filter(c => c !== 'self').map(code => {
-            const carrier = SHIPPING_CARRIERS.find(c => c.code === code);
-            const f = shipFees[code] || { intra: '', inter: '', region: '' };
-            const tiers = [
-              { key: 'intra' as const, label: tx('Nội tỉnh (đ)', 'Same province (đ)', '同一省内 (đ)'), placeholder: '15.000' },
-              { key: 'inter' as const, label: tx('Ngoại tỉnh (đ)', 'Same region (đ)', '同一地域 (đ)'), placeholder: '25.000' },
-              { key: 'region' as const, label: tx('Liên miền (đ)', 'Cross-region (đ)', '地域間 (đ)'), placeholder: '40.000' },
-            ];
-            return (
-              <div key={code} className="space-y-3 rounded-lg border border-border/60 bg-background/40 p-3">
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  {carrier?.logo && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={carrier.logo} alt="" className="h-5 w-5 rounded" />
-                  )}
-                  {carrier?.name}
-                </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  {tiers.map(({ key, label, placeholder }) => {
-                    // Say why, at the field. A disabled save button with no
-                    // reason is worse than one that rejects on press: the
-                    // seller can see neither what is wrong nor where.
-                    const error = shipFeeError(f[key]);
-                    const errorId = `ship-${code}-${key}-error`;
-                    return (
-                      <div key={key} className="space-y-1.5">
-                        <Label htmlFor={`ship-${code}-${key}`}>{label}</Label>
-                        <Input
-                          id={`ship-${code}-${key}`}
-                          inputMode="numeric"
-                          value={f[key]}
-                          onChange={e => setShipFee(code, key, e.target.value)}
-                          placeholder={placeholder}
-                          aria-invalid={!!error}
-                          aria-describedby={error ? errorId : undefined}
-                          className={error ? 'border-red-500 focus-visible:ring-red-500' : undefined}
-                        />
-                        {error && <p id={errorId} className="text-xs text-red-400">{error}</p>}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      {/* Disabled rather than pressable-then-rejected: the two conditions
-          (a real carrier, and every fee filled) are visible right above it. */}
-      <Button onClick={saveShippingOptions} loading={savingShipping} disabled={!shippingSaveable} className="bg-orange-500 hover:bg-orange-600">
-        {savingShipping ? null : <Truck className="mr-2 h-4 w-4" />}
-        {tx('Lưu vận chuyển', 'Save shipping', '配送を保存')}
-      </Button>
+      <p className="text-muted-foreground">
+        {tx(
+          'Một mức cố định cho mọi đơn, gần hay xa như nhau — cước thật của một gói thẻ 200g không đổi theo khoảng cách. Bạn không cần khai phí, và cũng không phải trả khoản này.',
+          'One flat price on every order, near or far — what a 200g card actually costs to send does not change with distance. You set nothing, and you pay nothing towards it.',
+          'すべての注文で一律です。200gのカードの実際の送料は距離で変わりません。設定も負担も不要です。',
+        )}
+      </p>
+      <p className="text-muted-foreground">
+        {tx(
+          'Bạn chọn đơn vị vận chuyển khi tạo vận đơn cho từng đơn hàng, với bảng giá thật tại thời điểm đó.',
+          'You pick the carrier when you book each shipment, from live prices at that moment.',
+          '配送業者は各発送を予約する際に、その時点の実価格から選びます。',
+        )}
+      </p>
     </div>
   );
 
@@ -1300,28 +1109,11 @@ export default function SellPage() {
     const activeListings = myListings.filter(listing => listing.status === 'active' || listing.status === 'in_transaction');
     const soldListings = myListings.filter(listing => listing.status === 'sold');
     const draftListings = myListings.filter(listing => !activeListings.includes(listing) && !soldListings.includes(listing));
-    const enabledCarriers = SHIPPING_CARRIERS.filter(carrier => shipCarriers.includes(carrier.code));
-
-    const feeRange = shippingFeeRange;
-    const shippingSummary = shippingReady && feeRange
-      ? `${carrierShortLabels(shippableCarriers(shipCarriers))} · ${formatVND(feeRange.min)} – ${formatVND(feeRange.max)}`
-      : '';
-    // States the consequence, not just the state: an unconfigured shop cannot
-    // list at all, which is the part a seller needs to know from the card.
-    // Two different problems, two different sentences. Telling a seller who has
-    // filled everything to "pick a carrier and fill in the fees" sends them
-    // looking for something that is already done.
-    const shippingBlockedNote = shippableCarriers(shipCarriers).length === 0
-      ? tx(
-          'Chưa thiết lập. Chọn đơn vị vận chuyển và điền phí ship thì mới đăng bán được.',
-          'Not set up. Pick a carrier and fill in the fees to start listing.',
-          '未設定です。配送業者と送料を設定すると出品できます。',
-        )
-      : tx(
-          'Phí ship chưa hợp lệ. Sửa các ô báo đỏ bên dưới thì mới đăng bán được.',
-          'Some fees are not valid yet. Fix the boxes marked below to start listing.',
-          '送料が未確定です。下の赤い項目を修正すると出品できます。',
-        );
+    const shippingSummary = tx(
+      `Phí ship cố định ${formatVND(PLATFORM_SHIPPING_FEE)} · bạn chọn hãng khi đặt vận đơn`,
+      `Flat ${formatVND(PLATFORM_SHIPPING_FEE)} shipping · you pick the carrier when booking`,
+      `送料一律 ${formatVND(PLATFORM_SHIPPING_FEE)} · 発送予約時に業者を選択`,
+    );
 
     return (
       <div className="flex flex-1 flex-col">
@@ -1375,31 +1167,6 @@ export default function SellPage() {
               <KpiCard label={copy.totalEarnings} value={formatVND(totalEarnings)} tone="border-orange-500/20 bg-orange-500/5 text-orange-400" />
             </div>
 
-            {/* Listings that went live before shipping was required are still
-                on the marketplace and still unbuyable — the card below says
-                "you cannot list", which is about new listings and understates
-                this. Name the live ones so the seller knows what is at stake. */}
-            {!shippingReady && activeListings.length > 0 && (
-              <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4">
-                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-400" />
-                <div className="min-w-0 text-sm">
-                  <p className="font-semibold text-red-300">
-                    {tx(
-                      `${activeListings.length} tin đang bán của bạn chưa ai mua được`,
-                      `${activeListings.length} of your live listings cannot be bought`,
-                      `出品中の ${activeListings.length} 件が購入できない状態です`,
-                    )}
-                  </p>
-                  <p className="mt-1 leading-relaxed text-red-200/80">
-                    {tx(
-                      'Shop chưa có đơn vị vận chuyển và phí ship nên người mua không thanh toán được. Thiết lập bên dưới là các tin này bán được ngay, không cần đăng lại.',
-                      'The shop has no carrier or shipping fees, so buyers cannot check out. Set them up below and these listings work again without reposting.',
-                      '配送業者と送料が未設定のため購入者が決済できません。下で設定すれば、再出品せずにそのまま購入可能になります。',
-                    )}
-                  </p>
-                </div>
-              </div>
-            )}
 
             {/* Pickup Address — required so shipping fees can be calculated */}
             <Card id="pickup-address" className={!pickupAddress && !isLoadingAddress ? 'border-orange-500/40 bg-orange-500/5' : ''}>
@@ -1484,14 +1251,10 @@ export default function SellPage() {
               className="flex w-full items-start justify-between rounded-lg border bg-card p-4 text-left md:hidden"
             >
               <span className="flex min-w-0 items-start gap-3">
-                <Truck className={`mt-0.5 h-5 w-5 shrink-0 ${shippingReady ? 'text-muted-foreground' : 'text-amber-400'}`} />
+                <Truck className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
                 <span className="min-w-0">
                   <span className="block font-medium">{tx('Vận chuyển của shop', 'Shop shipping', 'ショップ配送')}</span>
-                  {shippingReady ? (
-                    <span className="mt-1 block truncate text-sm text-muted-foreground">{shippingSummary}</span>
-                  ) : (
-                    <span className="mt-1 block text-sm leading-relaxed text-amber-300">{shippingBlockedNote}</span>
-                  )}
+                  <span className="mt-1 block truncate text-sm text-muted-foreground">{shippingSummary}</span>
                 </span>
               </span>
               <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
@@ -1518,9 +1281,7 @@ export default function SellPage() {
                       {/* A collapsed card should report state, not repeat the
                           instructions — the how-to lives inside the panel, next
                           to the fields it describes. */}
-                      <CardDescription className={`mt-1.5 ${shippingReady ? '' : 'text-amber-300'}`}>
-                        {shippingReady ? shippingSummary : shippingBlockedNote}
-                      </CardDescription>
+                      <CardDescription className="mt-1.5">{shippingSummary}</CardDescription>
                     </div>
                     <ChevronDown
                       className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-200 ${shippingSectionOpen ? 'rotate-180' : ''}`}
@@ -1532,7 +1293,7 @@ export default function SellPage() {
               {shippingSectionOpen && (
                 <CardContent id="shop-shipping-panel">
                   <p className="mb-4 text-sm text-muted-foreground">
-                    {tx('Chọn đơn vị vận chuyển và khoảng phí ship. Thông tin này hiển thị trên mọi bài đăng; người mua trả mức phí tối đa khi thanh toán.', 'Pick your carriers and a fee range. It shows on all your listings; buyers are charged the maximum at checkout.', '配送業者と料金範囲を選択します。全出品に表示され、購入者は上限額を支払います。')}
+                    {tx('Phí ship do sàn đặt và người mua trả khi thanh toán. Bạn không cần khai gì ở đây.', 'The platform sets the shipping fee and the buyer pays it at checkout. Nothing to fill in here.', '送料はプラットフォームが設定し、購入者が決済時に支払います。ここで入力する項目はありません。')}
                   </p>
                   {renderShippingConfigForm()}
                 </CardContent>
@@ -1753,7 +1514,7 @@ export default function SellPage() {
             <DrawerHeader>
               <DrawerTitle>{tx('Vận chuyển của shop', 'Shop shipping', 'ショップ配送')}</DrawerTitle>
               <DrawerDescription>
-                {tx('Chọn đơn vị vận chuyển và khoảng phí ship.', 'Choose carriers and shipping fees.', '配送業者と送料を設定します。')}
+                {tx('Phí ship cố định do sàn đặt.', 'A flat shipping fee, set by the platform.', 'プラットフォームが定める一律送料。')}
               </DrawerDescription>
             </DrawerHeader>
             <div className="max-h-[80vh] overflow-y-auto px-4 pb-6">

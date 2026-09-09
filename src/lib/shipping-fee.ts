@@ -1,11 +1,18 @@
 /**
- * Resolve a shop's shipping fee from the seller↔buyer province relationship.
- * Three tiers the seller declares on their profile:
- *   intra  → same province                        (nội tỉnh)
- *   inter  → different province, same region       (ngoại tỉnh, cùng miền)
- *   region → different region (North/Central/South) (liên miền)
- * Regions are matched by (diacritic-insensitive) province name so this keeps
- * working even if we swap GHN's province API for another provider.
+ * What a buyer pays to have a card sent, and the province maths behind the
+ * tiers that no longer set it.
+ *
+ * Sellers used to declare three fees each — nội tỉnh, ngoại tỉnh, liên miền —
+ * and the buyer was charged whichever tier applied. Quoted against GoShip, that
+ * structure turned out to describe nothing: a 200g card costs 15,385đ to send
+ * across Ho Chi Minh City and 15,700đ to send from there to Hanoi. At this
+ * weight the carriers price flat, so distance was sorting guesses rather than
+ * costs — and one seller's 11,000đ nội tỉnh was below the floor, losing money
+ * on every order it priced.
+ *
+ * So the fee is flat and set here, not by sellers. The tier helpers survive
+ * because goship-tiers still groups its own quotes by route to show a seller
+ * what their address costs to ship from.
  */
 
 export type VnRegion = 'bac' | 'trung' | 'nam';
@@ -86,116 +93,16 @@ export const resolveShippingTier = (
   return 'region';
 };
 
-export const feeForTier = (tier: ShippingTier, fees: ShippingTierFees): number => fees[tier] ?? 0;
-
-/** Per-carrier tiered fees as stored on the shop: { "<carrier>": { intra, inter, region } }. */
-export type ShopShippingFees = Record<string, Partial<ShippingTierFees>>;
-
 /**
- * The bounds a seller-declared shipping fee must fall within.
+ * What every order charges for shipping, in đồng.
  *
- * Strictly above zero: free shipping is not offered, and a stored 0 used to be
- * indistinguishable from a seller who never filled the form — which is how a
- * buyer reached a pay button the checkout route would then refuse. Strictly
- * below 100.000đ because a card envelope never costs that much to send in
- * Vietnam, so a larger number is a typo (a missed decimal, usually) rather than
- * a price, and the buyer is the one who would pay for it.
+ * Above the real floor with room to spare: the cheapest carrier on any route
+ * measured was 15,385đ, the dearest 36,070đ. This covers the cheap end on every
+ * route rather than the dear end on any, because the seller picks the carrier
+ * when booking and picks from prices they can see.
  *
- * Every layer reads these: the shop form, the listing guard, and the server
- * quote. Do not re-type the numbers.
+ * It does not cover khai giá. SPX adds a flat 25,000đ once declared value goes
+ * above 2,500,000đ, and that cost belongs to the seller of an expensive card,
+ * not to every buyer of a cheap one.
  */
-export const SHIPPING_FEE_MIN = 1;
-export const SHIPPING_FEE_MAX = 99_999;
-
-export const isValidShippingFee = (value: unknown): value is number =>
-  typeof value === 'number'
-  && Number.isSafeInteger(value)
-  && value >= SHIPPING_FEE_MIN
-  && value <= SHIPPING_FEE_MAX;
-
-/**
- * Cheapest valid carrier for a tier, with its fee; null if none is set.
- *
- * The carrier matters as much as the amount: it is what the seller ships with,
- * and an order that recorded only the fee left the fulfilment dialog with
- * nothing to send. Ties keep the first carrier in the shop's own order.
- */
-export const cheapestTierOption = (
-  fees: ShopShippingFees | null | undefined,
-  carriers: string[],
-  tier: ShippingTier,
-): { carrier: string; fee: number } | null => {
-  if (!fees) return null;
-  let best: { carrier: string; fee: number } | null = null;
-  for (const carrier of carriers) {
-    const fee = fees[carrier]?.[tier];
-    if (!isValidShippingFee(fee)) continue;
-    if (!best || fee < best.fee) best = { carrier, fee };
-  }
-  return best;
-};
-
-/** Cheapest valid fee across the shop's carriers for a tier; null if none is set. */
-export const cheapestTierFee = (
-  fees: ShopShippingFees | null | undefined,
-  carriers: string[],
-  tier: ShippingTier,
-): number | null => cheapestTierOption(fees, carriers, tier)?.fee ?? null;
-
-/**
- * The carriers that can actually be quoted. 'self' is hand delivery: it has no
- * fee table and `quoteConfiguredShipping` refuses it outright, so a shop that
- * offers only 'self' is a shop nobody can check out from.
- */
-export const shippableCarriers = (carriers: string[] | null | undefined): string[] =>
-  (carriers || []).filter((c) => typeof c === 'string' && c !== 'self');
-
-/**
- * Can this shop be bought from at all?
- *
- * True only when a quotable carrier is enabled AND all three of its tier fees
- * are present and inside the allowed range. A shop failing this cannot list,
- * and its existing listings cannot be checked out — which is the honest answer,
- * since the server would refuse to quote them anyway.
- */
-export const hasUsableShipping = (
-  fees: ShopShippingFees | null | undefined,
-  carriers: string[] | null | undefined,
-): boolean =>
-  shippableCarriers(carriers).some((carrier) =>
-    (['intra', 'inter', 'region'] as const).every((tier) => isValidShippingFee(fees?.[carrier]?.[tier])),
-  );
-
-/** Full min–max span of the three tiers — used when the buyer's province is unknown. */
-export const shippingFeeRange = (fees: ShippingTierFees): { min: number; max: number } => {
-  const values = [fees.intra, fees.inter, fees.region];
-  return { min: Math.min(...values), max: Math.max(...values) };
-};
-
-/** Min–max span across all tiers of the shop's (non-self) carriers, for listing display. */
-export const shopShippingRange = (
-  fees: ShopShippingFees | null | undefined,
-  carriers: string[] | null | undefined,
-): { min: number; max: number } | null => {
-  const values: number[] = [];
-  (carriers || []).forEach((c) => {
-    const f = fees?.[c];
-    if (!f) return;
-    [f.intra, f.inter, f.region].forEach((v) => {
-      if (isValidShippingFee(v)) values.push(v);
-    });
-  });
-  if (!values.length) return null;
-  return { min: Math.min(...values), max: Math.max(...values) };
-};
-
-const TIER_LABELS: Record<ShippingTier, { vi: string; en: string; ja: string }> = {
-  intra: { vi: 'Nội tỉnh', en: 'Same province', ja: '同一省内' },
-  inter: { vi: 'Ngoại tỉnh', en: 'Same region', ja: '同一地域' },
-  region: { vi: 'Liên miền', en: 'Cross-region', ja: '地域間' },
-};
-
-export const tierLabel = (tier: ShippingTier, locale: string): string => {
-  const l = TIER_LABELS[tier];
-  return locale === 'ja-JP' ? l.ja : locale === 'en-US' ? l.en : l.vi;
-};
+export const PLATFORM_SHIPPING_FEE = 25_000;

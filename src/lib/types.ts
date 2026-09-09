@@ -55,7 +55,6 @@ export interface Card {
   priceIsVnd?: boolean;
   /** Seller's shop shipping (from profiles): carriers offered + per-carrier tiered fees. */
   shippingCarriers?: string[];
-  shippingFees?: Record<string, { intra?: number; inter?: number; region?: number }>;
 }
 
 export interface Offer {

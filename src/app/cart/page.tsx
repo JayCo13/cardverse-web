@@ -24,7 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowRight, Clock, CreditCard, Eye, PackageCheck, ShieldCheck, ShoppingCart, Store, Trash2, Truck } from "lucide-react";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { getCategoryCode } from "@/lib/category-code";
-import { shopShippingRange, type ShopShippingFees } from "@/lib/shipping-fee";
+import { PLATFORM_SHIPPING_FEE } from "@/lib/shipping-fee";
 import { useLocalization } from "@/context/localization-context";
 import { UserLink } from "@/components/user-link";
 import { VerifiedSellerBadge } from "@/components/verified-seller-badge";
@@ -47,7 +47,6 @@ type CartItem = {
       profile_image_url?: string | null;
       seller_verified?: boolean | null;
       shipping_carriers?: string[] | null;
-      shipping_fees?: ShopShippingFees | null;
     } | null;
   } | null;
 };
@@ -322,15 +321,16 @@ export default function CartPage() {
     () => selectedItems.reduce((sum, item) => sum + Number(item.cards?.price || 0) * (item.quantity || 1), 0),
     [selectedItems],
   );
-  // Estimated shipping across selected items (seller-declared range; the exact
-  // tier fee is resolved from the buyer's address at checkout).
+  // Shipping across the selected items. One flat fee per seller, not per item:
+  // a seller sends one parcel however many cards were bought from them, and
+  // charging twice for one parcel is charging for a parcel nobody sends.
   const shipEstimate = useMemo(() => {
-    let min = 0, max = 0, hasAny = false;
-    selectedItems.forEach(item => {
-      const r = shopShippingRange(item.cards?.profiles?.shipping_fees, item.cards?.profiles?.shipping_carriers);
-      if (r) { min += r.min; max += r.max; hasAny = true; }
-    });
-    return hasAny ? { min, max } : null;
+    const sellers = new Set(
+      selectedItems.map(item => item.cards?.seller_id).filter(Boolean) as string[],
+    );
+    if (sellers.size === 0) return null;
+    const total = sellers.size * PLATFORM_SHIPPING_FEE;
+    return { min: total, max: total };
   }, [selectedItems]);
 
   const toggleItem = (id: string) => {
@@ -574,7 +574,6 @@ export default function CartPage() {
                         const card = item.cards;
                         const unavailable = !card || card.status !== "active" || card.listing_type !== "sale";
                         const selected = selectedIds.has(item.id);
-                        const shipRange = shopShippingRange(card?.profiles?.shipping_fees, card?.profiles?.shipping_carriers);
 
                         return (
                           <article key={item.id} className={`flex gap-3 border-b border-zinc-800 px-3 py-3 last:border-b-0 ${unavailable ? "opacity-60" : ""} ${selected ? "bg-orange-500/5" : ""}`}>
@@ -637,7 +636,7 @@ export default function CartPage() {
                               </div>
                               <p className="mt-2 text-base font-bold text-orange-500">{formatVND(Number(card?.price || 0))}</p>
                               <div className="mt-2 flex flex-wrap items-start gap-x-2 gap-y-1 text-[10px] leading-4 text-muted-foreground">
-                                <span className="inline-flex items-start gap-1"><Truck className="mt-0.5 h-3 w-3 shrink-0 text-orange-300" />{estShippingLabel}: {shipText(shipRange)}</span>
+                                <span className="inline-flex items-start gap-1"><Truck className="mt-0.5 h-3 w-3 shrink-0 text-orange-300" />{estShippingLabel}: {formatVND(PLATFORM_SHIPPING_FEE)}</span>
                                 <span className="inline-flex items-start gap-1"><ShieldCheck className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />{copy.protected}</span>
                                 <span className="inline-flex items-start gap-1"><CreditCard className="mt-0.5 h-3 w-3 shrink-0 text-orange-300" />{copy.walletPayos}</span>
                               </div>
@@ -710,7 +709,6 @@ export default function CartPage() {
                   const card = item.cards;
                   const unavailable = !card || card.status !== "active" || card.listing_type !== "sale";
                   const selected = selectedIds.has(item.id);
-                  const shipRange = shopShippingRange(card?.profiles?.shipping_fees, card?.profiles?.shipping_carriers);
                   return (
                     <article key={item.id} className={`group relative flex border-b border-zinc-800 bg-card/60 transition last:border-b-0 hover:bg-card ${unavailable ? "opacity-60" : ""} ${selected ? "bg-orange-500/5" : ""}`}>
                       <div className="absolute left-3 top-3 z-10">
@@ -741,7 +739,7 @@ export default function CartPage() {
                         </div>
                       </div>
                       <div className="flex w-52 flex-col justify-between gap-3 border-l bg-background/30 p-5">
-                        <div className="space-y-2.5"><div><p className="text-xs text-muted-foreground">{copy.itemPrice}</p><p className="text-2xl font-bold tracking-normal text-orange-400">{formatVND(Number(card?.price || 0))}</p></div><div className="rounded-lg border border-orange-500/20 bg-orange-500/5 px-3 py-2"><p className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Truck className="h-3.5 w-3.5 text-orange-300" />{estShippingLabel}</p><p className="mt-0.5 text-sm font-semibold text-foreground">{shipText(shipRange)}</p></div></div>
+                        <div className="space-y-2.5"><div><p className="text-xs text-muted-foreground">{copy.itemPrice}</p><p className="text-2xl font-bold tracking-normal text-orange-400">{formatVND(Number(card?.price || 0))}</p></div><div className="rounded-lg border border-orange-500/20 bg-orange-500/5 px-3 py-2"><p className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Truck className="h-3.5 w-3.5 text-orange-300" />{estShippingLabel}</p><p className="mt-0.5 text-sm font-semibold text-foreground">{formatVND(PLATFORM_SHIPPING_FEE)}</p></div></div>
                         <div className="grid gap-2">
                           {card && <Button variant="outline" size="sm" className="justify-center gap-2 border-orange-500/35 bg-orange-500/10 text-orange-200 hover:bg-orange-500/20" onClick={() => router.push(`/cards/${card.id}`)}><Eye className="h-4 w-4" />{copy.viewDetail}</Button>}
                           <Button variant="ghost" size="sm" className="justify-center gap-2 text-muted-foreground hover:text-red-300" disabled={isBulkRemoving} onClick={() => setPendingRemoval({ kind: "one", id: item.id, name: card?.name || copy.missingCard })}><Trash2 className="h-4 w-4" />{copy.removeFromCart}</Button>

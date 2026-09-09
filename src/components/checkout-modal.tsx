@@ -8,7 +8,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Wallet, CreditCard, Loader2, CheckCircle, ShieldCheck, ExternalLink, Truck } from 'lucide-react';
 import { useAuth, useSupabase } from '@/lib/supabase';
-import { resolveShippingTier, shippableCarriers } from '@/lib/shipping-fee';
+import { PLATFORM_SHIPPING_FEE } from '@/lib/shipping-fee';
 import { getCarrier } from '@/lib/shipping-carriers';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
@@ -231,26 +231,18 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('shipping_carriers, shipping_fees, address_province_id, address_province_name')
+        .select('address_province_id, address_province_name')
         .eq('id', card.seller_id)
         .single();
       if (error) throw error;
-      const p = data as any;
-      const tier = resolveShippingTier(
-        { provinceId: p?.address_province_id, provinceName: p?.address_province_name },
-        { provinceId: address.province_id, provinceName: address.province_name },
-      );
-      // Only carriers with a fee actually stored for this tier can be quoted.
-      // A missing key is the seller never having filled the form — it is not
-      // free shipping, and treating it as 0 is what used to walk the buyer all
-      // the way to a pay button the server would then refuse. A stored 0 is
-      // kept: that is a real configuration meaning free delivery.
-      const options = shippableCarriers(p?.shipping_carriers)
-        .map((code: string) => ({ code, fee: p?.shipping_fees?.[code]?.[tier] }))
-        .filter((o: { code: string; fee: unknown }): o is { code: string; fee: number } => typeof o.fee === 'number');
-      setShipOptions(options);
+      const p = data as { address_province_id: number | null; address_province_name: string | null } | null;
 
-      if (options.length === 0) {
+      // One flat fee, so there is nothing to choose between and nothing that
+      // can be missing from a seller's form. What can still be missing is
+      // somewhere to collect the parcel from, and that is worth stopping for:
+      // it is the seller's own address, not a price they forgot to type.
+      if (!p?.address_province_id || !p?.address_province_name?.trim()) {
+        setShipOptions([]);
         selectedCarrierRef.current = '';
         setSelectedCarrier('');
         setShippingFee(null);
@@ -258,12 +250,8 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
         return;
       }
 
-      // Keep the buyer's carrier if still valid; otherwise default to the first
-      // (single carrier → automatic default, multiple → buyer can change it).
-      const preferred = options.find((o: { code: string }) => o.code === selectedCarrierRef.current) || options[0];
-      selectedCarrierRef.current = preferred.code;
-      setSelectedCarrier(preferred.code);
-      setShippingFee(preferred.fee);
+      setShipOptions([]);
+      setShippingFee(PLATFORM_SHIPPING_FEE);
     } catch (err: any) {
       console.error('Fee calculation error:', err);
       setFeeError(copy.feeError);

@@ -50,6 +50,5 @@ export function mapSaleCard(c: any): Card {
           createdAt: c.created_at,
           priceIsVnd: true, // Marketplace listings are entered in VND
           shippingCarriers: c.profiles?.shipping_carriers || [],
-          shippingFees: (c.profiles?.shipping_fees || {}) as Record<string, { intra?: number; inter?: number; region?: number }>,
     };
 }

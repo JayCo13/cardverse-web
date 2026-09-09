@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AddressBook, type SavedAddress } from "@/components/address-book";
-import { resolveShippingTier, shippableCarriers, isValidShippingFee } from "@/lib/shipping-fee";
+import { PLATFORM_SHIPPING_FEE } from "@/lib/shipping-fee";
 import { getCarrier } from "@/lib/shipping-carriers";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -371,40 +371,24 @@ export default function CheckoutPage() {
     setShippingOptions({});
     try {
       const sellerIds = [...new Set(currentItems.map(item => item.card.sellerId))];
+      // The seller still has to have somewhere for a courier to collect from,
+      // which is the only thing left worth reading. The price no longer depends
+      // on the seller, the carrier, or how far the parcel goes.
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, shipping_carriers, shipping_fees, goship_tier_fees, address_province_id, address_province_name')
+        .select('id, address_province_id, address_province_name')
         .in('id', sellerIds);
       if (error) throw error;
       if (requestId !== feeRequestRef.current) return;
 
       const feeBySeller = new Map<string, number | null>();
       const nextOptions: Record<string, { carrier: string; fee: number }[]> = {};
-      const nextCarriers: Record<string, string> = {};
-      (data || []).forEach((p: any) => {
-        const tier = resolveShippingTier(
-          { provinceId: p.address_province_id, provinceName: p.address_province_name },
-          { provinceId: address.province_id, provinceName: address.province_name },
-        );
-        // Real GoShip prices win per carrier, the same way verified-shipping
-        // merges them: GoShip does not reach every carrier from every province,
-        // and falling back for one must not discard the real prices for the
-        // others.
-        const fees = { ...(p.shipping_fees ?? {}), ...(p.goship_tier_fees ?? {}) };
-        const options = shippableCarriers(p.shipping_carriers).flatMap(carrier => {
-          const fee = fees?.[carrier]?.[tier];
-          return isValidShippingFee(fee) ? [{ carrier, fee }] : [];
-        }).sort((a, b) => a.fee - b.fee);
-        // Cheapest, always. The buyer no longer picks a carrier — the seller
-        // does, when they book — so this is a price, not a choice.
-        const selected = options[0];
-        nextOptions[p.id] = options;
-        if (selected) nextCarriers[p.id] = selected.carrier;
-        feeBySeller.set(p.id, selected?.fee ?? null);
+      (data || []).forEach((p: { id: string; address_province_id: number | null; address_province_name: string | null }) => {
+        const canCollect = !!p.address_province_id && !!p.address_province_name?.trim();
+        nextOptions[p.id] = [];
+        feeBySeller.set(p.id, canCollect ? PLATFORM_SHIPPING_FEE : null);
       });
       setShippingOptions(nextOptions);
-      selectedCarriersRef.current = nextCarriers;
-      setSelectedCarriers(nextCarriers);
 
       // Shipping is charged once per seller, so only the first item of each
       // seller carries the fee — but an unconfigured seller poisons every one of

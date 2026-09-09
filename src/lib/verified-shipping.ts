@@ -1,126 +1,83 @@
 import 'server-only';
-import { cheapestTierOption, isValidShippingFee, resolveShippingTier, type ShopShippingFees } from '@/lib/shipping-fee';
+import { PLATFORM_SHIPPING_FEE } from '@/lib/shipping-fee';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
+
+/**
+ * What a buyer is charged to have an order sent.
+ *
+ * One flat price the platform sets, not a table the seller fills in. The three
+ * tiers this replaced sorted guesses by distance, and distance does not move
+ * what a 200g card costs to send — see the measurements in shipping-fee.ts.
+ *
+ * The browser still never supplies the amount. It is read from here on every
+ * path that takes money, so a tampered payload cannot change what is charged
+ * any more than it could before.
+ *
+ * The seller's pickup province is still required. Not for the price now, but
+ * because a parcel has to be collected from somewhere, and an order that
+ * reaches payment with nowhere to collect from is one the seller cannot book.
+ */
 
 type ConfiguredShippingQuoteInput = {
   sellerId: string;
-  carrier: string;
+  carrier?: string;
   toProvinceId: number;
   toProvinceName: string;
 };
 
-type CheapestConfiguredShippingQuoteInput = Omit<ConfiguredShippingQuoteInput, 'carrier'>;
-
 type SellerShippingProfile = {
-  shipping_carriers: string[] | null;
-  shipping_fees: ShopShippingFees | null;
-  /**
-   * The same shape, quoted from GoShip against the seller's real pickup
-   * address. Preferred over shipping_fees wherever it covers the carrier being
-   * quoted: those are nine numbers a seller guessed, these are what the parcel
-   * costs.
-   *
-   * Per carrier, not all or nothing — GoShip does not reach every carrier from
-   * every province, and falling back for one should not discard the real prices
-   * for the others.
-   */
-  goship_tier_fees?: ShopShippingFees | null;
   address_province_id: number | null;
   address_province_name: string | null;
 };
 
 /**
- * Recalculate a marketplace fee from the seller's stored checkout settings.
- * The browser may choose a carrier, but it never supplies the amount charged.
+ * The carrier recorded at checkout.
+ *
+ * Nobody chooses one here any more: the seller picks from GoShip's live rates
+ * when booking, and that choice overwrites this. It is kept because orders
+ * carry a carrier column that predates the change and readers still fall back
+ * to it before a shipment exists.
  */
+const CARRIER_AT_CHECKOUT = 'goship';
+
+const readSellerProfile = async (sellerIds: string[]) => {
+  const service = createServiceSupabaseClient();
+  const { data, error } = await service
+    .from('profiles')
+    .select('id, display_name, address_province_id, address_province_name')
+    .in('id', [...new Set(sellerIds)])
+    .returns<(SellerShippingProfile & { id: string; display_name: string | null })[]>();
+  if (error || !data) {
+    // A failed query says nothing about any seller's configuration.
+    console.error('Checkout shipping profile read failed:', error);
+    throw new CheckoutShippingError('shipping_quote_failed');
+  }
+  return new Map(data.map((profile) => [profile.id, profile]));
+};
+
+const hasPickupOrigin = (profile: SellerShippingProfile | undefined): boolean =>
+  !!profile
+  && Number.isSafeInteger(profile.address_province_id)
+  && !!profile.address_province_name?.trim();
+
 export async function quoteConfiguredShipping(input: ConfiguredShippingQuoteInput): Promise<number> {
-  const service = createServiceSupabaseClient();
-  const { data, error } = await service
-    .from('profiles')
-    .select('shipping_carriers, shipping_fees, goship_tier_fees, address_province_id, address_province_name')
-    .eq('id', input.sellerId)
-    .single<SellerShippingProfile>();
-
-  if (error || !data) throw new Error('seller_shipping_configuration_missing');
-
-  return configuredShippingFromProfile(input, data);
+  const profiles = await readSellerProfile([input.sellerId]);
+  const profile = profiles.get(input.sellerId);
+  if (!profile) throw new Error('seller_shipping_configuration_missing');
+  if (!hasPickupOrigin(profile)) throw new Error('seller_shipping_configuration_missing');
+  return PLATFORM_SHIPPING_FEE;
 }
 
-
-/**
- * The fees to charge from, real ones where they exist.
- *
- * Merged per carrier rather than chosen wholesale: GoShip does not reach every
- * carrier from every province — a seller in Tây Ninh is offered no SPX where
- * one in Ho Chi Minh City is — and falling back for that carrier should not
- * throw away the real prices for the others.
- */
-function effectiveFees(data: SellerShippingProfile): ShopShippingFees {
-  const typed = (data.shipping_fees ?? {}) as ShopShippingFees;
-  const real = (data.goship_tier_fees ?? {}) as ShopShippingFees;
-  return { ...typed, ...real };
-}
-
-function configuredShippingFromProfile(input: ConfiguredShippingQuoteInput, data: SellerShippingProfile): number {
-  const carrier = String(input.carrier || '').trim();
-  const enabledCarriers = Array.isArray(data.shipping_carriers) ? data.shipping_carriers : [];
-  if (!carrier || carrier === 'self' || !enabledCarriers.includes(carrier)) {
-    throw new Error('invalid_shipping_carrier');
-  }
-
-  const toProvinceId = Number(input.toProvinceId);
-  if (!Number.isSafeInteger(toProvinceId) || !input.toProvinceName
-      || !Number.isSafeInteger(data.address_province_id) || !data.address_province_name) {
-    throw new Error('seller_shipping_configuration_missing');
-  }
-
-  const tier = resolveShippingTier(
-    {
-      provinceId: data.address_province_id,
-      provinceName: data.address_province_name,
-    },
-    {
-      provinceId: toProvinceId,
-      provinceName: input.toProvinceName,
-    },
-  );
-  const fee = effectiveFees(data)?.[carrier]?.[tier];
-  // Same bounds the shop form enforces. A row outside them predates the rule
-  // (or was written around the form) and must not become a buyer's charge.
-  if (!isValidShippingFee(fee)) {
-    throw new Error('shipping_fee_not_configured');
-  }
-
-  return fee;
-}
-
-/**
- * Quote the checkout-page default: the cheapest enabled carrier configured by
- * the seller for the buyer's delivery tier. This deliberately does not use a
- * live GHN quote; the seller's saved shipping table is the buyer's charge.
- *
- * Returns the carrier as well as the fee. The buyer is never asked to pick one
- * on this path, so the carrier this quote settled on IS the agreed carrier, and
- * the order has to carry it — the seller's ship action requires one.
- */
 export async function quoteCheapestConfiguredShipping(
-  input: CheapestConfiguredShippingQuoteInput,
+  input: Omit<ConfiguredShippingQuoteInput, 'carrier'>,
 ): Promise<{ carrier: string; fee: number }> {
-  const service = createServiceSupabaseClient();
-  const { data, error } = await service
-    .from('profiles')
-    .select('shipping_carriers, shipping_fees, goship_tier_fees, address_province_id, address_province_name')
-    .eq('id', input.sellerId)
-    .single<SellerShippingProfile>();
-
-  if (error || !data) throw new Error('seller_shipping_configuration_missing');
-
-  return cheapestConfiguredShippingFromProfile(input, data);
+  const fee = await quoteConfiguredShipping(input);
+  return { carrier: CARRIER_AT_CHECKOUT, fee };
 }
 
 /** One trusted profile read for the whole cart; never use browser fee data. */
 export async function quoteCheapestConfiguredShippingBatch(
-  inputs: CheapestConfiguredShippingQuoteInput[],
+  inputs: Omit<ConfiguredShippingQuoteInput, 'carrier'>[],
 ): Promise<Map<string, { carrier: string; fee: number }>> {
   return quoteCheckoutConfiguredShippingBatch(inputs);
 }
@@ -136,74 +93,24 @@ export class CheckoutShippingError extends Error {
   }
 }
 
-/** Quote explicit choices or legacy defaults with one trusted profile read. */
 export async function quoteCheckoutConfiguredShippingBatch(
-  inputs: (CheapestConfiguredShippingQuoteInput & { carrier?: string })[],
+  inputs: ConfiguredShippingQuoteInput[],
 ): Promise<Map<string, { carrier: string; fee: number }>> {
   if (inputs.length === 0) return new Map();
-  if (inputs.some(input => !Number.isSafeInteger(Number(input.toProvinceId))
+  if (inputs.some((input) => !Number.isSafeInteger(Number(input.toProvinceId))
     || Number(input.toProvinceId) <= 0 || !input.toProvinceName?.trim())) {
     throw new CheckoutShippingError('shipping_address_invalid');
   }
-  const service = createServiceSupabaseClient();
-  const { data, error } = await service
-    .from('profiles')
-    .select('id, display_name, shipping_carriers, shipping_fees, goship_tier_fees, address_province_id, address_province_name')
-    .in('id', [...new Set(inputs.map(input => input.sellerId))])
-    .returns<(SellerShippingProfile & { id: string; display_name: string | null })[]>();
-  // A failed query says nothing about any seller's configuration.
-  if (error || !data) {
-    console.error('Checkout shipping profile read failed:', error);
-    throw new CheckoutShippingError('shipping_quote_failed');
-  }
-  const profiles = new Map(data.map(profile => [profile.id, profile]));
-  return new Map(inputs.map(input => {
+
+  const profiles = await readSellerProfile(inputs.map((input) => input.sellerId));
+
+  return new Map(inputs.map((input) => {
     const profile = profiles.get(input.sellerId);
     const sellerName = profile?.display_name || undefined;
     if (!profile) throw new CheckoutShippingError('seller_shipping_configuration_missing', input.sellerId);
-    if (!Number.isSafeInteger(profile.address_province_id)
-      || !profile.address_province_name?.trim()) {
+    if (!hasPickupOrigin(profile)) {
       throw new CheckoutShippingError('seller_shipping_origin_missing', input.sellerId, sellerName);
     }
-    try {
-      const quote = input.carrier === undefined
-        ? cheapestConfiguredShippingFromProfile(input, profile)
-        : { carrier: input.carrier, fee: configuredShippingFromProfile({ ...input, carrier: input.carrier }, profile) };
-      return [input.sellerId, quote];
-    } catch (error) {
-      const code = error instanceof Error ? error.message : '';
-      if (['invalid_shipping_carrier', 'shipping_fee_not_configured', 'seller_shipping_configuration_missing'].includes(code)) {
-        throw new CheckoutShippingError(code, input.sellerId, sellerName);
-      }
-      throw error;
-    }
+    return [input.sellerId, { carrier: CARRIER_AT_CHECKOUT, fee: PLATFORM_SHIPPING_FEE }];
   }));
-}
-
-function cheapestConfiguredShippingFromProfile(
-  input: CheapestConfiguredShippingQuoteInput,
-  data: SellerShippingProfile,
-): { carrier: string; fee: number } {
-  const toProvinceId = Number(input.toProvinceId);
-  if (!Number.isSafeInteger(toProvinceId) || !input.toProvinceName
-      || !Number.isSafeInteger(data.address_province_id) || !data.address_province_name) {
-    throw new Error('seller_shipping_configuration_missing');
-  }
-
-  const tier = resolveShippingTier(
-    {
-      provinceId: data.address_province_id,
-      provinceName: data.address_province_name,
-    },
-    {
-      provinceId: toProvinceId,
-      provinceName: input.toProvinceName,
-    },
-  );
-  const carriers = (Array.isArray(data.shipping_carriers) ? data.shipping_carriers : [])
-    .filter((carrier): carrier is string => typeof carrier === 'string' && carrier !== 'self');
-  const option = cheapestTierOption(effectiveFees(data), carriers, tier);
-  if (option === null) throw new Error('shipping_fee_not_configured');
-
-  return option;
 }

@@ -3,7 +3,6 @@
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
-import { hasUsableShipping } from '@/lib/shipping-fee';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -710,7 +709,6 @@ export default function CreateListingPage() {
   const [isCheckingSellerAccess, setIsCheckingSellerAccess] = useState(true);
   const [hasSellerAccess, setHasSellerAccess] = useState(false);
   const [hasPickupAddress, setHasPickupAddress] = useState(false);
-  const [hasShippingConfig, setHasShippingConfig] = useState(false);
   const supabase = useSupabase();
 
   const copy = getLocaleCopy(locale);
@@ -951,14 +949,13 @@ export default function CreateListingPage() {
         // filling in the whole form only to be refused at the end.
         const { data: profile } = await supabase
           .from('profiles')
-          .select('address_province_id, address_ward_code, shipping_carriers, shipping_fees')
+          .select('address_province_id, address_ward_code')
           .eq('id', user.id)
           .single();
         const p = profile as Record<string, any> | null;
         // Province + ward: the district column is null on anything saved
         // since that tier was abolished, so it can no longer gate this.
         setHasPickupAddress(!!(p?.address_province_id && p?.address_ward_code));
-        setHasShippingConfig(hasUsableShipping(p?.shipping_fees, p?.shipping_carriers));
       } catch {
         setHasSellerAccess(false);
         router.replace('/sell');
@@ -1525,32 +1522,6 @@ export default function CreateListingPage() {
               submitLabel={copy.saveAndContinue}
               onSaved={() => setHasPickupAddress(true)}
             />
-          </div>
-        </div>
-      );
-    }
-
-    // Carriers and fees are the other half. The form is long, so refusing here
-    // beats letting a seller fill all of it and rejecting the submit — which is
-    // what the API would otherwise do. Configured on /sell, not inline, because
-    // it is a shop-wide setting rather than a per-listing one.
-    if (!hasShippingConfig) {
-      return (
-        <div className="space-y-6 py-4">
-          <div className="flex flex-col items-center text-center">
-            <div className="h-14 w-14 rounded-full bg-orange-500/10 flex items-center justify-center mb-3">
-              <Truck className="h-7 w-7 text-orange-500" />
-            </div>
-            <h2 className="text-2xl font-semibold mb-1">{copy.addShipping}</h2>
-            <p className="text-muted-foreground max-w-md">{copy.addShippingDesc}</p>
-            <Button
-              type="button"
-              className="mt-6 bg-orange-500 hover:bg-orange-600"
-              onClick={() => router.push('/sell#shop-shipping')}
-            >
-              {copy.addShipping}
-              <ArrowRight className="ml-2 h-4 w-4" aria-hidden />
-            </Button>
           </div>
         </div>
       );
