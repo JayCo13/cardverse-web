@@ -46,6 +46,8 @@ type Order = {
   ghn_status: string | null;
   carrier_status: string | null;
   carrier_status_at: string | null;
+  /** GoShip's own link. Null until the carrier accepts the shipment. */
+  carrier_tracking_url: string | null;
   /** GoShip's ids for the delivery address, captured at checkout. */
   to_goship: { city: string; district: string; ward: string } | null;
   /** Set once a waybill exists. The key GoShip's events are matched on. */
@@ -789,12 +791,12 @@ export default function OrdersPage() {
                     beside the price above; the carrier's own page is one link
                     away for anyone who wants their timeline. Nothing here polls
                     a third party any more. */}
-                {parcelTrackingUrl(order.shipping_provider, order.tracking_number, order.goship_code) && (
+                {parcelTrackingUrl(order.shipping_provider, order.tracking_number, order.carrier_tracking_url) && (
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => window.open(
-                      parcelTrackingUrl(order.shipping_provider, order.tracking_number, order.goship_code) as string,
+                      parcelTrackingUrl(order.shipping_provider, order.tracking_number, order.carrier_tracking_url) as string,
                       '_blank', 'noopener',
                     )}
                   >

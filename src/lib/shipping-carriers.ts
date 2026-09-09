@@ -115,22 +115,22 @@ export const carrierShortLabels = (codes: string[] | null | undefined): string =
     .join(', ');
 
 /**
- * Where to send someone to follow a parcel.
+ * Where to send someone to follow a parcel, or null when nowhere yet.
  *
- * The carrier's own page when the carrier has issued a number, and GoShip's
- * tracker until it has. A shipment carries GoShip's code from the moment it is
- * booked and the carrier's only once they accept it, so linking to the carrier
- * too early hands the buyer a 404 with a code that site has never seen.
+ * The stored link first, because GoShip gives the right one and gives it only
+ * once the carrier has accepted the shipment. Before that there is genuinely
+ * nothing to track: GoShip reports carrier_code and tracking_url both null, its
+ * own tracker does not know the shipment either, and a link built from the
+ * carrier plus GoShip's code sends the buyer to a 404.
+ *
+ * So null is an answer, not a gap — the caller shows no button rather than a
+ * broken one.
  */
 export const parcelTrackingUrl = (
   carrier: string | null | undefined,
   trackingNumber: string | null | undefined,
-  goshipCode: string | null | undefined,
+  carrierTrackingUrl: string | null | undefined,
 ): string | null => {
-  // Equal means the "tracking number" is really GoShip's own — no carrier
-  // number exists yet, whatever the column says.
-  const carrierNumber = trackingNumber && trackingNumber !== goshipCode ? trackingNumber : null;
-  const carrierUrl = carrierNumber ? getTrackingUrl(carrier, carrierNumber) : null;
-  if (carrierUrl) return carrierUrl;
-  return goshipCode ? `https://track.goship.io/?code=${encodeURIComponent(goshipCode)}` : null;
+  if (carrierTrackingUrl) return carrierTrackingUrl;
+  return trackingNumber ? getTrackingUrl(carrier, trackingNumber) : null;
 };

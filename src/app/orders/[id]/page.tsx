@@ -86,7 +86,7 @@ export default function OrderDetailsPage() {
   // GoShip's webhooks, where metadata holds whatever checkout guessed before
   // the buyer stopped choosing one.
   const trackingUrl = order
-    ? parcelTrackingUrl(order.shipping_provider || order.metadata?.shipping_carrier, order.tracking_number, order.goship_code)
+    ? parcelTrackingUrl(order.shipping_provider || order.metadata?.shipping_carrier, order.tracking_number, order.carrier_tracking_url)
     : null;
   const bundleSel: { title: string; price: number }[] = Array.isArray(order?.metadata?.bundle_selection) ? order.metadata.bundle_selection : [];
   const counterparty = order ? (isBuyer ? order.seller : order.buyer) : null;

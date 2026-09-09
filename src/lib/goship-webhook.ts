@@ -23,6 +23,8 @@ export type GoshipWebhookEvent = {
     orderRef: string | null;
     /** GoShip's carrier code, mapped to the app's own. */
     carrierSlug: string | null;
+    /** Where to follow the parcel. Null until the carrier accepts it. */
+    trackingUrl: string | null;
     statusCode: number;
     statusText: string | null;
     carrierStatus: CarrierStatus;
@@ -71,6 +73,7 @@ export function readGoshipEvent(body: unknown): GoshipWebhookEvent | null {
         carrierCode: rawCarrierCode && rawCarrierCode !== gcode ? rawCarrierCode : null,
         orderRef: str(b.order_id),
         carrierSlug: str(b.carrier_short_name) ? goshipCarrierToApp(str(b.carrier_short_name) as string) : null,
+        trackingUrl: str(b.tracking_url),
         statusCode,
         statusText: str(b.status_text),
         carrierStatus,

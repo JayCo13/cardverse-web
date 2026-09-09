@@ -80,6 +80,9 @@ export async function POST(request: NextRequest) {
             // The carrier the seller actually booked. Checkout no longer picks
             // one, and the buyer's tracking link is built from this.
             p_carrier_slug: event.carrierSlug,
+            // Null until the carrier accepts, which is what tells the interface
+            // there is nothing to link to yet.
+            p_tracking_url: event.trackingUrl,
         } as never);
         if (error) throw error;
 
