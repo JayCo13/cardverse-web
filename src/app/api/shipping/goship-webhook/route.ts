@@ -10,9 +10,10 @@ import { notifyCarrierStatusChange } from '@/lib/carrier-notifications';
  * Two independent checks, because they fail in different ways. The URL secret
  * proves the caller knows something only GoShip was told; the HMAC proves the
  * body was not altered on the way. The signature is the stronger of the two and
- * is used whenever GOSHIP_CLIENT_SECRET is set — but it is not yet, so the
- * secret on the URL is doing the work today and the route still fails closed
- * without it. An absent secret must never mean an open door.
+ * is used whenever GOSHIP_CLIENT_SECRET is set, which it now is in production.
+ * The URL secret is kept anyway: it is checked before the body is read, and it
+ * still stands alone anywhere the client secret is missing. An absent secret
+ * must never mean an open door.
  *
  * GoShip retries a non-200 after three minutes, three times, then gives up. So
  * a failure we could recover from answers 500 and gets another go, while an
