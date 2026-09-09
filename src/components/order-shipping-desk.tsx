@@ -342,9 +342,10 @@ export function OrderShippingDesk({
                                     )}
 
                                     {rates && rates.length > 0 && (
-                                        // Capped and scrollable: five carriers is common and the
-                                        // column should not outgrow the form beside it.
-                                        <ul className="max-h-[22rem] space-y-2 overflow-y-auto pr-1">
+                                        // No cap of its own: the column around this scrolls
+                                        // now, and a scrollbar inside a scrollbar makes the
+                                        // reader guess which one their wheel is driving.
+                                        <ul className="space-y-2">
                                             {rates.map((r) => {
                                                 const isChosen = r.id === chosen;
                                                 const over = r.totalFee > buyerPaidShipping;

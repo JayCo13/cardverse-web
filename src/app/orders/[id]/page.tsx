@@ -192,8 +192,14 @@ export default function OrderDetailsPage() {
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-5 text-sm text-red-300">{error}</div>
         ) : order ? (
           <div className={showDesk ? 'grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,36rem)]' : 'space-y-4'}>
-            {/* Left: what this order is. Right: what to do about it. */}
-            <div className="space-y-4">
+            {/* Left: what this order is. Right: what to do about it.
+                Each column scrolls on its own from lg up. The header is 4rem
+                and sticky, so both start 1rem below it and are capped to what
+                is left of the viewport — which keeps the booking form in view
+                while the seller reads down the order, and the order in view
+                while they read down the form. Below lg there is only one
+                column, and the page scrolls as normal. */}
+            <div className="space-y-4 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-2">
             {/* Header */}
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-5">
               <div>
@@ -513,11 +519,9 @@ export default function OrderDetailsPage() {
             </Button>
             </div>
 
-            {/* Right: the seller's whole job on a paid order. Sticky, so the
-                carriers and the button stay in view while the order's own
-                record scrolls beside them. */}
+            {/* Right: the seller's whole job on a paid order. */}
             {showDesk && (
-              <div className="lg:sticky lg:top-6">
+              <div className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1">
                 <OrderShippingDesk
                   orderId={order.id}
                   destination={order.to_goship ?? null}
