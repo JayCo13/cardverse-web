@@ -20,7 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { SHIPPING_CARRIERS, getTrackingUrl, getCarrier, sellerSuppliesTracking, parcelTrackingUrl } from '@/lib/shipping-carriers';
 import { carrierStatusLabel } from '@/lib/carrier-status-labels';
-import { OrderShipmentBooker } from '@/components/order-shipment-booker';
+import Link from 'next/link';
 import { PackingVideoField } from '@/components/packing-video-field';
 import Image from 'next/image';
 import { UserLink } from "@/components/user-link";
@@ -155,6 +155,7 @@ export default function OrdersPage() {
         receivedTitle: '受け取りを確認しますか？',
         receivedMessage: 'カードに問題がなければ、72時間を待たずに取引を完了し、代金を出品者にお渡しします。確認後は取り消せません。',
         trackParcel: '配送を追跡',
+        createWaybill: '送り状を作成',
         dispute: '管理者に報告',
         seller: '販売者',
         buyer: '購入者',
@@ -235,6 +236,7 @@ export default function OrdersPage() {
           receivedTitle: 'Xác nhận đã nhận hàng?',
           receivedMessage: 'Nếu thẻ không có vấn đề gì, giao dịch sẽ kết thúc ngay và tiền được chuyển cho người bán mà không cần chờ hết 72 giờ. Thao tác này không thể hoàn tác.',
           trackParcel: 'Theo dõi đơn',
+          createWaybill: 'Tạo vận đơn',
           dispute: 'Báo cáo admin',
           seller: 'Người bán',
           buyer: 'Người mua',
@@ -314,6 +316,7 @@ export default function OrdersPage() {
           receivedTitle: 'Confirm you received it?',
           receivedMessage: 'If the card is as described, this closes the transaction now and pays the seller without waiting out the 72 hours. It cannot be undone.',
           trackParcel: 'Track parcel',
+          createWaybill: 'Create waybill',
           dispute: 'Report to admin',
           seller: 'Seller',
           buyer: 'Buyer',
@@ -759,14 +762,18 @@ export default function OrdersPage() {
                     the district inside the dialog — they are holding the
                     delivery address on the order, and the alternative is an
                     order nobody can ship. */}
+                {/* A link, not a dialog. Booking dispatches a courier and
+                    bills the seller's GoShip account, and the details they
+                    should check first — where it is going, what is in it, what
+                    the buyer paid — are on the order page. A dialog over a list
+                    invited a glance at the price and a press. */}
                 {!isBuyer && order.status === 'paid' && !order.goship_code && (
-                  <OrderShipmentBooker
-                    orderId={order.id}
-                    destination={order.to_goship}
-                    defaultDeclaredValue={order.amount}
-                    buyerPaidShipping={order.shipping_fee}
-                    onBooked={() => { void fetchOrders(activeTab); }}
-                  />
+                  <Button size="sm" asChild className="bg-orange-500 hover:bg-orange-600">
+                    <Link href={`/orders/${order.id}`}>
+                      <Truck className="h-3 w-3 mr-1" />
+                      {copy.createWaybill}
+                    </Link>
+                  </Button>
                 )}
 
                 {/* Track on GHN */}

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { LiveClock } from '@/components/live-clock';
-import { OrderShipmentBooker } from '@/components/order-shipment-booker';
+import { OrderShippingDesk } from '@/components/order-shipping-desk';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -216,6 +216,24 @@ export default function OrderDetailsPage() {
                 </div>
               );
             }}</LiveClock>}
+
+            {/* Booking desk — the seller's whole job on a paid order, so it
+                sits above the record of what was bought rather than under it. */}
+            {!isBuyer && order.status === 'paid' && !order.goship_code && (
+              <OrderShippingDesk
+                orderId={order.id}
+                destination={order.to_goship ?? null}
+                defaultDeclaredValue={order.amount}
+                buyerPaidShipping={order.shipping_fee}
+                recipient={{
+                  name: order.to_name,
+                  phone: order.to_phone,
+                  address: [order.to_address_detail, order.to_ward_name, order.to_district_name, order.to_province_name].filter(Boolean).join(', '),
+                }}
+                itemName={order.card?.name ?? ''}
+                onBooked={() => load()}
+              />
+            )}
 
             {/* Product */}
             <div className="space-y-3 rounded-xl border bg-card p-5">
@@ -451,21 +469,9 @@ export default function OrderDetailsPage() {
             {/* Actions */}
             {(() => {
               const btns: ReactNode[] = [];
-              // Seller: book the waybill. Same component as the list page, so
-              // the two cannot drift — and no typed tracking number anywhere.
-              if (!isBuyer && order.status === 'paid' && !order.goship_code) {
-                btns.push(
-                  <div key="ship" className="flex-1">
-                    <OrderShipmentBooker
-                      orderId={order.id}
-                      destination={order.to_goship ?? null}
-                      defaultDeclaredValue={order.amount}
-                      buyerPaidShipping={order.shipping_fee}
-                      onBooked={() => load()}
-                    />
-                  </div>,
-                );
-              }
+              // Booking lives in its own panel at the top of the page, not
+              // among the buttons: it is the whole job on a paid order, and a
+              // row of equal-weight buttons said otherwise.
               // Follow the parcel — both sides. Delivery is what starts the
               // seller's 72h payout clock, and an unconfirmed parcel goes to an
               // administrator instead of paying out, so the seller has as much
