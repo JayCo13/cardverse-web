@@ -28,6 +28,9 @@ import { shopShippingRange, type ShopShippingFees } from "@/lib/shipping-fee";
 import { useLocalization } from "@/context/localization-context";
 import { UserLink } from "@/components/user-link";
 import { VerifiedSellerBadge } from "@/components/verified-seller-badge";
+import { NewSellerFrame } from "@/components/new-seller-frame";
+import { standingFromProfile, type ReputationStanding } from "@/lib/reputation";
+import { ReputationBadge } from "@/components/reputation-badge";
 
 type CartItem = {
   id: string;
@@ -68,6 +71,7 @@ type SellerGroup = {
   sellerId: string | null;
   name: string;
   avatarUrl: string | null;
+  standing: ReputationStanding | null;
   items: CartItem[];
 };
 
@@ -407,6 +411,7 @@ export default function CartPage() {
         sellerId: card?.seller_id ?? null,
         name: profile?.display_name || copy.sellerFallback,
         avatarUrl: profile?.profile_image_url || null,
+        standing: standingFromProfile(profile as Record<string, unknown> | null),
         items: [item],
       });
     });
@@ -557,13 +562,15 @@ export default function CartPage() {
                           aria-label={`${copy.selectAll} ${group.name}`}
                           className="h-4 w-4"
                         />
-                        <UserLink variant="plain" userId={group.sellerId} className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-orange-500/15 text-[10px] font-bold text-orange-300">
-                          {group.avatarUrl ? (
-                            <Image src={group.avatarUrl} alt="" width={24} height={24} className="h-full w-full object-cover" />
-                          ) : (
-                            group.name.charAt(0).toUpperCase()
-                          )}
-                        </UserLink>
+                        <NewSellerFrame standing={group.standing} compact>
+                          <UserLink variant="plain" userId={group.sellerId} className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-orange-500/15 text-[10px] font-bold text-orange-300">
+                            {group.avatarUrl ? (
+                              <Image src={group.avatarUrl} alt="" width={24} height={24} className="h-full w-full object-cover" />
+                            ) : (
+                              group.name.charAt(0).toUpperCase()
+                            )}
+                          </UserLink>
+                        </NewSellerFrame>
                         <UserLink userId={group.sellerId} className="min-w-0 truncate text-sm font-medium">{group.name}</UserLink>
                         <span className="ml-auto shrink-0 rounded bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-medium text-orange-300">
                           {copy.cardVerseSeller}
@@ -694,13 +701,15 @@ export default function CartPage() {
                           onCheckedChange={() => toggleSellerGroup(group.items)}
                           aria-label={`${copy.selectAll} ${group.name}`}
                         />
-                        <UserLink variant="plain" userId={group.sellerId} className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-orange-500/15 text-xs font-bold text-orange-300">
-                          {group.avatarUrl ? (
-                            <Image src={group.avatarUrl} alt="" width={32} height={32} className="h-full w-full object-cover" />
-                          ) : (
-                            group.name.charAt(0).toUpperCase()
-                          )}
-                        </UserLink>
+                        <NewSellerFrame standing={group.standing}>
+                          <UserLink variant="plain" userId={group.sellerId} className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-orange-500/15 text-xs font-bold text-orange-300">
+                            {group.avatarUrl ? (
+                              <Image src={group.avatarUrl} alt="" width={32} height={32} className="h-full w-full object-cover" />
+                            ) : (
+                              group.name.charAt(0).toUpperCase()
+                            )}
+                          </UserLink>
+                        </NewSellerFrame>
                         <UserLink userId={group.sellerId} className="min-w-0 truncate text-sm font-semibold">{group.name}</UserLink>
                         <span className="ml-auto shrink-0 rounded-md bg-orange-500/15 px-2 py-1 text-xs font-medium text-orange-300">
                           {copy.cardVerseSeller}
@@ -730,10 +739,12 @@ export default function CartPage() {
                         </div>
                         <h2 className="line-clamp-2 text-xl font-bold tracking-normal text-foreground">{card?.name || copy.missingCard}</h2>
                         <div className="mt-3 flex items-center gap-2.5">
-                          <UserLink variant="plain" userId={card?.seller_id} className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-orange-500/15 text-sm font-bold text-orange-300">
-                            {card?.profiles?.profile_image_url ? <Image src={card.profiles.profile_image_url} alt="" width={36} height={36} className="h-full w-full object-cover" /> : (card?.profiles?.display_name || "S").charAt(0).toUpperCase()}
-                          </UserLink>
-                          <div className="min-w-0"><p className="flex min-w-0 items-center gap-1 text-sm font-semibold"><UserLink userId={card?.seller_id} className="truncate">{card?.profiles?.display_name || copy.sellerFallback}</UserLink><VerifiedSellerBadge verified={card?.profiles?.seller_verified} className="h-3.5 w-3.5" /></p><p className="flex items-center gap-1 text-xs text-muted-foreground"><Store className="h-3 w-3" />{copy.cardVerseSeller}</p></div>
+                          <NewSellerFrame profile={card?.profiles as unknown as Record<string, unknown>}>
+                            <UserLink variant="plain" userId={card?.seller_id} className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-orange-500/15 text-sm font-bold text-orange-300">
+                              {card?.profiles?.profile_image_url ? <Image src={card.profiles.profile_image_url} alt="" width={36} height={36} className="h-full w-full object-cover" /> : (card?.profiles?.display_name || "S").charAt(0).toUpperCase()}
+                            </UserLink>
+                          </NewSellerFrame>
+                          <div className="min-w-0"><p className="flex min-w-0 items-center gap-1 text-sm font-semibold"><UserLink userId={card?.seller_id} className="truncate">{card?.profiles?.display_name || copy.sellerFallback}</UserLink><VerifiedSellerBadge verified={card?.profiles?.seller_verified} className="h-3.5 w-3.5" /></p><ReputationBadge profile={card?.profiles as unknown as Record<string, unknown>} size="sm" className="mt-1" /><p className="flex items-center gap-1 text-xs text-muted-foreground"><Store className="h-3 w-3" />{copy.cardVerseSeller}</p></div>
                         </div>
                         <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-4 text-xs text-muted-foreground">
                           <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />{copy.protected}</span>

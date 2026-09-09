@@ -90,7 +90,7 @@ type ChatMessage = {
 type OfferSummary = {
     id: string;
     price: number;
-    status: "pending" | "accepted" | "rejected" | "chosen" | "expired";
+    status: "pending" | "accepted" | "rejected" | "chosen" | "expired" | "on_hold";
     buyer_id: string;
     transaction_id: string | null;
 };

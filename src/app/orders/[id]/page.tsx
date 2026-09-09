@@ -16,6 +16,8 @@ import { useToast } from '@/hooks/use-toast';
 import { optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
 import { getCarrier, getTrackingUrl, getDeliveryDays, SHIPPING_CARRIERS, sellerSuppliesTracking } from '@/lib/shipping-carriers';
 import { VerifiedSellerBadge } from '@/components/verified-seller-badge';
+import { ReputationBadge } from '@/components/reputation-badge';
+import { NewSellerFrame } from '@/components/new-seller-frame';
 import { UserLink } from '@/components/user-link';
 import { ParcelTrackingDialog } from '@/components/parcel-tracking-dialog';
 import { PackingVideoField } from '@/components/packing-video-field';
@@ -293,20 +295,26 @@ export default function OrderDetailsPage() {
             <div className="space-y-3 rounded-xl border bg-card p-5">
               <h2 className="flex items-center gap-2 text-sm font-semibold"><User className="h-4 w-4 text-orange-400" />{isBuyer ? tx('Người bán', 'Seller', '販売者') : tx('Người mua', 'Buyer', '購入者')}</h2>
               <div className="flex items-center gap-3">
-                <UserLink variant="plain" userId={counterpartyId} className="shrink-0">
-                  {counterparty?.profile_image_url ? (
-                    <Image src={counterparty.profile_image_url} alt="" width={40} height={40} className="h-10 w-10 rounded-full object-cover" />
-                  ) : (
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500 font-bold text-white">{(counterparty?.display_name || counterparty?.email || 'C').charAt(0).toUpperCase()}</div>
-                  )}
-                </UserLink>
+                <NewSellerFrame profile={counterparty as unknown as Record<string, unknown>}>
+                  <UserLink variant="plain" userId={counterpartyId} className="shrink-0">
+                    {counterparty?.profile_image_url ? (
+                      <Image src={counterparty.profile_image_url} alt="" width={40} height={40} className="h-10 w-10 rounded-full object-cover" />
+                    ) : (
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500 font-bold text-white">{(counterparty?.display_name || counterparty?.email || 'C').charAt(0).toUpperCase()}</div>
+                    )}
+                  </UserLink>
+                </NewSellerFrame>
                 <div>
                   <p className="flex items-center gap-1 font-medium">
                     <UserLink userId={counterpartyId} className="truncate">{counterparty?.display_name || counterparty?.email || '-'}</UserLink>
                     {isBuyer && <VerifiedSellerBadge verified={counterparty?.seller_verified} />}
                   </p>
-                  {isBuyer && counterparty?.seller_rating != null && (
-                    <p className="text-xs text-muted-foreground">{Number(counterparty.seller_rating).toFixed(1)}% · {counterparty.seller_review_count || 0} {tx('đã bán', 'sold', '販売')}</p>
+                  {/* Was a fourth hand-rolled copy of "% positive · N sold".
+                      The buyer is looking at who they are trading with, which is
+                      the same question the offer inbox and the listing ask, so it
+                      gets the same answer from the same component. */}
+                  {isBuyer && (
+                    <ReputationBadge profile={counterparty as unknown as Record<string, unknown>} size="sm" />
                   )}
                 </div>
               </div>

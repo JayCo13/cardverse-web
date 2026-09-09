@@ -21,8 +21,9 @@ import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { getCategoryCode } from "@/lib/category-code";
 import { getCarrier } from "@/lib/shipping-carriers";
 import { shopShippingRange } from "@/lib/shipping-fee";
-import { formatCompactCount } from "@/lib/format";
 import { UserLink } from "@/components/user-link";
+import { ReputationBadge } from '@/components/reputation-badge';
+import { NewSellerFrame } from '@/components/new-seller-frame';
 
 // Category badge styles with colors and gradients (no icons for cleaner look)
 const getCategoryStyle = (category: string) => {
@@ -154,9 +155,6 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
         sold: '販売済み',
         bundle: 'セット {count}枚',
         sellerOnCardVerse: '販売者評価',
-        newSeller: '新規販売者',
-        positive: '高評価',
-        itemsSold: '販売',
         type: '種類',
         quantity: '数量',
         available: '在庫あり',
@@ -185,9 +183,6 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           sold: 'Đã bán',
           bundle: 'Combo {count} thẻ',
           sellerOnCardVerse: 'Độ uy tín người bán',
-          newSeller: 'Người bán mới',
-          positive: 'uy tín',
-          itemsSold: 'đã bán',
           type: 'Loại',
           quantity: 'Số lượng',
           available: 'có sẵn',
@@ -215,9 +210,6 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           sold: 'Sold',
           bundle: 'Bundle {count} cards',
           sellerOnCardVerse: 'Seller reputation',
-          newSeller: 'New seller',
-          positive: 'positive',
-        itemsSold: 'sold',
           type: 'Type',
           quantity: 'Qty',
           available: 'available',
@@ -270,16 +262,6 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
   );
 
   const activeImage = images[activeImageIndex] || card.imageUrl;
-
-  const sellerStatsText = React.useMemo(() => {
-    const rating = card.sellerRating;
-    const soldCount = card.sellerReviewCount ?? 0;
-    const ratingText = typeof rating === 'number' && rating > 0
-      ? `${rating.toFixed(1)}% ${copy.positive}`
-      : copy.newSeller;
-
-    return `${ratingText} · ${formatCompactCount(soldCount, locale)} ${copy.itemsSold}`;
-  }, [card.sellerRating, card.sellerReviewCount, copy.itemsSold, copy.newSeller, copy.positive, locale]);
 
   const showPreviousImage = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
@@ -599,22 +581,28 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
 
           <div className="mt-0.5 flex flex-col justify-between gap-1.5 border-0 border-t border-dashed border-white/10 bg-transparent p-0 pt-1.5 md:mt-0 md:gap-4 md:border-solid md:border-border/50 md:pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
             <div className="flex min-w-0 items-center gap-1.5 md:gap-3">
-              <UserLink variant="plain" userId={card.sellerId} stopPropagation className="shrink-0">
-                {card.sellerAvatar ? (
-                  <Image src={card.sellerAvatar} alt={card.sellerName || ''} width={42} height={42} className="h-[22px] w-[22px] shrink-0 rounded-full object-cover ring-1 ring-border md:h-[42px] md:w-[42px]" />
-                ) : (
-                  <div className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-primary/15 ring-1 ring-primary/30 md:h-11 md:w-11">
-                    <span className="text-[10px] font-bold text-primary md:text-base">{(card.sellerName || card.author || 'C').charAt(0).toUpperCase()}</span>
-                  </div>
-                )}
-              </UserLink>
+              <NewSellerFrame standing={card.sellerStanding} compact>
+                <UserLink variant="plain" userId={card.sellerId} stopPropagation className="shrink-0">
+                  {card.sellerAvatar ? (
+                    <Image src={card.sellerAvatar} alt={card.sellerName || ''} width={42} height={42} className="h-[22px] w-[22px] shrink-0 rounded-full object-cover ring-1 ring-border md:h-[42px] md:w-[42px]" />
+                  ) : (
+                    <div className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-primary/15 ring-1 ring-primary/30 md:h-11 md:w-11">
+                      <span className="text-[10px] font-bold text-primary md:text-base">{(card.sellerName || card.author || 'C').charAt(0).toUpperCase()}</span>
+                    </div>
+                  )}
+                </UserLink>
+              </NewSellerFrame>
               <div className="flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden text-[11px] md:block md:text-sm">
                 <p className="flex min-w-0 items-center gap-1 font-semibold text-foreground">
                   <UserLink userId={card.sellerId} stopPropagation className="truncate">{card.sellerName || card.author}</UserLink>
                   {card.sellerVerified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-orange-500 md:h-4 md:w-4" />}
                 </p>
-                <span className="text-muted-foreground md:hidden">·</span>
-                <p className="truncate text-muted-foreground md:text-xs">{sellerStatsText}</p>
+                {/* The seller's standing, from the same component the offer inbox
+                    and the profile use. It replaces a hand-built "12.5% uy tín ·
+                    1 đã bán" string that was one of four copies of the same
+                    formatting, and that read a percentage the ledger disagrees
+                    with. */}
+                {card.sellerStanding && <ReputationBadge standing={card.sellerStanding} size="sm" />}
               </div>
             </div>
 

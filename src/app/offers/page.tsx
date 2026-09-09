@@ -30,14 +30,16 @@ import { useAuth, useSupabase } from "@/lib/supabase";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { UserLink } from "@/components/user-link";
 import { VerifiedSellerBadge } from "@/components/verified-seller-badge";
+import { ReputationBadge } from "@/components/reputation-badge";
+import { NewSellerFrame } from "@/components/new-seller-frame";
 
 type InboxView = "received" | "sent";
-type StatusFilter = "all" | "pending" | "awaiting_payment" | "history";
+type StatusFilter = "all" | "pending" | "on_hold" | "awaiting_payment" | "history";
 type SortOrder = "newest" | "price_desc" | "price_asc";
 
 const CARD_PAGE_SIZE = 5;
 const OFFER_PAGE_SIZE = 10;
-type OfferStatus = "pending" | "accepted" | "rejected" | "chosen" | "expired";
+type OfferStatus = "pending" | "accepted" | "rejected" | "chosen" | "expired" | "on_hold";
 
 type OfferItem = {
   id: string;
@@ -54,19 +56,19 @@ type OfferItem = {
     id: string; name: string; imageUrl: string | null; price: number | null; status: string;
     isBundle: boolean; bundleItems: Record<string, unknown>[] | null;
   } | null;
-  counterparty: { id: string; display_name: string | null; profile_image_url: string | null; seller_verified: boolean | null } | null;
+  counterparty: { id: string; display_name: string | null; profile_image_url: string | null; seller_verified: boolean | null; buyer_incidents_90d?: number; reputation_score: number | null; reputation_incidents_90d: number | null; reputation_incidents_total: number | null; completed_transactions: number | null } | null;
   bundleSelection: { title?: string; price?: number }[] | null;
 };
 
 type InboxResponse = {
   items: OfferItem[];
-  counts: { pending: number; awaitingPayment: number; history: number };
+  counts: { pending: number; onHold: number; awaitingPayment: number; history: number };
   nextCursor: string | null;
   groupCounts: Record<string, number>;
   selectedCard: OfferItem["card"];
 };
 
-type PendingAction = { offer: OfferItem; action: "accept" | "reject" } | null;
+type PendingAction = { offer: OfferItem; action: "accept" | "reject" | "release" } | null;
 type LoadMode = "initial" | "page" | "background";
 
 const formatVND = (value: number) => new Intl.NumberFormat("vi-VN", {
@@ -90,7 +92,7 @@ function OffersContent() {
   const [view, setView] = useState<InboxView>(requestedView === "received" ? "received" : "sent");
   const [status, setStatus] = useState<StatusFilter>(requestedView === "received" ? "pending" : "all");
   const [items, setItems] = useState<OfferItem[]>([]);
-  const [counts, setCounts] = useState({ pending: 0, awaitingPayment: 0, history: 0 });
+  const [counts, setCounts] = useState({ pending: 0, onHold: 0, awaitingPayment: 0, history: 0 });
   const [groupCounts, setGroupCounts] = useState<Record<string, number>>({});
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [sort, setSort] = useState<SortOrder>("newest");
@@ -123,10 +125,13 @@ function OffersContent() {
     message: "Nhắn tin", accept: "Chấp nhận", reject: "Từ chối", pay: "Thanh toán ngay",
     viewOrder: "Xem đơn hàng", cardTaken: "Thẻ đã có người khác mua",
     sortNewest: "Mới nhất", sortPriceDesc: "Giá cao nhất", sortPriceAsc: "Giá thấp nhất", sortLabel: "Sắp xếp",
-    page: "Trang {n}", prev: "Trước", next: "Sau",
+    page: "Trang {n}", prev: "Trước", next: "Sau", percentOfAsk: "{n}% giá niêm yết",
     pendingStatus: "Đang chờ phản hồi", chosenStatus: "Đã chấp nhận, chờ thanh toán", acceptedStatus: "Đã mua",
-    rejectedStatus: "Đã từ chối", expiredStatus: "Đã hết hạn", backAll: "Xem tất cả offer",
-    acceptTitle: "Chấp nhận offer này?", acceptDesc: "Listing sẽ được giữ cho buyer này trong thời hạn thanh toán. Tất cả offer đang chờ khác của cùng thẻ sẽ tự động bị từ chối.",
+    rejectedStatus: "Đã từ chối", expiredStatus: "Đã hết hạn", onHoldStatus: "Đang chờ lượt", backAll: "Xem tất cả offer",
+    onHold: "Chờ lượt", releaseCard: "Trả lại thẻ", releaseTitle: "Trả lại thẻ này?",
+    releaseDesc: "Thẻ quay lại chợ ngay và các offer đang chờ sau bạn được kích hoạt lại. Điểm uy tín của bạn bị trừ 5 — bằng đúng mức nếu bạn để hết giờ mà không thanh toán.",
+    releasedToast: "Đã trả lại thẻ", releaseFailed: "Không thể trả lại thẻ.",
+    acceptTitle: "Chấp nhận offer này?", acceptDesc: "Thẻ được gỡ khỏi chợ và giữ cho người mua này trong 1 giờ. Các offer đang chờ khác chuyển sang tạm khoá. Nếu người này không thanh toán, chúng tự động hoạt động lại và bạn chọn tiếp.",
     rejectTitle: "Từ chối offer này?", rejectDesc: "Buyer sẽ được thông báo và có thể gửi lại một offer cao hơn.", cancel: "Huỷ",
     actionFailed: "Không thể xử lý offer.", acceptedToast: "Đã chấp nhận offer", rejectedToast: "Đã từ chối offer",
     signIn: "Đăng nhập để xem offer", notSeller: "Bạn chưa có offer đã nhận. Tab này dành cho tài khoản bán hàng.",
@@ -139,10 +144,13 @@ function OffersContent() {
     message: "メッセージ", accept: "承認", reject: "拒否", pay: "今すぐ支払う",
     viewOrder: "注文を見る", cardTaken: "このカードは他の方が購入しました",
     sortNewest: "新着順", sortPriceDesc: "高い順", sortPriceAsc: "安い順", sortLabel: "並べ替え",
-    page: "{n} ページ", prev: "前へ", next: "次へ",
+    page: "{n} ページ", prev: "前へ", next: "次へ", percentOfAsk: "表示価格の{n}%",
     pendingStatus: "返答待ち", chosenStatus: "承認済み・支払い待ち", acceptedStatus: "購入済み",
-    rejectedStatus: "拒否済み", expiredStatus: "期限切れ", backAll: "すべてのオファーを見る",
-    acceptTitle: "このオファーを承認しますか？", acceptDesc: "支払い期限までこの購入者のために出品が確保され、同じカードの他の保留中オファーは自動的に拒否されます。",
+    rejectedStatus: "拒否済み", expiredStatus: "期限切れ", onHoldStatus: "順番待ち", backAll: "すべてのオファーを見る",
+    onHold: "順番待ち", releaseCard: "カードを解放", releaseTitle: "このカードを解放しますか？",
+    releaseDesc: "カードはすぐに市場へ戻り、後ろに並んでいたオファーが再び有効になります。信頼度は5点下がります — 期限切れまで支払わなかった場合と同じです。",
+    releasedToast: "カードを解放しました", releaseFailed: "カードを解放できませんでした。",
+    acceptTitle: "このオファーを承認しますか？", acceptDesc: "カードは市場から外れ、1時間この購入者のために確保されます。他の保留中オファーは順番待ちになります。支払いがなければ自動的に再び有効になり、改めて選べます。",
     rejectTitle: "このオファーを拒否しますか？", rejectDesc: "購入者に通知され、より高い価格で再提案できます。", cancel: "キャンセル",
     actionFailed: "オファーを処理できません。", acceptedToast: "オファーを承認しました", rejectedToast: "オファーを拒否しました",
     signIn: "ログインしてオファーを見る", notSeller: "受信したオファーはありません。このタブは販売者向けです。",
@@ -155,10 +163,13 @@ function OffersContent() {
     message: "Message", accept: "Accept", reject: "Reject", pay: "Pay now",
     viewOrder: "View order", cardTaken: "Another buyer bought this card",
     sortNewest: "Newest", sortPriceDesc: "Highest price", sortPriceAsc: "Lowest price", sortLabel: "Sort",
-    page: "Page {n}", prev: "Prev", next: "Next",
+    page: "Page {n}", prev: "Prev", next: "Next", percentOfAsk: "{n}% of ask",
     pendingStatus: "Waiting for response", chosenStatus: "Accepted, awaiting payment", acceptedStatus: "Purchased",
-    rejectedStatus: "Rejected", expiredStatus: "Expired", backAll: "View all offers",
-    acceptTitle: "Accept this offer?", acceptDesc: "The listing will be reserved for this buyer during the payment window. Every other pending offer for the same card will be rejected automatically.",
+    rejectedStatus: "Rejected", expiredStatus: "Expired", onHoldStatus: "In the queue", backAll: "View all offers",
+    onHold: "Queued", releaseCard: "Release card", releaseTitle: "Release this card?",
+    releaseDesc: "The card goes back on the market immediately and the offers queued behind you become live again. Your reputation drops by 5 — the same as letting the hour run out unpaid.",
+    releasedToast: "Card released", releaseFailed: "Unable to release the card.",
+    acceptTitle: "Accept this offer?", acceptDesc: "The card comes off the marketplace and is held for this buyer for one hour. Every other pending offer goes on hold. If this buyer does not pay, they become live again and you can pick another.",
     rejectTitle: "Reject this offer?", rejectDesc: "The buyer will be notified and may submit a higher offer.", cancel: "Cancel",
     actionFailed: "Unable to process the offer.", acceptedToast: "Offer accepted", rejectedToast: "Offer rejected",
     signIn: "Sign in to view offers", notSeller: "You have no received offers. This tab is for seller accounts.",
@@ -292,6 +303,7 @@ function OffersContent() {
     accepted: copy.acceptedStatus,
     rejected: copy.rejectedStatus,
     expired: copy.expiredStatus,
+    on_hold: copy.onHoldStatus,
   })[offerStatus];
 
   /**
@@ -339,7 +351,9 @@ function OffersContent() {
     ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
     : offerStatus === "chosen"
       ? "border-green-500/40 bg-green-500/10 text-green-300"
-      : "border-white/10 bg-muted/30 text-muted-foreground";
+      : offerStatus === "on_hold"
+        ? "border-sky-500/40 bg-sky-500/10 text-sky-300"
+        : "border-white/10 bg-muted/30 text-muted-foreground";
 
   const openChat = async (offer: OfferItem) => {
     setOpeningChatId(offer.id);
@@ -371,15 +385,20 @@ function OffersContent() {
     actionKeys.current[fingerprint] ||= crypto.randomUUID();
     setActionOfferId(offer.id);
     try {
-      const response = await fetch(`/api/offers/${offer.id}/${action}`, {
+      // `cancel_chosen_offer` refuses an offer that is not `chosen`, so a replay
+      // is already a no-op and needs no idempotency key of its own.
+      const endpoint = action === "release" ? "cancel" : action;
+      const response = await fetch(`/api/offers/${offer.id}/${endpoint}`, {
         method: "POST",
-        headers: { "Idempotency-Key": actionKeys.current[fingerprint] },
+        headers: action === "release" ? {} : { "Idempotency-Key": actionKeys.current[fingerprint] },
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || copy.actionFailed);
+      if (!response.ok) {
+        throw new Error(payload.error || (action === "release" ? copy.releaseFailed : copy.actionFailed));
+      }
       delete actionKeys.current[fingerprint];
       setPendingAction(null);
-      toast({ title: action === "accept" ? copy.acceptedToast : copy.rejectedToast });
+      toast({ title: action === "accept" ? copy.acceptedToast : action === "release" ? copy.releasedToast : copy.rejectedToast });
       window.dispatchEvent(new CustomEvent("cardverse:offers-updated"));
       await loadOffers(currentCursorRef.current, "background");
     } catch (actionError) {
@@ -405,28 +424,41 @@ function OffersContent() {
     const personName = offer.counterparty?.display_name || (view === "received" ? copy.buyer : copy.seller);
     const percentage = offer.card?.price ? Math.round((offer.price / offer.card.price) * 100) : null;
     return (
-      /* One offer is one row, not a stack of boxes. The price is the thing
-         being compared, so it stays large; everything else — who, when, how
-         far off the ask — collapses onto the line beside it. Fifteen offers on
-         a phone used to be fifteen screens. */
-      <div key={offer.id} className="rounded-lg border border-white/10 bg-background/40 px-3 py-2.5 transition-colors hover:border-orange-500/25">
-        <div className="flex items-start gap-2.5">
-          <UserLink variant="plain" userId={offer.counterparty?.id} className="shrink-0">
-            <Avatar className="h-8 w-8 border border-white/10">
-              {offer.counterparty?.profile_image_url && <AvatarImage src={offer.counterparty.profile_image_url} alt="" />}
-              <AvatarFallback className="text-[11px]">{initials(personName)}</AvatarFallback>
-            </Avatar>
-          </UserLink>
+      <div key={offer.id} className="rounded-xl border border-white/10 bg-gradient-to-br from-white/[0.035] to-transparent p-3 transition-all hover:border-orange-500/30 hover:bg-orange-500/[0.025] sm:p-4">
+        <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-3 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:gap-x-4">
+          <NewSellerFrame profile={offer.counterparty as unknown as Record<string, unknown>}>
+            <UserLink variant="plain" userId={offer.counterparty?.id} className="shrink-0">
+              <Avatar className="h-10 w-10 border border-white/10 shadow-sm sm:h-11 sm:w-11">
+                {offer.counterparty?.profile_image_url && <AvatarImage src={offer.counterparty.profile_image_url} alt="" />}
+                <AvatarFallback className="text-xs">{initials(personName)}</AvatarFallback>
+              </Avatar>
+            </UserLink>
+          </NewSellerFrame>
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-1.5">
-              <UserLink userId={offer.counterparty?.id} className="truncate text-sm font-medium">{personName}</UserLink>
+              <UserLink userId={offer.counterparty?.id} className="truncate text-sm font-semibold sm:text-base">{personName}</UserLink>
               <VerifiedSellerBadge verified={offer.counterparty?.seller_verified} className="h-3.5 w-3.5" />
-              <Badge variant="outline" className={`ml-auto shrink-0 px-1.5 py-0 text-[10px] ${statusClass(offer.status)}`}>{statusText(offer.status)}</Badge>
+              <Badge variant="outline" className={`ml-auto shrink-0 px-1.5 py-0 text-[10px] lg:hidden ${statusClass(offer.status)}`}>{statusText(offer.status)}</Badge>
             </div>
-            <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-              <span className="text-lg font-bold tabular-nums text-orange-400">{formatVND(offer.price)}</span>
-              {percentage !== null && <span className="text-xs font-semibold tabular-nums text-muted-foreground">{percentage}%</span>}
-              <span className="text-xs text-muted-foreground">· {relativeTime(offer.createdAt)}</span>
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span className="text-xl font-bold tabular-nums tracking-tight text-orange-400 sm:text-2xl">{formatVND(offer.price)}</span>
+              {/* Labelled, because a bare "400%" beside a ⚠️ badge reads as a
+                  reputation figure. It is the offer against the asking price:
+                  120.000đ on a 30.000đ listing is 400%. */}
+              {percentage !== null && (
+                <span className="text-xs font-semibold tabular-nums text-muted-foreground">
+                  {copy.percentOfAsk.replace('{n}', String(percentage))}
+                </span>
+              )}
+              <span className="text-xs text-muted-foreground">{relativeTime(offer.createdAt)}</span>
+              {/* Only on offers received. Blocking is opt-in now, so for most
+                  sellers this badge is the entire warning they get about a buyer
+                  who has left an accepted offer unpaid — it belongs next to the
+                  price they are about to commit a card to. On the wrapping meta
+                  line rather than the name line, which truncates. */}
+              {view === "received" && (
+                <ReputationBadge profile={offer.counterparty as unknown as Record<string, unknown>} size="sm" warnOnIncidents />
+              )}
             </div>
             {!!offer.bundleSelection?.length && (
               /* Chips, not a table: a partial bundle offer usually names one or
@@ -446,16 +478,19 @@ function OffersContent() {
                 {offer.message}
               </p>
             )}
-            <div className="mt-2 flex flex-wrap justify-end gap-1.5">
-              <Button type="button" variant="outline" size="sm" onClick={() => void openChat(offer)} loading={openingChatId === offer.id} className="h-9">
+          </div>
+          <div className="col-span-2 grid grid-cols-2 gap-2 border-t border-white/[0.07] pt-3 lg:col-span-1 lg:col-start-3 lg:row-start-1 lg:min-w-[320px] lg:flex lg:flex-col lg:items-end lg:justify-between lg:border-0 lg:pt-0">
+            <Badge variant="outline" className={`hidden shrink-0 px-2 py-0.5 text-[11px] lg:inline-flex ${statusClass(offer.status)}`}>{statusText(offer.status)}</Badge>
+            <div className="contents lg:flex lg:w-full lg:justify-end lg:gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => void openChat(offer)} loading={openingChatId === offer.id} className="h-10 w-full px-2 lg:h-9 lg:w-auto lg:px-3">
                 {openingChatId === offer.id ? null : <MessageCircle className="mr-1.5 h-4 w-4" />}{copy.message}
               </Button>
               {view === "received" && offer.status === "pending" && (
                 <>
-                  <Button type="button" variant="outline" size="sm" onClick={() => setPendingAction({ offer, action: "reject" })} disabled={Boolean(actionOfferId)} className="h-9 border-rose-500/40 text-rose-400 hover:bg-rose-500/10 sm:min-h-9">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setPendingAction({ offer, action: "reject" })} disabled={Boolean(actionOfferId)} className="h-10 w-full border-rose-500/40 px-2 text-rose-400 hover:bg-rose-500/10 lg:h-9 lg:w-auto lg:px-3">
                     <X className="mr-1.5 h-4 w-4" />{copy.reject}
                   </Button>
-                  <Button type="button" size="sm" onClick={() => setPendingAction({ offer, action: "accept" })} disabled={Boolean(actionOfferId)} className="h-9 bg-orange-500 text-white hover:bg-orange-600 sm:min-h-9">
+                  <Button type="button" size="sm" onClick={() => setPendingAction({ offer, action: "accept" })} disabled={Boolean(actionOfferId)} className="col-span-2 h-10 w-full bg-orange-500 px-3 text-white shadow-lg shadow-orange-950/20 hover:bg-orange-600 lg:h-9 lg:w-auto">
                     <CheckCircle className="mr-1.5 h-4 w-4" />{copy.accept}
                   </Button>
                 </>
@@ -469,13 +504,22 @@ function OffersContent() {
                 cardIsGone(offer) ? (
                   <p className="self-center text-xs text-muted-foreground">{copy.cardTaken}</p>
                 ) : (
-                  <Button type="button" size="sm" asChild className="h-9 bg-orange-500 text-white hover:bg-orange-600">
+                  <>
+                  {/* Releasing costs the same 5 points as letting the hour lapse,
+                      so this is not an escape hatch — it is the difference
+                      between the seller waiting an hour for nothing and getting
+                      their queue back now. */}
+                  <Button type="button" variant="outline" size="sm" onClick={() => setPendingAction({ offer, action: "release" })} disabled={Boolean(actionOfferId)} className="h-10 w-full border-white/15 px-2 text-muted-foreground hover:bg-white/5 lg:h-9 lg:w-auto lg:px-3">
+                    <X className="mr-1.5 h-4 w-4" />{copy.releaseCard}
+                  </Button>
+                  <Button type="button" size="sm" asChild className="col-span-2 h-10 w-full bg-orange-500 text-white shadow-lg shadow-orange-950/20 hover:bg-orange-600 lg:h-9 lg:w-auto">
                     <Link href={`/checkout?offerId=${offer.id}`}><CreditCard className="mr-1.5 h-4 w-4" />{copy.pay}</Link>
                   </Button>
+                  </>
                 )
               )}
               {view === "sent" && offer.status === "accepted" && offer.orderId && (
-                <Button type="button" variant="outline" size="sm" asChild className="h-9">
+                <Button type="button" variant="outline" size="sm" asChild className="h-10 w-full lg:h-9 lg:w-auto">
                   <Link href={`/orders/${offer.orderId}`}><Package className="mr-1.5 h-4 w-4" />{copy.viewOrder}</Link>
                 </Button>
               )}
@@ -491,6 +535,7 @@ function OffersContent() {
 
   const statusFilters: Array<{ id: StatusFilter; label: string; count?: number }> = [
     { id: "all", label: copy.all }, { id: "pending", label: copy.pending, count: counts.pending },
+    { id: "on_hold", label: copy.onHold, count: counts.onHold },
     { id: "awaiting_payment", label: copy.awaiting, count: counts.awaitingPayment }, { id: "history", label: copy.history, count: counts.history },
   ];
   const selectedCard = focusedCard || items.find(item => item.cardId === cardId)?.card || null;
@@ -589,27 +634,31 @@ function OffersContent() {
                         const groupCardId = group[0].cardId;
                         const offerCount = groupCounts[groupCardId] || group.length;
                         return (
-                          <Card key={groupCardId}>
-                            <CardHeader className="pb-2.5">
-                              <div className="flex items-center gap-2.5">
-                                <div className="relative h-12 w-9 shrink-0 overflow-hidden rounded-md bg-muted">
+                          <Card key={groupCardId} className="overflow-hidden border-white/10 bg-card/70 shadow-sm">
+                            <CardHeader className="border-b border-white/[0.07] bg-white/[0.015] p-3 sm:p-4">
+                              <div className="flex items-center gap-3">
+                                <div className="relative h-14 w-10 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-muted shadow-sm sm:h-16 sm:w-12">
                                   {card?.imageUrl && <Image src={optimizeCloudinaryUrl(card.imageUrl, 160)} alt="" fill sizes="36px" className="object-cover" />}
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                  <CardTitle className="truncate text-sm sm:text-base">{card?.name || copy.viewCard}</CardTitle>
-                                  <p className="truncate text-xs text-muted-foreground">
+                                  <CardTitle className="line-clamp-2 text-sm leading-snug sm:text-base">{card?.name || copy.viewCard}</CardTitle>
+                                  <p className="mt-1 text-xs text-muted-foreground">
                                     {card?.price != null ? `${copy.askingPrice}: ${formatVND(card.price)}` : ""}
                                     {` · ${fill(copy.offerCount, { count: offerCount })}`}
                                   </p>
                                 </div>
                                 {!cardId && (
-                                  <Button variant="ghost" size="sm" asChild className="h-8 shrink-0 px-2 text-xs">
-                                    <Link href={`/offers?view=${view}&cardId=${groupCardId}`}>{fill(copy.viewOffers, { count: offerCount })}</Link>
+                                  <Button variant="ghost" size="sm" asChild className="h-9 shrink-0 px-2 text-xs text-muted-foreground hover:text-foreground sm:px-3">
+                                    <Link href={`/offers?view=${view}&cardId=${groupCardId}`}>
+                                      <span className="hidden sm:inline">{fill(copy.viewOffers, { count: offerCount })}</span>
+                                      <span className="sm:hidden">{fill(copy.offerCount, { count: offerCount })}</span>
+                                      <ChevronRight className="ml-1 h-3.5 w-3.5" />
+                                    </Link>
                                   </Button>
                                 )}
                               </div>
                             </CardHeader>
-                            <CardContent className="space-y-2 pb-3">
+                            <CardContent className="space-y-2.5 p-2.5 sm:space-y-3 sm:p-4">
                               {group.map(renderOffer)}
                             </CardContent>
                           </Card>
@@ -637,9 +686,15 @@ function OffersContent() {
       </main>
 
       <AlertDialog open={Boolean(pendingAction)} onOpenChange={open => { if (!open && !actionOfferId) setPendingAction(null); }}>
-        <AlertDialogContent className="max-sm:bottom-0 max-sm:left-0 max-sm:top-auto max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none max-sm:rounded-t-2xl">
-          <AlertDialogHeader><AlertDialogTitle>{pendingAction?.action === "accept" ? copy.acceptTitle : copy.rejectTitle}</AlertDialogTitle><AlertDialogDescription>{pendingAction?.action === "accept" ? copy.acceptDesc : copy.rejectDesc}</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel disabled={Boolean(actionOfferId)}>{copy.cancel}</AlertDialogCancel><Button onClick={runAction} loading={Boolean(actionOfferId)} className={pendingAction?.action === "reject" ? "bg-rose-600 text-white hover:bg-rose-700" : "bg-orange-500 text-white hover:bg-orange-600"}>{pendingAction?.action === "accept" ? copy.accept : copy.reject}</Button></AlertDialogFooter>
+        <AlertDialogContent className="gap-6 border-white/10 bg-card p-5 shadow-2xl sm:max-w-xl sm:p-7 max-sm:bottom-0 max-sm:left-0 max-sm:top-auto max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none max-sm:rounded-t-2xl">
+          <AlertDialogHeader className="space-y-3 text-left">
+            <AlertDialogTitle className="text-2xl">{pendingAction?.action === "accept" ? copy.acceptTitle : pendingAction?.action === "release" ? copy.releaseTitle : copy.rejectTitle}</AlertDialogTitle>
+            <AlertDialogDescription className="text-sm leading-6 sm:text-base sm:leading-7">{pendingAction?.action === "accept" ? copy.acceptDesc : pendingAction?.action === "release" ? copy.releaseDesc : copy.rejectDesc}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+            <AlertDialogCancel disabled={Boolean(actionOfferId)} className="mt-0 w-full sm:w-auto">{copy.cancel}</AlertDialogCancel>
+            <Button onClick={runAction} loading={Boolean(actionOfferId)} className={`w-full sm:w-auto ${pendingAction?.action === "accept" ? "bg-orange-500 text-white hover:bg-orange-600" : "bg-rose-600 text-white hover:bg-rose-700"}`}>{pendingAction?.action === "accept" ? copy.accept : pendingAction?.action === "release" ? copy.releaseCard : copy.reject}</Button>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>

@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getRouteUser } from '@/lib/supabase/route-user';
 
-type OfferStatus = 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired';
-type StatusFilter = 'all' | 'pending' | 'awaiting_payment' | 'history';
+type OfferStatus = 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired' | 'on_hold';
+type StatusFilter = 'all' | 'pending' | 'on_hold' | 'awaiting_payment' | 'history';
 type SortOrder = 'newest' | 'price_desc' | 'price_asc';
 
 type OfferRow = {
@@ -35,6 +35,15 @@ type ProfileRow = {
     display_name: string | null;
     profile_image_url: string | null;
     seller_verified: boolean | null;
+    // Standing, for the ⚠️ badge beside a buyer's name. Since 20260909000600 an
+    // unpaid offer costs points and shows this badge and nothing else happens
+    // automatically, so this is the seller's only warning before they accept.
+    reputation_score: number | null;
+    reputation_incidents_90d: number | null;
+    reputation_incidents_total: number | null;
+    completed_transactions: number | null;
+    // Folded in below from buyer_incident_counts, not selected from the table.
+    buyer_incidents_90d?: number;
 };
 
 type OfferGroupRow = {
@@ -76,6 +85,9 @@ const applyStatus = <T extends {
     in: (column: string, values: string[]) => T;
 }>(query: T, status: StatusFilter): T => {
     if (status === 'pending') return query.eq('status', 'pending');
+    // Queued behind somebody else's accepted offer: still live, but not
+    // waiting on this seller, so it does not belong in `pending`.
+    if (status === 'on_hold') return query.eq('status', 'on_hold');
     // `chosen` alone. `accepted` is set by the payment finalisers — the wallet
     // path and the PayOS webhook, both `chosen -> accepted` — so it means the
     // offer is PAID, not that it is waiting to be. Counting it here is what put
@@ -129,7 +141,7 @@ async function handleGET(request: NextRequest) {
      */
     const requestedSort = params.get('sort');
     const requestedStatus = params.get('status');
-    const status: StatusFilter = ['all', 'pending', 'awaiting_payment', 'history'].includes(requestedStatus || '')
+    const status: StatusFilter = ['all', 'pending', 'on_hold', 'awaiting_payment', 'history'].includes(requestedStatus || '')
         ? requestedStatus as StatusFilter
         : view === 'received' ? 'pending' : 'all';
     const cardId = params.get('cardId')?.trim() || null;
@@ -157,7 +169,7 @@ async function handleGET(request: NextRequest) {
 
     const cardIds = cards.map(card => card.id);
     if (view === 'received' && cardIds.length === 0) {
-        return NextResponse.json({ items: [], counts: { pending: 0, awaitingPayment: 0, history: 0 }, nextCursor: null, groupCounts: {} });
+        return NextResponse.json({ items: [], counts: { pending: 0, onHold: 0, awaitingPayment: 0, history: 0 }, nextCursor: null, groupCounts: {} });
     }
 
     const sort: SortOrder = requestedSort === 'newest' || requestedSort === 'price_desc' || requestedSort === 'price_asc'
@@ -246,7 +258,7 @@ async function handleGET(request: NextRequest) {
 
     const [profilesResult, conversationsResult, ordersResult] = await Promise.all([
         counterpartyIds.length > 0
-            ? supabase.from('profiles').select('id, display_name, profile_image_url, seller_verified').in('id', counterpartyIds)
+            ? supabase.from('profiles').select('id, display_name, profile_image_url, seller_verified, reputation_score, reputation_incidents_90d, reputation_incidents_total, completed_transactions').in('id', counterpartyIds)
             : Promise.resolve({ data: [] as ProfileRow[], error: null }),
         offerIds.length > 0
             ? supabase.from('conversations').select('id, offer_id').in('offer_id', offerIds)
@@ -264,6 +276,25 @@ async function handleGET(request: NextRequest) {
     if (ordersResult.error) return NextResponse.json({ error: ordersResult.error.message }, { status: 400 });
 
     const profileMap = new Map(((profilesResult.data || []) as ProfileRow[]).map(profile => [profile.id, profile]));
+
+    // Only on the received tab, where the counterparties are buyers and the
+    // seller is deciding whether one of them will pay. On the sent tab the
+    // counterparty is a seller and the whole-account count is the right summary.
+    //
+    // The error is swallowed for the same reason as everywhere else in this
+    // feature: on a database without the migration the function does not exist,
+    // and a missing badge detail must not take the inbox down. Falling back
+    // leaves the badge reading the whole-account count, which is what it did
+    // before.
+    if (view === 'received' && counterpartyIds.length > 0) {
+        const { data: incidentRows } = await supabase.rpc('buyer_incident_counts' as never, {
+            p_user_ids: counterpartyIds,
+        } as never);
+        for (const row of (incidentRows || []) as Array<{ user_id: string; incidents: number }>) {
+            const profile = profileMap.get(row.user_id);
+            if (profile) profile.buyer_incidents_90d = Number(row.incidents);
+        }
+    }
     const conversationMap = new Map((conversationsResult.data || [])
         .filter(row => row.offer_id)
         .map(row => [row.offer_id as string, row.id]));
@@ -281,19 +312,22 @@ async function handleGET(request: NextRequest) {
     };
 
     try {
-        const [pending, awaitingPayment, history] = await Promise.all([
+        const [pending, onHold, awaitingPayment, history] = await Promise.all([
             countOffers(['pending']),
+            countOffers(['on_hold']),
             countOffers(['chosen']),
             countOffers(['accepted', 'rejected', 'expired']),
         ]);
         if (cardId) {
             groupCounts[cardId] = status === 'pending'
                 ? pending
-                : status === 'awaiting_payment'
-                    ? awaitingPayment
-                    : status === 'history'
-                        ? history
-                        : pending + awaitingPayment + history;
+                : status === 'on_hold'
+                    ? onHold
+                    : status === 'awaiting_payment'
+                        ? awaitingPayment
+                        : status === 'history'
+                            ? history
+                            : pending + onHold + awaitingPayment + history;
         }
 
         return NextResponse.json({
@@ -328,7 +362,7 @@ async function handleGET(request: NextRequest) {
                     counterparty: counterpartyId ? profileMap.get(counterpartyId) || null : null,
                 };
             }),
-            counts: { pending, awaitingPayment, history },
+            counts: { pending, onHold, awaitingPayment, history },
             nextCursor,
             groupCounts,
             selectedCard: cardId && cardMap.has(cardId) ? (() => {

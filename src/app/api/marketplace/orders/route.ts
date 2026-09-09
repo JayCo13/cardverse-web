@@ -206,7 +206,7 @@ async function handleGET(request: NextRequest) {
                 *,
                 card:cards(id, name, image_url, category, condition),
                 buyer:profiles!orders_buyer_id_fkey(id, display_name, email, profile_image_url),
-                seller:profiles!orders_seller_id_fkey(id, display_name, email, profile_image_url, seller_verified, seller_rating)
+                seller:profiles!orders_seller_id_fkey(id, display_name, email, profile_image_url, seller_verified, reputation_score, reputation_incidents_90d, reputation_incidents_total, completed_transactions)
             `)
             .order('created_at', { ascending: false });
 

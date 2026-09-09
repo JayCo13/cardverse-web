@@ -7,6 +7,13 @@ const NOTIFICATION_KEYS: Partial<Record<Notification['type'], readonly [Translat
   offer_received: ['notification_offer_received_title', 'notification_offer_received_message'],
   offer_accepted: ['notification_offer_accepted_title', 'notification_offer_accepted_message'],
   offer_rejected: ['notification_offer_rejected_title', 'notification_offer_rejected_message'],
+  // The queue around an accepted offer. `offer_on_hold` and `offer_revived` go
+  // to the buyers behind the winner; `offer_queue_reopened` and `offer_released`
+  // go to the seller.
+  offer_on_hold: ['notification_offer_on_hold_title', 'notification_offer_on_hold_message'],
+  offer_revived: ['notification_offer_revived_title', 'notification_offer_revived_message'],
+  offer_queue_reopened: ['notification_offer_queue_reopened_title', 'notification_offer_queue_reopened_message'],
+  offer_released: ['notification_offer_released_title', 'notification_offer_released_message'],
   order_new: ['notification_order_new_title', 'notification_order_new_message'],
   order_shipped: ['notification_order_shipped_title', 'notification_order_shipped_message'],
   order_completed: ['notification_order_completed_title', 'notification_order_completed_message'],

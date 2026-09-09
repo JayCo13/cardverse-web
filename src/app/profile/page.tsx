@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { User } from "lucide-react";
 import Link from "next/link";
 import { useLocalization } from "@/context/localization-context";
+import { standingFromProfile } from "@/lib/reputation";
 import {
     ProfileView,
     type ProfileIdentity,
@@ -200,11 +201,10 @@ export default function ProfilePage() {
         email: user?.email ?? null,
         profileImageUrl: profile?.profile_image_url ?? null,
         sellerVerified: profile?.seller_verified ?? false,
-        sellerRating: profile?.seller_rating ?? 0,
         sellerReviewCount: profile?.seller_review_count ?? 0,
-        legitRate: profile?.legit_rate ?? 100,
-        totalTransactions: profile?.total_transactions ?? 0,
-        completedTransactions: profile?.completed_transactions ?? 0,
+        // `get_my_profile()` is `select *`, so the reputation columns are already
+        // on this row — no second fetch needed the way /users/[id] needs one.
+        standing: standingFromProfile(profile as Record<string, unknown> | null),
         createdAt: profile?.created_at ?? null,
     };
 

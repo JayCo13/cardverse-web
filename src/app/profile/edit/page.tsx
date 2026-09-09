@@ -6,6 +6,7 @@ import { useSupabase, useUser, useAuth } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { SELLER_BLOCK_MAX_INCIDENTS, SELLER_BLOCK_MIN_INCIDENTS } from "@/lib/reputation";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -55,6 +56,12 @@ export default function EditProfilePage() {
             phoneNumberPlaceholder: "0912 345 678",
             loginEmail: "Email đăng nhập",
             loginEmailHint: "Email dùng để đăng nhập và không thể thay đổi.",
+            offerGateTitle: "Nhận offer",
+            offerGateDesc: "Mặc định bạn nhận offer từ mọi người. Chỉ bật tuỳ chọn dưới đây nếu bạn đang bị làm phiền bởi những người trả giá rồi bỏ không thanh toán.",
+            offerGateToggle: "Không nhận offer từ tài khoản có nhiều sự cố gần đây",
+            offerGateThreshold: "Chặn từ",
+            offerGateThresholdUnit: "sự cố trong 90 ngày",
+            offerGateHint: "Sự cố tính là: offer đã được bạn chấp nhận nhưng người mua bỏ không thanh toán, hoặc hành vi gian lận đã được xác minh. Người bị chặn vẫn Mua ngay ở listing của bạn được bình thường.",
             profileUpdated: "Hồ sơ cá nhân đã được cập nhật thành công!",
             saving: "Đang lưu...",
             saveChanges: "Lưu thay đổi",
@@ -113,6 +120,12 @@ export default function EditProfilePage() {
                 phoneNumberPlaceholder: "0912 345 678",
                 loginEmail: "ログイン用メール",
                 loginEmailHint: "このメールはログイン用で、変更できません。",
+                offerGateTitle: "オファーの受け付け",
+                offerGateDesc: "既定ではすべての方からオファーを受け付けます。承諾後に支払わない購入者に困っている場合のみ、以下を有効にしてください。",
+                offerGateToggle: "直近に問題の多いアカウントからのオファーを受け付けない",
+                offerGateThreshold: "ブロックの基準：90日間で",
+                offerGateThresholdUnit: "件以上",
+                offerGateHint: "問題として数えるのは、承諾された提案の未払いと、確認済みの不正行為です。ブロックされた方でも「今すぐ購入」はご利用いただけます。",
                 profileUpdated: "プロフィールが更新されました。",
                 saving: "保存中...",
                 saveChanges: "変更を保存",
@@ -170,6 +183,12 @@ export default function EditProfilePage() {
                 phoneNumberPlaceholder: "0912 345 678",
                 loginEmail: "Login email",
                 loginEmailHint: "This email is used for login and cannot be changed.",
+                offerGateTitle: "Receiving offers",
+                offerGateDesc: "By default you take offers from everyone. Turn this on only if buyers who get accepted and then never pay are costing you time.",
+                offerGateToggle: "Do not take offers from accounts with recent incidents",
+                offerGateThreshold: "Block from",
+                offerGateThresholdUnit: "incidents in 90 days",
+                offerGateHint: "An incident is an offer you accepted that the buyer left unpaid, or verified fraud. Blocked buyers can still use Buy Now on your listings.",
                 profileUpdated: "Your profile has been updated successfully.",
                 saving: "Saving...",
                 saveChanges: "Save changes",
@@ -208,6 +227,9 @@ export default function EditProfilePage() {
     
     // Address (legacy simple fields — kept for backward compat)
     const [address, setAddress] = useState("");
+    // Null is off, and off is the default. 2..5 mirrors eBay's Buyer
+    // Requirements; the database rejects anything else.
+    const [offerBlockIncidents, setOfferBlockIncidents] = useState<number | null>(null);
     const [city, setCity] = useState("");
     
 
@@ -234,6 +256,7 @@ export default function EditProfilePage() {
             setAddress(profile.address || "");
             setCity(profile.city || "");
             setProfileImageUrl(profile.profile_image_url || "");
+            setOfferBlockIncidents((profile as { offer_block_incidents?: number | null }).offer_block_incidents ?? null);
 
 
             
@@ -359,6 +382,7 @@ export default function EditProfilePage() {
                     address: address,
                     city: city,
                     profile_image_url: newImageUrl,
+                    offer_block_incidents: offerBlockIncidents,
                     updated_at: new Date().toISOString(),
                 } as never)
                 .eq("id", user.id);
@@ -537,6 +561,50 @@ export default function EditProfilePage() {
                                                     </p>
                                                 </div>
                                             </div>
+                                        </div>
+
+                                        {/* The one lever that decides who may offer. It lives here
+                                          * rather than on each listing because it is a judgement about
+                                          * people, not about a card, and eBay's Buyer Requirements —
+                                          * the thing this copies — is likewise an account setting.
+                                          * Off by default, and expected to stay off for almost
+                                          * everyone: an unpaid offer already costs the buyer points
+                                          * and shows a ⚠️ beside their name in your offer inbox. */}
+                                        <div className="rounded-lg border border-border p-4 space-y-3">
+                                            <div>
+                                                <h3 className="text-sm font-medium">{copy.offerGateTitle}</h3>
+                                                <p className="text-[11px] text-muted-foreground mt-1">{copy.offerGateDesc}</p>
+                                            </div>
+
+                                            <label className="flex items-start gap-2.5 text-sm">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={offerBlockIncidents !== null}
+                                                    onChange={e => setOfferBlockIncidents(e.target.checked ? SELLER_BLOCK_MIN_INCIDENTS : null)}
+                                                    className="mt-0.5 h-4 w-4 shrink-0 accent-orange-500"
+                                                />
+                                                <span>{copy.offerGateToggle}</span>
+                                            </label>
+
+                                            {offerBlockIncidents !== null && (
+                                                <div className="flex flex-wrap items-center gap-2 pl-6 text-sm">
+                                                    <span className="text-muted-foreground">{copy.offerGateThreshold}</span>
+                                                    <select
+                                                        aria-label={copy.offerGateToggle}
+                                                        value={offerBlockIncidents}
+                                                        onChange={e => setOfferBlockIncidents(Number(e.target.value))}
+                                                        className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:border-orange-500/50"
+                                                    >
+                                                        {Array.from(
+                                                            { length: SELLER_BLOCK_MAX_INCIDENTS - SELLER_BLOCK_MIN_INCIDENTS + 1 },
+                                                            (_, i) => SELLER_BLOCK_MIN_INCIDENTS + i,
+                                                        ).map(n => <option key={n} value={n}>{n}</option>)}
+                                                    </select>
+                                                    <span className="text-muted-foreground">{copy.offerGateThresholdUnit}</span>
+                                                </div>
+                                            )}
+
+                                            <p className="text-[11px] leading-relaxed text-muted-foreground">{copy.offerGateHint}</p>
                                         </div>
 
                                         {error && <p className="text-sm text-red-500">{error}</p>}

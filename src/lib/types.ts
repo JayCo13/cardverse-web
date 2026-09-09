@@ -1,3 +1,4 @@
+import type { ReputationStanding } from '@/lib/reputation';
 
 
 export type CardCategory = "Pokémon" | "Soccer" | "Bóng đá" | "Basketball" | "Bóng rổ" | "One Piece" | "Yu-Gi-Oh" | "F1" | "Magic" | "Other" | "Ma thuật" | "Khác";
@@ -31,6 +32,9 @@ export interface Card {
   description?: string;
   lastSoldPrice?: number;
   status?: 'active' | 'sold' | 'expired' | 'in_transaction';
+  /** When an `in_transaction` hold lapses. Server time; never compare to a
+   *  locally-computed start, only to `Date.now()` at render. */
+  reservedUntil?: string | null;
   publisher?: string;
   season?: string;
   quantity?: number;
@@ -38,9 +42,11 @@ export interface Card {
   sellerName?: string;
   sellerAvatar?: string;
   sellerVerified?: boolean;
-  sellerRating?: number | null;
   sellerReviewCount?: number | null;
-  buyerOfferStatus?: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired' | null;
+  /** Already derived by `standingFromProfile`; null when the query that built
+   *  this card carried no reputation columns. */
+  sellerStanding?: ReputationStanding | null;
+  buyerOfferStatus?: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired' | 'on_hold' | null;
   isBundle?: boolean;
   bundleItems?: { title: string; price: number; publisher?: string; setName?: string; season?: string }[];
   acceptOffers?: boolean;
@@ -66,7 +72,7 @@ export interface Offer {
   price: number;
   message?: string;
   createdAt: string;
-  status: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired';
+  status: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired' | 'on_hold';
   transactionId?: string;
 }
 
@@ -145,7 +151,8 @@ export interface Notification {
     | 'order_new' | 'order_shipped' | 'order_completed' | 'order_refunded' | 'order_cancelled' | 'order_disputed'
     | 'shipping_update' | 'dispute_resolved' | 'withdrawal_completed' | 'withdrawal_rejected'
     | 'kyc_identity_approved' | 'kyc_approved' | 'kyc_rejected'
-    | 'offer_expired' | 'offer_payment_expired' | 'offer_card_taken' | 'unboxing_video_submitted';
+    | 'offer_expired' | 'offer_payment_expired' | 'offer_card_taken' | 'unboxing_video_submitted'
+    | 'offer_on_hold' | 'offer_revived' | 'offer_queue_reopened' | 'offer_released';
   title: string;
   message: string;
   cardId?: string;
