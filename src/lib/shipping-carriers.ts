@@ -113,3 +113,24 @@ export const carrierShortLabels = (codes: string[] | null | undefined): string =
     .map((c) => getCarrier(c)?.short)
     .filter(Boolean)
     .join(', ');
+
+/**
+ * Where to send someone to follow a parcel.
+ *
+ * The carrier's own page when the carrier has issued a number, and GoShip's
+ * tracker until it has. A shipment carries GoShip's code from the moment it is
+ * booked and the carrier's only once they accept it, so linking to the carrier
+ * too early hands the buyer a 404 with a code that site has never seen.
+ */
+export const parcelTrackingUrl = (
+  carrier: string | null | undefined,
+  trackingNumber: string | null | undefined,
+  goshipCode: string | null | undefined,
+): string | null => {
+  // Equal means the "tracking number" is really GoShip's own — no carrier
+  // number exists yet, whatever the column says.
+  const carrierNumber = trackingNumber && trackingNumber !== goshipCode ? trackingNumber : null;
+  const carrierUrl = carrierNumber ? getTrackingUrl(carrier, carrierNumber) : null;
+  if (carrierUrl) return carrierUrl;
+  return goshipCode ? `https://track.goship.io/?code=${encodeURIComponent(goshipCode)}` : null;
+};

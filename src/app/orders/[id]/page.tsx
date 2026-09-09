@@ -15,7 +15,7 @@ import { useLocalization } from '@/context/localization-context';
 import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { useToast } from '@/hooks/use-toast';
 import { optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
-import { getCarrier, getTrackingUrl, getDeliveryDays, SHIPPING_CARRIERS, sellerSuppliesTracking } from '@/lib/shipping-carriers';
+import { getCarrier, getTrackingUrl, getDeliveryDays, parcelTrackingUrl, SHIPPING_CARRIERS, sellerSuppliesTracking } from '@/lib/shipping-carriers';
 import { VerifiedSellerBadge } from '@/components/verified-seller-badge';
 import { UserLink } from '@/components/user-link';
 import { PackingVideoField } from '@/components/packing-video-field';
@@ -85,7 +85,9 @@ export default function OrderDetailsPage() {
   // shipping_provider first: it is the carrier actually booked, kept in step by
   // GoShip's webhooks, where metadata holds whatever checkout guessed before
   // the buyer stopped choosing one.
-  const trackingUrl = order ? getTrackingUrl(order.shipping_provider || order.metadata?.shipping_carrier, order.tracking_number) : null;
+  const trackingUrl = order
+    ? parcelTrackingUrl(order.shipping_provider || order.metadata?.shipping_carrier, order.tracking_number, order.goship_code)
+    : null;
   const bundleSel: { title: string; price: number }[] = Array.isArray(order?.metadata?.bundle_selection) ? order.metadata.bundle_selection : [];
   const counterparty = order ? (isBuyer ? order.seller : order.buyer) : null;
   const counterpartyId: string | null = counterparty?.id ?? null;

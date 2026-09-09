@@ -18,7 +18,7 @@ import { useLocalization } from '@/context/localization-context';
 import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { SHIPPING_CARRIERS, getTrackingUrl, getCarrier, sellerSuppliesTracking } from '@/lib/shipping-carriers';
+import { SHIPPING_CARRIERS, getTrackingUrl, getCarrier, sellerSuppliesTracking, parcelTrackingUrl } from '@/lib/shipping-carriers';
 import { carrierStatusLabel } from '@/lib/carrier-status-labels';
 import { OrderShipmentBooker } from '@/components/order-shipment-booker';
 import { PackingVideoField } from '@/components/packing-video-field';
@@ -789,13 +789,12 @@ export default function OrdersPage() {
                     beside the price above; the carrier's own page is one link
                     away for anyone who wants their timeline. Nothing here polls
                     a third party any more. */}
-                {order.tracking_number
-                  && getTrackingUrl(order.shipping_provider, order.tracking_number) && (
+                {parcelTrackingUrl(order.shipping_provider, order.tracking_number, order.goship_code) && (
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => window.open(
-                      getTrackingUrl(order.shipping_provider, order.tracking_number) as string,
+                      parcelTrackingUrl(order.shipping_provider, order.tracking_number, order.goship_code) as string,
                       '_blank', 'noopener',
                     )}
                   >

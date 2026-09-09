@@ -61,9 +61,14 @@ export function readGoshipEvent(body: unknown): GoshipWebhookEvent | null {
     const carrierStatus = goshipStatusToCarrierStatus(statusCode);
     if (!carrierStatus) return null;
 
+    // GoShip sends its own code in `code` until the carrier issues one. Taking
+    // it as the carrier's number produced a tracking link to spx.vn carrying a
+    // string SPX has never seen — a 404 for the buyer.
+    const rawCarrierCode = str(b.code);
+
     return {
         gcode,
-        carrierCode: str(b.code),
+        carrierCode: rawCarrierCode && rawCarrierCode !== gcode ? rawCarrierCode : null,
         orderRef: str(b.order_id),
         carrierSlug: str(b.carrier_short_name) ? goshipCarrierToApp(str(b.carrier_short_name) as string) : null,
         statusCode,
