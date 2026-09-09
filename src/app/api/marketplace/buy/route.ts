@@ -276,6 +276,7 @@ async function handlePOST(request: NextRequest) {
         try {
             shippingFee = await quoteConfiguredShipping({
                 sellerId: card.seller_id,
+                cardIds: [card.id],
                 carrier: String(clientCarrier || ''),
                 toProvinceId: Number(to_province_id),
                 toProvinceName: String(to_province_name),

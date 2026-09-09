@@ -55,6 +55,8 @@ export interface Card {
   priceIsVnd?: boolean;
   /** Seller's shop shipping (from profiles): carriers offered + per-carrier tiered fees. */
   shippingCarriers?: string[];
+  /** What the buyer pays to have this sent. 0 is free, null falls back. */
+  shippingFee?: number | null;
 }
 
 export interface Offer {

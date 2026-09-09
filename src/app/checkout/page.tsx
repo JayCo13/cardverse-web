@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AddressBook, type SavedAddress } from "@/components/address-book";
-import { PLATFORM_SHIPPING_FEE } from "@/lib/shipping-fee";
+import { parcelShippingFee } from "@/lib/shipping-fee";
 import { getCarrier } from "@/lib/shipping-carriers";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -37,6 +37,8 @@ type CheckoutItem = {
     sellerName?: string | null;
     sellerAvatarUrl?: string | null;
     sellerVerified?: boolean | null;
+    /** What the seller charges to send this listing. 0 is free, null falls back. */
+    listingShippingFee?: number | null;
   /** For a bundle offer: exactly which cards this payment buys. */
   bundleSelection?: { title?: string; price?: number }[] | null;
   };
@@ -272,6 +274,7 @@ export default function CheckoutPage() {
           sellerName: item.cards.profiles?.display_name,
           sellerAvatarUrl: item.cards.profiles?.profile_image_url || null,
           sellerVerified: item.cards.profiles?.seller_verified ?? false,
+          listingShippingFee: typeof item.cards.shipping_fee === 'number' ? item.cards.shipping_fee : null,
         },
         amount: Number(item.cards.price || 0),
         shippingFee: null,
@@ -329,6 +332,7 @@ export default function CheckoutPage() {
         sellerName: card.profiles?.display_name,
         sellerAvatarUrl: card.profiles?.profile_image_url || null,
         sellerVerified: card.profiles?.seller_verified ?? false,
+        listingShippingFee: typeof card.shipping_fee === 'number' ? card.shipping_fee : null,
         bundleSelection: Array.isArray(row.bundle_selection) ? row.bundle_selection : null,
       },
       amount: Number(row.price || 0),
@@ -386,7 +390,13 @@ export default function CheckoutPage() {
       (data || []).forEach((p: { id: string; address_province_id: number | null; address_province_name: string | null }) => {
         const canCollect = !!p.address_province_id && !!p.address_province_name?.trim();
         nextOptions[p.id] = [];
-        feeBySeller.set(p.id, canCollect ? PLATFORM_SHIPPING_FEE : null);
+        // One parcel per seller, priced from the listings bought from them.
+        // The server recomputes this the same way; what is shown here is a
+        // preview of that, not the figure the order is charged.
+        const fees = currentItems
+          .filter(item => item.card.sellerId === p.id)
+          .map(item => item.card.listingShippingFee);
+        feeBySeller.set(p.id, canCollect ? parcelShippingFee(fees) : null);
       });
       setShippingOptions(nextOptions);
 

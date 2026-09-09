@@ -106,3 +106,34 @@ export const resolveShippingTier = (
  * not to every buyer of a cheap one.
  */
 export const PLATFORM_SHIPPING_FEE = 25_000;
+
+/** What a listing may charge. Zero is free shipping, and is a real answer. */
+export const LISTING_SHIPPING_FEE_MIN = 0;
+export const LISTING_SHIPPING_FEE_MAX = 99_999;
+
+export const isValidListingShippingFee = (value: unknown): value is number =>
+  typeof value === 'number'
+  && Number.isSafeInteger(value)
+  && value >= LISTING_SHIPPING_FEE_MIN
+  && value <= LISTING_SHIPPING_FEE_MAX;
+
+/**
+ * What a buyer pays for one listing.
+ *
+ * Null is a listing written before sellers priced their own shipping, or one
+ * whose seller said nothing. It falls back to the platform figure rather than
+ * to free: nobody chose free, and charging nothing because a field was empty
+ * would hand the whole carrier bill to a seller who never agreed to it.
+ */
+export const listingShippingFee = (fee: number | null | undefined): number =>
+  isValidListingShippingFee(fee) ? fee : PLATFORM_SHIPPING_FEE;
+
+/**
+ * One seller sends one parcel, so several cards bought from them are charged
+ * once — at the dearest of their listings' fees, since that is the one whose
+ * seller expected the most postage. Free shipping on every card in the group
+ * stays free.
+ */
+export const parcelShippingFee = (fees: (number | null | undefined)[]): number =>
+  fees.length === 0 ? PLATFORM_SHIPPING_FEE : Math.max(...fees.map(listingShippingFee));
+

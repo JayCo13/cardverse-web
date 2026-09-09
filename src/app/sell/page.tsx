@@ -973,27 +973,27 @@ export default function SellPage() {
   // the checkout routes use. The form keeps fees as formatted strings; parse
   // them back, keeping a typed 0 (free shipping) distinct from a blank box.
 
-  // Nothing to configure any more. Sellers used to declare three fees per
-  // carrier here — nội tỉnh, ngoại tỉnh, liên miền, nine numbers in all — and
-  // whichever tier applied became the buyer's charge. Quoted against GoShip,
-  // distance does not move what a 200g card costs to send: 15,385đ across Ho
-  // Chi Minh City, 15,700đ from there to Hanoi. So those numbers sorted
-  // guesses rather than costs, and one set below the real floor lost money on
-  // every order it priced. The panel stays, because sellers come looking for
-  // it; it reports the arrangement instead of asking them to invent it.
+  // Shipping is priced per listing now, not per shop. The three tiers that
+  // used to live here — nội tỉnh, ngoại tỉnh, liên miền — sorted guesses by
+  // distance, and distance does not move what a 200g card costs to send:
+  // 15,385đ across Ho Chi Minh City, 15,700đ from there to Hanoi, 18,850đ from
+  // a remote province. One number per listing says the same thing without
+  // pretending otherwise, and the seller sets it where they are looking at the
+  // card. This panel points them there.
   const renderShippingConfigForm = () => (
     <div className="space-y-3 text-sm">
-      <div className="rounded-lg border border-border/60 bg-background/40 p-3">
-        <p className="text-muted-foreground">
-          {tx('Phí vận chuyển người mua trả', 'Shipping charged to the buyer', '購入者が支払う送料')}
-        </p>
-        <p className="mt-1 text-2xl font-semibold text-orange-400">{formatVND(PLATFORM_SHIPPING_FEE)}</p>
-      </div>
       <p className="text-muted-foreground">
         {tx(
-          'Một mức cố định cho mọi đơn, gần hay xa như nhau — cước thật của một gói thẻ 200g không đổi theo khoảng cách. Bạn không cần khai phí, và cũng không phải trả khoản này.',
-          'One flat price on every order, near or far — what a 200g card actually costs to send does not change with distance. You set nothing, and you pay nothing towards it.',
-          'すべての注文で一律です。200gのカードの実際の送料は距離で変わりません。設定も負担も不要です。',
+          'Phí ship đặt riêng cho từng bài đăng, ngay trong form đăng bán — có cả lựa chọn miễn phí vận chuyển. Mặc định gợi ý là ' + formatVND(PLATFORM_SHIPPING_FEE) + '.',
+          'Shipping is priced per listing, in the listing form itself — free shipping included. The suggested default is ' + formatVND(PLATFORM_SHIPPING_FEE) + '.',
+          '送料は出品ごとに設定します（送料無料も可）。初期値は ' + formatVND(PLATFORM_SHIPPING_FEE) + ' です。',
+        )}
+      </p>
+      <p className="text-muted-foreground">
+        {tx(
+          'Cước thật một thẻ 200g gửi trong nước là 15.400–18.900đ tuỳ nơi gửi. Nếu cước bạn chọn khi tạo vận đơn cao hơn phí đã thu, phần vượt trừ vào tiền bạn nhận.',
+          'A 200g card costs 15,400–18,900đ to send anywhere in Vietnam. If the carrier you pick at booking costs more than the fee collected, the difference comes off your payout.',
+          '200gのカードの国内送料は15,400〜18,900đです。発送時に選んだ業者の料金が徴収額を超えた分は、受取額から差し引かれます。',
         )}
       </p>
       <p className="text-muted-foreground">

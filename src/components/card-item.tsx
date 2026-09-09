@@ -20,7 +20,7 @@ import { useRouter } from "next/navigation";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { getCategoryCode } from "@/lib/category-code";
 import { getCarrier } from "@/lib/shipping-carriers";
-import { PLATFORM_SHIPPING_FEE } from "@/lib/shipping-fee";
+import { listingShippingFee } from "@/lib/shipping-fee";
 import { formatCompactCount } from "@/lib/format";
 import { UserLink } from "@/components/user-link";
 
@@ -162,6 +162,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
         available: '在庫あり',
         payment: '支払い',
         shipping: '配送',
+        freeShipping: '送料無料',
         ghnReady: 'GHN対応',
         price: '価格',
         lastSold: '直近販売',
@@ -193,6 +194,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           available: 'có sẵn',
           payment: 'Thanh toán',
           shipping: 'Vận chuyển',
+          freeShipping: 'Miễn phí',
           ghnReady: 'Sẵn sàng GHN',
           price: 'Giá',
           lastSold: 'Đã bán gần nhất',
@@ -223,6 +225,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           available: 'available',
           payment: 'Payment',
           shipping: 'Ship',
+          freeShipping: 'Free',
           ghnReady: 'GHN ready',
           price: 'Price',
           lastSold: 'Last sold',
@@ -569,15 +572,15 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                 PayOS / Wallet
               </span>
               {(() => {
-                // One price, everywhere. It no longer depends on the seller's
-                // table or on how far the parcel travels, so there is no range
-                // to show and no reason to hide it when a shop lists no
-                // carriers — the buyer pays this either way.
+                // One number, set by the seller on this listing. Free is worth
+                // saying in words rather than as "0đ": it is the thing a buyer
+                // scanning a grid is looking for.
+                const fee = listingShippingFee(card.shippingFee);
                 return (
                   <span className="inline-flex items-center gap-1.5">
                     <span>{copy.shipping}:</span>
-                    <span className="font-medium text-foreground">
-                      {PLATFORM_SHIPPING_FEE.toLocaleString('vi-VN')}đ
+                    <span className={`font-medium ${fee === 0 ? 'text-green-400' : 'text-foreground'}`}>
+                      {fee === 0 ? copy.freeShipping : `${fee.toLocaleString('vi-VN')}đ`}
                     </span>
                   </span>
                 );

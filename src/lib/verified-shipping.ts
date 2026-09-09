@@ -1,25 +1,29 @@
 import 'server-only';
-import { PLATFORM_SHIPPING_FEE } from '@/lib/shipping-fee';
+import { parcelShippingFee } from '@/lib/shipping-fee';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
 /**
  * What a buyer is charged to have an order sent.
  *
- * One flat price the platform sets, not a table the seller fills in. The three
- * tiers this replaced sorted guesses by distance, and distance does not move
- * what a 200g card costs to send — see the measurements in shipping-fee.ts.
+ * The seller sets it, on the listing, and it is read from the listing here —
+ * never from the request. The browser may say which cards are being bought;
+ * what they cost to ship is looked up, the same as their price is.
  *
- * The browser still never supplies the amount. It is read from here on every
- * path that takes money, so a tampered payload cannot change what is charged
- * any more than it could before.
+ * One fee per seller, not per card: a seller who sold three cards packs one
+ * parcel, and charging for three is charging for parcels nobody sends. The
+ * dearest of their listings' fees is the one that applies, since that is the
+ * seller's own estimate of the most postage involved.
  *
- * The seller's pickup province is still required. Not for the price now, but
- * because a parcel has to be collected from somewhere, and an order that
- * reaches payment with nowhere to collect from is one the seller cannot book.
+ * The seller's pickup province is still required. Not for the price — it does
+ * not vary by distance — but because a parcel has to be collected from
+ * somewhere, and an order that reaches payment with nowhere to collect from is
+ * one the seller cannot book.
  */
 
-type ConfiguredShippingQuoteInput = {
+type ShippingQuoteInput = {
   sellerId: string;
+  /** The listings being bought from this seller. Their fees decide the charge. */
+  cardIds: string[];
   carrier?: string;
   toProvinceId: number;
   toProvinceName: string;
@@ -33,54 +37,12 @@ type SellerShippingProfile = {
 /**
  * The carrier recorded at checkout.
  *
- * Nobody chooses one here any more: the seller picks from GoShip's live rates
- * when booking, and that choice overwrites this. It is kept because orders
- * carry a carrier column that predates the change and readers still fall back
- * to it before a shipment exists.
+ * Nobody chooses one here: the seller picks from GoShip's live rates when
+ * booking, and that choice overwrites this. It is kept because orders carry a
+ * carrier column that predates the change and readers fall back to it before a
+ * shipment exists.
  */
 const CARRIER_AT_CHECKOUT = 'goship';
-
-const readSellerProfile = async (sellerIds: string[]) => {
-  const service = createServiceSupabaseClient();
-  const { data, error } = await service
-    .from('profiles')
-    .select('id, display_name, address_province_id, address_province_name')
-    .in('id', [...new Set(sellerIds)])
-    .returns<(SellerShippingProfile & { id: string; display_name: string | null })[]>();
-  if (error || !data) {
-    // A failed query says nothing about any seller's configuration.
-    console.error('Checkout shipping profile read failed:', error);
-    throw new CheckoutShippingError('shipping_quote_failed');
-  }
-  return new Map(data.map((profile) => [profile.id, profile]));
-};
-
-const hasPickupOrigin = (profile: SellerShippingProfile | undefined): boolean =>
-  !!profile
-  && Number.isSafeInteger(profile.address_province_id)
-  && !!profile.address_province_name?.trim();
-
-export async function quoteConfiguredShipping(input: ConfiguredShippingQuoteInput): Promise<number> {
-  const profiles = await readSellerProfile([input.sellerId]);
-  const profile = profiles.get(input.sellerId);
-  if (!profile) throw new Error('seller_shipping_configuration_missing');
-  if (!hasPickupOrigin(profile)) throw new Error('seller_shipping_configuration_missing');
-  return PLATFORM_SHIPPING_FEE;
-}
-
-export async function quoteCheapestConfiguredShipping(
-  input: Omit<ConfiguredShippingQuoteInput, 'carrier'>,
-): Promise<{ carrier: string; fee: number }> {
-  const fee = await quoteConfiguredShipping(input);
-  return { carrier: CARRIER_AT_CHECKOUT, fee };
-}
-
-/** One trusted profile read for the whole cart; never use browser fee data. */
-export async function quoteCheapestConfiguredShippingBatch(
-  inputs: Omit<ConfiguredShippingQuoteInput, 'carrier'>[],
-): Promise<Map<string, { carrier: string; fee: number }>> {
-  return quoteCheckoutConfiguredShippingBatch(inputs);
-}
 
 export class CheckoutShippingError extends Error {
   constructor(
@@ -93,8 +55,45 @@ export class CheckoutShippingError extends Error {
   }
 }
 
+const hasPickupOrigin = (profile: SellerShippingProfile | undefined): boolean =>
+  !!profile
+  && Number.isSafeInteger(profile.address_province_id)
+  && !!profile.address_province_name?.trim();
+
+/** One trusted read of both tables; never use browser fee data. */
+async function readQuoteInputs(inputs: ShippingQuoteInput[]) {
+  const service = createServiceSupabaseClient();
+  const cardIds = [...new Set(inputs.flatMap((input) => input.cardIds))];
+
+  const [profiles, cards] = await Promise.all([
+    service
+      .from('profiles')
+      .select('id, display_name, address_province_id, address_province_name')
+      .in('id', [...new Set(inputs.map((input) => input.sellerId))])
+      .returns<(SellerShippingProfile & { id: string; display_name: string | null })[]>(),
+    cardIds.length
+      ? service
+        .from('cards')
+        .select('id, shipping_fee')
+        .in('id', cardIds)
+        .returns<{ id: string; shipping_fee: number | null }[]>()
+      : Promise.resolve({ data: [] as { id: string; shipping_fee: number | null }[], error: null }),
+  ]);
+
+  // A failed query says nothing about any seller's configuration.
+  if (profiles.error || !profiles.data || cards.error || !cards.data) {
+    console.error('Checkout shipping read failed:', profiles.error ?? cards.error);
+    throw new CheckoutShippingError('shipping_quote_failed');
+  }
+
+  return {
+    profiles: new Map(profiles.data.map((p) => [p.id, p])),
+    fees: new Map(cards.data.map((c) => [c.id, c.shipping_fee])),
+  };
+}
+
 export async function quoteCheckoutConfiguredShippingBatch(
-  inputs: ConfiguredShippingQuoteInput[],
+  inputs: ShippingQuoteInput[],
 ): Promise<Map<string, { carrier: string; fee: number }>> {
   if (inputs.length === 0) return new Map();
   if (inputs.some((input) => !Number.isSafeInteger(Number(input.toProvinceId))
@@ -102,7 +101,7 @@ export async function quoteCheckoutConfiguredShippingBatch(
     throw new CheckoutShippingError('shipping_address_invalid');
   }
 
-  const profiles = await readSellerProfile(inputs.map((input) => input.sellerId));
+  const { profiles, fees } = await readQuoteInputs(inputs);
 
   return new Map(inputs.map((input) => {
     const profile = profiles.get(input.sellerId);
@@ -111,6 +110,30 @@ export async function quoteCheckoutConfiguredShippingBatch(
     if (!hasPickupOrigin(profile)) {
       throw new CheckoutShippingError('seller_shipping_origin_missing', input.sellerId, sellerName);
     }
-    return [input.sellerId, { carrier: CARRIER_AT_CHECKOUT, fee: PLATFORM_SHIPPING_FEE }];
+    // A card id the read did not return is one that no longer exists, and its
+    // absence must not become free shipping — parcelShippingFee falls back to
+    // the platform figure for anything it cannot price.
+    const fee = parcelShippingFee(input.cardIds.map((id) => fees.get(id)));
+    return [input.sellerId, { carrier: CARRIER_AT_CHECKOUT, fee }];
   }));
+}
+
+/** One seller, one order. Same rules, same reads. */
+export async function quoteConfiguredShipping(input: ShippingQuoteInput): Promise<number> {
+  const quotes = await quoteCheckoutConfiguredShippingBatch([input]);
+  const quote = quotes.get(input.sellerId);
+  if (!quote) throw new Error('seller_shipping_configuration_missing');
+  return quote.fee;
+}
+
+export async function quoteCheapestConfiguredShipping(
+  input: ShippingQuoteInput,
+): Promise<{ carrier: string; fee: number }> {
+  return { carrier: CARRIER_AT_CHECKOUT, fee: await quoteConfiguredShipping(input) };
+}
+
+export async function quoteCheapestConfiguredShippingBatch(
+  inputs: ShippingQuoteInput[],
+): Promise<Map<string, { carrier: string; fee: number }>> {
+  return quoteCheckoutConfiguredShippingBatch(inputs);
 }

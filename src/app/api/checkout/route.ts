@@ -408,6 +408,9 @@ async function handlePOST(request: NextRequest) {
     try {
       shippingQuotes = await quoteCheckoutConfiguredShippingBatch(checkoutSellerIds.map(sellerId => ({
         sellerId,
+        // Every listing bought from this seller. One parcel, priced from the
+        // dearest of them — see parcelShippingFee.
+        cardIds: checkoutItems.filter(item => item.card.seller_id === sellerId).map(item => item.card.id),
         carrier: mode === 'offer'
           ? (body.shipping_carrier ? String(body.shipping_carrier).trim() : undefined)
           : (cartCarriers !== undefined ? cartCarriers[sellerId].trim() : undefined),

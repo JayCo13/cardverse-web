@@ -8,7 +8,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Wallet, CreditCard, Loader2, CheckCircle, ShieldCheck, ExternalLink, Truck } from 'lucide-react';
 import { useAuth, useSupabase } from '@/lib/supabase';
-import { PLATFORM_SHIPPING_FEE } from '@/lib/shipping-fee';
+import { listingShippingFee } from '@/lib/shipping-fee';
 import { getCarrier } from '@/lib/shipping-carriers';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
@@ -229,18 +229,22 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
 
     setLoadingFee(true);
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('address_province_id, address_province_name')
-        .eq('id', card.seller_id)
-        .single();
-      if (error) throw error;
-      const p = data as { address_province_id: number | null; address_province_name: string | null } | null;
+      // The listing's own fee, read here rather than passed in: it is the
+      // number the buyer is about to be charged, and the server will read the
+      // same row when it charges them.
+      const [profile, listing] = await Promise.all([
+        supabase.from('profiles')
+          .select('address_province_id, address_province_name')
+          .eq('id', card.seller_id).single(),
+        supabase.from('cards').select('shipping_fee').eq('id', card.id).single(),
+      ]);
+      if (profile.error) throw profile.error;
+      const p = profile.data as { address_province_id: number | null; address_province_name: string | null } | null;
 
-      // One flat fee, so there is nothing to choose between and nothing that
-      // can be missing from a seller's form. What can still be missing is
-      // somewhere to collect the parcel from, and that is worth stopping for:
-      // it is the seller's own address, not a price they forgot to type.
+      // Nothing to choose between, and nothing a seller can leave blank in a
+      // fee table any more. What can still be missing is somewhere to collect
+      // the parcel from, and that is worth stopping for: it is the seller's own
+      // address, not a price they forgot to type.
       if (!p?.address_province_id || !p?.address_province_name?.trim()) {
         setShipOptions([]);
         selectedCarrierRef.current = '';
@@ -251,7 +255,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
       }
 
       setShipOptions([]);
-      setShippingFee(PLATFORM_SHIPPING_FEE);
+      setShippingFee(listingShippingFee((listing.data as { shipping_fee: number | null } | null)?.shipping_fee));
     } catch (err: any) {
       console.error('Fee calculation error:', err);
       setFeeError(copy.feeError);

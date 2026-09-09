@@ -50,5 +50,6 @@ export function mapSaleCard(c: any): Card {
           createdAt: c.created_at,
           priceIsVnd: true, // Marketplace listings are entered in VND
           shippingCarriers: c.profiles?.shipping_carriers || [],
+          shippingFee: typeof c.shipping_fee === 'number' ? c.shipping_fee : null,
     };
 }

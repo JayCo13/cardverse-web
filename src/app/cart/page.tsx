@@ -24,7 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowRight, Clock, CreditCard, Eye, PackageCheck, ShieldCheck, ShoppingCart, Store, Trash2, Truck } from "lucide-react";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { getCategoryCode } from "@/lib/category-code";
-import { PLATFORM_SHIPPING_FEE } from "@/lib/shipping-fee";
+import { listingShippingFee, parcelShippingFee } from "@/lib/shipping-fee";
 import { useLocalization } from "@/context/localization-context";
 import { UserLink } from "@/components/user-link";
 import { VerifiedSellerBadge } from "@/components/verified-seller-badge";
@@ -42,6 +42,8 @@ type CartItem = {
     status: string;
     listing_type: string | null;
     seller_id: string;
+    /** What the buyer pays to have this sent. 0 is free, null falls back. */
+    shipping_fee?: number | null;
     profiles?: {
       display_name?: string | null;
       profile_image_url?: string | null;
@@ -321,15 +323,21 @@ export default function CartPage() {
     () => selectedItems.reduce((sum, item) => sum + Number(item.cards?.price || 0) * (item.quantity || 1), 0),
     [selectedItems],
   );
-  // Shipping across the selected items. One flat fee per seller, not per item:
-  // a seller sends one parcel however many cards were bought from them, and
-  // charging twice for one parcel is charging for a parcel nobody sends.
+  // Shipping across the selected items. One fee per seller, not per item: a
+  // seller sends one parcel however many cards were bought from them, and
+  // charging twice for one parcel is charging for a parcel nobody sends. Which
+  // of their fees applies is parcelShippingFee's business, and the server
+  // recomputes the same way at checkout.
   const shipEstimate = useMemo(() => {
-    const sellers = new Set(
-      selectedItems.map(item => item.cards?.seller_id).filter(Boolean) as string[],
-    );
-    if (sellers.size === 0) return null;
-    const total = sellers.size * PLATFORM_SHIPPING_FEE;
+    const bySeller = new Map<string, (number | null | undefined)[]>();
+    selectedItems.forEach(item => {
+      const sellerId = item.cards?.seller_id;
+      if (!sellerId) return;
+      bySeller.set(sellerId, [...(bySeller.get(sellerId) ?? []), item.cards?.shipping_fee]);
+    });
+    if (bySeller.size === 0) return null;
+    let total = 0;
+    bySeller.forEach(fees => { total += parcelShippingFee(fees); });
     return { min: total, max: total };
   }, [selectedItems]);
 
@@ -383,6 +391,7 @@ export default function CartPage() {
 
   const estShippingLabel = locale === "vi-VN" ? "Phí ship tạm tính" : locale === "ja-JP" ? "送料（目安）" : "Est. shipping";
   const shippingTBD = locale === "vi-VN" ? "Tính khi nhập địa chỉ" : locale === "ja-JP" ? "住所入力時に計算" : "At checkout";
+  const freeShippingLabel = locale === "vi-VN" ? "Miễn phí" : locale === "ja-JP" ? "送料無料" : "Free";
   const shipText = (range: { min: number; max: number } | null) =>
     !range ? shippingTBD : range.min === range.max ? formatVND(range.min) : `${formatVND(range.min)} – ${formatVND(range.max)}`;
   const totalText = shipEstimate
@@ -636,7 +645,7 @@ export default function CartPage() {
                               </div>
                               <p className="mt-2 text-base font-bold text-orange-500">{formatVND(Number(card?.price || 0))}</p>
                               <div className="mt-2 flex flex-wrap items-start gap-x-2 gap-y-1 text-[10px] leading-4 text-muted-foreground">
-                                <span className="inline-flex items-start gap-1"><Truck className="mt-0.5 h-3 w-3 shrink-0 text-orange-300" />{estShippingLabel}: {formatVND(PLATFORM_SHIPPING_FEE)}</span>
+                                <span className="inline-flex items-start gap-1"><Truck className="mt-0.5 h-3 w-3 shrink-0 text-orange-300" />{estShippingLabel}: {listingShippingFee(card?.shipping_fee) === 0 ? freeShippingLabel : formatVND(listingShippingFee(card?.shipping_fee))}</span>
                                 <span className="inline-flex items-start gap-1"><ShieldCheck className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />{copy.protected}</span>
                                 <span className="inline-flex items-start gap-1"><CreditCard className="mt-0.5 h-3 w-3 shrink-0 text-orange-300" />{copy.walletPayos}</span>
                               </div>
@@ -739,7 +748,7 @@ export default function CartPage() {
                         </div>
                       </div>
                       <div className="flex w-52 flex-col justify-between gap-3 border-l bg-background/30 p-5">
-                        <div className="space-y-2.5"><div><p className="text-xs text-muted-foreground">{copy.itemPrice}</p><p className="text-2xl font-bold tracking-normal text-orange-400">{formatVND(Number(card?.price || 0))}</p></div><div className="rounded-lg border border-orange-500/20 bg-orange-500/5 px-3 py-2"><p className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Truck className="h-3.5 w-3.5 text-orange-300" />{estShippingLabel}</p><p className="mt-0.5 text-sm font-semibold text-foreground">{formatVND(PLATFORM_SHIPPING_FEE)}</p></div></div>
+                        <div className="space-y-2.5"><div><p className="text-xs text-muted-foreground">{copy.itemPrice}</p><p className="text-2xl font-bold tracking-normal text-orange-400">{formatVND(Number(card?.price || 0))}</p></div><div className="rounded-lg border border-orange-500/20 bg-orange-500/5 px-3 py-2"><p className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Truck className="h-3.5 w-3.5 text-orange-300" />{estShippingLabel}</p><p className={`mt-0.5 text-sm font-semibold ${listingShippingFee(card?.shipping_fee) === 0 ? 'text-green-400' : 'text-foreground'}`}>{listingShippingFee(card?.shipping_fee) === 0 ? freeShippingLabel : formatVND(listingShippingFee(card?.shipping_fee))}</p></div></div>
                         <div className="grid gap-2">
                           {card && <Button variant="outline" size="sm" className="justify-center gap-2 border-orange-500/35 bg-orange-500/10 text-orange-200 hover:bg-orange-500/20" onClick={() => router.push(`/cards/${card.id}`)}><Eye className="h-4 w-4" />{copy.viewDetail}</Button>}
                           <Button variant="ghost" size="sm" className="justify-center gap-2 text-muted-foreground hover:text-red-300" disabled={isBulkRemoving} onClick={() => setPendingRemoval({ kind: "one", id: item.id, name: card?.name || copy.missingCard })}><Trash2 className="h-4 w-4" />{copy.removeFromCart}</Button>

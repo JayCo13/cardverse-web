@@ -155,6 +155,7 @@ async function handlePOST(
     const amount = Number(transaction.price);
     const { fee: shippingFee, carrier: shippingCarrier } = await quoteCheapestConfiguredShipping({
       sellerId: transaction.seller_id,
+      cardIds: [card.id],
       toProvinceId: Number(to_province_id),
       toProvinceName: String(to_province_name),
     });
