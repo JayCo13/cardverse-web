@@ -74,7 +74,9 @@ export function GoshipRegionPicker({
     // onChange is usually an inline arrow; depending on it would re-emit on
     // every render of whatever owns this.
     const emit = useRef(onChange);
-    emit.current = onChange;
+    useEffect(() => {
+        emit.current = onChange;
+    }, [onChange]);
 
     useEffect(() => {
         let off = false;

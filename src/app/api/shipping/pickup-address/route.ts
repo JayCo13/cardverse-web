@@ -1,3 +1,4 @@
+import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
@@ -62,7 +63,7 @@ function parse(body: unknown): { ok: true; value: Pickup } | { ok: false; error:
     return { ok: true, value };
 }
 
-export async function GET() {
+async function handleGET() {
     const supabase = await createServerSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -77,7 +78,7 @@ export async function GET() {
     return NextResponse.json({ data: (data as { goship_pickup: Pickup | null }).goship_pickup });
 }
 
-export async function PUT(request: NextRequest) {
+async function handlePUT(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -132,3 +133,6 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ data: parsed.value });
 }
+
+export const GET = accountRoute(handleGET);
+export const PUT = accountRoute(handlePUT);

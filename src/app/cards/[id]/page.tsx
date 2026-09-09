@@ -45,10 +45,12 @@ import { useAuthModal } from "@/components/auth-modal";
 import { useSupabase, useUser } from "@/lib/supabase";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { getCategoryCode } from "@/lib/category-code";
-import { formatCompactCount } from "@/lib/format";
 import type { Card, Offer } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { useLocalization } from "@/context/localization-context";
+import { ReservationCountdown } from "@/components/reservation-countdown";
+import { ReputationBadge } from "@/components/reputation-badge";
+import { NewSellerFrame } from "@/components/new-seller-frame";
 
 type SellerProfile = {
     id: string;
@@ -126,11 +128,11 @@ const mapCard = (c: any): Card => ({
     sellerName: c.profiles?.display_name || "Người bán CardVerseHub",
     sellerAvatar: c.profiles?.profile_image_url || undefined,
     sellerVerified: c.profiles?.seller_verified || false,
-    sellerRating: c.profiles?.seller_rating ?? null,
     sellerReviewCount: c.profiles?.seller_review_count ?? 0,
     description: c.description,
     lastSoldPrice: c.last_sold_price,
     status: c.status,
+    reservedUntil: c.reserved_until ?? null,
     publisher: c.publisher,
     season: c.season,
     quantity: c.quantity,
@@ -287,8 +289,6 @@ export default function CardDetailsPage() {
             search: "Tìm kiếm",
             allCategories: "Tất cả danh mục",
             similarFrom: "Tìm các mặt hàng tương tự từ",
-            itemsSold: "đã bán",
-            positive: "uy tín",
             relatedItems: "Sản phẩm liên quan",
             condLabel: "Tình trạng",
             priceLabel: "Giá",
@@ -300,7 +300,6 @@ export default function CardDetailsPage() {
             sold: "Đã bán",
             inTransaction: "Đang giữ thanh toán",
             unavailable: "Không còn khả dụng",
-            newSeller: "Mới",
             sellerOtherItems: "Các món khác của seller",
             message: "Nhắn tin",
             bestOffer: "hoặc Trả giá tốt nhất",
@@ -312,6 +311,8 @@ export default function CardDetailsPage() {
             ownListing: "Đây là bài đăng của bạn. Buyer sẽ thấy nút mua và trả giá tại đây.",
             boughtBySomeone: "Thẻ này đã được người khác mua.",
             reservedOrUnavailable: "Thẻ này đang được giữ để thanh toán hoặc không còn khả dụng.",
+            heldFor: "Đang giữ chỗ · còn", heldExpiring: "Đang giữ chỗ · sắp mở lại",
+            heldExplain: "Người bán đã chấp nhận một offer. Nếu người mua đó không thanh toán kịp, thẻ sẽ tự quay lại chợ.",
             buyNow: "Mua ngay",
             makeOffer: "Trả giá",
             viewOfferHistory: "Lịch sử offer",
@@ -386,8 +387,6 @@ export default function CardDetailsPage() {
                 search: "検索",
                 allCategories: "すべてのカテゴリ",
                 similarFrom: "この販売者の類似商品",
-                itemsSold: "販売",
-                positive: "高評価",
                 relatedItems: "関連商品",
                 condLabel: "状態",
                 priceLabel: "価格",
@@ -399,7 +398,6 @@ export default function CardDetailsPage() {
                 sold: "売り切れ",
                 inTransaction: "支払い保留中",
                 unavailable: "利用できません",
-                newSeller: "新規",
                 sellerOtherItems: "販売者の他の商品",
                 message: "メッセージ",
                 bestOffer: "またはベストオファー",
@@ -411,6 +409,8 @@ export default function CardDetailsPage() {
                 ownListing: "これはあなたの出品です。購入者にはここに購入・オファーボタンが表示されます。",
                 boughtBySomeone: "このカードはすでに他のユーザーが購入しました。",
                 reservedOrUnavailable: "このカードは支払い確保中、または現在利用できません。",
+                heldFor: "確保中 · 残り", heldExpiring: "確保中 · まもなく解放",
+                heldExplain: "出品者が提案を承諾しました。その購入者が期限までに支払わない場合、カードは自動的に市場へ戻ります。",
                 buyNow: "今すぐ購入",
                 makeOffer: "オファーする",
                 viewOfferHistory: "提案履歴",
@@ -484,8 +484,6 @@ export default function CardDetailsPage() {
                 search: "Search",
                 allCategories: "All Categories",
                 similarFrom: "Find similar items from",
-                itemsSold: "sold",
-                positive: "positive",
                 relatedItems: "Related items",
                 condLabel: "Cond",
                 priceLabel: "Price",
@@ -497,7 +495,6 @@ export default function CardDetailsPage() {
                 sold: "Sold",
                 inTransaction: "Payment reserved",
                 unavailable: "Unavailable",
-                newSeller: "New",
                 sellerOtherItems: "Seller's other items",
                 message: "Message",
                 bestOffer: "or Best Offer",
@@ -509,6 +506,8 @@ export default function CardDetailsPage() {
                 ownListing: "This is your listing. Buyers will see the buy and offer actions here.",
                 boughtBySomeone: "This card has already been purchased by another buyer.",
                 reservedOrUnavailable: "This card is reserved for payment or is no longer available.",
+                heldFor: "Held · ", heldExpiring: "Held · reopening shortly",
+                heldExplain: "The seller accepted an offer. If that buyer does not pay in time, the card returns to the marketplace by itself.",
                 buyNow: "Buy It Now",
                 makeOffer: "Make Offer",
                 viewOfferHistory: "Offer history",
@@ -681,8 +680,25 @@ export default function CardDetailsPage() {
                     return;
                 }
                 setCard(mapped);
-                setSeller((data as any).profiles || null);
+                const sellerRow = (data as any).profiles || null;
+                setSeller(sellerRow);
                 setActiveImage(mapped.imageUrl || mapped.imageUrls?.[0] || "");
+
+                // Standing is fetched separately, and its failure is swallowed on
+                // purpose. Folding these columns into the select above is what
+                // blanked /buy earlier today: on a database where the ledger
+                // migration has not run, PostgREST rejects the unknown column and
+                // the whole card query fails with it. A badge must never be able
+                // to take the page down, so it asks on its own and settles for
+                // nothing when the answer is an error.
+                if (sellerRow?.id) {
+                    const { data: standing } = await supabase
+                        .from("profiles")
+                        .select("reputation_score, reputation_incidents_90d, reputation_incidents_total, completed_transactions")
+                        .eq("id", sellerRow.id)
+                        .maybeSingle();
+                    if (standing) setSeller({ ...sellerRow, ...(standing as object) });
+                }
             } else {
                 setCard(null);
                 setSeller(null);
@@ -1061,15 +1077,17 @@ export default function CardDetailsPage() {
                                         {card.name}
                                     </h1>
                                     <div className="mt-4 flex min-w-0 items-center gap-2.5">
-                                        <UserLink variant="plain" userId={card.sellerId} className="shrink-0">
-                                            {seller?.profile_image_url ? (
-                                                <Image src={seller.profile_image_url} alt="" width={44} height={44} className="shrink-0 rounded-full object-cover" />
-                                            ) : (
-                                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-500 font-bold text-white">
-                                                    {(seller?.display_name || "C").charAt(0).toUpperCase()}
-                                                </div>
-                                            )}
-                                        </UserLink>
+                                        <NewSellerFrame profile={seller as unknown as Record<string, unknown>}>
+                                            <UserLink variant="plain" userId={card.sellerId} className="shrink-0">
+                                                {seller?.profile_image_url ? (
+                                                    <Image src={seller.profile_image_url} alt="" width={44} height={44} className="shrink-0 rounded-full object-cover" />
+                                                ) : (
+                                                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-500 font-bold text-white">
+                                                        {(seller?.display_name || "C").charAt(0).toUpperCase()}
+                                                    </div>
+                                                )}
+                                            </UserLink>
+                                        </NewSellerFrame>
                                         <div className="min-w-0 flex-1 overflow-hidden">
                                             <div className="flex min-w-0 items-center gap-1">
                                                 <UserLink userId={card.sellerId} className="truncate font-medium">
@@ -1077,9 +1095,12 @@ export default function CardDetailsPage() {
                                                 </UserLink>
                                                 {seller?.seller_verified && <BadgeCheck className="h-4 w-4 shrink-0 text-orange-500" />}
                                             </div>
-                                            <p className="truncate text-xs text-muted-foreground">
-                                                {seller?.seller_rating ? `${Number(seller.seller_rating).toFixed(1)}% ${copy.positive}` : copy.newSeller} · {formatCompactCount(seller?.seller_review_count || 0, locale)} {copy.itemsSold}
-                                            </p>
+                                            {/* One figure, not two. This sat under a
+                                              * "% positive · N sold" line until the two
+                                              * were found to disagree — that percentage
+                                              * comes from a seller fault counter the
+                                              * ledger deliberately never backfilled. */}
+                                            <ReputationBadge profile={seller as unknown as Record<string, unknown>} size="sm" className="mt-1" />
                                         </div>
                                         <Button
                                             variant="outline"
@@ -1167,11 +1188,27 @@ export default function CardDetailsPage() {
                                             )}
                                         </div>
                                     ) : isUnavailable ? (
+                                        card.status === "in_transaction" && card.reservedUntil ? (
+                                            /* A held card is not gone, and the clock is the
+                                             * difference. Telling a buyer only "unavailable"
+                                             * sends them away from a card that may be back in
+                                             * forty minutes. */
+                                            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-300">
+                                                <ReservationCountdown
+                                                    reservedUntil={card.reservedUntil}
+                                                    label={copy.heldFor}
+                                                    expiringLabel={copy.heldExpiring}
+                                                    className="font-medium"
+                                                />
+                                                <p className="mt-1.5 text-xs leading-relaxed text-amber-300/80">{copy.heldExplain}</p>
+                                            </div>
+                                        ) : (
                                         <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
                                             {card.status === "sold"
                                                 ? copy.boughtBySomeone
                                                 : copy.reservedOrUnavailable}
                                         </div>
+                                        )
                                     ) : (
                                         <div className="space-y-3">
                                             <Button className="h-12 w-full rounded-lg bg-orange-500 text-base font-bold text-white shadow-[0_0_28px_rgba(249,115,22,0.25)] hover:bg-orange-600" onClick={handleBuyNow}>

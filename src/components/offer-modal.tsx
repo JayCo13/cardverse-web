@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { MAX_OFFERS_PER_CARD } from '@/lib/reputation';
 import Image from 'next/image';
-import { CheckCircle, HandCoins, History, Loader2, Lock, Tag } from 'lucide-react';
+import { AlertTriangle, CheckCircle, HandCoins, History, Loader2, Lock, Tag } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,7 +37,7 @@ type OfferHistoryItem = {
   id: string;
   price: number;
   message?: string | null;
-  status: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired';
+  status: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired' | 'on_hold';
   createdAt: string;
   bundleSelection?: BundleItem[] | null;
 };
@@ -86,6 +87,11 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
         rejected: '却下',
         expired: '終了',
         expiredHint: '前回の提案は取引が成立せず終了しました。同じ金額で再提案できます。',
+        attemptsLeft: 'このカードへの提案はあと{n}回（全{max}回）',
+        attemptsGone: 'このカードへの提案は{max}回すべて使い切りました。',
+        blockedTitle: 'この出品者は提案を受け付けていません',
+        blockedBody: '直近90日に未払いの承諾済み提案があるアカウントからの提案を、この出品者は受け付けない設定にしています。他の出品者への提案と「今すぐ購入」はこれまでどおりご利用いただけます。',
+        onHoldLock: '別の購入者が支払い中です。あなたの提案は順番待ちのまま残ります。',
       }
     : locale === 'vi-VN'
       ? {
@@ -125,6 +131,11 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
           rejected: 'Đã từ chối',
           expired: 'Đã kết thúc',
           expiredHint: 'Offer trước đã kết thúc vì đơn hàng không hoàn tất. Bạn có thể gửi lại offer với mức giá cũ.',
+          attemptsLeft: 'Còn {n}/{max} lượt trả giá cho thẻ này',
+          attemptsGone: 'Bạn đã dùng hết {max} lượt trả giá cho thẻ này.',
+          blockedTitle: 'Người bán này không nhận offer từ bạn',
+          blockedBody: 'Người bán đã chọn không nhận offer từ tài khoản có offer được accept nhưng bỏ không thanh toán trong 90 ngày gần đây. Bạn vẫn offer được với người bán khác, và vẫn Mua ngay bình thường.',
+          onHoldLock: 'Một người mua khác đang thanh toán. Offer của bạn vẫn trong hàng chờ.',
         }
       : {
           sendOfferBody: 'Send offer',
@@ -163,6 +174,11 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
           rejected: 'Rejected',
           expired: 'Closed',
           expiredHint: 'Your previous offer closed because the order did not complete. You can offer the same price again.',
+          attemptsLeft: '{n} of {max} offers left on this card',
+          attemptsGone: 'You have used all {max} offers on this card.',
+          blockedTitle: 'This seller does not take offers from you',
+          blockedBody: 'They have chosen not to accept offers from accounts that left an accepted offer unpaid in the last 90 days. Other sellers still take your offers, and Buy Now works as usual.',
+          onHoldLock: 'Another buyer is completing payment. Your offer stays in the queue.',
         };
 
   const [offerPrice, setOfferPrice] = useState('');
@@ -172,6 +188,13 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
   const [offerHistory, setOfferHistory] = useState<OfferHistoryItem[]>([]);
   const [canOfferAgain, setCanOfferAgain] = useState(true);
   const [minimumNextOffer, setMinimumNextOffer] = useState<number | null>(null);
+  const [attemptsLeft, setAttemptsLeft] = useState<number | null>(null);
+  const [maxAttempts, setMaxAttempts] = useState(MAX_OFFERS_PER_CARD);
+  // Whether this particular seller has opted out of offers from accounts with
+  // recent incidents. Per seller, not per account: the same buyer may be blocked
+  // here and welcome on the next listing, so it is re-read with each card's
+  // history rather than cached against the session.
+  const [blockedBySeller, setBlockedBySeller] = useState(false);
   const [selectedBundle, setSelectedBundle] = useState<number[]>([]);
 
   const bundleItems: BundleItem[] = (card?.isBundle && Array.isArray(card.bundleItems))
@@ -202,12 +225,17 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
       setOfferHistory(payload.offers || []);
       setCanOfferAgain(Boolean(payload.canOfferAgain));
       setMinimumNextOffer(payload.minimumNextOffer || null);
+      setAttemptsLeft(typeof payload.attemptsLeft === 'number' ? payload.attemptsLeft : null);
+      setMaxAttempts(payload.maxAttempts || MAX_OFFERS_PER_CARD);
+      setBlockedBySeller(Boolean(payload.blockedBySeller));
     } catch (error) {
       const description = error instanceof Error ? error.message : copy.sendError;
       toast({ variant: 'destructive', title: copy.errorTitle, description });
       setOfferHistory([]);
       setCanOfferAgain(true);
       setMinimumNextOffer(null);
+      setAttemptsLeft(null);
+      setBlockedBySeller(false);
     } finally {
       setIsLoadingHistory(false);
     }
@@ -220,6 +248,8 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
       setOfferHistory([]);
       setCanOfferAgain(true);
       setMinimumNextOffer(null);
+      setAttemptsLeft(null);
+      setBlockedBySeller(false);
       setSelectedBundle([]);
       return;
     }
@@ -240,8 +270,13 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
   const hasHistory = offerHistory.length > 0;
   const lockedByPending = latestOffer?.status === 'pending';
   const lockedByAccepted = latestOffer?.status === 'accepted' || latestOffer?.status === 'chosen';
-  const showOfferForm = !hasHistory
-    || (canOfferAgain && (latestOffer?.status === 'rejected' || latestOffer?.status === 'expired'));
+  // `attemptsLeft` is null only before the history has loaded; treating that as
+  // "no attempts" would flash the exhausted panel on every open.
+  const outOfAttempts = attemptsLeft !== null && attemptsLeft <= 0;
+  const offerBlocked = blockedBySeller;
+  const showOfferForm = (!hasHistory
+    || (canOfferAgain && (latestOffer?.status === 'rejected' || latestOffer?.status === 'expired')))
+    && !outOfAttempts && !offerBlocked;
   const belowMin = minOffer > 0 && parsedPrice > 0 && parsedPrice < minOffer;
   const belowRejected = !!latestRejectedOffer && parsedPrice > 0 && parsedPrice <= latestRejectedOffer.price;
   const canSubmit = showOfferForm && parsedPrice > 0 && !belowMin && !belowRejected && !isSubmitting
@@ -313,9 +348,9 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
         <DialogHeader className="shrink-0 border-b border-white/10 px-4 py-3 pr-12 text-left sm:px-6 sm:py-4">
           <DialogTitle className="flex items-center gap-2">
             {hasHistory ? (
-              <History className="h-5 w-5 text-amber-500" />
+              <History className="h-5 w-5 text-orange-500" />
             ) : (
-              <HandCoins className="h-5 w-5 text-amber-500" />
+              <HandCoins className="h-5 w-5 text-orange-500" />
             )}
             {hasHistory ? copy.historyTitle : copy.title}
           </DialogTitle>
@@ -410,6 +445,32 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
             </div>
           )}
 
+          {/* An offer of this buyer's is queued behind whoever the seller chose.
+            * Saying so is the whole reason `on_hold` exists rather than a
+            * rejection — otherwise they read the silence as a refusal. */}
+          {latestOffer?.status === 'on_hold' && (
+            <div className="flex gap-2 rounded-lg border border-sky-500/30 bg-sky-500/10 p-2.5 text-xs leading-5 text-sky-200 sm:p-3 sm:text-sm">
+              <Lock className="mt-0.5 h-4 w-4 shrink-0" />
+              {copy.onHoldLock}
+            </div>
+          )}
+
+          {/* Both refusals are enforced by a database trigger. These panels only
+            * spare the buyer from typing a price into a form that will 409. */}
+          {blockedBySeller && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs leading-5 text-amber-200 sm:p-3 sm:text-sm">
+              <p className="flex gap-2 font-medium"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{copy.blockedTitle}</p>
+              <p className="mt-1 pl-6 opacity-90">{copy.blockedBody}</p>
+            </div>
+          )}
+
+          {!offerBlocked && attemptsLeft === 0 && (
+            <div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs leading-5 text-amber-200 sm:p-3 sm:text-sm">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              {copy.attemptsGone.replace('{max}', String(maxAttempts))}
+            </div>
+          )}
+
           {showOfferForm && (
             <>
               {latestRejectedOffer && (
@@ -422,6 +483,14 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
                   {copy.expiredHint}
                 </p>
               )}
+              {attemptsLeft !== null && attemptsLeft > 0 && (
+                <div className="flex items-center gap-2 rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs font-medium text-orange-400">
+                  <HandCoins className="h-4 w-4 shrink-0 text-orange-500" />
+                  <span>
+                    {copy.attemptsLeft.replace('{n}', String(attemptsLeft)).replace('{max}', String(maxAttempts))}
+                  </span>
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label className="text-sm font-medium">{copy.offerPrice}</Label>
                 <Input
@@ -432,7 +501,7 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
                   className="h-10"
                 />
                 {minOffer > 0 && (
-                  <p className={`text-xs ${belowMin ? 'text-red-400' : 'text-muted-foreground'}`}>
+                  <p className={`text-xs font-medium ${belowMin ? 'text-red-400' : 'text-orange-400'}`}>
                     {copy.minOfferHint.replace('{price}', formatVND(minOffer))}
                     {card.minOfferPercent
                       ? ` (${card.minOfferPercent}% ${isBundle ? copy.ofSelected : copy.ofListed})`
@@ -465,7 +534,7 @@ export function OfferModal({ open, onOpenChange, card, onSuccess }: OfferModalPr
             <Button
               onClick={handleSubmit}
               disabled={!canSubmit}
-              className="bg-amber-500 font-bold text-white hover:bg-amber-600"
+              className="bg-orange-500 font-bold text-white hover:bg-orange-600"
             >
               {isSubmitting ? null : <CheckCircle className="mr-2 h-4 w-4" />}
               {latestRejectedOffer ? copy.resend : copy.send}

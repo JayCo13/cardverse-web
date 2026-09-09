@@ -1,4 +1,5 @@
 import type { Card } from '@/lib/types';
+import { standingFromProfile } from '@/lib/reputation';
 
 /**
  * One row of the marketplace query into the shape the listing UI expects.
@@ -30,8 +31,8 @@ export function mapSaleCard(c: any): Card {
           sellerName: c.profiles?.display_name || 'Unknown Seller',
           sellerAvatar: c.profiles?.profile_image_url || null,
           sellerVerified: c.profiles?.seller_verified || false,
-          sellerRating: c.profiles?.seller_rating ?? null,
           sellerReviewCount: c.profiles?.seller_review_count ?? 0,
+          sellerStanding: standingFromProfile(c.profiles),
           description: c.description,
           lastSoldPrice: c.last_sold_price,
           status: c.status,

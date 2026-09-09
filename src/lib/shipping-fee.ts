@@ -136,4 +136,3 @@ export const listingShippingFee = (fee: number | null | undefined): number =>
  */
 export const parcelShippingFee = (fees: (number | null | undefined)[]): number =>
   fees.length === 0 ? PLATFORM_SHIPPING_FEE : Math.max(...fees.map(listingShippingFee));
-

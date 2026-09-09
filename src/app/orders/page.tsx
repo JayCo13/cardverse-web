@@ -26,6 +26,7 @@ import { PackingVideoField } from '@/components/packing-video-field';
 import Image from 'next/image';
 import { UserLink } from "@/components/user-link";
 import { VerifiedSellerBadge } from '@/components/verified-seller-badge';
+import { ReputationBadge } from "@/components/reputation-badge";
 
 type Order = {
   id: string;
@@ -66,7 +67,7 @@ type Order = {
   updated_at: string;
   card: { id: string; name: string; image_url: string; category: string; condition: string } | null;
   buyer: { id: string; display_name: string; email: string; profile_image_url: string | null } | null;
-  seller: { id: string; display_name: string; email: string; profile_image_url: string | null; seller_verified: boolean; seller_rating: number } | null;
+  seller: { id: string; display_name: string; email: string; profile_image_url: string | null; seller_verified: boolean; reputation_score: number | null; reputation_incidents_90d: number | null; reputation_incidents_total: number | null; completed_transactions: number | null } | null;
 };
 
 type OrderTab = 'buyer' | 'seller';
@@ -702,6 +703,7 @@ export default function OrdersPage() {
                       <UserLink userId={order.seller_id} stopPropagation>{order.seller?.display_name || order.seller?.email || '-'}</UserLink>
                     </span>
                     <VerifiedSellerBadge verified={order.seller?.seller_verified} className="h-3.5 w-3.5" />
+                    <ReputationBadge profile={order.seller as unknown as Record<string, unknown>} size="sm" />
                   </>
                 ) : (
                   <span>

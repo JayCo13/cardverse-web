@@ -99,7 +99,9 @@ export function PickupAddressPicker({
     // onChange is usually an inline arrow, so depending on it would re-run the
     // emit effect on every parent render.
     const emit = useRef(onChange);
-    emit.current = onChange;
+    useEffect(() => {
+        emit.current = onChange;
+    }, [onChange]);
 
     useEffect(() => {
         let cancelled = false;

@@ -6,6 +6,7 @@ import { getRequestLocale } from '@/lib/request-localization';
 import { getOfferEmailRecipient } from '@/lib/offer-email-recipient';
 import { sendOfferReceivedEmail } from '@/lib/mail';
 import { matchBundleSelection, type BundleItem, type BundleSelection } from '@/lib/bundle';
+import { MAX_OFFERS_PER_CARD } from '@/lib/reputation';
 
 const formatVND = (amount: number) =>
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
@@ -18,7 +19,7 @@ type OfferRow = {
     buyer_id: string;
     price: number;
     message: string | null;
-    status: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired';
+    status: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired' | 'on_hold';
     transaction_id: string | null;
     bundle_selection: BundleSelection[] | null;
     created_at: string;
@@ -115,6 +116,29 @@ async function handleGET(request: NextRequest) {
     const latestRejectedOffer = latestOffer && latestOffer.status === 'rejected' ? latestOffer : null;
     const canOfferAgain = !latestOffer || REOFFERABLE_STATUSES.has(latestOffer.status);
 
+    // Every row this buyer has ever created for this card counts, rejected and
+    // expired alike — the same rule the enforce_offer_limits trigger applies, so
+    // the modal never offers an attempt the database will refuse.
+    const attemptsUsed = offers.length;
+
+    // Asks the database the same question the enforce_offer_limits trigger will,
+    // rather than deriving one from `profiles.reputation_incidents_90d`. That
+    // column counts every negative event, a seller's own cancelled sales
+    // included, while the gate counts unpaid offers and verified fraud alone —
+    // reading it here is what hid the offer form from sellers the database
+    // would happily have taken an offer from.
+    //
+    // Its own call, and its error is deliberately ignored. On a database where
+    // the seller-gate migration has not run the function does not exist and
+    // PostgREST answers 404; that has to read as "not blocked" rather than take
+    // the whole handler down, and the trigger still refuses if the guess is
+    // wrong.
+    const { data: gateRaw } = await supabase.rpc('offer_gate_for_card' as never, {
+        p_card_id: card.id,
+    } as never);
+    const gate = gateRaw as { blocked?: boolean } | null;
+    const blockedBySeller = Boolean(gate?.blocked);
+
     return NextResponse.json({
         offers,
         latestOffer,
@@ -123,6 +147,10 @@ async function handleGET(request: NextRequest) {
         latestRejectedOffer,
         canOfferAgain,
         minimumNextOffer: latestRejectedOffer ? Number(latestRejectedOffer.price) + 1 : null,
+        attemptsUsed,
+        attemptsLeft: Math.max(0, MAX_OFFERS_PER_CARD - attemptsUsed),
+        maxAttempts: MAX_OFFERS_PER_CARD,
+        blockedBySeller,
     });
 }
 
@@ -272,7 +300,31 @@ async function handlePOST(request: NextRequest) {
         .single();
 
     if (insertError || !inserted) {
-        return NextResponse.json({ error: insertError?.message || 'Không thể tạo offer.' }, { status: 400 });
+        // Both limits are enforced by a trigger rather than here, because RLS
+        // lets `authenticated` INSERT into `offers` directly and a check in this
+        // handler would be advisory. The trigger raises; this turns the raise
+        // back into something the modal can render.
+        const raised = insertError?.message || '';
+        if (raised.includes('offer_limit_reached')) {
+            return NextResponse.json(
+                {
+                    error: `Bạn đã dùng hết ${MAX_OFFERS_PER_CARD} lượt trả giá cho thẻ này.`,
+                    code: 'offer_limit_reached',
+                    maxAttempts: MAX_OFFERS_PER_CARD,
+                },
+                { status: 409 },
+            );
+        }
+        if (raised.includes('offer_blocked_by_seller')) {
+            return NextResponse.json(
+                {
+                    error: 'Người bán này không nhận offer từ tài khoản có nhiều sự cố gần đây. Bạn vẫn có thể Mua ngay.',
+                    code: 'offer_blocked_by_seller',
+                },
+                { status: 409 },
+            );
+        }
+        return NextResponse.json({ error: raised || 'Không thể tạo offer.' }, { status: 400 });
     }
 
     const offer = inserted as unknown as OfferRow;

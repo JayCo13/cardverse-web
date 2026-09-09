@@ -11,6 +11,7 @@ import { ChatDrawer } from "@/components/chat-drawer";
 import { MessageCircle, UserX } from "lucide-react";
 import Link from "next/link";
 import { useLocalization } from "@/context/localization-context";
+import { standingFromProfile } from "@/lib/reputation";
 import {
     ProfileView,
     type ProfileIdentity,
@@ -97,8 +98,14 @@ export default function PublicProfilePage() {
                     supabase
                         .from("profiles")
                         .select(
-                            "id, display_name, profile_image_url, seller_verified, seller_rating, " +
-                            "seller_review_count, legit_rate, total_transactions, completed_transactions, created_at",
+                            "id, display_name, profile_image_url, seller_verified, " +
+                            "seller_review_count, created_at, " +
+                            // The four the badge needs. `standingFromProfile` reads a row
+                            // without `reputation_score` as "no data" and renders nothing,
+                            // so dropping one of these blanks the figure rather than
+                            // erroring — hence all four, always, together.
+                            "reputation_score, reputation_incidents_90d, " +
+                            "reputation_incidents_total, completed_transactions",
                         )
                         .eq("id", userId)
                         .maybeSingle(),
@@ -123,11 +130,8 @@ export default function PublicProfilePage() {
                     email: null,
                     profileImageUrl: (row.profile_image_url as string | null) ?? null,
                     sellerVerified: Boolean(row.seller_verified),
-                    sellerRating: (row.seller_rating as number | null) ?? 0,
                     sellerReviewCount: (row.seller_review_count as number | null) ?? 0,
-                    legitRate: (row.legit_rate as number | null) ?? 100,
-                    totalTransactions: (row.total_transactions as number | null) ?? 0,
-                    completedTransactions: (row.completed_transactions as number | null) ?? 0,
+                    standing: standingFromProfile(row),
                     createdAt: (row.created_at as string | null) ?? null,
                 });
 

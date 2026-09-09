@@ -95,6 +95,8 @@ type CheckoutCard = {
   listing_type: string | null;
   is_bundle: boolean | null;
   bundle_items: BundleItem[] | null;
+  /** An accepted offer already holds this card; checkout must not cut that short. */
+  reserved_until: string | null;
 };
 
 type CreatedOrder = Record<string, unknown>;
@@ -275,7 +277,7 @@ async function handlePOST(request: NextRequest) {
       }
       const { data: cardRows, error: cardError } = await supabase
         .from('cards')
-        .select('id, name, seller_id, price, status, listing_type, is_bundle, bundle_items')
+        .select('id, name, seller_id, price, status, listing_type, is_bundle, bundle_items, reserved_until')
         .in('id', cartRows.map(item => item.card_id))
         .returns<CheckoutCard[]>();
       const cartById = new Map(cartRows.map(item => [item.id, item]));
@@ -342,7 +344,7 @@ async function handlePOST(request: NextRequest) {
 
       const { data: card, error: cardError } = await supabase
         .from('cards')
-        .select('id, name, seller_id, price, status, listing_type, is_bundle, bundle_items')
+        .select('id, name, seller_id, price, status, listing_type, is_bundle, bundle_items, reserved_until')
         .eq('id', offer.card_id)
         .single<CheckoutCard>();
 
@@ -448,7 +450,27 @@ async function handlePOST(request: NextRequest) {
     // Wallet mutations go through the service-role client: RLS allows owners
     // to SELECT their wallet but all writes are server-trusted only.
     try {
-      const reservedUntil = new Date(Date.now() + RESERVATION_MINUTES * 60 * 1000).toISOString();
+      // Three minutes is the right hold for a cart checkout: abandon it and the
+      // card is back on the market almost at once. It is the wrong hold for an
+      // offer, because `perform_offer_action` already reserved the card for this
+      // buyer for a full hour and `stage_payos_marketplace_checkout` overwrites
+      // `cards.reserved_until` with whatever it is handed. A buyer who opened
+      // the payment page at minute five and backed out had their hour cut to
+      // three minutes, and the next sweep expired the offer and docked them five
+      // points with fifty minutes still on the clock.
+      //
+      // So: extend, never shorten. The RPC refuses anything past an hour, so
+      // stay comfortably inside that ceiling.
+      const shortHold = Date.now() + RESERVATION_MINUTES * 60 * 1000;
+      const existingHold = checkoutItems.reduce((latest, item) => {
+        const held = item.card.reserved_until ? Date.parse(item.card.reserved_until) : 0;
+        return Number.isFinite(held) && held > latest ? held : latest;
+      }, 0);
+      const reservedUntilMs = Math.min(
+        Math.max(shortHold, existingHold),
+        Date.now() + 55 * 60 * 1000,
+      );
+      const reservedUntil = new Date(reservedUntilMs).toISOString();
       const orderSpecs = checkoutItems.map((item, index) => ({
         order_id: plannedOrderIds[index],
         card_id: item.card.id,
@@ -596,7 +618,9 @@ async function handlePOST(request: NextRequest) {
           request,
           mode === 'offer' ? 'payos_description_offer_checkout' : 'payos_description_cart_checkout',
         ).slice(0, 25),
-        expiredAt: Math.floor((Date.now() + RESERVATION_MINUTES * 60 * 1000) / 1000),
+        // Same instant as the reservation. Pinning this to three minutes handed an
+        // offer buyer a link that died long before their window did.
+        expiredAt: Math.floor(reservedUntilMs / 1000),
         cancelUrl: `${origin}/orders?status=cancelled`,
         returnUrl: `${origin}/orders?status=success`,
         items: checkoutItems.map(item => ({

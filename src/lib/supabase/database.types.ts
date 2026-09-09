@@ -678,7 +678,7 @@ export interface Database {
                     buyer_id: string
                     price: number
                     message: string | null
-                    status: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired'
+                    status: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired' | 'on_hold'
                     transaction_id: string | null
                     payment_reminder_sent_at: string | null
                     bundle_selection: Json | null
@@ -691,7 +691,7 @@ export interface Database {
                     buyer_id: string
                     price: number
                     message?: string | null
-                    status?: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired'
+                    status?: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired' | 'on_hold'
                     transaction_id?: string | null
                     payment_reminder_sent_at?: string | null
                     bundle_selection?: Json | null
@@ -704,7 +704,7 @@ export interface Database {
                     buyer_id?: string
                     price?: number
                     message?: string | null
-                    status?: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired'
+                    status?: 'pending' | 'accepted' | 'rejected' | 'chosen' | 'expired' | 'on_hold'
                     transaction_id?: string | null
                     payment_reminder_sent_at?: string | null
                     bundle_selection?: Json | null

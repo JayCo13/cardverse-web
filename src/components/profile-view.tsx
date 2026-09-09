@@ -6,14 +6,17 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import {
-    User, ShoppingBag, Tag, Shield, Package, Clock, CheckCircle, XCircle,
-    ChevronRight, BadgeCheck, CalendarDays, Wallet, ShieldCheck,
+    User, ShoppingBag, Tag, Package, Clock, CheckCircle, XCircle,
+    ChevronRight, BadgeCheck, CalendarDays, Wallet,
     Medal, Award, Trophy, Crown, Gem,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useLocalization } from "@/context/localization-context";
 import { formatCompactCount } from "@/lib/format";
+import { ReputationBadge } from "@/components/reputation-badge";
+import { isNewAccount, type ReputationStanding } from "@/lib/reputation";
+import { NewSellerFrame } from "@/components/new-seller-frame";
 
 /**
  * The profile, rendered once for two audiences.
@@ -146,11 +149,20 @@ export type ProfileTxRow = {
  * The public half of a profile. Every field here is readable by anyone, so a
  * visitor page can fill it from the browser without a privileged route.
  *
- * `sellerRating` is a PERCENTAGE of orders that went well, and
- * `sellerReviewCount` is the count of orders that went well — both maintained
- * by `update_seller_reputation()`. Neither is a star rating, and this page
- * spent a while claiming otherwise ("⭐ 0.0 · 0 đánh giá"). The wording below
- * matches `card-item.tsx` so the same seller reads the same on every surface.
+ * Standing arrives already derived, via `standingFromProfile`, because that
+ * helper is the one place that can tell "this account is new" from "this query
+ * did not select the reputation columns" — and only the caller knows which it
+ * ran. A null here renders no badge at all rather than a wrong one.
+ *
+ * `sellerRating` and `legitRate` used to live here and drove two more figures
+ * that were also labelled "uy tín". Both are gone from this surface: `legit_rate`
+ * has had no writer since 20260909000200 replaced the offer sweepers with the
+ * ledger, and `seller_rating` is a percentage over a fault counter the ledger
+ * deliberately never backfilled, so the two disagreed with the score and with
+ * each other. The columns still exist and the forum still reads `legit_rate`.
+ *
+ * `sellerReviewCount` stays, but only as the sales figure behind the revenue and
+ * listings tiles — it is not reputation.
  */
 export type ProfileIdentity = {
     displayName: string | null;
@@ -158,11 +170,9 @@ export type ProfileIdentity = {
     email: string | null;
     profileImageUrl: string | null;
     sellerVerified: boolean;
-    sellerRating: number;
     sellerReviewCount: number;
-    legitRate: number;
-    totalTransactions: number;
-    completedTransactions: number;
+    /** Null when the caller's query carried no reputation columns. */
+    standing: ReputationStanding | null;
     createdAt: string | null;
 };
 
@@ -198,13 +208,14 @@ export function ProfileView({
 }) {
     const { locale } = useLocalization();
     const isOwner = mode === "owner";
+    // Recolours the ring this avatar already has, rather than stacking a second
+    // one; NewSellerFrame below contributes only the tag.
+    const isNew = isNewAccount(identity.standing);
 
     const copy = locale === "vi-VN"
         ? {
             verifiedSeller: "Người bán đã xác minh",
             memberSince: "Thành viên từ {date}",
-            positive: "uy tín",
-            itemsSold: "đã bán",
             newSeller: "Người bán mới",
             revenue: "Doanh thu",
             revenueHint: "Từ {count} đơn đã hoàn tất",
@@ -214,8 +225,6 @@ export function ProfileView({
             listingsHint: "{count} thẻ đã bán xong",
             soldStat: "Đã bán",
             soldStatHint: "Đơn hàng thành công",
-            legitScore: "Điểm uy tín",
-            legitHint: "{completed}/{total} giao dịch hoàn tất",
             accountRank: "Hạng tài khoản",
             toRankUp: "Còn {count} đơn nữa để lên {rank}",
             highestRank: "Đã đạt hạng cao nhất",
@@ -249,8 +258,6 @@ export function ProfileView({
             ? {
                 verifiedSeller: "認証済み出品者",
                 memberSince: "{date} から利用",
-                positive: "高評価",
-                itemsSold: "販売",
                 newSeller: "新規販売者",
                 revenue: "売上",
                 revenueHint: "完了した{count}件から",
@@ -260,8 +267,6 @@ export function ProfileView({
                 listingsHint: "販売済み{count}枚",
                 soldStat: "販売済み",
                 soldStatHint: "成立した取引",
-                legitScore: "信頼スコア",
-                legitHint: "取引完了 {completed}/{total}",
                 accountRank: "アカウントランク",
                 toRankUp: "{rank}まであと{count}件",
                 highestRank: "最高ランクです",
@@ -294,8 +299,6 @@ export function ProfileView({
             : {
                 verifiedSeller: "Verified seller",
                 memberSince: "Member since {date}",
-                positive: "positive",
-                itemsSold: "sold",
                 newSeller: "New seller",
                 revenue: "Revenue",
                 revenueHint: "From {count} completed orders",
@@ -305,8 +308,6 @@ export function ProfileView({
                 listingsHint: "{count} cards sold",
                 soldStat: "Sold",
                 soldStatHint: "Completed orders",
-                legitScore: "Trust score",
-                legitHint: "{completed}/{total} transactions completed",
                 accountRank: "Account rank",
                 toRankUp: "{count} more sales to reach {rank}",
                 highestRank: "Highest rank reached",
@@ -343,12 +344,6 @@ export function ProfileView({
             template,
         );
 
-    const legitColor = (rate: number) =>
-        rate >= 90 ? "text-green-500"
-            : rate >= 70 ? "text-yellow-500"
-                : rate >= 50 ? "text-orange-500"
-                    : "text-red-500";
-
     /**
      * Sales count comes from `profiles.seller_review_count`, not from counting
      * transaction rows. It is the number `/cards/[id]` and `card-item.tsx`
@@ -363,15 +358,6 @@ export function ProfileView({
     const rankProgress = nextRank
         ? Math.min(100, ((soldCount - rank.minSales) / (nextRank.minSales - rank.minSales)) * 100)
         : 100;
-
-    /**
-     * The reputation line, word for word from `card-item.tsx`'s
-     * `sellerStatsText`. A seller who reads "95.0% uy tín · 12 đã bán" under a
-     * listing must read the same thing on their profile.
-     */
-    const reputationText = identity.sellerRating > 0
-        ? `${identity.sellerRating.toFixed(1)}% ${copy.positive}`
-        : copy.newSeller;
 
     const joinedAt = identity.createdAt
         ? new Date(identity.createdAt).toLocaleDateString(locale, { month: "long", year: "numeric" })
@@ -401,7 +387,10 @@ export function ProfileView({
             <section className="rounded-2xl border bg-gradient-to-br from-primary/10 via-background to-background p-4 sm:p-6 md:p-8 mb-6">
                 <div className="flex flex-col sm:flex-row items-start gap-4 sm:gap-6">
                     <div className="relative shrink-0">
-                        <div className={`relative w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 rounded-full overflow-hidden bg-muted ring-4 ring-offset-2 ring-offset-background ${SHOW_ACCOUNT_RANK ? rank.ring : "ring-border"}`}>
+                        <NewSellerFrame standing={identity.standing} withRing={false}>
+                        <div className={`relative w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 rounded-full overflow-hidden bg-muted ring-4 ring-offset-2 ring-offset-background ${
+                            SHOW_ACCOUNT_RANK ? rank.ring : isNew ? "ring-orange-500/70" : "ring-border"
+                        }`}>
                             {identity.profileImageUrl ? (
                                 <Image
                                     src={identity.profileImageUrl}
@@ -416,6 +405,7 @@ export function ProfileView({
                                 </div>
                             )}
                         </div>
+                        </NewSellerFrame>
                         {/* Struck as a medal: the dark icon reads against lit
                             metal, where a coloured icon on a tinted disc did
                             not read at all. */}
@@ -458,13 +448,21 @@ export function ProfileView({
                         )}
 
                         <div className="flex flex-wrap items-center gap-x-4 sm:gap-x-5 gap-y-1.5 sm:gap-y-2 text-xs sm:text-sm">
-                            <span className="flex items-center gap-1.5">
-                                <ShieldCheck className={`h-4 w-4 shrink-0 ${identity.sellerRating > 0 ? "text-green-500" : "text-muted-foreground"}`} />
-                                <span className="font-semibold">{reputationText}</span>
-                                <span className="text-muted-foreground">
-                                    · {formatCompactCount(soldCount, locale)} {copy.itemsSold}
-                                </span>
-                            </span>
+                            {/* One reputation figure, the same component the offer
+                                inbox and every listing use. It owns the rule that
+                                an account under five completed orders shows a word
+                                and no number at all, which is why nothing here
+                                formats a figure by hand.
+                                
+                                The ⚠️ shows to the owner and to nobody else. A
+                                person has to be able to see their own standing to
+                                have any reason to mend it — eBay puts Below
+                                Standard in the seller's own dashboard for exactly
+                                that — but a visitor sizing up a seller gets the
+                                counts and no verdict. */}
+                            {identity.standing && (
+                                <ReputationBadge standing={identity.standing} warnOnIncidents={isOwner} />
+                            )}
                             {joinedAt && (
                                 <span className="flex items-center gap-1.5 text-muted-foreground">
                                     <CalendarDays className="h-4 w-4 shrink-0" />
@@ -482,7 +480,7 @@ export function ProfileView({
             {/* A visitor gets reputation only. eBay publishes a seller's
                 feedback and registration date and never their takings; the
                 RLS on `transactions` says the same thing in SQL. */}
-            <section className={`grid gap-3 sm:gap-4 mb-6 ${isOwner ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-1 sm:grid-cols-3"}`}>
+            <section className={`grid gap-2.5 sm:gap-4 mb-6 ${isOwner ? "grid-cols-3" : "grid-cols-2"}`}>
                 {isOwner && owner && (
                     <>
                         <StatTile
@@ -515,18 +513,6 @@ export function ProfileView({
                         accent="text-green-500"
                     />
                 )}
-                <StatTile
-                    icon={<Shield className="h-4 w-4" />}
-                    label={copy.legitScore}
-                    value={`${identity.legitRate}`}
-                    suffix="/100"
-                    hint={fill(copy.legitHint, {
-                        completed: identity.completedTransactions,
-                        total: identity.totalTransactions,
-                    })}
-                    accent={legitColor(identity.legitRate)}
-                    progress={identity.legitRate}
-                />
             </section>
 
             {/* ── Rank progress ──────────────────────────────────────── */}
@@ -757,11 +743,11 @@ function StatTile({ icon, label, value, hint, suffix, accent, progress }: {
 }) {
     return (
         <CardUI className="h-full">
-            <CardContent className="p-3.5 sm:p-5 flex flex-col justify-between h-full">
+            <CardContent className="p-2.5 sm:p-4 md:p-5 flex flex-col justify-between h-full">
                 <div>
-                    <div className="flex items-center gap-1.5 sm:gap-2 text-muted-foreground mb-1.5 sm:mb-2">
-                        <span className="shrink-0">{icon}</span>
-                        <span className="text-[11px] sm:text-xs font-medium uppercase tracking-wide truncate" title={label}>
+                    <div className="flex items-center gap-1 sm:gap-2 text-muted-foreground mb-1 sm:mb-2">
+                        <span className="shrink-0 [&>svg]:h-3.5 [&>svg]:w-3.5 sm:[&>svg]:h-4 sm:[&>svg]:w-4">{icon}</span>
+                        <span className="text-[10px] sm:text-xs font-medium uppercase tracking-wide truncate" title={label}>
                             {label}
                         </span>
                     </div>
@@ -769,7 +755,7 @@ function StatTile({ icon, label, value, hint, suffix, accent, progress }: {
                         {/* Money strings run long in VND; let them shrink rather than
                             overflow the tile on a phone. */}
                         <span
-                            className={`text-lg sm:text-xl md:text-2xl font-bold tabular-nums break-all sm:break-normal ${accent ?? ""}`}
+                            className={`text-sm sm:text-lg md:text-2xl font-bold tabular-nums truncate sm:break-normal ${accent ?? ""}`}
                             title={value}
                         >
                             {value}
@@ -777,11 +763,11 @@ function StatTile({ icon, label, value, hint, suffix, accent, progress }: {
                         {suffix && <span className="text-xs sm:text-sm text-muted-foreground shrink-0">{suffix}</span>}
                     </div>
                 </div>
-                <div className="mt-2 sm:mt-2.5 space-y-1.5 sm:space-y-2">
+                <div className="mt-1.5 sm:mt-2.5 space-y-1 sm:space-y-2">
                     {progress !== undefined && <Progress value={progress} className="h-1.5" />}
                     {hint && (
                         <p
-                            className="text-[11px] sm:text-xs text-muted-foreground leading-snug break-words"
+                            className="text-[10px] sm:text-xs text-muted-foreground leading-tight sm:leading-snug line-clamp-2 sm:line-clamp-none"
                             title={hint}
                         >
                             {hint}

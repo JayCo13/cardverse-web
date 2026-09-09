@@ -17,8 +17,8 @@ async function handleGET(_request: NextRequest, { params }: { params: Promise<{ 
         .select(`
             *,
             card:cards(id, name, image_url, category, condition, is_bundle),
-            buyer:profiles!orders_buyer_id_fkey(id, display_name, email, profile_image_url),
-            seller:profiles!orders_seller_id_fkey(id, display_name, email, profile_image_url, seller_verified, seller_rating, seller_review_count)
+            buyer:profiles!orders_buyer_id_fkey(id, display_name, email, profile_image_url, reputation_score, reputation_incidents_90d, reputation_incidents_total, completed_transactions),
+            seller:profiles!orders_seller_id_fkey(id, display_name, email, profile_image_url, seller_verified, reputation_score, reputation_incidents_90d, reputation_incidents_total, completed_transactions)
         `)
         .eq('id', id)
         .single();
