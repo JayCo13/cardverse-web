@@ -248,13 +248,11 @@ export function OrderShippingDesk({
                 <p className="mt-1 text-sm text-muted-foreground">{copy.lead}</p>
             </header>
 
-            {/* Two columns from lg up. What the seller checks and fills in is
-                one task, and choosing a carrier is another — side by side they
-                fit on a screen together, stacked they made the page long enough
-                that the price list fell below the fold. */}
-            <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
-                {/* ── trái: đối soát + gói hàng ─────────────────────────── */}
-                <div className="space-y-6 p-5 lg:border-r lg:border-border/60">
+            {/* One column. The page puts this beside the order's own record
+                rather than splitting it internally — two nested two-column
+                layouts would leave four narrow strips on a wide screen. */}
+            <div>
+                <div className="space-y-6 p-5">
                     <div className="space-y-3">
                         {stepLabel(1, copy.step1)}
                         <div className="grid gap-3 sm:grid-cols-2">
@@ -314,9 +312,9 @@ export function OrderShippingDesk({
                     </div>
                 </div>
 
-                {/* ── phải: chọn hãng, dính theo màn hình ───────────────── */}
-                <div className="border-t border-border/60 bg-background/40 lg:border-t-0">
-                    <div className="lg:sticky lg:top-4">
+                {/* Choosing a carrier, under what is being sent. */}
+                <div className="border-t border-border/60 bg-background/40">
+                    <div>
                         <div className="space-y-3 p-5">
                             {stepLabel(3, copy.step3)}
 

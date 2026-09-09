@@ -88,6 +88,10 @@ export default function OrderDetailsPage() {
   const trackingUrl = order
     ? parcelTrackingUrl(order.shipping_provider || order.metadata?.shipping_carrier, order.tracking_number, order.carrier_tracking_url)
     : null;
+  // The only thing that widens this page. A buyer, or a seller whose waybill
+  // already exists, has nothing to put in a second column — and a lone narrow
+  // column adrift in a wide page reads as a layout mistake.
+  const showDesk = !!order && !isBuyer && order.status === 'paid' && !order.goship_code;
   const bundleSel: { title: string; price: number }[] = Array.isArray(order?.metadata?.bundle_selection) ? order.metadata.bundle_selection : [];
   const counterparty = order ? (isBuyer ? order.seller : order.buyer) : null;
   const counterpartyId: string | null = counterparty?.id ?? null;
@@ -173,7 +177,7 @@ export default function OrderDetailsPage() {
 
   return (
     <div className="flex flex-1 flex-col bg-background">
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 sm:px-6">
+      <main className={`mx-auto w-full flex-1 px-4 py-6 sm:px-6 ${showDesk ? 'max-w-6xl' : 'max-w-3xl'}`}>
         <Button variant="ghost" onClick={() => router.back()} className="mb-4 h-9 px-2 text-muted-foreground">
           <ArrowLeft className="mr-2 h-4 w-4" /> {tx('Quay lại', 'Back', '戻る')}
         </Button>
@@ -187,7 +191,9 @@ export default function OrderDetailsPage() {
         ) : error ? (
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-5 text-sm text-red-300">{error}</div>
         ) : order ? (
-          <div className="space-y-4">
+          <div className={showDesk ? 'grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)]' : 'space-y-4'}>
+            {/* Left: what this order is. Right: what to do about it. */}
+            <div className="space-y-4">
             {/* Header */}
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-5">
               <div>
@@ -216,24 +222,6 @@ export default function OrderDetailsPage() {
                 </div>
               );
             }}</LiveClock>}
-
-            {/* Booking desk — the seller's whole job on a paid order, so it
-                sits above the record of what was bought rather than under it. */}
-            {!isBuyer && order.status === 'paid' && !order.goship_code && (
-              <OrderShippingDesk
-                orderId={order.id}
-                destination={order.to_goship ?? null}
-                defaultDeclaredValue={order.amount}
-                buyerPaidShipping={order.shipping_fee}
-                recipient={{
-                  name: order.to_name,
-                  phone: order.to_phone,
-                  address: [order.to_address_detail, order.to_ward_name, order.to_district_name, order.to_province_name].filter(Boolean).join(', '),
-                }}
-                itemName={order.card?.name ?? ''}
-                onBooked={() => load()}
-              />
-            )}
 
             {/* Product */}
             <div className="space-y-3 rounded-xl border bg-card p-5">
@@ -519,6 +507,28 @@ export default function OrderDetailsPage() {
             <Button variant="outline" className="w-full" onClick={() => router.push(`/orders?tab=${role}`)}>
               {tx('Về danh sách đơn hàng', 'Back to orders', '注文一覧へ')}
             </Button>
+            </div>
+
+            {/* Right: the seller's whole job on a paid order. Sticky, so the
+                carriers and the button stay in view while the order's own
+                record scrolls beside them. */}
+            {showDesk && (
+              <div className="lg:sticky lg:top-6">
+                <OrderShippingDesk
+                  orderId={order.id}
+                  destination={order.to_goship ?? null}
+                  defaultDeclaredValue={order.amount}
+                  buyerPaidShipping={order.shipping_fee}
+                  recipient={{
+                    name: order.to_name,
+                    phone: order.to_phone,
+                    address: [order.to_address_detail, order.to_ward_name, order.to_district_name, order.to_province_name].filter(Boolean).join(', '),
+                  }}
+                  itemName={order.card?.name ?? ''}
+                  onBooked={() => load()}
+                />
+              </div>
+            )}
           </div>
         ) : null}
       </main>
