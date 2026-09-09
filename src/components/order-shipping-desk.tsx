@@ -42,7 +42,8 @@ const COPY = {
         weight: 'Cân nặng (gram)', weightHint: 'Cả gói, gồm hộp và lớp chống sốc. Một thẻ đã ép cứng thường 150–250g.',
         declared: 'Khai giá (đ)', declaredHint: 'Số tiền hãng bồi thường nếu mất hàng. Trên 2.500.000đ hãng thu thêm phí bảo hiểm, giá bên dưới đã gồm khoản đó.',
         pickRegion: 'Đơn này chưa có địa giới theo đơn vị vận chuyển. Chọn theo địa chỉ người nhận bên trên:',
-        buyerPaid: 'Người mua đã trả', youPay: 'bạn bù', youKeep: 'bạn dư',
+        buyerPaid: 'Người mua đã trả', overBudget: 'trừ vào tiền đơn', inBudget: 'trong phí đã thu',
+        excessNote: 'Phần cước vượt {gap} sẽ trừ vào tiền đơn hàng của bạn khi giải ngân.',
         loading: 'Đang lấy bảng giá...', none: 'Không có đơn vị vận chuyển nào phục vụ tuyến này.',
         success: 'giao thành công', chosen: 'Đã chọn',
         book: 'Tạo vận đơn', booking: 'Đang tạo...', pickFirst: 'Chọn một đơn vị vận chuyển',
@@ -60,7 +61,8 @@ const COPY = {
         weight: 'Weight (grams)', weightHint: 'The whole parcel, box and padding included. One slabbed card is usually 150–250g.',
         declared: 'Declared value (đ)', declaredHint: 'What the carrier pays if the parcel is lost. Above 2,500,000đ it charges insurance, already included in the prices below.',
         pickRegion: 'This order has no carrier divisions yet. Pick them from the recipient address above:',
-        buyerPaid: 'Buyer paid', youPay: 'you cover', youKeep: 'you keep',
+        buyerPaid: 'Buyer paid', overBudget: 'deducted from your payout', inBudget: 'within the fee collected',
+        excessNote: 'The {gap} above the shipping fee is deducted from your payout for this order.',
         loading: 'Fetching rates...', none: 'No carrier serves this route.',
         success: 'delivered', chosen: 'Selected',
         book: 'Create waybill', booking: 'Creating...', pickFirst: 'Pick a carrier',
@@ -78,7 +80,8 @@ const COPY = {
         weight: '重量（グラム）', weightHint: '箱と緩衝材を含む全体。スラブ入りカード1枚で通常150〜250g。',
         declared: '申告価格（đ）', declaredHint: '紛失時の補償額です。2,500,000đを超えると保険料が加算され、下の料金に含まれます。',
         pickRegion: 'この注文には配送業者の行政区分がありません。上の受取人住所に合わせて選んでください：',
-        buyerPaid: '購入者支払い', youPay: '差額負担', youKeep: '差額',
+        buyerPaid: '購入者支払い', overBudget: '売上から差引', inBudget: '送料の範囲内',
+        excessNote: '送料を超える {gap} は、この注文の支払い額から差し引かれます。',
         loading: '料金を取得中...', none: 'この経路に対応する業者がありません。',
         success: '配達成功', chosen: '選択中',
         book: '送り状を作成', booking: '作成中...', pickFirst: '配送業者を選択してください',
@@ -374,14 +377,15 @@ export function OrderShippingDesk({
                                                                       r.successPercent != null ? `${r.successPercent}% ${copy.success}` : null]
                                                                         .filter(Boolean).join(' · ')}
                                                                 </span>
-                                                                {/* The seller's GoShip account is billed, not the
-                                                                    buyer's payment, so the gap between the two is
-                                                                    theirs either way — and it is what makes one
-                                                                    carrier cheaper than another for them. */}
-                                                                <span className={`shrink-0 text-xs ${over ? 'text-amber-400' : 'text-green-400'}`}>
+                                                                {/* Only the excess is the seller's. Picking a cheaper
+                                                                    carrier does not pay them the difference — the fee
+                                                                    was collected to move the parcel, not as income —
+                                                                    so there is no "you keep" to show, and saying one
+                                                                    would promise money nothing pays out. */}
+                                                                <span className={`shrink-0 text-xs ${over ? 'text-amber-400' : 'text-muted-foreground'}`}>
                                                                     {over
-                                                                        ? `${copy.youPay} ${money(r.totalFee - buyerPaidShipping)}`
-                                                                        : `${copy.youKeep} ${money(buyerPaidShipping - r.totalFee)}`}
+                                                                        ? `${copy.overBudget} ${money(r.totalFee - buyerPaidShipping)}`
+                                                                        : copy.inBudget}
                                                                 </span>
                                                             </span>
                                                         </button>
@@ -408,6 +412,11 @@ export function OrderShippingDesk({
                                     ? <>{copy.chosen}: <span className="font-medium text-foreground">{selected.carrierName}</span> · <span className="font-semibold text-orange-400">{money(selected.totalFee)}</span></>
                                     : copy.pickFirst}
                             </p>
+                            {selected && selected.totalFee > buyerPaidShipping && (
+                                <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs leading-5 text-amber-200">
+                                    {copy.excessNote.replace('{gap}', money(selected.totalFee - buyerPaidShipping))}
+                                </p>
+                            )}
                             <Button disabled={!selected} onClick={() => setConfirming(true)} className="w-full bg-orange-500 hover:bg-orange-600">
                                 <Truck className="mr-2 h-4 w-4" />{copy.book}
                                 <ArrowRight className="ml-2 h-4 w-4" />

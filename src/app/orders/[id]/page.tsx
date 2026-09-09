@@ -307,6 +307,38 @@ export default function OrderDetailsPage() {
               <div className="flex justify-between text-sm"><span className="text-muted-foreground">{tx('Phí vận chuyển', 'Shipping fee', '送料')}</span><span>{fmt(order.shipping_fee)}</span></div>
               <div className="flex justify-between border-t pt-2 text-base font-bold"><span>{tx('Tổng', 'Total', '合計')}</span><span className="text-orange-500">{fmt(order.total_paid)}</span></div>
               <p className="pt-1 text-xs text-muted-foreground">{tx('Phương thức', 'Method', '方法')}: {order.payment_method === 'wallet' ? tx('Ví CardVerseHub', 'CardVerseHub wallet', 'CardVerseHubウォレット') : 'PayOS'}</p>
+
+              {/* The seller's side of the same order. Two numbers above are what
+                  the buyer paid; this is what arrives, and it differs whenever
+                  the carrier they picked cost more than the shipping collected.
+                  Said here rather than discovered in the wallet later. */}
+              {!isBuyer && typeof order.goship_fee === 'number' && (() => {
+                const excess = Math.max(0, order.goship_fee - (order.shipping_fee || 0));
+                const payout = Math.max(0, order.amount - Math.min(order.amount, excess));
+                return (
+                  <div className="mt-3 space-y-2 rounded-lg border border-border/60 bg-background/40 p-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {tx('Bạn nhận được', 'Your payout', '受取額')}
+                    </p>
+                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">{tx('Tiền hàng', 'Item price', '商品代金')}</span><span>{fmt(order.amount)}</span></div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">{tx('Cước vận chuyển thực tế', 'Actual carrier cost', '実際の送料')}</span>
+                      <span>{fmt(order.goship_fee)}</span>
+                    </div>
+                    {excess > 0 ? (
+                      <div className="flex justify-between text-sm text-amber-300">
+                        <span>{tx('Trừ phần vượt phí ship', 'Less shipping over the fee collected', '送料超過分の差引')}</span>
+                        <span>−{fmt(excess)}</span>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        {tx('Cước nằm trong phí ship người mua đã trả, không trừ gì thêm.', 'Within the shipping the buyer paid, so nothing is deducted.', '購入者が支払った送料の範囲内のため、差引はありません。')}
+                      </p>
+                    )}
+                    <div className="flex justify-between border-t pt-2 text-base font-bold"><span>{tx('Thực nhận', 'Net payout', '受取額')}</span><span className="text-orange-500">{fmt(payout)}</span></div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Counterparty */}

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { goshipCreateShipment, goshipCarrierToApp, goshipFindShipmentByOrderId, goshipEnv } from '@/lib/goship';
+import { goshipCreateShipment, goshipCarrierToApp, goshipFindShipmentByOrderId, goshipEnv, goshipRates } from '@/lib/goship';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { isEvidenceVideoUrl } from '@/lib/evidence-video';
 
@@ -39,6 +39,9 @@ async function linkShipmentToOrder(
     created: { id?: string; tracking_number?: string; carrier_short_name?: string },
     body: Record<string, any> | null,
     destination?: { city: string; district: string; ward: string } | null,
+    /** What GoShip charges. The seller's payout is netted against it, so it is
+     *  read from a server-side quote and never from the request. */
+    goshipFee?: number | null,
 ) {
     const gcode = created.id as string;
     const raw = body?.packingVideoUrl;
@@ -54,6 +57,7 @@ async function linkShipmentToOrder(
             // certain. Afterwards the code alone cannot say which account
             // issued it, and events from the other one must not be obeyed.
             goship_env: goshipEnv(),
+            ...(typeof goshipFee === 'number' && goshipFee >= 0 ? { goship_fee: Math.round(goshipFee) } : {}),
             // Remember the ids used, so a retry or a later read does not depend
             // on the form that supplied them.
             ...(destination ? { to_goship: destination } : {}),
@@ -194,11 +198,38 @@ export async function POST(request: NextRequest) {
     if (order) {
         const existing = await goshipFindShipmentByOrderId(order.id);
         if (existing.ok && existing.data?.id) {
-            const linked = await linkShipmentToOrder(order.id, existing.data, body);
+            // A recovered booking carries its own price, which is better than
+            // a quote: it is what GoShip actually billed.
+            const linked = await linkShipmentToOrder(order.id, existing.data, body, null,
+                Number((existing.data as { total_fee?: number }).total_fee) || null);
             if (linked) return linked;
             return NextResponse.json({ data: existing.data, gcode: existing.data.id, recovered: true });
         }
     }
+
+    // Price it again before booking, for two reasons that happen to share one
+    // call. The seller now pays whatever this costs above what the buyer was
+    // charged, so the figure that decides their payout cannot be a number the
+    // browser sent. And a rate id that has expired is no longer in the answer,
+    // which catches a stale quote before a courier is dispatched rather than
+    // after.
+    const fresh = await goshipRates({
+        from: { city: from.city, district: from.district },
+        to: { city: dest.city, district: dest.district },
+        parcel,
+        declaredValue,
+    });
+    const priced = fresh.ok ? fresh.rates.find((r) => r.id === rateId) ?? null : null;
+    if (fresh.ok && !priced) {
+        return NextResponse.json(
+            { error: 'Bảng giá đã hết hạn. Bấm xem giá lại rồi đặt.', code: 'stale_rate' },
+            { status: 409 },
+        );
+    }
+    // A quote that failed to load is not a stale rate. Booking still goes
+    // ahead — the seller is not made to wait on GoShip twice — and the fee is
+    // filled in from the shipment itself further down.
+    const quotedFee = priced?.totalFee ?? null;
 
     const result = await goshipCreateShipment({
         from: from as never,
@@ -251,7 +282,7 @@ export async function POST(request: NextRequest) {
     // order in exactly the same state.
     if (order) {
         const linked = await linkShipmentToOrder(order.id, created, body,
-            { city: dest.city, district: dest.district, ward: dest.ward });
+            { city: dest.city, district: dest.district, ward: dest.ward }, quotedFee);
         if (linked) return linked;
     }
 
