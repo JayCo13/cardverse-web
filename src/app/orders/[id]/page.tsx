@@ -177,7 +177,7 @@ export default function OrderDetailsPage() {
 
   return (
     <div className="flex flex-1 flex-col bg-background">
-      <main className={`mx-auto w-full flex-1 px-4 py-6 sm:px-6 ${showDesk ? 'max-w-6xl' : 'max-w-3xl'}`}>
+      <main className={`mx-auto w-full flex-1 px-4 py-6 sm:px-6 ${showDesk ? 'max-w-[88rem]' : 'max-w-3xl'}`}>
         <Button variant="ghost" onClick={() => router.back()} className="mb-4 h-9 px-2 text-muted-foreground">
           <ArrowLeft className="mr-2 h-4 w-4" /> {tx('Quay lại', 'Back', '戻る')}
         </Button>
@@ -191,7 +191,7 @@ export default function OrderDetailsPage() {
         ) : error ? (
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-5 text-sm text-red-300">{error}</div>
         ) : order ? (
-          <div className={showDesk ? 'grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)]' : 'space-y-4'}>
+          <div className={showDesk ? 'grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,36rem)]' : 'space-y-4'}>
             {/* Left: what this order is. Right: what to do about it. */}
             <div className="space-y-4">
             {/* Header */}
@@ -379,8 +379,12 @@ export default function OrderDetailsPage() {
 
                   {/* The moment each side can still act on this. A packing video
                       is only accepted at dispatch, so telling the seller once
-                      they are already at the ship dialog is telling them late. */}
-                  {beforeDispatch && !isBuyer && (
+                      they are already at the ship dialog is telling them late.
+                      Suppressed while the booking desk is open beside this,
+                      because the desk's upload field carries the same warning
+                      inches away — said twice on one screen it reads as two
+                      different rules rather than one. */}
+                  {beforeDispatch && !isBuyer && !showDesk && (
                     <p className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-2.5 text-xs leading-5 text-orange-200">
                       {tx(
                         'Quay video khi bạn đang đóng gói. Hệ thống chỉ nhận video ở đúng bước bấm “Giao hàng”, không đính thêm được về sau. Nếu có tranh chấp mà bạn không có video còn người mua có, phần thua thuộc về bạn.',
