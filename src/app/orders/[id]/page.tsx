@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { LiveClock } from '@/components/live-clock';
+import { OrderShipmentBooker } from '@/components/order-shipment-booker';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -81,13 +82,16 @@ export default function OrderDetailsPage() {
 
   const isBuyer = role === 'buyer';
   const carrier = order ? getCarrier(order.metadata?.shipping_carrier) : undefined;
-  const trackingUrl = order ? getTrackingUrl(order.metadata?.shipping_carrier, order.tracking_number) : null;
+  // shipping_provider first: it is the carrier actually booked, kept in step by
+  // GoShip's webhooks, where metadata holds whatever checkout guessed before
+  // the buyer stopped choosing one.
+  const trackingUrl = order ? getTrackingUrl(order.shipping_provider || order.metadata?.shipping_carrier, order.tracking_number) : null;
   const bundleSel: { title: string; price: number }[] = Array.isArray(order?.metadata?.bundle_selection) ? order.metadata.bundle_selection : [];
   const counterparty = order ? (isBuyer ? order.seller : order.buyer) : null;
   const counterpartyId: string | null = counterparty?.id ?? null;
 
   // Shipping timing (from carrier pickup → delivery estimate).
-  const estDays = order ? getDeliveryDays(order.metadata?.shipping_carrier || order.shipping_provider) : null;
+  const estDays = order ? getDeliveryDays(order.shipping_provider || order.metadata?.shipping_carrier) : null;
   // The order escalates to admin review at auto_complete_at if the buyer never
   // confirms (money is held, not paid to the seller). Nudge the buyer as that
   // deadline approaches (within the last 2 days).
@@ -97,17 +101,17 @@ export default function OrderDetailsPage() {
   // Actions + confirm dialog.
   const [acting, setActing] = useState(false);
   const [confirm, setConfirm] = useState<{ action: string; title: string; message: string; extra?: any } | null>(null);
-  const [shipOpen, setShipOpen] = useState(false);
-  const [trackingInput, setTrackingInput] = useState('');
   // Orders placed before checkout recorded the quoted carrier have none, so the
   // seller picks the one they actually shipped with. Seeded from the order when
   // it does carry one, in which case the dialog just shows it.
-  const [shipCarrier, setShipCarrier] = useState('');
   const [packingVideoUrl, setPackingVideoUrl] = useState<string | null>(null);
   const [videoBusy, setVideoBusy] = useState(false);
   const [trackOpen, setTrackOpen] = useState(false);
   const orderCarrier: string | undefined = order?.metadata?.shipping_carrier;
-  const effectiveCarrier = orderCarrier || shipCarrier;
+  // The carrier is whatever was booked; there is no picker on this page any
+  // more. shipping_provider is filled from GoShip's answer and then kept in
+  // step by its webhooks.
+  const effectiveCarrier = order?.shipping_provider || orderCarrier;
   const actionKeys = useRef<Record<string, string>>({});
 
   /** Signed direct upload to the evidence folder. Returns null on any failure. */
@@ -156,7 +160,7 @@ export default function OrderDetailsPage() {
       }
       delete actionKeys.current[fingerprint];
       toast({ title: tx('Thành công', 'Done', '完了') });
-      setConfirm(null); setShipOpen(false); setTrackingInput(''); setPackingVideoUrl(null);
+      setConfirm(null); setPackingVideoUrl(null);
       await load();
     } catch (e: any) {
       toast({ variant: 'destructive', title: tx('Lỗi', 'Error', 'エラー'), description: e.message });
@@ -192,7 +196,10 @@ export default function OrderDetailsPage() {
             </div>
 
             {/* Countdown */}
-            {order.status === 'paid' && <LiveClock until={order.ship_deadline ? Date.parse(order.ship_deadline) : Date.parse(order.created_at) + 86400000}>{nowTs => {
+            {/* Until a waybill exists, not until the status changes: an order
+                stays 'paid' after booking and only becomes 'shipping' once the
+                carrier has the parcel. */}
+            {order.status === 'paid' && !order.goship_code && <LiveClock until={order.ship_deadline ? Date.parse(order.ship_deadline) : Date.parse(order.created_at) + 86400000}>{nowTs => {
               const deadlineTs = order.ship_deadline ? new Date(order.ship_deadline).getTime() : new Date(order.created_at).getTime() + 24 * 3600 * 1000;
               const rem = deadlineTs - nowTs;
               if (rem <= 0) {
@@ -202,7 +209,7 @@ export default function OrderDetailsPage() {
               return (
                 <div className="flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
                   <Clock className="h-4 w-4" />
-                  {isBuyer ? tx('Người bán cần giao trong', 'Seller must ship within', '販売者の発送期限まで') : tx('Bạn cần nhập mã vận đơn trong', 'You must upload tracking within', '追跡番号を入力する残り時間')}{' '}
+                  {isBuyer ? tx('Người bán cần giao trong', 'Seller must ship within', '販売者の発送期限まで') : tx('Bạn cần tạo vận đơn trong', 'You must create the waybill within', '送り状を作成する残り時間')}{' '}
                   <b className="tabular-nums">{h}h {String(m).padStart(2, '0')}m {String(s).padStart(2, '0')}s</b>
                 </div>
               );
@@ -342,7 +349,8 @@ export default function OrderDetailsPage() {
               const windowOpen = !order.auto_complete_at || new Date(order.auto_complete_at).getTime() > Date.now();
               // Nothing to film yet at 'paid' — the parcel has not moved. What
               // each side needs at that point is the warning, not the control.
-              const beforeDispatch = order.status === 'paid';
+              // Dispatch is having booked, not having changed status.
+              const beforeDispatch = order.status === 'paid' && !order.goship_code;
               const canUpload = isBuyer && !buyerVideo && windowOpen && !beforeDispatch;
               const row = (label: string, url: string | null, missingHint: string) => (
                 <div className="flex items-center gap-2 text-sm">
@@ -441,12 +449,19 @@ export default function OrderDetailsPage() {
             {/* Actions */}
             {(() => {
               const btns: ReactNode[] = [];
-              // Seller: upload tracking to ship (carrier already chosen by buyer).
-              if (!isBuyer && order.status === 'paid') {
+              // Seller: book the waybill. Same component as the list page, so
+              // the two cannot drift — and no typed tracking number anywhere.
+              if (!isBuyer && order.status === 'paid' && !order.goship_code) {
                 btns.push(
-                  <Button key="ship" className="flex-1 bg-orange-500 hover:bg-orange-600" onClick={() => setShipOpen(true)}>
-                    <Truck className="mr-2 h-4 w-4" />{tx('Nhập mã vận đơn & giao', 'Enter tracking & ship', '追跡番号を入力して発送')}
-                  </Button>,
+                  <div key="ship" className="flex-1">
+                    <OrderShipmentBooker
+                      orderId={order.id}
+                      destination={order.to_goship ?? null}
+                      defaultDeclaredValue={order.amount}
+                      buyerPaidShipping={order.shipping_fee}
+                      onBooked={() => load()}
+                    />
+                  </div>,
                 );
               }
               // Follow the parcel — both sides. Delivery is what starts the
@@ -517,68 +532,6 @@ export default function OrderDetailsPage() {
       </Dialog>
 
       {/* Ship dialog — carrier already chosen by the buyer, seller enters tracking */}
-      <Dialog open={shipOpen} onOpenChange={setShipOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{tx('Nhập mã vận đơn', 'Enter tracking number', '追跡番号を入力')}</DialogTitle>
-            <DialogDescription>{tx('Người mua sẽ nhận email + thông báo với mã vận đơn.', 'The buyer will be notified by email with the tracking number.', '購入者に追跡番号がメールで通知されます。')}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            {orderCarrier ? (
-              <div className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
-                {carrier?.logo && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={carrier.logo} alt="" className="h-5 w-5 rounded" />
-                )}
-                <span>{carrier?.name || orderCarrier}</span>
-                <span className="ml-auto text-xs text-muted-foreground">{tx('Người mua đã chọn', 'Chosen by buyer', '購入者が選択')}</span>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-sm font-medium">{tx('Đơn vị vận chuyển', 'Carrier', '配送業者')}</p>
-                <div className="flex flex-wrap gap-2">
-                  {SHIPPING_CARRIERS.map(c => (
-                    <button
-                      key={c.code}
-                      type="button"
-                      onClick={() => setShipCarrier(c.code)}
-                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors ${shipCarrier === c.code ? 'border-orange-500 bg-orange-500/15 text-orange-300' : 'border-border/60 text-muted-foreground hover:border-orange-500/40'}`}
-                    >
-                      {c.logo ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={c.logo} alt="" className="h-5 w-5 rounded" />
-                      ) : (
-                        <Truck className="h-4 w-4" />
-                      )}
-                      {c.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {sellerSuppliesTracking(effectiveCarrier) && (
-              <Input value={trackingInput} onChange={e => setTrackingInput(e.target.value)} placeholder={tx('VD: LWtxxxxxxx', 'e.g. LWtxxxxxxx', '例: LWtxxxxxxx')} />
-            )}
-            {effectiveCarrier && (
-              <PackingVideoField value={packingVideoUrl} onChange={setPackingVideoUrl} locale={locale} disabled={acting} />
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShipOpen(false)} disabled={acting}>{tx('Huỷ', 'Cancel', 'キャンセル')}</Button>
-            <Button
-              className="bg-orange-500 hover:bg-orange-600"
-              disabled={acting || !effectiveCarrier || (sellerSuppliesTracking(effectiveCarrier) && !trackingInput.trim())}
-              onClick={() => runAction('ship', {
-                shipping_provider: effectiveCarrier,
-                tracking_number: trackingInput.trim(),
-                packing_video_url: packingVideoUrl,
-              })}
-            >
-              {tx('Giao hàng', 'Ship', '発送')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       
 

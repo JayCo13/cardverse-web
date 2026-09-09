@@ -143,7 +143,7 @@ export default function OrdersPage() {
         cancelOrder: '注文をキャンセル',
         shipOrder: '発送する',
         confirm: '確認',
-        shipCountdownSeller: '追跡番号を入力する残り時間:',
+        shipCountdownSeller: '送り状を作成する残り時間:',
         shipCountdownBuyer: '販売者の発送期限まで:',
         shipCountdownNoteBuyer: '期限超過で自動キャンセル・あなたのウォレットへ返金・販売者の評価減点。',
         shipCountdownNoteSeller: '期限超過で自動キャンセル・購入者へ返金・あなたの評価が減点されます。',
@@ -223,7 +223,7 @@ export default function OrdersPage() {
           cancelOrder: 'Hủy đơn',
           shipOrder: 'Giao hàng',
           confirm: 'Xác nhận',
-          shipCountdownSeller: 'Bạn cần cập nhật mã vận đơn trong',
+          shipCountdownSeller: 'Bạn cần tạo vận đơn trong',
           shipCountdownBuyer: 'Người bán cần giao hàng trong',
           shipCountdownNoteBuyer: 'Quá hạn: đơn tự huỷ, tiền hoàn về ví bạn, người bán bị trừ uy tín.',
           shipCountdownNoteSeller: 'Quá hạn: đơn tự huỷ, tiền hoàn cho người mua, bạn bị trừ điểm uy tín.',
@@ -302,7 +302,7 @@ export default function OrdersPage() {
           cancelOrder: 'Cancel order',
           shipOrder: 'Ship order',
           confirm: 'Confirm',
-          shipCountdownSeller: 'You must upload tracking within',
+          shipCountdownSeller: 'You must create the waybill within',
           shipCountdownBuyer: 'The seller must ship within',
           shipCountdownNoteBuyer: 'If overdue: the order auto-cancels, is refunded to your wallet, and the seller loses reputation.',
           shipCountdownNoteSeller: 'If overdue: the order auto-cancels, the buyer is refunded, and you lose reputation.',
@@ -704,8 +704,13 @@ export default function OrdersPage() {
                 )}
               </p>
 
-              {/* 24h ship-deadline countdown (paid, not yet shipped) */}
-              {order.status === 'paid' && <LiveClock until={order.ship_deadline ? Date.parse(order.ship_deadline) : Date.parse(order.created_at) + 86400000}>{nowTs => {
+              {/* The 24h deadline, until a waybill exists.
+                  An order keeps status 'paid' after booking — it only becomes
+                  'shipping' once the carrier has the parcel — so counting on
+                  status alone kept telling a seller to enter a tracking number
+                  they had already produced, and to do it in a form that no
+                  longer exists. */}
+              {order.status === 'paid' && !order.goship_code && <LiveClock until={order.ship_deadline ? Date.parse(order.ship_deadline) : Date.parse(order.created_at) + 86400000}>{nowTs => {
                 // Older orders (created before the ship_deadline column) fall back
                 // to created_at + 24h so the countdown still shows.
                 const deadlineTs = order.ship_deadline
@@ -774,12 +779,17 @@ export default function OrdersPage() {
                   </Button>
                 )}
 
-                                {/* Tracking is read from the order now, not fetched.
+                                {/* Shown whenever there is something to track, not from
+                    status: a booked parcel sits at 'paid' until the carrier
+                    collects it, and that is exactly when a seller wants to
+                    check on it.
+
+                    Tracking is read from the order now, not fetched.
                     carrier_status arrives on GoShip's webhook and is shown
                     beside the price above; the carrier's own page is one link
                     away for anyone who wants their timeline. Nothing here polls
                     a third party any more. */}
-                {['shipping', 'delivered'].includes(order.status) && order.tracking_number
+                {order.tracking_number
                   && getTrackingUrl(order.shipping_provider, order.tracking_number) && (
                   <Button
                     size="sm"
