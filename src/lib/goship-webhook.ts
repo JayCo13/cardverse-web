@@ -68,12 +68,22 @@ export function readGoshipEvent(body: unknown): GoshipWebhookEvent | null {
     // string SPX has never seen — a 404 for the buyer.
     const rawCarrierCode = str(b.code);
 
+    // ...and it builds `tracking_url` from that code whether or not it has one.
+    // A shipment still sitting unsent reports
+    // `https://donhang.ghn.vn/?order_code=NULL` — a real URL, spelling the
+    // absence out in the query string. Storing that hands the buyer a button
+    // that goes nowhere, which is the exact bug this field was added to end.
+    const rawTrackingUrl = str(b.tracking_url);
+    const trackingUrl = rawTrackingUrl && !/=(?:NULL|null|undefined)?(?:&|$)/.test(rawTrackingUrl)
+        ? rawTrackingUrl
+        : null;
+
     return {
         gcode,
         carrierCode: rawCarrierCode && rawCarrierCode !== gcode ? rawCarrierCode : null,
         orderRef: str(b.order_id),
         carrierSlug: str(b.carrier_short_name) ? goshipCarrierToApp(str(b.carrier_short_name) as string) : null,
-        trackingUrl: str(b.tracking_url),
+        trackingUrl,
         statusCode,
         statusText: str(b.status_text),
         carrierStatus,
