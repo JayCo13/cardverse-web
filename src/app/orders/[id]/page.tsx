@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { LiveClock } from '@/components/live-clock';
 import { OrderShippingDesk } from '@/components/order-shipping-desk';
+import { ShipmentTrackingDialog } from '@/components/shipment-tracking-dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -572,6 +573,11 @@ export default function OrderDetailsPage() {
           </div>
         ) : null}
       </main>
+
+      {/* The parcel's journey, in a dialog rather than the carrier's site. */}
+      {order && (
+        <ShipmentTrackingDialog orderId={order.id} open={trackOpen} onOpenChange={setTrackOpen} />
+      )}
 
       {/* Confirm dialog for lifecycle actions */}
       <Dialog open={!!confirm} onOpenChange={o => !o && setConfirm(null)}>

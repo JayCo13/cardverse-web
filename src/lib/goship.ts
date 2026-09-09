@@ -338,6 +338,38 @@ export async function goshipFindShipmentByOrderId(orderId: string) {
 }
 
 /**
+ * One shipment and everything GoShip knows about its journey.
+ *
+ * Read on demand rather than from what the webhooks left behind: an order row
+ * holds only the latest status, and somebody asking "where is my parcel" is
+ * asking for the sequence. GoShip keeps the whole history against the shipment,
+ * so it is fetched when someone looks instead of mirrored into a table that
+ * could fall behind.
+ *
+ * Matched on GoShip's own code, which is what identifies a shipment to them —
+ * the carrier's number does not exist until the carrier accepts it.
+ */
+export async function goshipShipmentByCode(gcode: string) {
+    const result = await call<Array<Record<string, unknown>>>(
+        `/shipments?code=${encodeURIComponent(gcode)}`,
+        { timeoutMs: 6_000 },
+    );
+    if (!result.ok) return result;
+    const match = (result.data ?? []).find((row) => row?.id === gcode) ?? null;
+    return { ok: true as const, data: match as (GoshipCreatedShipment & {
+        status_code?: number;
+        status_text?: string;
+        status_desc?: string;
+        carrier_name?: string;
+        carrier_code?: string | null;
+        tracking_url?: string | null;
+        total_fee?: number;
+        expected_delivery_date?: string;
+        history?: Array<{ status?: number; status_text?: string; status_desc?: string; message?: string | null; updated_at?: string; updated_time?: number }>;
+    }) | null };
+}
+
+/**
  * Point GoShip's status pushes at us. Idempotent from our side only in that
  * listing first shows what is already registered — GoShip does not de-duplicate.
  */

@@ -18,8 +18,9 @@ import { useLocalization } from '@/context/localization-context';
 import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { SHIPPING_CARRIERS, getTrackingUrl, getCarrier, sellerSuppliesTracking, parcelTrackingUrl } from '@/lib/shipping-carriers';
+import { SHIPPING_CARRIERS, getTrackingUrl, getCarrier, sellerSuppliesTracking } from '@/lib/shipping-carriers';
 import { carrierStatusLabel } from '@/lib/carrier-status-labels';
+import { ShipmentTrackingDialog } from '@/components/shipment-tracking-dialog';
 import Link from 'next/link';
 import { PackingVideoField } from '@/components/packing-video-field';
 import Image from 'next/image';
@@ -380,6 +381,7 @@ export default function OrdersPage() {
   // so waiting one request costs nothing on screen.
   const searchParams = useSearchParams();
   const tabParam = searchParams.get('tab');
+  const [trackOrderId, setTrackOrderId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<OrderTab | null>(
     tabParam === 'seller' ? 'seller' : tabParam === 'buyer' ? 'buyer' : null,
   );
@@ -793,20 +795,13 @@ export default function OrdersPage() {
                     collects it, and that is exactly when a seller wants to
                     check on it.
 
-                    Tracking is read from the order now, not fetched.
-                    carrier_status arrives on GoShip's webhook and is shown
-                    beside the price above; the carrier's own page is one link
-                    away for anyone who wants their timeline. Nothing here polls
-                    a third party any more. */}
-                {parcelTrackingUrl(order.shipping_provider, order.tracking_number, order.carrier_tracking_url) && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => window.open(
-                      parcelTrackingUrl(order.shipping_provider, order.tracking_number, order.carrier_tracking_url) as string,
-                      '_blank', 'noopener',
-                    )}
-                  >
+                    The button opens the journey in a dialog rather than the
+                    carrier's own site. Offered whenever a waybill exists, not
+                    only once a link does: the first hours of a shipment have no
+                    carrier code and no page to send anyone to, and that is
+                    precisely when people look. */}
+                {order.goship_code && (
+                  <Button size="sm" variant="outline" onClick={() => setTrackOrderId(order.id)}>
                     <Truck className="h-3 w-3 mr-1" />
                     {copy.trackParcel}
                   </Button>
@@ -1081,7 +1076,14 @@ export default function OrdersPage() {
         </DialogContent>
       </Dialog>
 
-      
+      {/* One dialog for the list, opened against whichever order was pressed. */}
+      {trackOrderId && (
+        <ShipmentTrackingDialog
+          orderId={trackOrderId}
+          open={!!trackOrderId}
+          onOpenChange={(open) => { if (!open) setTrackOrderId(null); }}
+        />
+      )}
     </div>
   );
 }
