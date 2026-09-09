@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { readGoshipEvent } from '@/lib/goship-webhook';
+import { goshipClientSecret, type GoshipEnv } from '@/lib/goship';
 import { notifyCarrierStatusChange } from '@/lib/carrier-notifications';
 
 /**
@@ -23,17 +24,34 @@ import { notifyCarrierStatusChange } from '@/lib/carrier-notifications';
 
 const sha256 = (value: string) => createHash('sha256').update(value).digest();
 
-export async function POST(request: NextRequest) {
-    const expectedToken = process.env.GOSHIP_WEBHOOK_TOKEN;
-    if (!expectedToken) {
-        console.error('[GoShip Webhook] GOSHIP_WEBHOOK_TOKEN is not set — rejecting');
-        return NextResponse.json({ error: 'Webhook not configured' }, { status: 401 });
+/**
+ * Which account sent this, decided by the secret on the URL.
+ *
+ * Both accounts push to this one public address, so the token is what tells
+ * them apart — a different one is issued to each, and the environment is
+ * whichever it matches. Nothing is read from the body to make this decision:
+ * the body is the part an attacker controls.
+ *
+ * Null means neither matched, which is the same answer as an unconfigured
+ * environment. A missing secret must never widen the door.
+ */
+const senderEnv = (provided: string): GoshipEnv | null => {
+    for (const [env, expected] of [
+        ['live', process.env.GOSHIP_WEBHOOK_TOKEN],
+        ['sandbox', process.env.GOSHIP_WEBHOOK_TOKEN_SANDBOX],
+    ] as const) {
+        if (expected && timingSafeEqual(sha256(provided), sha256(expected))) return env;
     }
+    return null;
+};
 
+export async function POST(request: NextRequest) {
     const providedToken = request.nextUrl.searchParams.get('token')
         || request.headers.get('x-webhook-token')
         || '';
-    if (!timingSafeEqual(sha256(providedToken), sha256(expectedToken))) {
+
+    const env = senderEnv(providedToken);
+    if (!env) {
         console.warn('[GoShip Webhook] Invalid token');
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -42,12 +60,15 @@ export async function POST(request: NextRequest) {
     // re-serialising parsed JSON would not reproduce them.
     const raw = await request.text();
 
-    const secret = process.env.GOSHIP_CLIENT_SECRET;
+    // The signing secret belongs to the account, so it has to be the one
+    // matching the token above. Checking a sandbox event against the live
+    // secret would reject every one of them.
+    const secret = goshipClientSecret(env);
     if (secret) {
         const signature = request.headers.get('x-goship-hmac-sha256') || '';
         const expected = createHmac('sha256', secret).update(raw).digest('base64');
         if (!timingSafeEqual(sha256(signature), sha256(expected))) {
-            console.warn('[GoShip Webhook] Bad signature');
+            console.warn(`[GoShip Webhook] Bad signature (${env})`);
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
     }
@@ -84,6 +105,10 @@ export async function POST(request: NextRequest) {
             // Null until the carrier accepts, which is what tells the interface
             // there is nothing to link to yet.
             p_tracking_url: event.trackingUrl,
+            // An order booked in one environment does not take events from the
+            // other. Both accounts issue codes of the same shape, so without
+            // this a sandbox rehearsal could march a real order to delivered.
+            p_env: env,
         } as never);
         if (error) throw error;
 

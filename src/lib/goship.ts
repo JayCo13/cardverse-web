@@ -17,15 +17,49 @@
  * where it was not, the function says so.
  */
 
-const BASE_URL = 'https://api.goship.io/api/v2';
+/**
+ * Which GoShip account this process talks to.
+ *
+ * Sandbox is a genuinely separate installation with its own credentials — its
+ * own token, its own client secret, its own shipments — reached at a different
+ * host. Its city ids are identical to the live ones (700000 is Ho Chi Minh City
+ * in both), so addresses collected against one resolve against the other.
+ *
+ * That similarity is exactly why the host and the token are returned together
+ * and never read apart. A live token against the sandbox host is a 401, which
+ * is merely annoying; the reverse pairing would be a real waybill created by
+ * something that believed it was rehearsing. Nothing in this file may pick one
+ * without the other.
+ */
+export type GoshipEnv = 'sandbox' | 'live';
+
+export const goshipEnv = (): GoshipEnv =>
+    process.env.GOSHIP_ENV?.trim().toLowerCase() === 'sandbox' ? 'sandbox' : 'live';
+
+const environment = (): { env: GoshipEnv; baseUrl: string; token: string } =>
+    goshipEnv() === 'sandbox'
+        ? {
+            env: 'sandbox',
+            baseUrl: 'https://sandbox.goship.io/api/v2',
+            token: process.env.GOSHIP_API_SANDBOX?.trim() || '',
+        }
+        : {
+            env: 'live',
+            baseUrl: 'https://api.goship.io/api/v2',
+            token: process.env.GOSHIP_API?.trim() || '',
+        };
 
 /**
- * The live token. Sandbox is a real environment — sandbox.goship.io answers,
- * and every example in the documentation is written against it — but it
- * rejects this token, so it takes credentials of its own that we do not have.
- * Until then every test booking here is a real waybill.
+ * The secret GoShip signs its webhooks with, for one environment.
+ *
+ * Each account has its own, so an event signed by sandbox will not verify
+ * against the live secret. The webhook route needs to check both, because both
+ * accounts point at the same public URL.
  */
-const token = () => process.env.GOSHIP_API?.trim() || '';
+export const goshipClientSecret = (env: GoshipEnv): string =>
+    (env === 'sandbox'
+        ? process.env.GOSHIP_SANDBOX_CLIENT_SECRET
+        : process.env.GOSHIP_CLIENT_SECRET)?.trim() || '';
 
 export type GoshipAddress = {
     /** GoShip's own ids, from cities/districts/wards — not the app's. */
@@ -93,11 +127,11 @@ async function call<T>(
         root?: boolean;
     } = {},
 ): Promise<{ ok: true; data: T } | { ok: false; reason: string }> {
-    const bearer = token();
+    const { baseUrl, token: bearer } = environment();
     if (!bearer) return { ok: false, reason: 'not_configured' };
 
     try {
-        const response = await fetch(`${BASE_URL}${path}`, {
+        const response = await fetch(`${baseUrl}${path}`, {
             method: init.method ?? 'GET',
             headers: {
                 Authorization: `Bearer ${bearer}`,

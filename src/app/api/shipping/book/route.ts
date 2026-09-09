@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { goshipCreateShipment, goshipCarrierToApp, goshipFindShipmentByOrderId } from '@/lib/goship';
+import { goshipCreateShipment, goshipCarrierToApp, goshipFindShipmentByOrderId, goshipEnv } from '@/lib/goship';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { isEvidenceVideoUrl } from '@/lib/evidence-video';
 
@@ -50,6 +50,10 @@ async function linkShipmentToOrder(
         .from('orders')
         .update({
             goship_code: gcode,
+            // Stamped at booking, because it is the only moment we know it for
+            // certain. Afterwards the code alone cannot say which account
+            // issued it, and events from the other one must not be obeyed.
+            goship_env: goshipEnv(),
             // Remember the ids used, so a retry or a later read does not depend
             // on the form that supplied them.
             ...(destination ? { to_goship: destination } : {}),
