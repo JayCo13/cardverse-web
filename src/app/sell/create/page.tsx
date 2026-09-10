@@ -3,6 +3,9 @@
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
+import { PRODUCT_KINDS, PRODUCT_CONDITIONS, productCopy, flexibleProductsEnabled, type ProductKind, type ProductDetails } from '@/lib/product-listing';
+import { ProductFields } from '@/components/product-fields';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -159,6 +162,8 @@ type LocaleCopy = {
   shippingTitle: string;
   shippingHint: string;
   shippingFeeLabel: string;
+  shippingFeeRequired: string;
+  shippingFeePlaceholder: string;
   freeShippingLabel: string;
   freeShippingHint: string;
   shippingCostNote: string;
@@ -284,6 +289,8 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       shippingTitle: '送料',
       shippingHint: '購入者が支払う金額です。実際の配送料がこれを上回った分は、あなたの受取額から差し引かれます。',
       shippingFeeLabel: '送料（đ）',
+      shippingFeeRequired: '送料を入力するか、送料無料を選んでください。',
+      shippingFeePlaceholder: '例: 25.000',
       freeShippingLabel: '送料無料',
       freeShippingHint: '配送料は全額あなたの負担になります。商品価格に含めてください。',
       shippingCostNote: '実際の配送料の目安：カード1枚（200g）でベトナム国内 15.400〜18.900đ。申告価格が 2.500.000đ を超えると保険料が約 25.000đ 加算されます。',
@@ -409,6 +416,8 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       shippingTitle: 'Phí vận chuyển',
       shippingHint: 'Số tiền người mua trả. Nếu cước thật cao hơn mức này, phần vượt sẽ trừ vào tiền bạn nhận được.',
       shippingFeeLabel: 'Phí ship người mua trả (đ)',
+      shippingFeeRequired: 'Nhập phí ship bạn thu, hoặc chọn miễn phí vận chuyển.',
+      shippingFeePlaceholder: 'VD: 25.000',
       freeShippingLabel: 'Miễn phí vận chuyển',
       freeShippingHint: 'Bạn chịu toàn bộ cước. Nhớ tính sẵn vào giá bán.',
       shippingCostNote: 'Cước thật tham khảo: một thẻ (200g) gửi trong nước 15.400–18.900đ tuỳ nơi gửi. Khai giá trên 2.500.000đ hãng thu thêm khoảng 25.000đ bảo hiểm.',
@@ -533,6 +542,8 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
     shippingTitle: 'Shipping',
     shippingHint: 'What the buyer pays. If the carrier costs more than this, the difference comes off your payout.',
     shippingFeeLabel: 'Shipping charged to the buyer (đ)',
+    shippingFeeRequired: 'Enter the shipping you charge, or tick free shipping.',
+    shippingFeePlaceholder: 'e.g. 25.000',
     freeShippingLabel: 'Free shipping',
     freeShippingHint: 'You carry the whole carrier bill. Price it into the item.',
     shippingCostNote: 'For reference: one card (200g) costs 15,400–18,900đ to send anywhere in Vietnam. Declared value above 2,500,000đ adds about 25,000đ of insurance.',
@@ -608,7 +619,7 @@ function formatNumericInput(value: unknown): string {
 const shouldShowCatalogIdentity = (category?: string, isBundle = false) =>
   !isBundle && (category === 'Pokémon' || category === 'One Piece');
 
-const getFormSchema = (copy: LocaleCopy) => z.object({
+const getFormSchema = (copy: LocaleCopy, nonCard = false) => z.object({
   name: z.string().min(5, { message: copy.titleMin }),
   isBundle: z.boolean().default(false),
   category: z.string({ required_error: copy.chooseCategory }),
@@ -660,10 +671,13 @@ const getFormSchema = (copy: LocaleCopy) => z.object({
   shippingFee: z.preprocess(
     (a) => {
       if (typeof a === 'number') return a;
-      if (typeof a === 'string') return parseInt(a.replace(/[^\d]/g, ''), 10) || 0;
-      return 0;
+      if (typeof a === 'string') {
+        const digits = a.replace(/[^\d]/g, '');
+        return digits === '' ? undefined : parseInt(digits, 10);
+      }
+      return undefined;
     },
-    z.number().int().min(0).max(99999).default(25000),
+    z.number().int().min(0).max(99999).optional(),
   ),
   // Offer settings
   acceptOffers: z.boolean().default(false),
@@ -694,16 +708,22 @@ const getFormSchema = (copy: LocaleCopy) => z.object({
   // Publisher: bắt buộc theo dropdown ở category thường; ở category "Khác"
   // (free-text) thì thay bằng ô freePublisher. Bundle dùng pool nhiều giá trị
   // (validate riêng), nên bỏ qua hai ràng buộc này.
+  // Shipping used to arrive pre-filled with the platform's 25.000đ. A seller
+  // who never looked at the field still shipped a listing that claimed they had
+  // chosen that number, so the figure on the card was the platform's opinion
+  // wearing the seller's name. It is asked for now.
+  .refine(data => data.freeShipping || data.shippingFee !== undefined,
+    { message: copy.shippingFeeRequired, path: ['shippingFee'] })
   .refine(data => {
-    if (data.isBundle || isFreeText(data.category)) return true;
+    if (nonCard || data.isBundle || isFreeText(data.category)) return true;
     return data.publisher !== undefined && data.publisher !== '';
   }, { message: copy.choosePublisher, path: ['publisher'] })
   .refine(data => {
-    if (data.isBundle || !isFreeText(data.category)) return true;
+    if (nonCard || data.isBundle || !isFreeText(data.category)) return true;
     return !!data.freePublisher && data.freePublisher.trim() !== '';
   }, { message: copy.enterPublisher, path: ['freePublisher'] })
   .refine(data => {
-    if (data.gradingCompany !== 'raw') return data.grade !== undefined;
+    if (!nonCard && data.gradingCompany !== 'raw') return data.grade !== undefined;
     return true;
   }, { message: copy.chooseGrade, path: ['grade'] })
   .refine(data => {
@@ -713,13 +733,13 @@ const getFormSchema = (copy: LocaleCopy) => z.object({
   // Single-card listings in catalog-backed categories must carry a collector
   // number (the identity key for VN market pricing). Bundles are exempt.
   .refine(data => {
-    if (shouldShowCatalogIdentity(data.category, data.isBundle)) {
+    if (!nonCard && shouldShowCatalogIdentity(data.category, data.isBundle)) {
       return !!data.cardNumber && data.cardNumber.trim() !== '';
     }
     return true;
   }, { message: copy.enterCardNumber, path: ['cardNumber'] })
   .refine(data => {
-    if (shouldShowCatalogIdentity(data.category, data.isBundle)) {
+    if (!nonCard && shouldShowCatalogIdentity(data.category, data.isBundle)) {
       return data.language !== undefined;
     }
     return true;
@@ -747,7 +767,13 @@ export default function CreateListingPage() {
   const supabase = useSupabase();
 
   const copy = getLocaleCopy(locale);
-  const formSchema = getFormSchema(copy);
+  const [productKind, setProductKind] = useState<ProductKind>('card');
+  const [productDetails, setProductDetails] = useState<ProductDetails>({});
+  const [productTypeLabel, setProductTypeLabel] = useState('');
+  const [pendingKind, setPendingKind] = useState<ProductKind | null>(null);
+  const nonCard = productKind !== 'card';
+  const pc = productCopy(locale);
+  const formSchema = getFormSchema(copy, nonCard);
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -776,7 +802,7 @@ export default function CreateListingPage() {
       acceptOffers: false,
       minOfferPercent: 0,
       freeShipping: false,
-      shippingFee: 25000,
+      shippingFee: undefined,
       freePublisher: "",
       freeSetName: "",
       freeSeason: "",
@@ -809,6 +835,7 @@ export default function CreateListingPage() {
         },
         body: JSON.stringify({
           name: v.name,
+          productKind, productDetails, productTypeLabel,
           category: v.category,
           publisher: v.publisher || v.freePublisher,
           setName: v.setName || v.freeSetName,
@@ -1211,7 +1238,7 @@ export default function CreateListingPage() {
 
   // Catalog pick state — the canonical card identity behind this listing.
   const [catalogPick, setCatalogPick] = useState<CatalogPick | null>(null);
-  const showCatalogIdentity = shouldShowCatalogIdentity(selectedCategory, isBundle);
+  const showCatalogIdentity = !nonCard && shouldShowCatalogIdentity(selectedCategory, isBundle);
 
   /** Seller picked the EXACT card from the real catalog — lock in its identity. */
   const handleCatalogPicked = (pick: CatalogPick, tab: CatalogTabId) => {
@@ -1262,6 +1289,30 @@ export default function CreateListingPage() {
     form.setValue('catalogSoccerId', undefined);
   };
 
+  /** Switching group keeps the title, photos, description and price; only what
+   *  the new group cannot carry is dropped. */
+  const applyProductKind = (next: ProductKind) => {
+    setProductKind(next);
+    form.setValue('isBundle', false); form.setValue('quantity', 1); form.setValue('listingType', 'sale');
+    form.setValue('gradingCompany', 'raw'); form.setValue('grade', undefined); form.setValue('finish', 'normal');
+    form.setValue('condition', undefined); form.setValue('cardNumber', ''); form.setValue('language', undefined);
+    clearCatalogPick(); form.clearErrors();
+  };
+
+  /** Ask only when the switch would actually throw something away. An empty
+   *  form, or a hop between two non-card groups, loses nothing worth a dialog. */
+  const requestProductKind = (next: ProductKind) => {
+    if (next === productKind) return;
+    const values = form.getValues();
+    const wouldLose = productKind === 'card' && (
+      !!catalogPick || !!values.cardNumber?.trim() || values.grade !== undefined
+      || !!values.condition || values.isBundle === true || values.gradingCompany !== 'raw'
+      || values.language !== undefined || !!values.publisher || !!values.setName || !!values.season
+    );
+    if (wouldLose) { setPendingKind(next); return; }
+    applyProductKind(next);
+  };
+
   useEffect(() => {
     if (showCatalogIdentity) return;
     setCatalogPick(null);
@@ -1295,6 +1346,10 @@ export default function CreateListingPage() {
   }
 
   async function submitListing(values: z.infer<typeof formSchema>) {
+    if (nonCard && (!PRODUCT_CONDITIONS.includes(values.condition as typeof PRODUCT_CONDITIONS[number]) || (productKind === 'other' && productTypeLabel.trim().length < 2))) {
+      toast({ variant: 'destructive', title: pc.invalid });
+      return;
+    }
     if (!user) {
       setOpen(true);
       return;
@@ -1324,7 +1379,7 @@ export default function CreateListingPage() {
 
     try {
       const fingerprint = submissionFingerprint(
-        values as unknown as Record<string, unknown>,
+        { ...values, productKind, productDetails, productTypeLabel } as unknown as Record<string, unknown>,
         bundleItems,
         bundlePools,
       );
@@ -1398,8 +1453,15 @@ export default function CreateListingPage() {
         finish: values.finish,
         // Free shipping is zero, not absent: the seller chose to carry the
         // carrier bill themselves, and settlement nets it off their payout.
-        shipping_fee: values.freeShipping ? 0 : (values.shippingFee ?? 25000),
+        shipping_fee: values.freeShipping ? 0 : values.shippingFee,
       };
+
+      if (nonCard) Object.assign(cardData, {
+        product_kind: productKind, product_details: productDetails, product_type_label: productTypeLabel.trim(),
+        quantity: 1, is_bundle: false, catalog_product_id: null, catalog_soccer_id: null,
+        card_number: null, language: null, grading_company: null, grade: null, finish: null,
+        publisher: null, set_name: null, season: null,
+      });
 
       // Add offer fields if enabled
       if (values.acceptOffers) {
@@ -1570,6 +1632,42 @@ export default function CreateListingPage() {
     return (
       <Form {...form}>
         <form onSubmit={handleCreateSubmit} className="space-y-8">
+          {/* The first choice on the form, so it gets a heading of its own and
+              the same control the rest of the form uses — full width on a
+              phone, capped on a desktop so it does not stretch to the margin. */}
+          {flexibleProductsEnabled && (
+            <div className="rounded-xl border border-orange-500/20 bg-orange-500/5 p-4 sm:p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-0.5">
+                  <h3 className="text-base font-semibold sm:text-lg">{pc.choose}</h3>
+                  <p className="text-xs text-muted-foreground sm:text-sm">{pc.chooseHint}</p>
+                </div>
+                <Select value={productKind} disabled={isSubmitting} onValueChange={value => requestProductKind(value as ProductKind)}>
+                  <SelectTrigger aria-label={pc.choose} className="h-11 w-full text-base sm:w-64 sm:text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PRODUCT_KINDS.map(kind => <SelectItem key={kind} value={kind}>{pc[kind]}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+          <AlertDialog open={pendingKind !== null} onOpenChange={open => { if (!open) setPendingKind(null); }}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{pc.choose}</AlertDialogTitle>
+                <AlertDialogDescription>{pc.confirm}</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{pc.cancelSwitch}</AlertDialogCancel>
+                <AlertDialogAction onClick={() => { if (pendingKind) applyProductKind(pendingKind); setPendingKind(null); }}>
+                  {pc.keepSwitch}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          {nonCard && <><p className="text-sm text-muted-foreground">{pc.whole}</p><ProductFields locale={locale} condition={form.watch('condition') || ''} onCondition={v => form.setValue('condition', v)} details={productDetails} onDetails={setProductDetails} typeLabel={productTypeLabel} onTypeLabel={setProductTypeLabel} other={productKind === 'other'} disabled={isSubmitting} /></>}
 
           {showCatalogIdentity && (
             <div className="space-y-3 p-4 rounded-xl border border-dashed border-orange-500/30 bg-orange-500/5">
@@ -1692,7 +1790,7 @@ export default function CreateListingPage() {
           )}
 
           {/* ─── Bundle Toggle ─── */}
-          <FormField
+          {!nonCard && <FormField
             control={form.control}
             name="isBundle"
             render={({ field }) => (
@@ -1718,6 +1816,7 @@ export default function CreateListingPage() {
             )}
           />
 
+          }
           {/* Card Title (Main) */}
           <FormField
             control={form.control}
@@ -1725,11 +1824,11 @@ export default function CreateListingPage() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel className='text-lg font-semibold'>
-                  {isBundle ? copy.listingTitle : t('card_title_label')}
+                  {isBundle || nonCard ? copy.listingTitle : t('card_title_label')}
                 </FormLabel>
                 <FormControl>
                   <Input
-                    placeholder={isBundle ? copy.listingTitlePlaceholder : t('card_title_placeholder')}
+                    placeholder={isBundle || nonCard ? copy.listingTitlePlaceholder : t('card_title_placeholder')}
                     {...field}
                   />
                 </FormControl>
@@ -1768,7 +1867,7 @@ export default function CreateListingPage() {
                 </FormItem>
               )}
             />
-            <FormField
+            {!nonCard && <FormField
               control={form.control}
               name="condition"
               render={({ field }) => (
@@ -1787,11 +1886,11 @@ export default function CreateListingPage() {
                   <FormMessage />
                 </FormItem>
               )}
-            />
+            />}
           </div>
 
           {/* ─── Dynamic Publisher / Set / Season Section ─── */}
-          {selectedCategory && (
+          {!nonCard && selectedCategory && (
             <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 space-y-5">
               <div className="flex items-center gap-2">
                 <Info className="h-4 w-4 text-primary" />
@@ -2017,7 +2116,7 @@ export default function CreateListingPage() {
           )}
 
           {/* Quantity standalone (only when no category selected yet) */}
-          {!selectedCategory && (
+          {!nonCard && !selectedCategory && (
             <FormField
               control={form.control}
               name="quantity"
@@ -2040,7 +2139,7 @@ export default function CreateListingPage() {
           )}
 
           {/* ─── Phần 2: Grading & biến thể (tách khỏi condition) ─── */}
-          <div className="space-y-4 rounded-xl border p-4">
+          {!nonCard && <div className="space-y-4 rounded-xl border p-4">
             <h3 className="text-lg font-semibold">{copy.gradingTitle}</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField
@@ -2127,6 +2226,7 @@ export default function CreateListingPage() {
             )}
           </div>
 
+          }
           {/* Images */}
           <FormField
             control={form.control}
@@ -2134,7 +2234,7 @@ export default function CreateListingPage() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel className='text-lg font-semibold'>{t('images_label')}</FormLabel>
-                <p className="text-sm text-muted-foreground">{copy.imageUploadHint}</p>
+                <p className="text-sm text-muted-foreground">{nonCard ? pc.images : copy.imageUploadHint}</p>
                 <FormControl>
                   <div
                     className='border-2 border-dashed border-muted rounded-lg p-8 text-center cursor-pointer'
@@ -2535,8 +2635,12 @@ export default function CreateListingPage() {
                         <FormControl>
                           <Input
                             inputMode="numeric"
-                            value={Number(field.value || 0).toLocaleString('vi-VN')}
-                            onChange={(e) => field.onChange(parseInt(e.target.value.replace(/[^\d]/g, ''), 10) || 0)}
+                            placeholder={copy.shippingFeePlaceholder}
+                            value={field.value === undefined ? '' : Number(field.value).toLocaleString('vi-VN')}
+                            onChange={(e) => {
+                              const digits = e.target.value.replace(/[^\d]/g, '');
+                              field.onChange(digits === '' ? undefined : parseInt(digits, 10));
+                            }}
                           />
                         </FormControl>
                         <FormMessage />
@@ -2546,7 +2650,7 @@ export default function CreateListingPage() {
                 )}
 
                 <p className="border-t border-border/60 pt-3 text-xs leading-5 text-muted-foreground">
-                  {copy.shippingCostNote}
+                  {nonCard ? pc.shipping : copy.shippingCostNote}
                 </p>
               </div>
 
@@ -2673,8 +2777,8 @@ export default function CreateListingPage() {
         <div className="max-w-4xl mx-auto">
           <Card>
             <CardHeader>
-              <CardTitle className="text-3xl" style={{ fontFamily: "'Orbitron', sans-serif" }}>{t('create_listing_title')}</CardTitle>
-              <CardDescription>{t('create_listing_description')}</CardDescription>
+              <CardTitle className="text-3xl" style={{ fontFamily: "'Orbitron', sans-serif" }}>{flexibleProductsEnabled ? pc.title : t('create_listing_title')}</CardTitle>
+              <CardDescription>{flexibleProductsEnabled ? pc.choose : t('create_listing_description')}</CardDescription>
             </CardHeader>
             <CardContent>
               {renderContent()}

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { goshipRates } from '@/lib/goship';
+import { parseParcel, parcelCopy } from '@/lib/parcel';
+import { getRequestLocale } from '@/lib/request-localization';
 
 /**
  * What the carriers would charge to send this seller's parcel to that address.
@@ -24,7 +26,6 @@ const ID = /^[0-9]{1,12}$/;
 
 /** A slabbed card in a bubble mailer. Carriers bill by volumetric weight too,
  *  so the box matters as much as the grams. */
-const DEFAULT_PARCEL = { weight: 200, width: 15, height: 3, length: 20 };
 
 export async function POST(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
@@ -34,6 +35,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => null) as {
         to?: { city?: unknown; district?: unknown };
         weight?: unknown;
+        width?: unknown; height?: unknown; length?: unknown;
         declaredValue?: unknown;
     } | null;
 
@@ -43,11 +45,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Thiếu tỉnh/thành hoặc quận/huyện của người nhận.' }, { status: 400 });
     }
 
-    const weight = Number(body?.weight);
-    const parcel = {
-        ...DEFAULT_PARCEL,
-        ...(Number.isFinite(weight) && weight > 0 && weight <= 30_000 ? { weight: Math.round(weight) } : {}),
-    };
+    const parcel = parseParcel(body);
+    if (!parcel) return NextResponse.json({ error: parcelCopy(getRequestLocale(request)).invalid }, { status: 400 });
 
     const { data: profile } = await supabase
         .from('profiles')

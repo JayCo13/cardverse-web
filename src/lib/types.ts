@@ -11,6 +11,9 @@ export type LocalizedString = {
 };
 
 export interface Card {
+  productKind?: import('@/lib/product-listing').ProductKind;
+  productTypeLabel?: string;
+  productDetails?: import('@/lib/product-listing').ProductDetails;
   id: string;
   userId?: string;
   name: string;

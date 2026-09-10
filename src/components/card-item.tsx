@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Clock, Tag, Ticket, Hammer, Zap, Sparkles, Target, Trophy, Star, Gem, Crown, Pencil, User, HandCoins, ShoppingCart, ChevronLeft, ChevronRight, MoreHorizontal, BadgeCheck } from "lucide-react";
+import { Clock, Tag, Ticket, Hammer, Zap, Sparkles, Target, Trophy, Star, Gem, Crown, Pencil, User, HandCoins, ShoppingCart, ChevronLeft, ChevronRight, MoreHorizontal, BadgeCheck, Truck } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useLocalization } from "@/context/localization-context";
 import { useCurrency } from "@/contexts/currency-context";
@@ -24,6 +24,7 @@ import { listingShippingFee } from "@/lib/shipping-fee";
 import { UserLink } from "@/components/user-link";
 import { ReputationBadge } from '@/components/reputation-badge';
 import { NewSellerFrame } from '@/components/new-seller-frame';
+import { productCopy, productConditionLabel, isNonCard } from '@/lib/product-listing';
 
 // Category badge styles with colors and gradients (no icons for cleaner look)
 const getCategoryStyle = (category: string) => {
@@ -418,7 +419,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
 
         {/* Image — the "display case" frame */}
         <div
-          className="relative h-auto w-[120px] min-w-[120px] shrink-0 self-stretch cursor-pointer overflow-hidden rounded-lg bg-black/25 md:w-56 md:min-w-0 md:self-auto md:rounded-none lg:w-64"
+          className="relative w-[120px] min-w-[120px] shrink-0 self-start cursor-pointer overflow-hidden rounded-lg bg-black/25 md:h-auto md:w-56 md:min-w-0 md:self-stretch md:rounded-none lg:w-64"
           onClick={handleDetailClick}
           role="link"
           tabIndex={0}
@@ -429,14 +430,19 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
             }
           }}
         >
-          <div className="relative h-full min-h-full max-h-none w-full md:h-full md:aspect-[3/4]">
+          {/* Below md the frame is a fixed 3:4 box rather than the row's height:
+              a row is as tall as its contents, so a listing with few specs gave
+              the photo a short wide strip and one with many gave it a tall
+              narrow one — the same catalogue rendered at a different shape card
+              to card. The cart has always sized its thumbnail this way. */}
+          <div className="relative aspect-[3/4] w-full md:aspect-[3/4] md:h-full md:min-h-full md:max-h-none">
             <Image
               src={optimizeCloudinaryUrl(activeImage, 500)}
               alt={card.name}
               data-ai-hint={card.imageHint || 'trading card'}
               fill
               sizes="(max-width: 767px) 120px, 16rem"
-              className={`h-full w-full object-cover transition-transform duration-500 md:object-contain md:p-2 ${card.status === 'sold' ? 'grayscale' : 'group-hover:scale-[1.02]'}`}
+              className={`h-full w-full ${isNonCard(card.productKind) ? 'object-contain p-2' : 'object-cover'} transition-transform duration-500 md:object-contain md:p-2 ${card.status === 'sold' ? 'grayscale' : 'group-hover:scale-[1.02]'}`}
             />
             {/* depth / blend into card body */}
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent md:bg-gradient-to-r md:from-transparent md:via-transparent md:to-card/40" />
@@ -514,7 +520,8 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
             </h3>
 
             <p className="hidden md:mt-1.5 md:block md:text-sm md:leading-5">
-              {card.condition || 'Pre-owned'}
+              {isNonCard(card.productKind) && <Badge className="mr-2">{productCopy(locale)[card.productKind!]}</Badge>}
+              {productConditionLabel(card.condition, locale) || 'Pre-owned'}
               {card.publisher && <span> · {card.publisher}</span>}
               {card.setName && <span> · {card.setName}</span>}
             </p>
@@ -571,30 +578,60 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           </div>
 
           <div className="mt-0.5 flex flex-col justify-between gap-1.5 border-0 border-t border-dashed border-white/10 bg-transparent p-0 pt-1.5 md:mt-0 md:gap-4 md:border-solid md:border-border/50 md:pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
-            <div className="flex min-w-0 items-center gap-1.5 md:gap-3">
-              <NewSellerFrame standing={card.sellerStanding} compact>
-                <UserLink variant="plain" userId={card.sellerId} stopPropagation className="shrink-0">
-                  {card.sellerAvatar ? (
-                    <Image src={card.sellerAvatar} alt={card.sellerName || ''} width={42} height={42} className="h-[22px] w-[22px] shrink-0 rounded-full object-cover ring-1 ring-border md:h-[42px] md:w-[42px]" />
-                  ) : (
-                    <div className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-primary/15 ring-1 ring-primary/30 md:h-11 md:w-11">
-                      <span className="text-[10px] font-bold text-primary md:text-base">{(card.sellerName || card.author || 'C').charAt(0).toUpperCase()}</span>
-                    </div>
-                  )}
-                </UserLink>
-              </NewSellerFrame>
-              <div className="flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden text-[11px] md:block md:text-sm">
-                <p className="flex min-w-0 items-center gap-1 font-semibold text-foreground">
-                  <UserLink userId={card.sellerId} stopPropagation className="truncate">{card.sellerName || card.author}</UserLink>
-                  {card.sellerVerified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-orange-500 md:h-4 md:w-4" />}
-                </p>
-                {/* The seller's standing, from the same component the offer inbox
-                    and the profile use. It replaces a hand-built "12.5% uy tín ·
-                    1 đã bán" string that was one of four copies of the same
-                    formatting, and that read a percentage the ledger disagrees
-                    with. */}
-                {card.sellerStanding && <ReputationBadge standing={card.sellerStanding} size="sm" />}
-              </div>
+            {/* Below md this row carries the shipping fee as well, because the
+                trust strip that states it further down is desktop-only and the
+                right-packed seller pair left the whole left half of the row
+                empty. Shipping is the figure a buyer reads straight after the
+                price — the cart already shows it on a phone — so the space goes
+                to it rather than to padding.
+
+                The pair keeps a box of its own so the name stays against the
+                avatar instead of being stretched away from it; `md:contents`
+                dissolves that box at md, handing the avatar and the name back
+                to this row as its own children.
+
+                The NEW ring is drawn with ring-offset, painting 4px outside the
+                avatar's layout box, so the gap reads 4px tighter than it
+                measures. The tag below the avatar hangs 6px past that same box,
+                which is what the row's bottom padding is for. */}
+            <div className="flex min-w-0 items-center justify-between gap-3 pb-2 md:justify-start md:pb-0">
+              <span className="flex min-w-0 items-center gap-3 md:contents">
+                <NewSellerFrame standing={card.sellerStanding}>
+                  <UserLink variant="plain" userId={card.sellerId} stopPropagation className="shrink-0">
+                    {card.sellerAvatar ? (
+                      <Image src={card.sellerAvatar} alt={card.sellerName || ''} width={42} height={42} className="h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-border md:h-[42px] md:w-[42px]" />
+                    ) : (
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 ring-1 ring-primary/30 md:h-11 md:w-11">
+                        <span className="text-[11px] font-bold text-primary md:text-base">{(card.sellerName || card.author || 'C').charAt(0).toUpperCase()}</span>
+                      </div>
+                    )}
+                  </UserLink>
+                </NewSellerFrame>
+                <div className="flex min-w-0 items-baseline gap-1 overflow-hidden text-[11px] md:block md:flex-1 md:text-sm">
+                  <p className="flex min-w-0 items-center gap-1 font-semibold text-foreground">
+                    <UserLink userId={card.sellerId} stopPropagation className="truncate">{card.sellerName || card.author}</UserLink>
+                    {card.sellerVerified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-orange-500 md:h-4 md:w-4" />}
+                  </p>
+                  {/* The seller's standing, from the same component the offer inbox
+                      and the profile use. It replaces a hand-built "12.5% uy tín ·
+                      1 đã bán" string that was one of four copies of the same
+                      formatting, and that read a percentage the ledger disagrees
+                      with. */}
+                  {card.sellerStanding && <ReputationBadge standing={card.sellerStanding} size="sm" />}
+                </div>
+              </span>
+              {(() => {
+                const fee = listingShippingFee(card.shippingFee);
+                return (
+                  <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-medium md:hidden">
+                    <Truck className={`h-3.5 w-3.5 shrink-0 ${fee === 0 ? 'text-green-400' : 'text-orange-400'}`} aria-hidden />
+                    <span className={fee === 0 ? 'text-green-400' : 'text-foreground'}>
+                      {fee === 0 ? copy.freeShipping : `${fee.toLocaleString('vi-VN')}đ`}
+                    </span>
+                    <span className="sr-only">{copy.shipping}</span>
+                  </span>
+                );
+              })()}
             </div>
 
             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center border-0 bg-transparent p-0 md:block md:rounded-xl md:border md:border-amber-500/40 md:bg-gradient-to-br md:from-amber-500/10 md:to-amber-500/[0.02] md:p-3.5">
@@ -706,7 +743,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           fill
           sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
           loading="lazy"
-          className={`object-cover transition-transform duration-500 ${card.status === 'sold' ? 'grayscale' : 'group-hover:scale-105'}`}
+          className={`${isNonCard(card.productKind) ? 'object-contain p-2' : 'object-cover'} transition-transform duration-500 ${card.status === 'sold' ? 'grayscale' : 'group-hover:scale-105'}`}
         />
         {/* Sold overlay */}
         {card.status === 'sold' && (
@@ -722,7 +759,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
             variant="secondary"
             className="absolute top-2 sm:top-3 left-2 sm:left-3 bg-white/90 text-black text-[10px] sm:text-xs font-medium backdrop-blur-sm"
           >
-            {card.condition}
+            {isNonCard(card.productKind) ? `${productCopy(locale)[card.productKind!]} — ${productConditionLabel(card.condition, locale)}` : card.condition}
           </Badge>
         )}
         {/* Category badge - top right - Professional Style */}

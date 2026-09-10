@@ -18,6 +18,7 @@ import { useAuth, useSupabase } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
 import { useLocalization } from '@/context/localization-context';
+import { flexibleProductsEnabled, productCopy } from '@/lib/product-listing';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -413,6 +414,10 @@ export default function SellPage() {
           step3: 'Review and submit',
         };
   const tx = (vi: string, en: string, ja: string) => (locale === 'ja-JP' ? ja : locale === 'vi-VN' ? vi : en);
+  // With non-card listings on, the seller is no longer only listing cards, so
+  // the two calls to action stop saying so.
+  const listCardLabel = flexibleProductsEnabled ? productCopy(locale).listNew : copy.listCard;
+  const firstListingLabel = flexibleProductsEnabled ? productCopy(locale).firstListing : copy.firstListing;
   useEffect(() => {
     // Reads on scroll only — no layout is measured, so this cannot thrash.
     const onScroll = () => setShowFloatingListing(window.scrollY > 220);
@@ -1153,7 +1158,7 @@ export default function SellPage() {
                     <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20">
                       <Plus strokeWidth={3} />
                     </span>
-                    {copy.listCard}
+                    {listCardLabel}
                   </Link>
                 </Button>
               </div>
@@ -1346,7 +1351,7 @@ export default function SellPage() {
                     <Button asChild className="bg-orange-500 hover:bg-orange-600">
                       <Link href="/sell/create">
                         <Plus className="h-4 w-4 mr-2" />
-                        {copy.firstListing}
+                        {firstListingLabel}
                       </Link>
                     </Button>
                   </div>
@@ -1484,11 +1489,11 @@ export default function SellPage() {
         <button
           type="button"
           onClick={goToNewListing}
-          aria-label={copy.listCard}
+          aria-label={listCardLabel}
           className="fixed bottom-5 right-4 z-50 flex h-12 items-center gap-2 rounded-full bg-primary px-5 pb-[env(safe-area-inset-bottom)] text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition hover:scale-105 active:scale-95 md:hidden"
         >
           <Plus className="h-5 w-5" />
-          <span>{copy.listCard}</span>
+          <span>{listCardLabel}</span>
         </button>
 
         {/* Desktop counterpart. Larger than the phone's, because a pointer has
@@ -1499,7 +1504,7 @@ export default function SellPage() {
         <button
           type="button"
           onClick={goToNewListing}
-          aria-label={copy.listCard}
+          aria-label={listCardLabel}
           aria-hidden={!showFloatingListing}
           tabIndex={showFloatingListing ? 0 : -1}
           className={`fixed bottom-8 right-8 z-50 hidden h-14 items-center gap-2.5 rounded-full bg-orange-500 px-7 text-base font-semibold text-white shadow-xl shadow-orange-500/30 transition-all duration-300 hover:scale-105 hover:bg-orange-600 active:scale-95 md:flex ${
@@ -1507,7 +1512,7 @@ export default function SellPage() {
           }`}
         >
           <Plus className="h-6 w-6" />
-          <span>{copy.listCard}</span>
+          <span>{listCardLabel}</span>
         </button>
         <Drawer open={shippingConfigOpen} onOpenChange={setShippingConfigOpen}>
           <DrawerContent className="md:hidden">

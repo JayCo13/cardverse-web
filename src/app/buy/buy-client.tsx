@@ -9,6 +9,7 @@ import { CardItem } from '@/components/card-item';
 import type { Card, CardCategory, CardCondition } from '@/lib/types';
 import { useLocalization } from '@/context/localization-context';
 import { FilterSidebar } from '@/components/filter-sidebar';
+import { PRODUCT_KINDS, productCopy, flexibleProductsEnabled, type ProductKind } from '@/lib/product-listing';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -89,6 +90,7 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
   const [saleCards, setSaleCards] = useState<Card[]>(initialCards);
   const [isLoading, setIsLoading] = useState(!initialLoadSucceeded);
   const debouncedSearch = useDebouncedValue(filters.search);
+  const [productFilter, setProductFilter] = useState<ProductKind | 'all'>('all');
   const [checkoutCard, setCheckoutCard] = useState<Card | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutPreselected, setCheckoutPreselected] = useState<number[]>([]);
@@ -170,6 +172,7 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
     if (!saleCards) return [];
 
     let filtered = saleCards.filter((card) => {
+      if (productFilter !== 'all' && (card.productKind || 'card') !== productFilter) return false;
       const {
         categories,
         conditions,
@@ -186,6 +189,8 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
       const searchTerm = debouncedSearch.trim().toLocaleLowerCase(locale);
       const searchableText = [
         card.name,
+        card.productTypeLabel,
+        ...Object.values(card.productDetails || {}),
         card.cardNumber,
         card.publisher,
         card.setName,
@@ -228,7 +233,7 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
           return 0;
       }
     });
-  }, [filters, debouncedSearch, locale, sort, saleCards]);
+  }, [filters, debouncedSearch, locale, sort, saleCards, productFilter]);
 
   const pageCount = Math.max(1, Math.ceil(filteredAndSortedCards.length / PAGE_SIZE));
   // Clamped rather than trusted: narrowing a filter can shrink the result set
@@ -242,7 +247,7 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
   );
 
   // Any change to what is being listed sends the reader back to the first page.
-  useEffect(() => { setPage(1); }, [filters, sort]);
+  useEffect(() => { setPage(1); }, [filters, sort, productFilter]);
 
   const goToPage = (next: number) => {
     setPage(Math.min(Math.max(1, next), pageCount));
@@ -400,6 +405,20 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
           {/* The subtitle sat flush against a 4xl heading with no gap at all. */}
           <p className="mt-2 text-muted-foreground md:mt-3">{t('buy_description')}</p>
         </div>
+        {flexibleProductsEnabled && (
+          <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <span className="text-sm font-medium text-muted-foreground">{productCopy(locale).choose}</span>
+            <Select value={productFilter} onValueChange={value => setProductFilter(value as ProductKind | 'all')}>
+              <SelectTrigger aria-label={productCopy(locale).choose} className="h-11 w-full sm:w-64">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{productCopy(locale).all}</SelectItem>
+                {PRODUCT_KINDS.map(kind => <SelectItem key={kind} value={kind}>{productCopy(locale)[kind]}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         <div className="flex gap-8">
           <div className="hidden md:block w-1/4">
             <FilterSidebar filters={filters} onFiltersChange={setFilters} showListingTypeFilter={false} showAdvancedFilters availableCards={saleCards} />
@@ -457,6 +476,7 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
           price: checkoutCard.price ?? 0,
           category: checkoutCard.category,
           condition: checkoutCard.condition || '',
+          product_kind: checkoutCard.productKind || 'card',
           seller_id: checkoutCard.sellerId,
           isBundle: checkoutCard.isBundle,
           bundleItems: checkoutCard.bundleItems as any,

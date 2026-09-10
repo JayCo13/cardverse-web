@@ -3,6 +3,8 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { goshipCreateShipment, goshipCarrierToApp, goshipFindShipmentByOrderId, goshipEnv, goshipRates } from '@/lib/goship';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { isEvidenceVideoUrl } from '@/lib/evidence-video';
+import { parseParcel, parcelCopy } from '@/lib/parcel';
+import { getRequestLocale } from '@/lib/request-localization';
 
 /**
  * Book a parcel with a carrier.
@@ -24,7 +26,6 @@ const ID = /^[0-9]{1,12}$/;
 const PHONE = /^0[0-9]{8,10}$/;
 
 /** A slabbed card in a bubble mailer; overridable, but bounded. */
-const DEFAULT_PARCEL = { weight: 200, width: 15, height: 3, length: 20 };
 
 
 /**
@@ -96,6 +97,7 @@ export async function POST(request: NextRequest) {
     };
 
     const orderId = str(body?.orderId);
+    let requireDimensions = false;
     let order: { id: string; goship_code: string | null } | null = null;
 
     // The order is the authority on who receives the parcel.
@@ -107,10 +109,11 @@ export async function POST(request: NextRequest) {
     if (orderId) {
         const { data } = await supabase
             .from('orders')
-            .select('id, seller_id, status, goship_code, to_goship, to_name, to_phone, to_address_detail')
+            .select('id, seller_id, status, goship_code, to_goship, to_name, to_phone, to_address_detail, card:cards(*)')
             .eq('id', orderId)
             .maybeSingle();
         const row = data as {
+            card?: { product_kind?: string };
             id: string; seller_id: string; status: string; goship_code: string | null;
             to_goship: { city?: string; district?: string; ward?: string } | null;
             to_name: string | null; to_phone: string | null; to_address_detail: string | null;
@@ -119,6 +122,7 @@ export async function POST(request: NextRequest) {
         if (!row || row.seller_id !== user.id) {
             return NextResponse.json({ error: 'Không tìm thấy đơn hàng.' }, { status: 404 });
         }
+        requireDimensions = !!row.card?.product_kind && row.card.product_kind !== 'card';
         if (row.goship_code) {
             return NextResponse.json({ error: 'Đơn này đã có vận đơn.', code: 'already_booked' }, { status: 409 });
         }
@@ -169,11 +173,10 @@ export async function POST(request: NextRequest) {
         );
     }
 
-    const weight = Number(body?.weight);
-    const parcel = {
-        ...DEFAULT_PARCEL,
-        ...(Number.isFinite(weight) && weight > 0 && weight <= 30_000 ? { weight: Math.round(weight) } : {}),
-    };
+    // Orders must always supply explicit packed dimensions. Standalone legacy
+    // previews retain their card defaults until they adopt the expanded form.
+    const parcel = parseParcel(body, requireDimensions);
+    if (!parcel) return NextResponse.json({ error: parcelCopy(getRequestLocale(request)).invalid }, { status: 400 });
 
     const { data: profile } = await supabase
         .from('profiles')

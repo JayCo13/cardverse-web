@@ -14,6 +14,7 @@ import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
 import { AddressBook, type SavedAddress } from '@/components/address-book';
 import { useLocalization } from '@/context/localization-context';
+import { isNonCard, productConditionLabel, productCopy } from '@/lib/product-listing';
 import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { getCategoryCode } from '@/lib/category-code';
 import Image from 'next/image';
@@ -27,6 +28,7 @@ type Card = {
   price: number;
   category: string;
   condition: string;
+  product_kind?: string | null;
   seller_id: string;
   isBundle?: boolean;
   bundleItems?: BundleItem[];
@@ -419,7 +421,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
             )}
             <div className="flex-1 min-w-0">
               <p className="font-semibold line-clamp-2 text-sm">{card.name}</p>
-              <p className="text-xs text-muted-foreground">{getCategoryCode(card.category)} • {card.condition}</p>
+              <p className="text-xs text-muted-foreground">{getCategoryCode(card.category)}{isNonCard(card.product_kind) ? ` • ${productCopy(locale)[card.product_kind as 'box']}` : ''} • {productConditionLabel(card.condition, locale)}</p>
               <p className="text-lg font-bold text-orange-500 mt-1">{formatVND(isBundle ? selectedSubtotal : card.price)}</p>
             </div>
           </div>
