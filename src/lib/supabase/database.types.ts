@@ -428,6 +428,10 @@ export interface Database {
                     grading_company: string | null
                     grade: number | null
                     finish: string | null
+                    product_kind: string
+                    product_type_label: string | null
+                    product_details: Json
+                    shipping_fee: number | null
                     created_at: string
                     updated_at: string
                 }
@@ -466,6 +470,10 @@ export interface Database {
                     grading_company?: string | null
                     grade?: number | null
                     finish?: string | null
+                    product_kind?: string
+                    product_type_label?: string | null
+                    product_details?: Json
+                    shipping_fee?: number | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -504,6 +512,10 @@ export interface Database {
                     grading_company?: string | null
                     grade?: number | null
                     finish?: string | null
+                    product_kind?: string
+                    product_type_label?: string | null
+                    product_details?: Json
+                    shipping_fee?: number | null
                     created_at?: string
                     updated_at?: string
                 }

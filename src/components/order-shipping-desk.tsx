@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import { parseParcel, parcelCopy } from '@/lib/parcel';
 import Link from 'next/link';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -102,6 +103,7 @@ const fetchOptions = async (url: string): Promise<{ code: string; name: string }
 const money = (n: number) => `${n.toLocaleString('vi-VN')}đ`;
 
 export function OrderShippingDesk({
+    productKind = 'card',
     orderId,
     destination,
     defaultDeclaredValue,
@@ -110,6 +112,7 @@ export function OrderShippingDesk({
     itemName,
     onBooked,
 }: {
+    productKind?: string;
     orderId: string;
     /** The order's to_goship. Null means it predates the carrier ids. */
     destination: GoshipRegion | null;
@@ -123,7 +126,10 @@ export function OrderShippingDesk({
     const { locale } = useLocalization();
     const copy = COPY[locale as keyof typeof COPY] ?? COPY['vi-VN'];
 
-    const [weight, setWeight] = useState('200');
+    const [weight, setWeight] = useState(productKind === 'card' ? '200' : '');
+    const [dimensions, setDimensions] = useState(productKind === 'card' ? { width: '15', height: '3', length: '20' } : { width: '', height: '', length: '' });
+    const parcelText = parcelCopy(locale);
+    const quoteRequest = useRef(0);
     const [declared, setDeclared] = useState(String(Math.max(0, Math.round(defaultDeclaredValue))));
     const [rates, setRates] = useState<Rate[] | null>(null);
     const [chosen, setChosen] = useState<string | null>(null);
@@ -172,7 +178,8 @@ export function OrderShippingDesk({
     }, []);
 
     const quote = useCallback(async () => {
-        if (!region) return;
+        const requestId = ++quoteRequest.current;
+        if (!region || !parseParcel({ weight, ...dimensions }, true)) { setRates(null); setChosen(null); return; }
         setBusy(true); setError(null); setRates(null); setChosen(null);
         try {
             const res = await fetch('/api/shipping/quote', {
@@ -180,13 +187,14 @@ export function OrderShippingDesk({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     to: region,
-                    weight: Number(weight) || 200,
+                    weight: Number(weight), ...dimensions,
                     // Priced with the declared value: the carrier charges for it
                     // above a threshold, so a quote without one understates.
                     declaredValue: Number(declared) || 0,
                 }),
             });
             const body = await res.json();
+            if (requestId !== quoteRequest.current) return;
             if (!res.ok) {
                 setError(body.code === 'missing_goship_pickup' ? copy.noPickup : (body.error || copy.failed));
                 return;
@@ -195,11 +203,11 @@ export function OrderShippingDesk({
         } catch {
             setError(copy.failed);
         } finally {
-            setBusy(false);
+            if (requestId === quoteRequest.current) setBusy(false);
         }
-    }, [region, weight, declared, copy.noPickup, copy.failed]);
+    }, [region, weight, dimensions, declared, copy.noPickup, copy.failed]);
 
-    useEffect(() => { void quote(); }, [quote]);
+    useEffect(() => { void quote(); return () => { ++quoteRequest.current; }; }, [quote]);
 
     const selected = useMemo(() => rates?.find((r) => r.id === chosen) ?? null, [rates, chosen]);
 
@@ -213,7 +221,7 @@ export function OrderShippingDesk({
                 body: JSON.stringify({
                     orderId,
                     rateId: selected.id,
-                    weight: Number(weight) || 200,
+                    weight: Number(weight), ...dimensions,
                     declaredValue: Number(declared) || defaultDeclaredValue,
                     to: region,
                     packingVideoUrl: packingVideo,
@@ -302,7 +310,7 @@ export function OrderShippingDesk({
                                 <Label htmlFor="osd-weight">{copy.weight}</Label>
                                 <Input id="osd-weight" value={weight} inputMode="numeric"
                                     onChange={(e) => setWeight(e.target.value.replace(/\D/g, '').slice(0, 5))} />
-                                <p className="text-xs text-muted-foreground">{copy.weightHint}</p>
+                                <p className="text-xs text-muted-foreground">{parcelText.hint}</p>
                             </div>
                             <div className="space-y-1.5">
                                 <Label htmlFor="osd-declared">{copy.declared}</Label>
@@ -311,6 +319,8 @@ export function OrderShippingDesk({
                                 <p className="text-xs text-muted-foreground">{copy.declaredHint}</p>
                             </div>
                         </div>
+                        <div className="grid gap-3 sm:grid-cols-3">{(['width','height','length'] as const).map(key => <label className="space-y-2" key={key}><span>{parcelText[key]}</span><Input type="number" min={1} max={200} required disabled={booking} value={dimensions[key]} onChange={e => { setChosen(null); setRates(null); setDimensions(d => ({ ...d, [key]: e.target.value })); }} /></label>)}</div>
+                        {!parseParcel({ weight, ...dimensions }, true) && <p className="text-sm text-amber-400">{parcelText.invalid}</p>}
                         <PackingVideoField value={packingVideo} onChange={setPackingVideo} locale={locale} />
                     </div>
                 </div>

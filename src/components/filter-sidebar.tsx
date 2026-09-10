@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import type { Card, CardCategory, ListingType, CardCondition } from '@/lib/types';
 import { useLocalization } from '@/context/localization-context';
+import { PRODUCT_CONDITIONS, productConditionLabel, productCopy } from '@/lib/product-listing';
 import type { Filters as BaseFilters } from '@/app/buy/buy-client';
 import { getCategories } from '@/lib/card-catalog';
 
@@ -125,11 +126,16 @@ export function FilterSidebar({ filters, onFiltersChange, showListingTypeFilter 
     { value: 'razz', label: t('razz_label') },
   ];
 
-  const conditions: CardCondition[] = availableConditions.length > 0
+  const conditions: CardCondition[] = (availableConditions.length > 0
     ? availableConditions as CardCondition[]
     : locale === 'vi-VN'
       ? ['Hoàn hảo', 'Gần như mới', 'Tuyệt vời', 'Tốt', 'Đã qua sử dụng']
-      : ['Mint', 'Near Mint', 'Excellent', 'Good', 'Played'];
+      : ['Mint', 'Near Mint', 'Excellent', 'Good', 'Played'])
+    // Non-card listings store a stable code; they get their own list below so
+    // "Nguyên seal" never reads as a grade of card wear.
+    .filter(condition => !PRODUCT_CONDITIONS.includes(condition as typeof PRODUCT_CONDITIONS[number])) as CardCondition[];
+  const productConditions = availableConditions
+    .filter(condition => PRODUCT_CONDITIONS.includes(condition as typeof PRODUCT_CONDITIONS[number])) as CardCondition[];
 
 
   return (
@@ -199,6 +205,21 @@ export function FilterSidebar({ filters, onFiltersChange, showListingTypeFilter 
                 <Label htmlFor={`cond-${condition}`}>{condition}</Label>
               </div>
             ))}
+            {productConditions.length > 0 && (
+              <div className="space-y-2 border-t pt-2">
+                <p className="text-xs text-muted-foreground">{productCopy(locale).condition}</p>
+                {productConditions.map((condition) => (
+                  <div key={condition} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`cond-${condition}`}
+                      checked={filters.conditions.includes(condition)}
+                      onCheckedChange={() => handleConditionChange(condition)}
+                    />
+                    <Label htmlFor={`cond-${condition}`}>{productConditionLabel(condition, locale)}</Label>
+                  </div>
+                ))}
+              </div>
+            )}
           </AccordionContent>
         </AccordionItem>
         {showAdvancedFilters && <>

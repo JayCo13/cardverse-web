@@ -2,8 +2,14 @@ import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
+import { isNonCard, PRODUCT_CONDITIONS, validProductDetails, flexibleProductsEnabled, productCopy } from '@/lib/product-listing';
+import { getRequestLocale } from '@/lib/request-localization';
 
 type ListingRow = {
+    product_kind?: string;
+    product_type_label?: string;
+    product_details?: Record<string, string>;
+    shipping_fee?: number;
     id: string;
     seller_id: string;
     status: string;
@@ -35,7 +41,7 @@ const getOwnListing = async (id: string) => {
 
     const { data, error } = await supabase
         .from('cards')
-        .select('id, seller_id, status, listing_type, name, description, price, quantity, accept_offers, min_offer_percent, image_url, image_urls, category, condition, publisher, set_name, season, grading_company, grade, finish, card_number, language')
+        .select('*')
         .eq('id', id)
         .single();
 
@@ -47,7 +53,7 @@ const getOwnListing = async (id: string) => {
         .from('offers')
         .select('status')
         .eq('card_id', id)
-        .in('status', ['pending', 'accepted', 'chosen']);
+        .in('status', ['pending', 'accepted', 'chosen', 'on_hold']);
 
     if (offerError) return { error: 'Unable to check listing offers', status: 500 } as const;
 
@@ -73,6 +79,14 @@ async function handlePATCH(request: NextRequest, context: { params: Promise<{ id
     const startedAt = performance.now();
     const { id } = await context.params;
     const body = await request.json();
+    const own = await getOwnListing(id);
+    if ('error' in own) return NextResponse.json({ error: own.error }, { status: own.status });
+    const nonCard = isNonCard(own.listing.product_kind);
+    if (nonCard && (!flexibleProductsEnabled || !PRODUCT_CONDITIONS.includes(body.condition)
+        || !validProductDetails(body.product_details) || !Number.isSafeInteger(body.shipping_fee) || body.shipping_fee < 0 || body.shipping_fee > 99999
+        || (own.listing.product_kind === 'other' && (typeof body.product_type_label !== 'string' || body.product_type_label.trim().length < 2 || body.product_type_label.trim().length > 80)))) {
+        return NextResponse.json({ error: productCopy(getRequestLocale(request)).invalid }, { status: 400 });
+    }
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     const description = typeof body.description === 'string' ? body.description.trim() : '';
     const price = Number(body.price);
@@ -97,14 +111,20 @@ async function handlePATCH(request: NextRequest, context: { params: Promise<{ id
 
     const supabase = await createServerSupabaseClient();
     const dbStartedAt = performance.now();
-    const { data, error } = await supabase.rpc('update_own_sale_listing' as never, {
+    const legacyArgs = {
         p_listing_id: id,
         p_name: name,
         p_description: description,
         p_price: price,
         p_accept_offers: acceptOffers,
         p_min_offer_percent: minOfferPercent,
-    } as never);
+    };
+    const { data, error } = await supabase.rpc((nonCard ? 'update_own_product_listing' : 'update_own_sale_listing') as never,
+        (nonCard ? { p_listing_id: id, p_data: {
+            name, description, price, acceptOffers, minOfferPercent,
+            condition: body.condition, product_type_label: body.product_type_label,
+            product_details: body.product_details, shipping_fee: body.shipping_fee,
+        } } : legacyArgs) as never);
     const dbDuration = performance.now() - dbStartedAt;
     if (dbDuration >= 2000) {
         console.warn('Slow listing update RPC', { dbDurationMs: Math.round(dbDuration) });

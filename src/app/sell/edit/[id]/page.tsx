@@ -2,6 +2,8 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
+import { ProductFields } from '@/components/product-fields';
+import { isNonCard, productCopy, productConditionLabel, type ProductKind, type ProductDetails } from '@/lib/product-listing';
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, ChevronDown, FileText, HandCoins, Loader2, Lock, Pencil, Save } from "lucide-react";
@@ -17,6 +19,10 @@ import { useToast } from "@/hooks/use-toast";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 
 type EditableListing = {
+    product_kind?: ProductKind;
+    product_type_label?: string;
+    product_details?: ProductDetails;
+    shipping_fee?: number | null;
     id: string;
     status: string;
     listing_type: string;
@@ -60,6 +66,12 @@ export default function EditListingPage() {
     const { locale } = useLocalization();
     const { toast } = useToast();
     const [listing, setListing] = useState<EditableListing | null>(null);
+    const [productDetails, setProductDetails] = useState<ProductDetails>({});
+    const [productTypeLabel, setProductTypeLabel] = useState('');
+    const [condition, setCondition] = useState('');
+    const [shippingFee, setShippingFee] = useState(25000);
+    const nonCard = isNonCard(listing?.product_kind);
+    const pc = productCopy(locale);
     const [name, setName] = useState("");
     const [description, setDescription] = useState("");
     const [originalDescription, setOriginalDescription] = useState("");
@@ -181,6 +193,10 @@ export default function EditListingPage() {
                 if (cancelled) return;
                 const next = payload.listing as EditableListing;
                 setListing(next);
+                setProductDetails(next.product_details || {});
+                setProductTypeLabel(next.product_type_label || '');
+                setCondition(next.condition || '');
+                setShippingFee(next.shipping_fee ?? 25000);
                 setName(next.name);
                 const nextDescription = next.description || "";
                 setDescription(nextDescription);
@@ -227,6 +243,7 @@ export default function EditListingPage() {
                     price: parsePrice(price),
                     acceptOffers,
                     minOfferPercent,
+                    ...(nonCard ? { product_details: productDetails, product_type_label: productTypeLabel, condition, shipping_fee: shippingFee } : {}),
                 }),
             });
             const payload = await response.json();
@@ -253,7 +270,8 @@ export default function EditListingPage() {
     const identityItems = listing ? [
         { label: copy.listingType, value: listing.listing_type },
         { label: copy.category, value: listing.category },
-        { label: copy.condition, value: listing.condition },
+        { label: pc.choose, value: pc[listing.product_kind || 'card'] },
+        { label: copy.condition, value: productConditionLabel(listing.condition, locale) },
         { label: copy.publisher, value: listing.publisher },
         { label: copy.set, value: listing.set_name },
         { label: copy.season, value: listing.season },
@@ -314,6 +332,10 @@ export default function EditListingPage() {
                             <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-amber-300">{copy.unavailable}</p>
                         ) : (
                             <form className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-7" onSubmit={handleSubmit}>
+                                {nonCard && <div className="space-y-3 lg:col-span-2"><p>{pc.locked}</p>
+                                    <ProductFields locale={locale} condition={condition} onCondition={setCondition} details={productDetails} onDetails={setProductDetails} typeLabel={productTypeLabel} onTypeLabel={setProductTypeLabel} other={listing.product_kind === 'other'} disabled={!editable || hasOpenOffers || isSaving} />
+                                    <label className="block space-y-2"><span>{pc.shipping}</span><Input type="number" min={0} max={99999} required value={shippingFee} onChange={e => setShippingFee(Number(e.target.value))} disabled={!editable || hasOpenOffers || isSaving} /></label>
+                                </div>}
                                 <div className="space-y-3 lg:col-span-2">
                                     <div className="flex gap-3 rounded-xl border border-amber-500/30 bg-gradient-to-r from-amber-500/12 to-amber-500/5 p-4 text-sm text-amber-100 shadow-sm">
                                         <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />

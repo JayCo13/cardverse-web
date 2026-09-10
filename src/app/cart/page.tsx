@@ -21,16 +21,15 @@ import { useAuth, useSupabase } from "@/lib/supabase";
 import { useAuthModal } from "@/components/auth-modal";
 import { OrderTotalRow } from "@/components/order-total-row";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowRight, Clock, CreditCard, Eye, PackageCheck, ShieldCheck, ShoppingCart, Store, Trash2, Truck } from "lucide-react";
+import { ArrowRight, Clock, CreditCard, Eye, ShieldCheck, ShoppingCart, Trash2, Truck } from "lucide-react";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { getCategoryCode } from "@/lib/category-code";
 import { listingShippingFee, parcelShippingFee } from "@/lib/shipping-fee";
 import { useLocalization } from "@/context/localization-context";
+import { isNonCard, productConditionLabel, productCopy } from "@/lib/product-listing";
 import { UserLink } from "@/components/user-link";
-import { VerifiedSellerBadge } from "@/components/verified-seller-badge";
 import { NewSellerFrame } from "@/components/new-seller-frame";
 import { standingFromProfile, type ReputationStanding } from "@/lib/reputation";
-import { ReputationBadge } from "@/components/reputation-badge";
 
 type CartItem = {
   id: string;
@@ -41,6 +40,14 @@ type CartItem = {
     image_url: string | null;
     category: string;
     condition: string | null;
+    product_kind?: string | null;
+    product_details?: Record<string, string> | null;
+    product_type_label?: string | null;
+    publisher?: string | null;
+    set_name?: string | null;
+    card_number?: string | null;
+    grading_company?: string | null;
+    grade?: number | null;
     price: number | null;
     status: string;
     listing_type: string | null;
@@ -118,6 +125,12 @@ export default function CartPage() {
       protection: "Bảo vệ",
       protected: "CardVerseHub giữ tiền",
       itemPrice: "Giá thẻ",
+      specCategory: "Chủ đề",
+      specPublisher: "Nhà phát hành",
+      specSet: "Set",
+      specNumber: "Số thẻ",
+      specGrading: "Grading",
+      specNoDetail: "Người bán chưa điền thông tin chi tiết.",
       shippingAtCheckout: "Phí ship tính ở checkout",
       viewDetail: "Xem chi tiết",
       removeFromCart: "Xóa khỏi giỏ",
@@ -168,6 +181,12 @@ export default function CartPage() {
         protection: "保護",
         protected: "CardVerseHubが代金を保持",
         itemPrice: "商品価格",
+        specCategory: "カテゴリ",
+        specPublisher: "出版社",
+        specSet: "セット",
+        specNumber: "カード番号",
+        specGrading: "グレーディング",
+        specNoDetail: "出品者が詳細を記入していません。",
         shippingAtCheckout: "送料はチェックアウトで計算",
         viewDetail: "詳細を見る",
         removeFromCart: "カートから削除",
@@ -217,6 +236,12 @@ export default function CartPage() {
         protection: "Protection",
         protected: "CardVerseHub held",
         itemPrice: "Item price",
+        specCategory: "Category",
+        specPublisher: "Publisher",
+        specSet: "Set",
+        specNumber: "Card number",
+        specGrading: "Grading",
+        specNoDetail: "The seller left the details blank.",
         shippingAtCheckout: "Shipping calculated at checkout",
         viewDetail: "View detail",
         removeFromCart: "Remove from cart",
@@ -323,6 +348,33 @@ export default function CartPage() {
   const unavailableItems = items.filter(item => !item.cards || item.cards.status !== "active" || item.cards.listing_type !== "sale");
   const selectedItems = availableItems.filter(item => selectedIds.has(item.id));
   const allSelected = availableItems.length > 0 && selectedItems.length === availableItems.length;
+  /**
+   * What this listing actually is. The seller already names the group above
+   * every item they sell, so repeating their avatar inside each row said
+   * nothing; this says what the buyer is about to pay for instead.
+   */
+  const itemSpecs = (card: CartItem["cards"]): [string, string][] => {
+    if (!card) return [];
+    const rows: [string, string | null | undefined][] = isNonCard(card.product_kind)
+      ? [
+          [productCopy(locale).type, card.product_type_label || productCopy(locale)[card.product_kind as 'box']],
+          [copy.specCategory, card.category],
+          [productCopy(locale).brand, card.product_details?.brand],
+          [productCopy(locale).edition, card.product_details?.edition],
+          [productCopy(locale).language, card.product_details?.language],
+          [productCopy(locale).product_code, card.product_details?.product_code],
+        ]
+      : [
+          [copy.specCategory, card.category],
+          [copy.specPublisher, card.publisher],
+          [copy.specSet, card.set_name],
+          [copy.specNumber, card.card_number && `#${card.card_number}`],
+          [copy.specGrading, card.grading_company && card.grading_company !== 'raw'
+            ? `${card.grading_company.toUpperCase()}${card.grade ? ` ${card.grade}` : ''}` : null],
+        ];
+    return rows.filter((row): row is [string, string] => !!row[1]);
+  };
+
   const subtotal = useMemo(
     () => selectedItems.reduce((sum, item) => sum + Number(item.cards?.price || 0) * (item.quantity || 1), 0),
     [selectedItems],
@@ -643,8 +695,11 @@ export default function CartPage() {
                               </div>
                               <div className="mt-1.5 flex flex-wrap gap-1">
                                 <span className="rounded bg-orange-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{getCategoryCode(card?.category)}</span>
+                                {isNonCard(card?.product_kind) && (
+                                  <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300">{productCopy(locale)[card!.product_kind as 'box']}</span>
+                                )}
                                 {card?.condition && (
-                                  <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300">{card.condition}</span>
+                                  <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300">{productConditionLabel(card.condition, locale)}</span>
                                 )}
                                 <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${unavailable ? "bg-red-500/15 text-red-300" : "bg-emerald-500/15 text-emerald-300"}`}>
                                   {unavailable ? copy.unavailable : copy.checkoutable}
@@ -742,17 +797,25 @@ export default function CartPage() {
                         <div className="mb-2 flex flex-wrap items-center gap-2">
                           <span className={`rounded-md border px-2 py-0.5 text-xs font-semibold ${unavailable ? "border-red-500/40 bg-red-500/10 text-red-300" : "border-emerald-500/35 bg-emerald-500/10 text-emerald-300"}`}>{unavailable ? copy.unavailable : copy.checkoutable}</span>
                           <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-medium text-muted-foreground">Qty {item.quantity || 1}</span>
-                          {card?.condition && <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-medium text-muted-foreground">{card.condition}</span>}
+                          {isNonCard(card?.product_kind) && <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-medium text-muted-foreground">{productCopy(locale)[card!.product_kind as 'box']}</span>}
+                          {card?.condition && <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-medium text-muted-foreground">{productConditionLabel(card.condition, locale)}</span>}
                         </div>
                         <h2 className="line-clamp-2 text-xl font-bold tracking-normal text-foreground">{card?.name || copy.missingCard}</h2>
-                        <div className="mt-3 flex items-center gap-2.5">
-                          <NewSellerFrame profile={card?.profiles as unknown as Record<string, unknown>}>
-                            <UserLink variant="plain" userId={card?.seller_id} className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-orange-500/15 text-sm font-bold text-orange-300">
-                              {card?.profiles?.profile_image_url ? <Image src={card.profiles.profile_image_url} alt="" width={36} height={36} className="h-full w-full object-cover" /> : (card?.profiles?.display_name || "S").charAt(0).toUpperCase()}
-                            </UserLink>
-                          </NewSellerFrame>
-                          <div className="min-w-0"><p className="flex min-w-0 items-center gap-1 text-sm font-semibold"><UserLink userId={card?.seller_id} className="truncate">{card?.profiles?.display_name || copy.sellerFallback}</UserLink><VerifiedSellerBadge verified={card?.profiles?.seller_verified} className="h-3.5 w-3.5" /></p><ReputationBadge profile={card?.profiles as unknown as Record<string, unknown>} size="sm" className="mt-1" /><p className="flex items-center gap-1 text-xs text-muted-foreground"><Store className="h-3 w-3" />{copy.cardVerseSeller}</p></div>
-                        </div>
+                        {(() => {
+                          const specs = itemSpecs(card);
+                          return specs.length > 0 ? (
+                            <dl className="mt-3 grid gap-x-6 gap-y-1.5 text-sm md:grid-cols-2">
+                              {specs.map(([label, value]) => (
+                                <div key={label} className="flex min-w-0 items-baseline gap-2">
+                                  <dt className="shrink-0 text-xs uppercase tracking-wide text-muted-foreground">{label}</dt>
+                                  <dd className="min-w-0 truncate font-medium text-foreground">{value}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          ) : (
+                            <p className="mt-3 text-sm text-muted-foreground">{copy.specNoDetail}</p>
+                          );
+                        })()}
                         <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-4 text-xs text-muted-foreground">
                           <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />{copy.protected}</span>
                           <span className="inline-flex items-center gap-1.5"><CreditCard className="h-3.5 w-3.5 text-orange-300" />{copy.walletPayos}</span>

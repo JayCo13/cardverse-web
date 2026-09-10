@@ -5,6 +5,8 @@ import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
 import { hashFinancialRequest } from '@/lib/financial-idempotency';
 import { resolveListingError } from '@/lib/listing-errors';
 import { isValidListingShippingFee } from '@/lib/shipping-fee';
+import { isProductKind, PRODUCT_CONDITIONS, validProductDetails, flexibleProductsEnabled, productCopy } from '@/lib/product-listing';
+import { getRequestLocale } from '@/lib/request-localization';
 
 const MIN_MARKETPLACE_PRICE_VND = 1000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -15,6 +17,27 @@ async function handlePOST(request: NextRequest) {
         const authClient = await createServerSupabaseClient();
 
         const body = await request.json();
+        const kind = body.product_kind ?? 'card';
+        if (!isProductKind(kind)) return NextResponse.json({ error: productCopy(getRequestLocale(request)).invalid }, { status: 400 });
+        const nonCard = kind !== 'card';
+        if (nonCard && !flexibleProductsEnabled) return NextResponse.json({ error: 'Product listings are not enabled.' }, { status: 409 });
+        // The create RPC takes the listing as jsonb and ignores keys it does not
+        // know, so on a database that has not run the product-listings migration
+        // a box would be inserted as a plain card with condition 'sealed' —
+        // silently, with no error to notice. Ask the schema first and refuse.
+        if (nonCard) {
+            const { error: schemaError } = await authClient.from('cards').select('product_kind').limit(1);
+            if (schemaError) {
+                console.error('Product listings enabled without the migration:', schemaError.message);
+                return NextResponse.json({ error: 'Product listings are not enabled.', code: 'product_schema_missing' }, { status: 409 });
+            }
+        }
+        if (nonCard && (body.listing_type !== 'sale' || body.is_bundle === true || Number(body.quantity ?? 1) !== 1
+            || !PRODUCT_CONDITIONS.includes(body.condition) || !validProductDetails(body.product_details ?? {})
+            || (kind === 'other' && (typeof body.product_type_label !== 'string' || body.product_type_label.trim().length < 2 || body.product_type_label.trim().length > 80))
+            || ['catalog_product_id','catalog_soccer_id','card_number','grading_company','grade','finish'].some(key => body[key] != null))) {
+            return NextResponse.json({ error: productCopy(getRequestLocale(request)).invalid, code: 'invalid_product' }, { status: 400 });
+        }
 
         // Whitelist + validate — never spread the raw body into the insert.
         // (Previously `{...body}` let a caller set any column: status,
@@ -82,6 +105,11 @@ async function handlePOST(request: NextRequest) {
                 ? Number(body.shipping_fee)
                 : null,
         };
+
+        if (nonCard) Object.assign(cardData, {
+            product_kind: kind, product_type_label: kind === 'other' ? body.product_type_label.trim() : null,
+            product_details: body.product_details ?? {}, language: null, publisher: null, set_name: null, season: null,
+        });
 
         if (body.is_bundle === true) {
             const bundleItems = Array.isArray(body.bundle_items) ? body.bundle_items : [];

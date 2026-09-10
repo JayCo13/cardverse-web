@@ -71,6 +71,7 @@ type CheckoutCard = {
     price: number;
     category: string;
     condition: string;
+    product_kind?: string | null;
     seller_id: string;
 };
 
@@ -108,7 +109,10 @@ const mapOffer = (o: any): Offer => ({
     createdAt: o.created_at,
 });
 
+import { isNonCard, productCopy, productConditionLabel, PRODUCT_DETAIL_KEYS } from '@/lib/product-listing';
+
 const mapCard = (c: any): Card => ({
+    productKind: c.product_kind || 'card', productTypeLabel: c.product_type_label, productDetails: c.product_details,
     id: c.id,
     name: c.name,
     imageUrl: c.image_url || "",
@@ -589,11 +593,17 @@ export default function CardDetailsPage() {
         price: card.price ?? 0,
         category: card.category,
         condition: card.condition || "",
+        product_kind: card.productKind || 'card',
         seller_id: card.sellerId,
     } : null;
 
     const itemSpecifics = useMemo(() => {
         if (!card) return [];
+        if (isNonCard(card.productKind)) {
+            const pc = productCopy(locale);
+            return [[pc.type, card.productTypeLabel || pc[card.productKind!]], [pc.condition, productConditionLabel(card.condition, locale)], [copy.categoryLabel, card.category],
+                ...PRODUCT_DETAIL_KEYS.filter(key => card.productDetails?.[key]).map(key => [pc[key], card.productDetails![key]!])];
+        }
         return [
             [copy.condition, card.condition || copy.ungraded],
             [copy.categoryLabel, card.category],

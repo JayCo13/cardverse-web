@@ -20,6 +20,7 @@ import { getCategoryCode } from "@/lib/category-code";
 import { CreditCard, ShieldCheck, Truck, Wallet } from "lucide-react";
 import { useLocalization } from "@/context/localization-context";
 import { localizeFinancialApiError } from "@/lib/financial-api-errors";
+import { isNonCard, productConditionLabel, productCopy } from '@/lib/product-listing';
 import { UserLink } from "@/components/user-link";
 import { VerifiedSellerBadge } from "@/components/verified-seller-badge";
 import { NewSellerFrame } from "@/components/new-seller-frame";
@@ -34,6 +35,7 @@ type CheckoutItem = {
     imageUrl: string;
     category: string;
     condition?: string | null;
+    productKind?: string | null;
     price: number;
     sellerId: string;
     sellerName?: string | null;
@@ -274,6 +276,7 @@ export default function CheckoutPage() {
           imageUrl: item.cards.image_url || "",
           category: item.cards.category,
           condition: item.cards.condition,
+          productKind: item.cards.product_kind || 'card',
           price: Number(item.cards.price || 0),
           sellerId: item.cards.seller_id,
           sellerName: item.cards.profiles?.display_name,
@@ -306,6 +309,7 @@ export default function CheckoutPage() {
           image_url,
           category,
           condition,
+          product_kind,
           seller_id,
           profiles:seller_id(
             display_name,
@@ -337,6 +341,7 @@ export default function CheckoutPage() {
         imageUrl: card.image_url || "",
         category: card.category,
         condition: card.condition,
+        productKind: card.product_kind || 'card',
         price: Number(row.price || 0),
         sellerId: card.seller_id,
         sellerName: card.profiles?.display_name,
@@ -458,7 +463,7 @@ export default function CheckoutPage() {
   const total = subtotal + shippingTotal;
   const hasMissingFee = items.some(item => item.shippingFee === null);
   const insufficient = paymentMethod === "wallet" && walletBalance < total;
-  const canPay = !!selectedAddress && items.length > 0 && !hasMissingFee && !isLoadingFee && !isPaying && !insufficient && !isLoadingData && items.every(item => shippingOptions[item.card.sellerId]?.some(option => option.carrier === selectedCarriers[item.card.sellerId]));
+  const canPay = !!selectedAddress && items.length > 0 && !hasMissingFee && !isLoadingFee && !isPaying && !insufficient && !isLoadingData;
   const sellerGroups = useMemo(() => {
     const groups = new Map<string, CheckoutSellerGroup>();
 
@@ -507,9 +512,6 @@ export default function CheckoutPage() {
         body: JSON.stringify({
           mode: isOfferCheckout ? "offer" : "cart",
           offer_id: offerId,
-          ...(isOfferCheckout
-            ? { shipping_carrier: selectedCarriers[items[0].card.sellerId] }
-            : { shipping_carriers: selectedCarriers }),
           payment_method: paymentMethod,
           shipping_fee: items[0]?.shippingFee || 0,
           items: items.map(item => ({
@@ -639,7 +641,7 @@ export default function CheckoutPage() {
                             <Truck aria-hidden="true" className="h-8 w-8 shrink-0 text-muted-foreground" />
                             <span className="min-w-0 flex-1 text-sm leading-5 text-muted-foreground">{copy.shippingNote}</span>
                             <span className="shrink-0 whitespace-nowrap text-sm font-semibold tabular-nums text-foreground">
-                              {formatVND((shippingOptions[group.id] || [])[0]?.fee ?? 0)}
+                              {group.items.some(item => item.shippingFee === null) ? copy.sellerShippingMissing : formatVND(group.items.reduce((sum, item) => sum + (item.shippingFee ?? 0), 0))}
                             </span>
                           </div>
                         )}
@@ -677,7 +679,8 @@ export default function CheckoutPage() {
                               <div className="mt-1.5 flex flex-wrap gap-1 sm:mt-2 sm:gap-2">
                                 <span className="rounded bg-orange-500 px-1.5 py-0.5 text-[10px] font-bold text-white sm:hidden">{getCategoryCode(item.card.category)}</span>
                                 <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300 sm:rounded-md sm:border sm:border-white/10 sm:bg-white/5 sm:text-xs sm:text-muted-foreground">Qty 1</span>
-                                {item.card.condition && <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300 sm:rounded-md sm:border sm:border-white/10 sm:bg-white/5 sm:text-xs sm:text-muted-foreground">{item.card.condition}</span>}
+                                {isNonCard(item.card.productKind) && <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300 sm:rounded-md sm:border sm:border-white/10 sm:bg-white/5 sm:text-xs sm:text-muted-foreground">{productCopy(locale)[item.card.productKind as 'box']}</span>}
+                                {item.card.condition && <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300 sm:rounded-md sm:border sm:border-white/10 sm:bg-white/5 sm:text-xs sm:text-muted-foreground">{productConditionLabel(item.card.condition, locale)}</span>}
                               </div>
                               {!!item.card.bundleSelection?.length && (
                                 <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground">

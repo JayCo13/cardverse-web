@@ -16,6 +16,7 @@ import { useLocalization } from '@/context/localization-context';
 import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { useToast } from '@/hooks/use-toast';
 import { optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
+import { isNonCard, productConditionLabel, productCopy } from '@/lib/product-listing';
 import { getCarrier, getTrackingUrl, getDeliveryDays, parcelTrackingUrl, SHIPPING_CARRIERS, sellerSuppliesTracking } from '@/lib/shipping-carriers';
 import { VerifiedSellerBadge } from '@/components/verified-seller-badge';
 import { ReputationBadge } from '@/components/reputation-badge';
@@ -241,7 +242,7 @@ export default function OrderDetailsPage() {
                 )}
                 <div className="min-w-0">
                   <p className="font-semibold">{order.card?.name}</p>
-                  <p className="text-xs text-muted-foreground">{order.card?.category}{order.card?.condition ? ` · ${order.card.condition}` : ''}</p>
+                  <p className="text-xs text-muted-foreground">{isNonCard(order.card?.product_kind) ? `${productCopy(locale)[order.card!.product_kind as 'box']} · ` : ''}{order.card?.category}{order.card?.condition ? ` · ${productConditionLabel(order.card.condition, locale)}` : ''}</p>
                 </div>
               </div>
               {bundleSel.length > 0 && (
@@ -564,6 +565,7 @@ export default function OrderDetailsPage() {
             {showDesk && (
               <div className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1">
                 <OrderShippingDesk
+                  productKind={order.card?.product_kind || 'card'}
                   orderId={order.id}
                   destination={order.to_goship ?? null}
                   defaultDeclaredValue={order.amount}

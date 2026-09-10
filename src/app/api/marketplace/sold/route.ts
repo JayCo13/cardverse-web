@@ -13,7 +13,7 @@ async function handleGET() {
         .from('orders')
         .select(`
             id, amount, created_at, status,
-            card:cards(id, name, image_url, category, condition, price, is_bundle)
+            card:cards(id, name, image_url, category, condition, price, is_bundle, product_kind)
         `)
         .in('status', ['paid', 'shipping', 'delivered', 'completed'])
         .order('created_at', { ascending: false })
@@ -24,7 +24,9 @@ async function handleGET() {
     }
 
     const items = (data || [])
-        .filter((o: any) => o.card)
+        // This feed reads as a card price reference, so a box or an accessory
+        // sale has no business sitting in it.
+        .filter((o: any) => o.card && (o.card.product_kind ?? 'card') === 'card')
         .map((o: any) => {
             const asking = Number(o.card.price || 0);
             const sold = Number(o.amount || 0);
