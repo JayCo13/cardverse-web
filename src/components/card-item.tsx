@@ -4,6 +4,7 @@
 import React from "react";
 import { useVisibleCycle } from '@/hooks/use-visible-cycle';
 import type { Card as CardType } from "@/lib/types";
+import { formatShippingRange } from "@/lib/shipping-range";
 import Image from "next/image";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +21,7 @@ import { useRouter } from "next/navigation";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { getCategoryCode } from "@/lib/category-code";
 import { getCarrier } from "@/lib/shipping-carriers";
-import { listingShippingFee } from "@/lib/shipping-fee";
+import { formatCompactCount } from "@/lib/format";
 import { UserLink } from "@/components/user-link";
 import { ReputationBadge } from '@/components/reputation-badge';
 import { NewSellerFrame } from '@/components/new-seller-frame';
@@ -162,6 +163,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
         payment: '支払い',
         shipping: '配送',
         freeShipping: '送料無料',
+        shippingAtCheckout: '決済時に計算',
         ghnReady: 'GHN対応',
         price: '価格',
         lastSold: '直近販売',
@@ -191,6 +193,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           payment: 'Thanh toán',
           shipping: 'Vận chuyển',
           freeShipping: 'Miễn phí',
+          shippingAtCheckout: 'Tính khi thanh toán',
           ghnReady: 'Sẵn sàng GHN',
           price: 'Giá',
           lastSold: 'Đã bán gần nhất',
@@ -219,6 +222,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
           payment: 'Payment',
           shipping: 'Ship',
           freeShipping: 'Free',
+          shippingAtCheckout: 'At checkout',
           ghnReady: 'GHN ready',
           price: 'Price',
           lastSold: 'Last sold',
@@ -561,15 +565,23 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                 PayOS / Wallet
               </span>
               {(() => {
-                // One number, set by the seller on this listing. Free is worth
-                // saying in words rather than as "0đ": it is the thing a buyer
-                // scanning a grid is looking for.
-                const fee = listingShippingFee(card.shippingFee);
+                // A span, not a number, and that is the honest answer here: the
+                // price moves with the carrier the buyer picks, how far the
+                // parcel goes and what the card is worth, and this grid knows
+                // only the last one. It settles to one figure at checkout, once
+                // there is an address to quote against.
+                //
+                // Free is worth saying in words rather than as "0đ": it is the
+                // thing a buyer scanning a grid is looking for.
+                const range = card.shippingRange ?? null;
+                const isFree = range?.min === 0 && range?.max === 0;
                 return (
                   <span className="inline-flex items-center gap-1.5">
                     <span>{copy.shipping}:</span>
-                    <span className={`font-medium ${fee === 0 ? 'text-green-400' : 'text-foreground'}`}>
-                      {fee === 0 ? copy.freeShipping : `${fee.toLocaleString('vi-VN')}đ`}
+                    <span className={`font-medium ${isFree ? 'text-green-400' : 'text-foreground'}`}>
+                      {range === null
+                        ? copy.shippingAtCheckout
+                        : formatShippingRange(range, 'vi-VN', copy.freeShipping)}
                     </span>
                   </span>
                 );
@@ -621,13 +633,21 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                 </div>
               </span>
               {(() => {
-                const fee = listingShippingFee(card.shippingFee);
+                // The compact twin of the row below, and it has the same job:
+                // never state one number before an address exists. Too narrow
+                // for a full span at this size, so it shows the floor with a
+                // trailing plus — which reads the same in every locale.
+                const range = card.shippingRange ?? null;
+                const isFree = range?.min === 0 && range?.max === 0;
+                const label = range === null
+                  ? copy.shippingAtCheckout
+                  : isFree
+                    ? copy.freeShipping
+                    : `${range.min.toLocaleString('vi-VN')}đ${range.min === range.max ? '' : '+'}`;
                 return (
                   <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-medium md:hidden">
-                    <Truck className={`h-3.5 w-3.5 shrink-0 ${fee === 0 ? 'text-green-400' : 'text-orange-400'}`} aria-hidden />
-                    <span className={fee === 0 ? 'text-green-400' : 'text-foreground'}>
-                      {fee === 0 ? copy.freeShipping : `${fee.toLocaleString('vi-VN')}đ`}
-                    </span>
+                    <Truck className={`h-3.5 w-3.5 shrink-0 ${isFree ? 'text-green-400' : 'text-orange-400'}`} aria-hidden />
+                    <span className={isFree ? 'text-green-400' : 'text-foreground'}>{label}</span>
                     <span className="sr-only">{copy.shipping}</span>
                   </span>
                 );

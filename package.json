@@ -9,7 +9,9 @@
         "lint": "eslint",
         "wallet:reconcile": "node scripts/wallet-reconcile.mjs",
         "docs:legal": "node --experimental-strip-types --no-warnings scripts/export-legal-docs.mjs",
-        "data:address": "node --no-warnings scripts/refresh-vn-address.mjs"
+        "data:address": "node --no-warnings scripts/refresh-vn-address.mjs",
+        "verify:khaigia": "node --experimental-strip-types --no-warnings scripts/verify-khai-gia.mts",
+        "verify:shipping": "node --experimental-strip-types --no-warnings --import ./scripts/alias-loader.mjs scripts/verify-shipping-math.mts"
     },
     "dependencies": {
         "@genkit-ai/google-genai": "^1.26.0",

@@ -1,18 +1,26 @@
 import { goshipRates, goshipDistricts, type GoshipRate } from '@/lib/goship';
-import { getRegion, type ShippingTier, type VnRegion } from '@/lib/shipping-fee';
+import { getRegion, type ShippingTier, type ShopFeeTable, type VnRegion } from '@/lib/shipping-fee';
 
 /**
- * Real carrier prices for the three tiers a listing already advertises.
+ * Real carrier postage for the three cells a shop's fee table holds.
  *
- * The shop page has always shown a fee per carrier per tier — nội tỉnh, ngoại
- * tỉnh, liên miền — with the seller typing nine numbers they guessed. The tiers
- * are the right shape; only the numbers were invented. This fills them from
- * GoShip instead, so the range on a listing is what the parcel will actually
- * cost rather than what somebody hoped.
+ * Nội tỉnh, liên tỉnh, liên miền. The tiers are the shape the shop page has
+ * always shown; what changed is that the numbers are quoted rather than typed.
  *
- * Three requests, not sixty-three. A quote returns every carrier at once, so
- * one call per tier prices the whole table — which is what makes it cheap
- * enough to refresh whenever a seller moves.
+ * Quoted at declared value ZERO, deliberately. These are postage, and khai giá
+ * is added on top at checkout from the measured model in khai-gia.ts — it
+ * depends on what is in the parcel rather than where it goes, so folding it in
+ * here would price every card as if it were worth the same.
+ *
+ * There is no speed dimension because GoShip does not sell one. Quoting /rates
+ * for a 200g parcel returns exactly one service per carrier, on every route and
+ * every weight tried — "Nhanh" and "Tiêu chuẩn" are two carriers' product names,
+ * not two options a buyer picks between. A hoả tốc column here would have to be
+ * invented, which is what got the previous fee table deleted.
+ *
+ * Three requests, not fifteen. A quote returns every carrier at once, so one
+ * call per tier prices the whole table — cheap enough to refresh whenever a
+ * seller moves.
  *
  * The destinations are stand-ins, and that is the honest limit of this: a tier
  * is a band, and a real delivery inside it can cost a little more or less. The
@@ -37,38 +45,28 @@ const ALTERNATES: Record<VnRegion, { city: string; district: string; name: strin
 /** A slabbed card in a bubble mailer — the parcel this marketplace ships. */
 const TIER_PARCEL = { weight: 200, width: 15, height: 3, length: 20 };
 
-export type TierFees = Partial<Record<ShippingTier, number>>;
-
-/**
- * Prices per carrier, keyed by the app's own carrier codes.
- *
- * Carriers GoShip reaches but the app does not offer are dropped here rather
- * than shown: a fee for a carrier a seller cannot pick is noise on a listing.
- */
-export type SellerTierPrices = Record<string, TierFees>;
-
-async function quoteTier(
+async function quoteCell(
     from: { city: string; district: string },
     to: { city: string; district: string },
-    into: SellerTierPrices,
+    into: ShopFeeTable,
     tier: ShippingTier,
     allowed: ReadonlySet<string>,
 ) {
-    const result = await goshipRates({ from, to, parcel: TIER_PARCEL });
+    const result = await goshipRates({ from, to, parcel: TIER_PARCEL, declaredValue: 0 });
     if (!result.ok) return;
     for (const rate of result.rates as GoshipRate[]) {
         if (!allowed.has(rate.carrierCode)) continue;
-        const row = into[rate.carrierCode] ?? (into[rate.carrierCode] = {});
-        // Cheapest service wins: a listing advertises what it can be sent for,
-        // not what the most expensive option would cost.
-        if (row[tier] === undefined || rate.totalFee < (row[tier] as number)) {
-            row[tier] = rate.totalFee;
+        const carrier = into[rate.carrierCode] ?? (into[rate.carrierCode] = {});
+        // Cheapest wins, for the day a carrier does return more than one
+        // service: a shop advertises what a parcel can be sent for.
+        if (carrier[tier] === undefined || rate.totalFee < (carrier[tier] as number)) {
+            carrier[tier] = rate.totalFee;
         }
     }
 }
 
 /**
- * Price all three tiers for one seller.
+ * Price a whole shop table for one seller.
  *
  * `intra` needs a second district inside the seller's own city; a city with
  * only one is quoted against itself, which is the right answer for it anyway.
@@ -77,10 +75,10 @@ export async function quoteSellerTiers(input: {
     pickup: { city: string; district: string };
     /** The seller's province name, to decide which region they are in. */
     provinceName: string | null | undefined;
-    /** Carrier codes the app offers, e.g. ['ghn','vtp','shopee']. */
+    /** Carrier codes the app offers, e.g. ['ghn','vnp','shopee','best','jnt']. */
     allowedCarriers: readonly string[];
-}): Promise<SellerTierPrices> {
-    const prices: SellerTierPrices = {};
+}): Promise<ShopFeeTable> {
+    const prices: ShopFeeTable = {};
     const allowed = new Set(input.allowedCarriers);
     const from = input.pickup;
 
@@ -95,14 +93,14 @@ export async function quoteSellerTiers(input: {
         ? districts.data.find((d) => String(d.id) !== from.district)
         : undefined;
 
-    const sameRegion = ANCHORS[region].city === from.city ? ALTERNATES[region] : ANCHORS[region];
-    const otherRegion = region === 'bac' ? ANCHORS.nam : ANCHORS.bac;
+    const destinations: Record<ShippingTier, { city: string; district: string }> = {
+        intra: { city: from.city, district: String(otherDistrict?.id ?? from.district) },
+        inter: ANCHORS[region].city === from.city ? ALTERNATES[region] : ANCHORS[region],
+        region: region === 'bac' ? ANCHORS.nam : ANCHORS.bac,
+    };
 
-    await Promise.all([
-        quoteTier(from, { city: from.city, district: String(otherDistrict?.id ?? from.district) }, prices, 'intra', allowed),
-        quoteTier(from, sameRegion, prices, 'inter', allowed),
-        quoteTier(from, otherRegion, prices, 'region', allowed),
-    ]);
+    const tiers: ShippingTier[] = ['intra', 'inter', 'region'];
+    await Promise.all(tiers.map(tier => quoteCell(from, destinations[tier], prices, tier, allowed)));
 
     return prices;
 }

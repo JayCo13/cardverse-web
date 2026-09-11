@@ -1,13 +1,30 @@
 /**
- * Shipping carriers a seller can offer for their shop. Sellers pick one or more
- * of these plus a fee range (min–max); listings display the range + carriers and
- * checkout charges the MAX of the range (difference reconciled at fulfillment).
- * Codes are stored in profiles.shipping_carriers (text[]).
+ * Shipping carriers a seller can offer for their shop.
+ *
+ * This list is not a menu of every courier in Vietnam; it is the set GoShip
+ * actually returns rates for on this account. Quoting /rates for a 200g parcel
+ * on 2026-09-10 returned exactly five, on every route tried: vnp, shopee,
+ * ghnv3, best, jnt. Anything the list offers beyond those is a carrier a seller
+ * can advertise, a buyer can pick, and nobody can book — so the two are kept in
+ * step deliberately, and a carrier is added here only once a rate for it has
+ * been seen.
+ *
+ * Viettel Post used to be here and is not any more. It never appeared in a
+ * single quote, which made 'vtp' a shop setting that guaranteed a dead end at
+ * booking time. If the account starts selling it, add it back with the rest.
+ *
+ * Codes are stored in profiles.shipping_carriers (text[]), and are the app's
+ * own — goshipCarrierToApp maps GoShip's `ghnv3` onto `ghn`, and the other four
+ * happen to agree.
  */
+import type { ShippingTier } from '@/lib/shipping-fee';
+
 export type ShippingCarrierCode =
   | 'ghn'
-  | 'vtp'
+  | 'vnp'
   | 'shopee'
+  | 'best'
+  | 'jnt'
   | 'self';
 
 export interface ShippingCarrier {
@@ -43,33 +60,89 @@ export interface ShippingCarrier {
    * null = in-person hand delivery (no estimate).
    */
   deliveryDays: { min: number; max: number } | null;
+  /**
+   * The distance tiers this carrier can actually serve.
+   *
+   * Every courier serves all three. Hand delivery serves one: two people meet
+   * somewhere they both agreed on, which is not a thing that happens between
+   * Ho Chi Minh City and Hanoi. Offering it to a buyer in another province is
+   * offering a delivery nobody can make, so checkout filters on this and the
+   * shop's fee table only asks for the cells it can be charged for.
+   */
+  tiers: readonly ShippingTier[];
+  /**
+   * Does a courier get involved?
+   *
+   * False for hand delivery alone, and it answers two questions at once: what
+   * the buyer pays (nothing — there is no carrier to pay) and whether a waybill
+   * may be created for the order (no — booking one would attach a real carrier
+   * bill to a meeting, and that bill would come off the seller's payout).
+   *
+   * Hand delivery is free the way meeting someone is free. It looks like free
+   * shipping on the listing grid and is the opposite of it underneath: free
+   * shipping means the seller pays the whole carrier bill, this means there is
+   * no bill.
+   */
+  booksWithCarrier: boolean;
 }
+
+const ALL_TIERS: readonly ShippingTier[] = ['intra', 'inter', 'region'];
 
 export const SHIPPING_CARRIERS: ShippingCarrier[] = [
   // GHN reads the `order_code` parameter and fills its search box with it.
-  { code: 'ghn', short: 'GHN', name: 'Giao Hàng Nhanh (GHN)', logo: '/assets/carriers/ghn.svg', trackingUrl: 'https://donhang.ghn.vn/?order_code={code}', trackingPrefills: true, deliveryDays: { min: 2, max: 5 } },
-  // Viettel Post renders its lookup inside an iframe
-  // (viettelpost.vn/viettelpost-iframe/tra-cuu-hanh-trinh-don-hang-v3-recaptcha)
-  // whose src carries no query of its own, so nothing on the outer URL reaches
-  // the form. The `peopleTracking` parameter this used to send was dead: it was
-  // tested along with orderNumber, order, code, tracking, keyword and billCode,
-  // on both the page and the iframe, and the box stayed empty every time. The
-  // reCAPTCHA in front of it says that is deliberate. Link to the page and let
-  // the UI show the number to copy.
-  { code: 'vtp', short: 'Viettel Post', name: 'Viettel Post', logo: '/assets/carriers/vtp.svg', trackingUrl: 'https://viettelpost.com.vn/tra-cuu-hanh-trinh-don/', trackingPrefills: false, deliveryDays: { min: 2, max: 5 } },
+  { code: 'ghn', short: 'GHN', name: 'Giao Hàng Nhanh (GHN)', logo: '/assets/carriers/ghn.svg', trackingUrl: 'https://donhang.ghn.vn/?order_code={code}', trackingPrefills: true, deliveryDays: { min: 2, max: 5 }, tiers: ALL_TIERS, booksWithCarrier: true },
+  // The four below were added on 2026-09-10, when the carrier list was matched
+  // to what GoShip actually quotes. Unlike GHN and SPX above, their tracking
+  // links have NOT been through the browser check described above — each one is
+  // the carrier's own lookup page, confirmed to return 200, with no claim about
+  // what a query parameter does to the box on it. So every one of them declares
+  // trackingPrefills: false, which makes the UI keep the number on screen to
+  // copy. Verify one in a browser before setting it true; do not infer it from
+  // the shape of another carrier's URL.
+  //
+  // VNPost is the one worth reading twice. It was the cheapest carrier on every
+  // route quoted (15,385đ intra-city, 18,010đ Ho Chi Minh City to Hanoi) AND
+  // the only one that charges nothing for khai giá — 18,010đ whether the parcel
+  // declares 0đ or 10,000,000đ. For a marketplace shipping graded cards that
+  // combination is worth more than the logo it does not have.
+  //
+  // Its lookup lives behind a hash route on a tab (#!?tab=tra-cuu-hanh-trinh),
+  // which is a fragment the server never sees, so a code cannot ride in on it.
+  { code: 'vnp', short: 'VNPost', name: 'Vietnam Post (VNPost)', logo: null, trackingUrl: 'https://www.vnpost.vn/vi/ca-nhan/chuyen-phat/chuyen-phat-trong-nuoc#!?tab=tra-cuu-hanh-trinh', trackingPrefills: false, deliveryDays: { min: 2, max: 5 }, tiers: ALL_TIERS, booksWithCarrier: true },
   // SPX takes the WHOLE query string as the tracking number, not a named
   // parameter — it is doing the equivalent of location.search.slice(1). So
   // `?TrackingID=SPXVN0692...` searched for the literal text
   // "TrackingID=SPXVN0692..." and returned "Không có kết quả phù hợp". The code
   // goes straight after the `?` with no name in front of it.
-  { code: 'shopee', short: 'SPX', name: 'Shopee Express', logo: '/assets/carriers/shopee.svg', trackingUrl: 'https://spx.vn/track?{code}', trackingPrefills: true, deliveryDays: { min: 2, max: 4 } },
-  { code: 'self', short: 'Tự giao', name: 'Tự giao / Gặp mặt', logo: null, trackingUrl: null, trackingPrefills: false, deliveryDays: null },
+  { code: 'shopee', short: 'SPX', name: 'Shopee Express', logo: '/assets/carriers/shopee.svg', trackingUrl: 'https://spx.vn/track?{code}', trackingPrefills: true, deliveryDays: { min: 2, max: 4 }, tiers: ALL_TIERS, booksWithCarrier: true },
+  { code: 'best', short: 'BEST', name: 'BEST Express', logo: null, trackingUrl: 'https://best-inc.vn/track', trackingPrefills: false, deliveryDays: { min: 2, max: 5 }, tiers: ALL_TIERS, booksWithCarrier: true },
+  { code: 'jnt', short: 'J&T', name: 'J&T Express', logo: null, trackingUrl: 'https://jtexpress.vn/vi/tracking', trackingPrefills: false, deliveryDays: { min: 2, max: 5 }, tiers: ALL_TIERS, booksWithCarrier: true },
+  { code: 'self', short: 'Tự giao', name: 'Tự giao / Gặp mặt', logo: null, trackingUrl: null, trackingPrefills: false, deliveryDays: null, tiers: ['intra'], booksWithCarrier: false },
 ];
 
 const CARRIER_BY_CODE = new Map(SHIPPING_CARRIERS.map((c) => [c.code, c]));
 
 export const getCarrier = (code: string): ShippingCarrier | undefined =>
   CARRIER_BY_CODE.get(code as ShippingCarrierCode);
+
+/**
+ * Is this a courier delivery, as opposed to two people meeting?
+ *
+ * Unknown codes answer true: the safe direction is to assume a bill exists and
+ * charge for it, not to hand out free shipping to a carrier nobody defined.
+ */
+export const booksWithCarrier = (code: string | null | undefined): boolean =>
+  getCarrier(code ?? '')?.booksWithCarrier ?? true;
+
+/**
+ * Can this carrier serve a delivery of this distance?
+ *
+ * An unknown code answers no. It is only ever asked about a carrier a shop
+ * offers, and a shop offering something this app does not know about should not
+ * have that treated as a yes.
+ */
+export const carrierServesTier = (code: string | null | undefined, tier: ShippingTier): boolean =>
+  !!code && (getCarrier(code)?.tiers.includes(tier) ?? false);
 
 /** Estimated delivery window (days from pickup) for a carrier code, or null. */
 export const getDeliveryDays = (code: string | null | undefined): { min: number; max: number } | null =>

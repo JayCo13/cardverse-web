@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { KHAI_GIA_FREE_ALLOWANCE } from '@/lib/khai-gia';
 import { useLocalization } from '@/context/localization-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Upload, ShieldAlert, X, Loader2, Info, HandCoins, Plus, Trash2, Layers, MapPin, Sparkles, Truck, ArrowRight } from 'lucide-react';
@@ -48,7 +49,7 @@ import { type SelectedCatalogCard } from '@/components/card-picker-dialog';
 import { CatalogCardPicker, catalogTabToCategory, type CatalogPick, type CatalogTabId } from '@/components/catalog-card-picker';
 import { VnMarketPrice } from '@/components/vn-market-price';
 import { SearchableSetPicker } from '@/components/searchable-set-picker';
-import { SellerAddressForm } from '@/components/seller-address-form';
+import { SenderAddressForm } from '@/components/sender-address-form';
 
 // Lazy-loaded: the picker dialog (and its catalog deps) only mount when opened,
 // so keep it out of the initial bundle to make the page load lighter.
@@ -161,6 +162,9 @@ type LocaleCopy = {
   minOffer: string;
   shippingTitle: string;
   shippingHint: string;
+  flatFeeKhaiGiaWarning: string;
+  shopTableLabel: string;
+  shopTableHint: string;
   shippingFeeLabel: string;
   shippingFeeRequired: string;
   shippingFeePlaceholder: string;
@@ -288,6 +292,9 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       minOffer: 'この割合未満のオファーは受けない',
       shippingTitle: '送料',
       shippingHint: '購入者が支払う金額です。実際の配送料がこれを上回った分は、あなたの受取額から差し引かれます。',
+      flatFeeKhaiGiaWarning: 'このカードは1,000,000đ以上です。表に従えば保険料は決済時に自動加算されますが、固定額にすると差額は受取額から差し引かれます。',
+      shopTableLabel: 'ショップの送料表に従う',
+      shopTableHint: '買い手の住所とカードの価値に応じて自動計算されます。出品ごとに固定したい場合はオフに。',
       shippingFeeLabel: '送料（đ）',
       shippingFeeRequired: '送料を入力するか、送料無料を選んでください。',
       shippingFeePlaceholder: '例: 25.000',
@@ -415,6 +422,9 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       minOffer: 'Không nhận offer dưới',
       shippingTitle: 'Phí vận chuyển',
       shippingHint: 'Số tiền người mua trả. Nếu cước thật cao hơn mức này, phần vượt sẽ trừ vào tiền bạn nhận được.',
+      flatFeeKhaiGiaWarning: 'Thẻ này từ 1.000.000đ trở lên. Nếu dùng bảng phí của shop, phí khai giá được cộng tự động khi thanh toán; đặt số cố định thì phần chênh trừ vào tiền bạn nhận.',
+      shopTableLabel: 'Dùng bảng phí của shop',
+      shopTableHint: 'Phí tự tính theo địa chỉ người mua và giá trị thẻ. Tắt nếu muốn đặt số cố định riêng cho thẻ này.',
       shippingFeeLabel: 'Phí ship người mua trả (đ)',
       shippingFeeRequired: 'Nhập phí ship bạn thu, hoặc chọn miễn phí vận chuyển.',
       shippingFeePlaceholder: 'VD: 25.000',
@@ -541,6 +551,9 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
     minOffer: 'Do not accept offers below',
     shippingTitle: 'Shipping',
     shippingHint: 'What the buyer pays. If the carrier costs more than this, the difference comes off your payout.',
+    flatFeeKhaiGiaWarning: 'This card is worth 1,000,000đ or more. The shop table adds khai giá automatically at checkout; a flat number does not, and the shortfall comes off your payout.',
+    shopTableLabel: "Use the shop's fee table",
+    shopTableHint: 'Priced from the buyer\u2019s address and what the card is worth. Turn off to fix one number for this card.',
     shippingFeeLabel: 'Shipping charged to the buyer (đ)',
     shippingFeeRequired: 'Enter the shipping you charge, or tick free shipping.',
     shippingFeePlaceholder: 'e.g. 25.000',
@@ -667,6 +680,10 @@ const getFormSchema = (copy: LocaleCopy, nonCard = false) => z.object({
   images: z.array(z.instanceof(File)).min(1, copy.minImages).max(4, copy.maxImages),
   // Shipping the buyer pays. Free is a choice, so 0 is valid and distinct
   // from "not answered" — the form always sends a number.
+  // Absent, not zero: a listing that says nothing follows the shop's table,
+  // which is a different answer from free shipping and costs the seller far
+  // less when they meant to say nothing at all.
+  useShopTable: z.boolean().default(true),
   freeShipping: z.boolean().default(false),
   shippingFee: z.preprocess(
     (a) => {
@@ -801,6 +818,7 @@ export default function CreateListingPage() {
       isBundle: false,
       acceptOffers: false,
       minOfferPercent: 0,
+      useShopTable: true,
       freeShipping: false,
       shippingFee: undefined,
       freePublisher: "",
@@ -1451,9 +1469,13 @@ export default function CreateListingPage() {
         grading_company: values.gradingCompany,
         grade: values.gradingCompany !== 'raw' ? values.grade : null,
         finish: values.finish,
-        // Free shipping is zero, not absent: the seller chose to carry the
-        // carrier bill themselves, and settlement nets it off their payout.
-        shipping_fee: values.freeShipping ? 0 : values.shippingFee,
+        // Three distinct answers, and null is one of them. Null follows the
+        // shop's fee table, which moves with the buyer's address and the card's
+        // value. Zero is free shipping — chosen on purpose, and settlement nets
+        // the whole carrier bill off the payout.
+        shipping_fee: values.useShopTable
+          ? null
+          : (values.freeShipping ? 0 : values.shippingFee),
       };
 
       if (nonCard) Object.assign(cardData, {
@@ -1620,7 +1642,7 @@ export default function CreateListingPage() {
             </p>
           </div>
           <div className="max-w-xl mx-auto rounded-xl border border-orange-500/20 bg-orange-500/5 p-5">
-            <SellerAddressForm
+            <SenderAddressForm
               submitLabel={copy.saveAndContinue}
               onSaved={() => setHasPickupAddress(true)}
             />
@@ -2609,6 +2631,30 @@ export default function CreateListingPage() {
 
                 <FormField
                   control={form.control}
+                  name="useShopTable"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center justify-between gap-3 space-y-0">
+                      <div className="min-w-0">
+                        <FormLabel className="text-sm font-medium">{copy.shopTableLabel}</FormLabel>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{copy.shopTableHint}</p>
+                      </div>
+                      <FormControl>
+                        <Switch checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
+                {!form.watch('useShopTable') && Number(watchedPrice) >= KHAI_GIA_FREE_ALLOWANCE && (
+                  <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-500">
+                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>{copy.flatFeeKhaiGiaWarning}</span>
+                  </div>
+                )}
+
+                {!form.watch('useShopTable') && (
+                <FormField
+                  control={form.control}
                   name="freeShipping"
                   render={({ field }) => (
                     <FormItem className="flex items-center justify-between gap-3 space-y-0">
@@ -2625,7 +2671,9 @@ export default function CreateListingPage() {
                   )}
                 />
 
-                {!form.watch('freeShipping') && (
+                )}
+
+                {!form.watch('useShopTable') && !form.watch('freeShipping') && (
                   <FormField
                     control={form.control}
                     name="shippingFee"

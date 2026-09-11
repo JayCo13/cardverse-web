@@ -10,10 +10,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckCircle, XCircle, Phone, FileCheck, ChevronRight, ChevronLeft, ChevronDown, Sparkles, AlertTriangle, MapPin, Truck, HandCoins } from 'lucide-react';
-import { PickupAddressPicker, type PickupAddress } from '@/components/pickup-address-picker';
+import { type PickupAddress } from '@/components/pickup-address-picker';
 import { ShippingQuotePreview } from '@/components/shipping-quote-preview';
+import { ShopFeeTable } from '@/components/shop-fee-table';
 import { getAccountSummary, invalidateAccountSummary } from '@/lib/account-summary';
-import { PLATFORM_SHIPPING_FEE } from '@/lib/shipping-fee';
 import { useAuth, useSupabase } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
@@ -28,7 +28,7 @@ import { getCloudinarySignature, uploadImageDirectToCloudinary, type CloudinaryS
 import { getCloudinaryKycScanUrl, toDisplaySafeUrl, optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
 import { isHeicFile, convertHeicToJpeg } from '@/lib/heic';
 import { formatCompactCount } from '@/lib/format';
-import { AddressBook, type SavedAddress } from '@/components/address-book';
+import { SenderAddressForm } from '@/components/sender-address-form';
 import Link from 'next/link';
 import Image from 'next/image';
 
@@ -218,7 +218,6 @@ export default function SellPage() {
   // the 2025 structure, this one is GoShip's pre-2025 ids. Draft is null until
   // every field is valid, which is what disables the save button.
   const [goshipPickup, setGoshipPickup] = useState<PickupAddress | null>(null);
-  const [goshipPickupDraft, setGoshipPickupDraft] = useState<PickupAddress | null>(null);
   // Shop-level shipping options: selected carriers + per-carrier tiered fees
   // (formatted strings like "15.000") keyed by carrier code.
   const [shippingConfigOpen, setShippingConfigOpen] = useState(false);
@@ -295,13 +294,8 @@ export default function SellPage() {
         shipping: '配送中',
         completed: '完了',
         totalEarnings: '総収益',
-        pickupAddress: '集荷先住所',
-        goshipPickupTitle: '差出人情報（送り状用）',
-        goshipPickupDesc: '当サイト経由で送り状を作成する際、送り状に印字される差出人情報です。集荷依頼ではありません。任意。',
-        goshipPickupSave: '保存',
-        goshipPickupSaved: '集荷先住所を保存しました。',
-        goshipPickupFailed: '保存できませんでした。',
-        goshipPickupHave: '登録済み',
+        pickupAddress: '発送元住所',
+        pickupAddressDesc: '荷物を送り出す住所です。購入時の受取先住所とは別で、そちらはプロフィールで変更します。',
         update: '更新',
         pickupNotice: 'カードを出品する前に集荷先住所を設定してください。この住所を使って購入者向けの送料を計算します。',
         savePickup: '集荷先住所を保存',
@@ -341,13 +335,8 @@ export default function SellPage() {
           shipping: 'Đang giao',
           completed: 'Hoàn tất',
           totalEarnings: 'Tổng thu nhập',
-          pickupAddress: 'Địa chỉ lấy hàng',
-          goshipPickupTitle: 'Thông tin người gửi (in trên vận đơn)',
-          goshipPickupDesc: 'Dùng khi bạn đặt vận đơn qua sàn. Đây là thông tin người gửi in trên vận đơn và là nơi hàng quay về nếu giao thất bại — không phải yêu cầu shipper tới lấy. Không bắt buộc.',
-          goshipPickupSave: 'Lưu địa chỉ',
-          goshipPickupSaved: 'Đã lưu địa chỉ lấy hàng.',
-          goshipPickupFailed: 'Không lưu được địa chỉ.',
-          goshipPickupHave: 'Đã có địa chỉ',
+          pickupAddress: 'Địa chỉ gửi hàng',
+          pickupAddressDesc: 'Nơi bạn gửi hàng đi. Khác với địa chỉ nhận hàng khi bạn mua — sửa địa chỉ nhận ở trang Hồ sơ.',
           update: 'Cập nhật',
           pickupNotice: 'Bạn cần thiết lập địa chỉ lấy hàng trước khi đăng bán thẻ. Chúng tôi dùng địa chỉ này để tính cước phí ship cho người mua.',
           savePickup: 'Lưu địa chỉ lấy hàng',
@@ -386,13 +375,8 @@ export default function SellPage() {
           shipping: 'Shipping',
           completed: 'Completed',
           totalEarnings: 'Total earnings',
-          pickupAddress: 'Pickup address',
-          goshipPickupTitle: 'Sender details (printed on the waybill)',
-          goshipPickupDesc: 'Used when you book through the platform. This is the sender block on the waybill and where a failed delivery returns to — not a courier pickup request. Optional.',
-          goshipPickupSave: 'Save address',
-          goshipPickupSaved: 'Pickup address saved.',
-          goshipPickupFailed: 'Could not save the address.',
-          goshipPickupHave: 'Saved',
+          pickupAddress: 'Where you ship from',
+        pickupAddressDesc: 'Where your parcels leave from. Not the address you receive at when buying — change that on your profile.',
           update: 'Update',
           pickupNotice: 'Set a pickup address before listing cards. We use this address to calculate shipping fees for buyers.',
           savePickup: 'Save pickup address',
@@ -664,18 +648,6 @@ export default function SellPage() {
     } finally {
       setIsLoadingAddress(false);
     }
-  };
-
-  const handlePickupAddressesChange = (addresses: SavedAddress[]) => {
-    const defaultAddress = addresses.find(address => address.is_default) ?? null;
-    setPickupAddress(defaultAddress ? {
-      line: [
-        defaultAddress.detail,
-        defaultAddress.ward_name,
-        defaultAddress.district_name,
-        defaultAddress.province_name,
-      ].filter(Boolean).join(', '),
-    } : null);
   };
 
   // Format a raw money string with thousand separators, e.g. "15000" → "15.000".
@@ -978,36 +950,33 @@ export default function SellPage() {
   // the checkout routes use. The form keeps fees as formatted strings; parse
   // them back, keeping a typed 0 (free shipping) distinct from a blank box.
 
-  // Shipping is priced per listing now, not per shop. The three tiers that
-  // used to live here — nội tỉnh, ngoại tỉnh, liên miền — sorted guesses by
-  // distance, and distance does not move what a 200g card costs to send:
-  // 15,385đ across Ho Chi Minh City, 15,700đ from there to Hanoi, 18,850đ from
-  // a remote province. One number per listing says the same thing without
-  // pretending otherwise, and the seller sets it where they are looking at the
-  // card. This panel points them there.
+  // The shop's price list, and the per-listing override that beats it.
+  //
+  // The tiers are back, and the reason they are defensible this time is that
+  // nobody types them from nothing: every box carries the real GoShip price for
+  // this seller's pickup address behind it, and an empty box keeps following
+  // that price. The old version asked sellers to invent nine numbers, which is
+  // how one of them ended up at 11,000đ — below the floor, losing money on
+  // every order it priced.
   const renderShippingConfigForm = () => (
-    <div className="space-y-3 text-sm">
-      <p className="text-muted-foreground">
-        {tx(
-          'Phí ship đặt riêng cho từng bài đăng, ngay trong form đăng bán — có cả lựa chọn miễn phí vận chuyển. Mặc định gợi ý là ' + formatVND(PLATFORM_SHIPPING_FEE) + '.',
-          'Shipping is priced per listing, in the listing form itself — free shipping included. The suggested default is ' + formatVND(PLATFORM_SHIPPING_FEE) + '.',
-          '送料は出品ごとに設定します（送料無料も可）。初期値は ' + formatVND(PLATFORM_SHIPPING_FEE) + ' です。',
-        )}
-      </p>
-      <p className="text-muted-foreground">
-        {tx(
-          'Cước thật một thẻ 200g gửi trong nước là 15.400–18.900đ tuỳ nơi gửi. Nếu cước bạn chọn khi tạo vận đơn cao hơn phí đã thu, phần vượt trừ vào tiền bạn nhận.',
-          'A 200g card costs 15,400–18,900đ to send anywhere in Vietnam. If the carrier you pick at booking costs more than the fee collected, the difference comes off your payout.',
-          '200gのカードの国内送料は15,400〜18,900đです。発送時に選んだ業者の料金が徴収額を超えた分は、受取額から差し引かれます。',
-        )}
-      </p>
-      <p className="text-muted-foreground">
-        {tx(
-          'Bạn chọn đơn vị vận chuyển khi tạo vận đơn cho từng đơn hàng, với bảng giá thật tại thời điểm đó.',
-          'You pick the carrier when you book each shipment, from live prices at that moment.',
-          '配送業者は各発送を予約する際に、その時点の実価格から選びます。',
-        )}
-      </p>
+    <div className="space-y-4 text-sm">
+      <ShopFeeTable />
+      <div className="space-y-3 border-t border-zinc-800 pt-4">
+        <p className="text-muted-foreground">
+          {tx(
+            'Từng bài đăng vẫn đè được bảng này: trong form đăng bán có ô phí ship riêng và lựa chọn miễn phí vận chuyển cho thẻ đó — một con số cố định, không đổi theo nơi giao.',
+            'Any listing can override this table: the listing form has its own shipping box and a free-shipping option for that card — one fixed number, the same wherever it goes.',
+            '出品ごとにこの表を上書きできます。出品フォームには送料欄と送料無料の選択があり、そちらは配送先にかかわらず固定額です。',
+          )}
+        </p>
+        <p className="text-muted-foreground">
+          {tx(
+            'Người mua chọn hãng khi thanh toán, trong số hãng bạn bật ở trên, và trả đúng ô tương ứng. Nếu cước bạn chọn khi tạo vận đơn cao hơn phí đã thu, phần vượt trừ vào tiền bạn nhận.',
+            'The buyer picks a carrier at checkout, from the ones you enabled above, and pays the matching box. If the carrier you pick at booking costs more than the fee collected, the difference comes off your payout.',
+            '買い手は上で有効にした業者から決済時に選び、対応する欄の金額を支払います。発送時に選んだ業者の料金が徴収額を超えた分は、受取額から差し引かれます。',
+          )}
+        </p>
+      </div>
     </div>
   );
 
@@ -1115,9 +1084,9 @@ export default function SellPage() {
     const soldListings = myListings.filter(listing => listing.status === 'sold');
     const draftListings = myListings.filter(listing => !activeListings.includes(listing) && !soldListings.includes(listing));
     const shippingSummary = tx(
-      `Phí ship cố định ${formatVND(PLATFORM_SHIPPING_FEE)} · bạn chọn hãng khi đặt vận đơn`,
-      `Flat ${formatVND(PLATFORM_SHIPPING_FEE)} shipping · you pick the carrier when booking`,
-      `送料一律 ${formatVND(PLATFORM_SHIPPING_FEE)} · 発送予約時に業者を選択`,
+      'Phí ship theo bảng của shop · người mua chọn hãng khi thanh toán',
+      'Shipping priced from your shop table · the buyer picks the carrier at checkout',
+      'ショップの送料表で計算 · 業者は買い手が決済時に選択',
     );
 
     return (
@@ -1174,6 +1143,26 @@ export default function SellPage() {
 
 
             {/* Pickup Address — required so shipping fees can be calculated */}
+            {/* One address, because there is one place a seller ships from.
+
+                Two forms used to stand here and they asked for the same
+                physical place twice: profiles.address_* in the 2025 structure,
+                and goship_pickup in the carrier's. Tracing every read of the
+                first found exactly two — a "has somewhere to collect from" gate
+                and the province NAME that picks the distance tier — and both are
+                answered better by the carrier's own list, which is the geography
+                the bill is actually computed in. So saving below writes both,
+                and /api/shipping/pickup-address explains why that is not the
+                name-matching that would send a driver to the wrong city.
+
+                What used to sit above them was worse than a duplicate: it was
+                the AddressBook, the list of places the user RECEIVES parcels,
+                under a heading that said "Địa chỉ lấy hàng". Adding a row there
+                changed a delivery address and nothing about pickup — and because
+                its onAddressesChange wrote the same state as fetchPickupAddress,
+                it CLEARED the orange warning below. A seller could finish setup,
+                see no warning, and learn their listings were unbuyable only when
+                a stranger's checkout failed. */}
             <Card id="pickup-address" className={!pickupAddress && !isLoadingAddress ? 'border-orange-500/40 bg-orange-500/5' : ''}>
               <CardHeader>
                 <CardTitle>
@@ -1182,64 +1171,23 @@ export default function SellPage() {
                     {copy.pickupAddress}
                   </span>
                 </CardTitle>
+                <CardDescription>{copy.pickupAddressDesc}</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-5">
                 {!pickupAddress && !isLoadingAddress && (
-                  <div className="mb-4 flex items-start gap-2 rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-sm text-orange-300">
+                  <div className="flex items-start gap-2 rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-sm text-orange-300">
                     <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                     <span>{copy.pickupNotice}</span>
                   </div>
                 )}
-                <AddressBook onAddressesChange={handlePickupAddressesChange} />
-              </CardContent>
-            </Card>
 
-            {/* Pickup address in the carrier's own geography.
-                Optional for now: nothing books through GoShip yet, so this
-                collects the address ahead of the flow that will need it rather
-                than standing between a seller and their first listing. It sits
-                beside the card above and not inside it because the two are
-                different address systems — the one above is the 2025 structure
-                Vietnam has, this one is the pre-2025 structure the carrier
-                network still routes on, and merging them sends a driver to the
-                wrong city. */}
-            <Card id="goship-pickup">
-              <CardHeader>
-                <CardTitle>
-                  <span className="flex items-center gap-2">
-                    <Truck className="h-5 w-5 text-orange-400" />
-                    {copy.goshipPickupTitle}
-                  </span>
-                </CardTitle>
-                <CardDescription>{copy.goshipPickupDesc}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <PickupAddressPicker value={goshipPickup} onChange={setGoshipPickupDraft} />
-                <div className="flex items-center gap-3">
-                  <Button
-                    disabled={!goshipPickupDraft}
-                    onClick={async () => {
-                      if (!goshipPickupDraft) return;
-                      const res = await fetch('/api/shipping/pickup-address', {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(goshipPickupDraft),
-                      });
-                      const body = await res.json();
-                      if (!res.ok) {
-                        toast({ variant: 'destructive', description: body.error || copy.goshipPickupFailed });
-                        return;
-                      }
-                      setGoshipPickup(body.data);
-                      toast({ description: copy.goshipPickupSaved });
-                    }}
-                  >
-                    {copy.goshipPickupSave}
-                  </Button>
-                  {goshipPickup && (
-                    <span className="text-xs text-green-400">{copy.goshipPickupHave}</span>
-                  )}
-                </div>
+                <SenderAddressForm
+                  onSaved={(address) => {
+                    setGoshipPickup(address);
+                    void fetchPickupAddress();
+                  }}
+                />
+
                 {/* Only once an origin exists: the quote is measured from it,
                     and offering the form first invites the one error it cannot
                     answer. */}

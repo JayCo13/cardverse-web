@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AddressBook, type SavedAddress } from "@/components/address-book";
-import { parcelShippingFee } from "@/lib/shipping-fee";
 import { getCarrier } from "@/lib/shipping-carriers";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -95,8 +94,10 @@ export default function CheckoutPage() {
       emptyTitle: "Không có sản phẩm để checkout",
       backToCart: "Về giỏ hàng",
       shippingAddress: "Địa chỉ nhận hàng",
-      shippingCarrier: "Phí vận chuyển",
-      shippingNote: "Người bán chọn đơn vị vận chuyển khi gửi hàng.",
+      shippingCarrier: "Đơn vị vận chuyển",
+      deliveryDaysUnit: "ngày",
+      freeShipping: "Miễn phí",
+      shippingNote: "Người bán sẽ gửi bằng đơn vị bạn chọn.",
       groupedShippingHint: "Gộp chung lô · Phí ship chỉ tính một lần cho người bán này.",
       missingPickup: "Một số seller chưa cập nhật địa chỉ gửi hàng. Vui lòng chọn sản phẩm khác hoặc liên hệ seller.",
       products: "Sản phẩm",
@@ -107,6 +108,7 @@ export default function CheckoutPage() {
       chooseAddressForFee: "Chọn địa chỉ để tính",
       sellerShippingMissing: "Người bán chưa thiết lập vận chuyển",
       sellerShippingMissingHint: "Người bán này chưa chọn đơn vị vận chuyển và phí ship nên chưa đặt được. Bỏ thẻ của họ ra để thanh toán phần còn lại, hoặc nhắn cho họ.",
+      sellerNoRoute: "Người bán này chỉ giao tận tay trong tỉnh/thành của họ nên không gửi tới địa chỉ bạn chọn được. Chọn địa chỉ khác, bỏ thẻ của họ ra, hoặc nhắn cho họ.",
       ghnReady: "GHN ready",
       payment: "Thanh toán",
       walletPayos: "Ví / PayOS",
@@ -146,8 +148,10 @@ export default function CheckoutPage() {
         emptyTitle: "チェックアウトする商品がありません",
         backToCart: "カートへ戻る",
         shippingAddress: "配送先住所",
-        shippingCarrier: "送料",
-        shippingNote: "配送業者は出品者が発送時に選びます。",
+        shippingCarrier: "配送業者",
+        deliveryDaysUnit: "日",
+        freeShipping: "送料無料",
+        shippingNote: "選んだ業者で出品者が発送します。",
         groupedShippingHint: "同梱配送 · この販売者の送料は一度だけ加算されます。",
         missingPickup: "一部の販売者が発送元住所を未設定です。別の商品を選ぶか販売者に連絡してください。",
         products: "商品",
@@ -158,6 +162,7 @@ export default function CheckoutPage() {
         chooseAddressForFee: "住所を選択して計算",
         sellerShippingMissing: "販売者が配送設定を未完了",
         sellerShippingMissingHint: "この販売者は配送業者と送料をまだ設定していないため、注文できません。この販売者の商品を外すと残りは決済できます。",
+        sellerNoRoute: "この販売者は自分の省・市内での手渡しのみのため、選択した住所には発送できません。別の住所を選ぶか、この販売者の商品を外してください。",
         ghnReady: "GHN対応",
         payment: "支払い",
         walletPayos: "ウォレット / PayOS",
@@ -196,8 +201,10 @@ export default function CheckoutPage() {
         emptyTitle: "No items to checkout",
         backToCart: "Back to cart",
         shippingAddress: "Shipping address",
-        shippingCarrier: "Shipping",
-        shippingNote: "The seller picks the carrier when they ship.",
+        shippingCarrier: "Carrier",
+        deliveryDaysUnit: "days",
+        freeShipping: "Free",
+        shippingNote: "The seller ships with the carrier you pick.",
         groupedShippingHint: "Combined shipment · Shipping is charged once for this seller.",
         missingPickup: "Some sellers have not added a pickup address. Please choose another item or contact the seller.",
         products: "Products",
@@ -208,6 +215,7 @@ export default function CheckoutPage() {
         chooseAddressForFee: "Choose an address to calculate",
         sellerShippingMissing: "Seller has not set up shipping",
         sellerShippingMissingHint: "This seller has not picked carriers or fees yet, so the order cannot be placed. Remove their cards to pay for the rest, or message them.",
+        sellerNoRoute: "This seller only hands parcels over in their own province, so they cannot send to the address you picked. Choose another address, remove their cards, or message them.",
         ghnReady: "GHN ready",
         payment: "Payment",
         walletPayos: "Wallet / PayOS",
@@ -378,8 +386,12 @@ export default function CheckoutPage() {
     void load();
   }, [copy.openCheckoutError, isLoading, isOfferCheckout, loadCart, loadOffer, loadWallet, setAuthOpen, toast, user]);
 
-  // Quote seller-declared fees for the delivery address, once per seller.
-  // Keep each seller's chosen carrier when it is still available.
+  // Price every carrier each seller offers, for this delivery address.
+  //
+  // Asked of the server rather than worked out here. The fee depends on the
+  // seller's own table, the distance tier and what the parcel is worth, and a
+  // second implementation of that in the browser is a second implementation to
+  // disagree with the one that bills the order.
   const calculateFees = useCallback(async (address: SavedAddress | null, currentItems: CheckoutItem[]) => {
     const requestId = ++feeRequestRef.current;
     if (!address || !currentItems.length) {
@@ -390,44 +402,61 @@ export default function CheckoutPage() {
     setIsLoadingFee(true);
     setShippingOptions({});
     try {
-      const sellerIds = [...new Set(currentItems.map(item => item.card.sellerId))];
-      // The seller still has to have somewhere for a courier to collect from,
-      // which is the only thing left worth reading. The price no longer depends
-      // on the seller, the carrier, or how far the parcel goes.
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, address_province_id, address_province_name')
-        .in('id', sellerIds);
-      if (error) throw error;
-      if (requestId !== feeRequestRef.current) return;
-
-      const feeBySeller = new Map<string, number | null>();
-      const nextOptions: Record<string, { carrier: string; fee: number }[]> = {};
-      (data || []).forEach((p: { id: string; address_province_id: number | null; address_province_name: string | null }) => {
-        const canCollect = !!p.address_province_id && !!p.address_province_name?.trim();
-        nextOptions[p.id] = [];
-        // One parcel per seller, priced from the listings bought from them.
-        // The server recomputes this the same way; what is shown here is a
-        // preview of that, not the figure the order is charged.
-        const fees = currentItems
-          .filter(item => item.card.sellerId === p.id)
-          .map(item => item.card.listingShippingFee);
-        feeBySeller.set(p.id, canCollect ? parcelShippingFee(fees) : null);
+      const bySeller = new Map<string, string[]>();
+      currentItems.forEach(item => {
+        const ids = bySeller.get(item.card.sellerId) ?? [];
+        ids.push(item.card.id);
+        bySeller.set(item.card.sellerId, ids);
       });
+
+      const response = await fetch('/api/shipping/options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toProvinceId: address.province_id,
+          toProvinceName: address.province_name,
+          sellers: [...bySeller].map(([sellerId, cardIds]) => ({ sellerId, cardIds })),
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (requestId !== feeRequestRef.current) return;
+      if (!response.ok) {
+        // The server names the reason; say it in the buyer's language rather
+        // than passing through a message written for a log.
+        const named = payload?.code === 'seller_does_not_ship_here'
+          ? copy.sellerNoRoute
+          : payload?.code === 'seller_shipping_origin_missing'
+            ? copy.sellerShippingMissingHint
+            : null;
+        throw new Error(named || payload?.error || copy.shippingFeeTitle);
+      }
+
+      const nextOptions: Record<string, { carrier: string; fee: number }[]> = payload?.data || {};
       setShippingOptions(nextOptions);
 
+      // Keep each seller's chosen carrier when it is still on offer; otherwise
+      // fall to the cheapest, which is the order the server sorted them in.
+      const nextCarriers: Record<string, string> = {};
+      Object.entries(nextOptions).forEach(([sellerId, options]) => {
+        const kept = selectedCarriersRef.current[sellerId];
+        const chosen = options.some(option => option.carrier === kept) ? kept : options[0]?.carrier;
+        if (chosen) nextCarriers[sellerId] = chosen;
+      });
+      selectedCarriersRef.current = nextCarriers;
+      setSelectedCarriers(nextCarriers);
+
       // Shipping is charged once per seller, so only the first item of each
-      // seller carries the fee — but an unconfigured seller poisons every one of
-      // their rows, so `hasMissingFee` blocks the whole order rather than
-      // charging a partial one.
+      // seller carries the fee — but a seller with no bookable option poisons
+      // every one of their rows, so `hasMissingFee` blocks the whole order
+      // rather than charging a partial one.
       const seenSeller = new Set<string>();
       const nextItems = currentItems.map(item => {
         const sid = item.card.sellerId;
-        const fee = feeBySeller.get(sid) ?? null;
-        if (fee === null) return { ...item, shippingFee: null };
+        const option = (nextOptions[sid] || []).find(o => o.carrier === nextCarriers[sid]);
+        if (!option) return { ...item, shippingFee: null };
         if (seenSeller.has(sid)) return { ...item, shippingFee: 0 };
         seenSeller.add(sid);
-        return { ...item, shippingFee: fee };
+        return { ...item, shippingFee: option.fee };
       });
       setItems(nextItems);
     } catch (error: any) {
@@ -438,7 +467,25 @@ export default function CheckoutPage() {
     } finally {
       if (requestId === feeRequestRef.current) setIsLoadingFee(false);
     }
-  }, [copy.shippingFeeTitle, supabase, toast]);
+  }, [copy.shippingFeeTitle, toast]);
+
+  /** Re-price the cart when the buyer picks a different carrier for a seller. */
+  const handleSelectCarrier = useCallback((sellerId: string, carrier: string) => {
+    const next = { ...selectedCarriersRef.current, [sellerId]: carrier };
+    selectedCarriersRef.current = next;
+    setSelectedCarriers(next);
+    setItems(current => {
+      const seenSeller = new Set<string>();
+      return current.map(item => {
+        const sid = item.card.sellerId;
+        const option = (shippingOptions[sid] || []).find(o => o.carrier === next[sid]);
+        if (!option) return { ...item, shippingFee: null };
+        if (seenSeller.has(sid)) return { ...item, shippingFee: 0 };
+        seenSeller.add(sid);
+        return { ...item, shippingFee: option.fee };
+      });
+    });
+  }, [shippingOptions]);
 
   const handleSelectAddress = (address: SavedAddress | null) => {
     if (address === selectedAddress) return;
@@ -637,12 +684,40 @@ export default function CheckoutPage() {
                         {isLoadingFee ? <p role="status" className="text-sm text-muted-foreground">{copy.calculating}</p> : !selectedAddress ? (
                           <p className="text-sm text-muted-foreground">{copy.chooseAddressForFee}</p>
                         ) : (
-                          <div className="flex min-h-14 items-center gap-2.5 rounded-xl border border-zinc-800 bg-background/30 px-3 py-3 sm:gap-3">
-                            <Truck aria-hidden="true" className="h-8 w-8 shrink-0 text-muted-foreground" />
-                            <span className="min-w-0 flex-1 text-sm leading-5 text-muted-foreground">{copy.shippingNote}</span>
-                            <span className="shrink-0 whitespace-nowrap text-sm font-semibold tabular-nums text-foreground">
-                              {group.items.some(item => item.shippingFee === null) ? copy.sellerShippingMissing : formatVND(group.items.reduce((sum, item) => sum + (item.shippingFee ?? 0), 0))}
-                            </span>
+                          <div className="space-y-2">
+                            {(shippingOptions[group.id] || []).map(option => {
+                              const carrier = getCarrier(option.carrier);
+                              const isChosen = selectedCarriers[group.id] === option.carrier;
+                              return (
+                                <button
+                                  key={option.carrier}
+                                  type="button"
+                                  onClick={() => handleSelectCarrier(group.id, option.carrier)}
+                                  aria-pressed={isChosen}
+                                  className={`flex min-h-14 w-full items-center gap-2.5 rounded-xl border px-3 py-3 text-left transition-colors sm:gap-3 ${
+                                    isChosen
+                                      ? 'border-orange-500/60 bg-orange-500/10'
+                                      : 'border-zinc-800 bg-background/30 hover:border-zinc-700'
+                                  }`}
+                                >
+                                  {carrier?.logo
+                                    ? <img src={carrier.logo} alt="" className="h-8 w-8 shrink-0 rounded object-contain" />
+                                    : <Truck aria-hidden="true" className="h-8 w-8 shrink-0 text-muted-foreground" />}
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-sm font-medium leading-5">{carrier?.name || option.carrier}</span>
+                                    {carrier?.deliveryDays && (
+                                      <span className="block text-xs leading-5 text-muted-foreground">
+                                        {carrier.deliveryDays.min}-{carrier.deliveryDays.max} {copy.deliveryDaysUnit}
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span className={`shrink-0 whitespace-nowrap text-sm font-semibold tabular-nums ${option.fee === 0 ? 'text-green-400' : 'text-foreground'}`}>
+                                    {option.fee === 0 ? copy.freeShipping : formatVND(option.fee)}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                            <p className="text-xs leading-5 text-muted-foreground">{copy.shippingNote}</p>
                           </div>
                         )}
                       </div>

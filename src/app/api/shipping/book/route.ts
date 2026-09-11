@@ -5,6 +5,7 @@ import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { isEvidenceVideoUrl } from '@/lib/evidence-video';
 import { parseParcel, parcelCopy } from '@/lib/parcel';
 import { getRequestLocale } from '@/lib/request-localization';
+import { booksWithCarrier } from '@/lib/shipping-carriers';
 
 /**
  * Book a parcel with a carrier.
@@ -109,7 +110,7 @@ export async function POST(request: NextRequest) {
     if (orderId) {
         const { data } = await supabase
             .from('orders')
-            .select('id, seller_id, status, goship_code, to_goship, to_name, to_phone, to_address_detail, card:cards(*)')
+            .select('id, seller_id, status, goship_code, to_goship, to_name, to_phone, to_address_detail, metadata, card:cards(*)')
             .eq('id', orderId)
             .maybeSingle();
         const row = data as {
@@ -117,6 +118,7 @@ export async function POST(request: NextRequest) {
             id: string; seller_id: string; status: string; goship_code: string | null;
             to_goship: { city?: string; district?: string; ward?: string } | null;
             to_name: string | null; to_phone: string | null; to_address_detail: string | null;
+            metadata: { shipping_carrier?: string } | null;
         } | null;
 
         if (!row || row.seller_id !== user.id) {
@@ -125,6 +127,18 @@ export async function POST(request: NextRequest) {
         requireDimensions = !!row.card?.product_kind && row.card.product_kind !== 'card';
         if (row.goship_code) {
             return NextResponse.json({ error: 'Đơn này đã có vận đơn.', code: 'already_booked' }, { status: 409 });
+        }
+        // A meet-up has no waybill, and this is where that promise is kept
+        // rather than merely stated. The buyer paid nothing for shipping on
+        // this order, so a real carrier bill attached to it would be netted off
+        // the seller's payout in full at settlement — the seller would pay for
+        // a courier out of the sale, on an order both sides agreed to hand
+        // over in person.
+        if (!booksWithCarrier(row.metadata?.shipping_carrier)) {
+            return NextResponse.json({
+                error: 'Đơn này là giao tận tay nên không tạo vận đơn. Hẹn gặp người mua rồi bấm đã giao.',
+                code: 'hand_delivery',
+            }, { status: 409 });
         }
         if (row.status !== 'paid') {
             return NextResponse.json(

@@ -98,11 +98,16 @@ async function handlePOST(request: NextRequest) {
             accept_offers: body.accept_offers === true,
             min_offer_percent: body.accept_offers === true ? minOfferPercent : 0,
             // What the buyer pays to have this sent. Zero is free shipping and
-            // is kept as zero; anything outside the range becomes null and the
-            // listing falls back to the platform figure, because a listing must
-            // not fail to exist over a shipping price.
-            shipping_fee: isValidListingShippingFee(Number(body.shipping_fee))
-                ? Number(body.shipping_fee)
+            // is kept as zero; null means the listing follows the shop's fee
+            // table, and anything outside the range becomes null too, because a
+            // listing must not fail to exist over a shipping price.
+            //
+            // The typeof check is load-bearing: Number(null) is 0, so coercing
+            // first would turn "use the shop table" into free shipping — the
+            // seller's whole carrier bill, from a field they left alone.
+            shipping_fee: typeof body.shipping_fee === 'number'
+                && isValidListingShippingFee(body.shipping_fee)
+                ? body.shipping_fee
                 : null,
         };
 

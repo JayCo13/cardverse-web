@@ -101,11 +101,18 @@ export const resolveShippingTier = (
  * route rather than the dear end on any, because the seller picks the carrier
  * when booking and picks from prices they can see.
  *
- * It does not cover khai giá. SPX adds a flat 25,000đ once declared value goes
- * above 2,500,000đ, and that cost belongs to the seller of an expensive card,
- * not to every buyer of a cheap one.
+ * It does not cover khai giá; see khai-gia.ts, which is added on top.
  */
 export const PLATFORM_SHIPPING_FEE = 25_000;
+
+/**
+ * What the platform figure does NOT include: khai giá.
+ *
+ * The insurance a carrier charges for declared value is added separately, from
+ * the measured per-carrier model in khai-gia.ts, because it depends on what is
+ * in the parcel rather than on where it goes. Every fee in this file is
+ * postage.
+ */
 
 /** What a listing may charge. Zero is free shipping, and is a real answer. */
 export const LISTING_SHIPPING_FEE_MIN = 0;
@@ -125,8 +132,11 @@ export const isValidListingShippingFee = (value: unknown): value is number =>
  * to free: nobody chose free, and charging nothing because a field was empty
  * would hand the whole carrier bill to a seller who never agreed to it.
  */
-export const listingShippingFee = (fee: number | null | undefined): number =>
-  isValidListingShippingFee(fee) ? fee : PLATFORM_SHIPPING_FEE;
+export const listingShippingFee = (
+  fee: number | null | undefined,
+  /** What an unpriced listing costs — the shop's own cell, where one is known. */
+  fallback: number = PLATFORM_SHIPPING_FEE,
+): number => (isValidListingShippingFee(fee) ? fee : fallback);
 
 /**
  * One seller sends one parcel, so several cards bought from them are charged
@@ -134,5 +144,56 @@ export const listingShippingFee = (fee: number | null | undefined): number =>
  * seller expected the most postage. Free shipping on every card in the group
  * stays free.
  */
-export const parcelShippingFee = (fees: (number | null | undefined)[]): number =>
-  fees.length === 0 ? PLATFORM_SHIPPING_FEE : Math.max(...fees.map(listingShippingFee));
+export const parcelShippingFee = (
+  fees: (number | null | undefined)[],
+  fallback: number = PLATFORM_SHIPPING_FEE,
+): number =>
+  fees.length === 0 ? fallback : Math.max(...fees.map((fee) => listingShippingFee(fee, fallback)));
+
+
+/**
+ * A shop's price list: what it charges to send a parcel, per carrier per tier.
+ *
+ * Postage only. The khai giá a carrier adds for declared value is computed at
+ * checkout from khai-gia.ts and added to whichever of these applies, because it
+ * is the one part of a shipping bill that a seller cannot price in advance —
+ * GHN, BEST and J&T charge a percentage of the card's value with no ceiling, so
+ * any fixed number a seller typed would be short on the next dearer card.
+ *
+ * Stored twice per seller and read in this order: profiles.shipping_fees is
+ * what the seller set, profiles.goship_tier_fees is what GoShip quoted for
+ * their pickup address at declared value 0. The first overrides the second cell
+ * by cell, so a seller who edited one number keeps live prices for the other
+ * two.
+ */
+export type CarrierFeeTable = Partial<Record<ShippingTier, number>>;
+
+export type ShopFeeTable = Record<string, CarrierFeeTable>;
+
+const cell = (
+  table: ShopFeeTable | null | undefined,
+  carrier: string,
+  tier: ShippingTier,
+): number | null => {
+  const value = table?.[carrier]?.[tier];
+  return isValidListingShippingFee(value) ? value : null;
+};
+
+/**
+ * The postage for one parcel, before any listing decides to override it.
+ *
+ * Seller's own number first, the live quote second, the platform figure last.
+ */
+export const shopShippingFee = (input: {
+  set?: ShopFeeTable | null;
+  quoted?: ShopFeeTable | null;
+  carrier: string;
+  tier: ShippingTier;
+}): number =>
+  cell(input.set, input.carrier, input.tier)
+  ?? cell(input.quoted, input.carrier, input.tier)
+  ?? PLATFORM_SHIPPING_FEE;
+
+/** Is this a table this app can read at all? Shape only; cells validate above. */
+export const isShopFeeTable = (value: unknown): value is ShopFeeTable =>
+  !!value && typeof value === 'object' && !Array.isArray(value);

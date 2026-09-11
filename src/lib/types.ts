@@ -66,6 +66,14 @@ export interface Card {
   shippingCarriers?: string[];
   /** What the buyer pays to have this sent. 0 is free, null falls back. */
   shippingFee?: number | null;
+  /**
+   * What shipping might cost, before a delivery address is known.
+   *
+   * A span, because until checkout it genuinely is one — carrier, distance and
+   * the card's own value all move it. Null when the seller's shop has nothing
+   * priced yet and there is nothing honest to show.
+   */
+  shippingRange?: { min: number; max: number } | null;
 }
 
 export interface Offer {

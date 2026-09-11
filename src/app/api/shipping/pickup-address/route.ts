@@ -3,17 +3,38 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { quoteSellerTiers } from '@/lib/goship-tiers';
+import { goshipCities } from '@/lib/goship';
 import { SHIPPING_CARRIERS } from '@/lib/shipping-carriers';
 
 /**
- * The seller's pickup address, in GoShip's geography.
+ * The seller's pickup address — the ONE address a seller sets, in GoShip's
+ * geography.
  *
- * Separate from /api/shipping-addresses, which stores where a buyer receives
- * things in the 2025 structure — 34 provinces, no districts. This one holds
- * GoShip's pre-2025 ids and exists only to dispatch a courier. The two are
- * never joined: Ho Chi Minh City now contains wards named Bà Rịa and Vũng Tàu
- * that GoShip still files under a province of their own, so a name match books
- * a pickup in the wrong city and reports success.
+ * There used to be a second one. profiles.address_* held the same physical
+ * place in the 2025 structure, entered through a second form, and a seller had
+ * to fill in both. They were kept apart for a real reason — a name match
+ * between the two structures books a pickup in the wrong city and reports
+ * success, because Ho Chi Minh City now contains wards GoShip still files under
+ * Bà Rịa - Vũng Tàu — but the conclusion drawn from it was wrong. Nothing ever
+ * needed the 2025 version of the seller's own address: tracing every read of
+ * those columns found two uses and no third. One is a gate ("does this seller
+ * have somewhere to collect from"), the other is picking the distance tier from
+ * the province NAME.
+ *
+ * Both are answered better here. GoShip returns 63 provinces, all of which
+ * resolve against the region lists in shipping-fee.ts, because those lists were
+ * written in the pre-2025 names to begin with. And the tier exists to predict a
+ * carrier bill, which the carrier computes in exactly this geography — a seller
+ * whose ward moved into Ho Chi Minh City on paper is still billed as another
+ * province, and now quoted as one.
+ *
+ * So this route writes both: goship_pickup for booking, and the profile columns
+ * every existing gate already reads. No translation is involved; the province
+ * name is copied from the same list the seller picked their city from.
+ *
+ * Still separate from /api/shipping-addresses, which is where a user RECEIVES
+ * parcels. That one is genuinely a different address and stays in the 2025
+ * structure.
  *
  * Values must come from /api/shipping/address/*, which proxies GoShip's own
  * lists. The database has a CHECK on the shape, but shape is all it can see: an
@@ -86,10 +107,44 @@ async function handlePUT(request: NextRequest) {
     const parsed = parse(await request.json().catch(() => null));
     if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
+    // The province name behind the id the seller chose, read from the same list
+    // they chose it from. Not a translation and not a guess: if the lookup
+    // fails, the name is left alone rather than invented, because it is what
+    // decides the distance tier on every order this shop takes.
+    const cities = await goshipCities();
+    const city = cities.ok
+        ? (cities.data as { id: string | number; name: string }[])
+            .find((c) => String(c.id) === parsed.value.city)
+        : undefined;
+
+    if (!city) {
+        // A saved address with no province name would pass the shape checks and
+        // then fail every checkout with seller_shipping_origin_missing, which is
+        // a worse outcome than being asked to try again.
+        console.error('[Pickup] Could not resolve city', parsed.value.city, cities.ok ? 'not in list' : cities.reason);
+        return NextResponse.json(
+            { error: 'Không xác định được tỉnh/thành từ danh mục của đơn vị vận chuyển. Thử lại sau.' },
+            { status: 503 },
+        );
+    }
+
     // Own row only — RLS decides, and the id is never taken from the body.
+    //
+    // The profile columns are written in the same statement as goship_pickup so
+    // the two can never disagree about where a shop ships from. They are the
+    // carrier's ids, deliberately: city ids are six digits and a 2025 province
+    // code is one or two, so resolveShippingTier's id comparison cannot confuse
+    // the two code spaces the way it once confused GHN's ids with the official
+    // ones.
     const { error } = await supabase
         .from('profiles')
-        .update({ goship_pickup: parsed.value } as never)
+        .update({
+            goship_pickup: parsed.value,
+            address_province_id: Number(parsed.value.city),
+            address_province_name: city.name,
+            address_ward_code: parsed.value.ward,
+            address_detail: parsed.value.street,
+        } as never)
         .eq('id', user.id);
 
     if (error) {
@@ -108,15 +163,9 @@ async function handlePUT(request: NextRequest) {
     // saved: the fees fall back to whatever the seller typed, which is what
     // they were before.
     try {
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('address_province_name')
-            .eq('id', user.id)
-            .single();
-
         const fees = await quoteSellerTiers({
             pickup: { city: parsed.value.city, district: parsed.value.district },
-            provinceName: (profile as { address_province_name: string | null } | null)?.address_province_name,
+            provinceName: city.name,
             allowedCarriers: SHIPPING_CARRIERS.map((c) => c.code).filter((c) => c !== 'self'),
         });
 

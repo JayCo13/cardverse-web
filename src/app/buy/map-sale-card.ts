@@ -1,3 +1,4 @@
+import { listingShippingRange } from '@/lib/shipping-range';
 import type { Card } from '@/lib/types';
 import { standingFromProfile } from '@/lib/reputation';
 
@@ -53,5 +54,16 @@ export function mapSaleCard(c: any): Card {
           priceIsVnd: true, // Marketplace listings are entered in VND
           shippingCarriers: c.profiles?.shipping_carriers || [],
           shippingFee: typeof c.shipping_fee === 'number' ? c.shipping_fee : null,
+          // Computed here rather than in the card, because khai giá depends on
+          // what this listing is worth and the seller's table is on the row we
+          // already joined. No extra request, and no second opinion about the
+          // arithmetic living in a component.
+          shippingRange: listingShippingRange({
+              listingFee: typeof c.shipping_fee === 'number' ? c.shipping_fee : null,
+              set: c.profiles?.shipping_fees ?? null,
+              quoted: c.profiles?.goship_tier_fees ?? null,
+              carriers: c.profiles?.shipping_carriers ?? null,
+              declaredValue: Number(c.price ?? 0),
+          }),
     };
 }

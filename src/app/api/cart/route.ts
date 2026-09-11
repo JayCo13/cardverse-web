@@ -40,7 +40,9 @@ async function handleGET(request: NextRequest) {
           completed_transactions,
           address_district_id,
           address_ward_code,
-          shipping_carriers
+          shipping_carriers,
+          shipping_fees,
+          goship_tier_fees,
         )
       )
     `)
