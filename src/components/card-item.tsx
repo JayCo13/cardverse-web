@@ -4,7 +4,7 @@
 import React from "react";
 import { useVisibleCycle } from '@/hooks/use-visible-cycle';
 import type { Card as CardType } from "@/lib/types";
-import { formatShippingRange } from "@/lib/shipping-range";
+import { ShippingQuoteLabel } from "@/components/shipping-quote-label";
 import Image from "next/image";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -561,28 +561,13 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                 <HandCoins className="h-3.5 w-3.5 shrink-0" />
                 PayOS / Wallet
               </span>
-              {(() => {
-                // A span, not a number, and that is the honest answer here: the
-                // price moves with the carrier the buyer picks, how far the
-                // parcel goes and what the card is worth, and this grid knows
-                // only the last one. It settles to one figure at checkout, once
-                // there is an address to quote against.
-                //
-                // Free is worth saying in words rather than as "0đ": it is the
-                // thing a buyer scanning a grid is looking for.
-                const range = card.shippingRange ?? null;
-                const isFree = range?.min === 0 && range?.max === 0;
-                return (
-                  <span className="inline-flex items-center gap-1.5">
-                    <span>{copy.shipping}:</span>
-                    <span className={`font-medium ${isFree ? 'text-green-400' : 'text-foreground'}`}>
-                      {range === null
-                        ? copy.shippingAtCheckout
-                        : formatShippingRange(range, 'vi-VN', copy.freeShipping)}
-                    </span>
-                  </span>
-                );
-              })()}
+              {/* GoShip's real price to the buyer's saved address, or an
+                  invitation to add one. Never a span: there is no table to
+                  span any more, and a guess here would disagree with checkout. */}
+              <span className="inline-flex items-center gap-1.5">
+                <span>{copy.shipping}:</span>
+                <ShippingQuoteLabel sellerId={card.sellerId} cardId={card.id} listingFee={card.shippingFee} locale="vi-VN" />
+              </span>
             </div>
           </div>
 
@@ -629,26 +614,11 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
                   {card.sellerStanding && <ReputationBadge standing={card.sellerStanding} size="sm" />}
                 </div>
               </span>
-              {(() => {
-                // The compact twin of the row below, and it has the same job:
-                // never state one number before an address exists. Too narrow
-                // for a full span at this size, so it shows the floor with a
-                // trailing plus — which reads the same in every locale.
-                const range = card.shippingRange ?? null;
-                const isFree = range?.min === 0 && range?.max === 0;
-                const label = range === null
-                  ? copy.shippingAtCheckout
-                  : isFree
-                    ? copy.freeShipping
-                    : `${range.min.toLocaleString('vi-VN')}đ${range.min === range.max ? '' : '+'}`;
-                return (
-                  <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-medium md:hidden">
-                    <Truck className={`h-3.5 w-3.5 shrink-0 ${isFree ? 'text-green-400' : 'text-orange-400'}`} aria-hidden />
-                    <span className={isFree ? 'text-green-400' : 'text-foreground'}>{label}</span>
-                    <span className="sr-only">{copy.shipping}</span>
-                  </span>
-                );
-              })()}
+              <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-medium md:hidden">
+                <Truck className={`h-3.5 w-3.5 shrink-0 ${card.shippingFee === 0 ? 'text-green-400' : 'text-orange-400'}`} aria-hidden />
+                <ShippingQuoteLabel sellerId={card.sellerId} cardId={card.id} listingFee={card.shippingFee} compact locale="vi-VN" />
+                <span className="sr-only">{copy.shipping}</span>
+              </span>
             </div>
 
             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center border-0 bg-transparent p-0 md:block md:rounded-xl md:border md:border-amber-500/40 md:bg-gradient-to-br md:from-amber-500/10 md:to-amber-500/[0.02] md:p-3.5">

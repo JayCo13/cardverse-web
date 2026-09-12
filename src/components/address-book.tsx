@@ -162,6 +162,10 @@ export function AddressBook({ selectable = false, selectedId, onSelect, onAddres
     const emitList = useCallback((list: SavedAddress[]) => {
         setAddresses(list);
         onAddressesChange?.(list);
+        // The grid and the listing page quote shipping against the default
+        // address; tell them it may have changed without wiring a prop through
+        // every page that renders a card.
+        window.dispatchEvent(new Event('cardverse:addresses-updated'));
     }, [onAddressesChange]);
 
     const load = useCallback(async (autoSelect: boolean) => {

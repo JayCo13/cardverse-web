@@ -13,17 +13,18 @@
  * single quote, which made 'vtp' a shop setting that guaranteed a dead end at
  * booking time. If the account starts selling it, add it back with the rest.
  *
- * VNPost, BEST Express and hand delivery are a softer version of the same
- * removal: they are still defined, but `offerable: false` keeps them out of
- * every picker and quote. See that field, and read OFFERABLE_CARRIERS rather
- * than this list whenever the question is what a shop may ship with.
+ * VNPost and hand delivery are a softer version of the same removal: they are
+ * still defined, but `offerable: false` keeps them out of every picker and
+ * quote. See that field, and read OFFERABLE_CARRIERS rather than this list
+ * whenever the question is what a shop may ship with. BEST was retired with
+ * them on 2026-09-11 and offered again on 2026-09-12, when shipping moved to
+ * live GoShip quotes: a carrier's price and coverage are GoShip's answer per
+ * route now, so there is no fee table for a fourth carrier to complicate.
  *
  * Codes are stored in profiles.shipping_carriers (text[]), and are the app's
  * own — goshipCarrierToApp maps GoShip's `ghnv3` onto `ghn`, and the other four
  * happen to agree.
  */
-import type { ShippingTier } from '@/lib/shipping-fee';
-
 export type ShippingCarrierCode =
   | 'ghn'
   | 'vnp'
@@ -66,16 +67,6 @@ export interface ShippingCarrier {
    */
   deliveryDays: { min: number; max: number } | null;
   /**
-   * The distance tiers this carrier can actually serve.
-   *
-   * Every courier serves all three. Hand delivery serves one: two people meet
-   * somewhere they both agreed on, which is not a thing that happens between
-   * Ho Chi Minh City and Hanoi. Offering it to a buyer in another province is
-   * offering a delivery nobody can make, so checkout filters on this and the
-   * shop's fee table only asks for the cells it can be charged for.
-   */
-  tiers: readonly ShippingTier[];
-  /**
    * Does a courier get involved?
    *
    * False for hand delivery alone, and it answers two questions at once: what
@@ -92,23 +83,20 @@ export interface ShippingCarrier {
   /**
    * Can a seller still choose this carrier?
    *
-   * False retires a carrier from the product without deleting it. VNPost and
-   * BEST Express were retired on 2026-09-11; both stay in this list because
-   * orders already shipped with them still have to resolve a name, a logo and
-   * a tracking link, and dropping the entry would leave those orders rendering
-   * a bare code. What retiring removes is every place the carrier is offered
-   * forward: the seller's picker, the fee table, the quote, the default set a
-   * shop with no stated preference falls back to, and the range shown on a
-   * listing.
+   * False retires a carrier from the product without deleting it. VNPost was
+   * retired on 2026-09-11 (BEST with it, and brought back on 2026-09-12); the
+   * entry stays because orders already shipped with it still have to resolve
+   * a name, a logo and a tracking link, and dropping it would leave those
+   * orders rendering a bare code. What retiring removes is every place the
+   * carrier is offered forward: the seller's picker, the checkout quote, and
+   * the default set a shop with no stated preference falls back to.
    */
   offerable: boolean;
 }
 
-const ALL_TIERS: readonly ShippingTier[] = ['intra', 'inter', 'region'];
-
 export const SHIPPING_CARRIERS: ShippingCarrier[] = [
   // GHN reads the `order_code` parameter and fills its search box with it.
-  { code: 'ghn', short: 'GHN', name: 'Giao Hàng Nhanh (GHN)', logo: '/assets/carriers/ghn.svg', trackingUrl: 'https://donhang.ghn.vn/?order_code={code}', trackingPrefills: true, deliveryDays: { min: 2, max: 5 }, tiers: ALL_TIERS, booksWithCarrier: true, offerable: true },
+  { code: 'ghn', short: 'GHN', name: 'Giao Hàng Nhanh (GHN)', logo: '/assets/carriers/ghn.svg', trackingUrl: 'https://donhang.ghn.vn/?order_code={code}', trackingPrefills: true, deliveryDays: { min: 2, max: 5 }, booksWithCarrier: true, offerable: true },
   // The four below were added on 2026-09-10, when the carrier list was matched
   // to what GoShip actually quotes. Unlike GHN and SPX above, their tracking
   // links have NOT been through the browser check described above — each one is
@@ -126,22 +114,22 @@ export const SHIPPING_CARRIERS: ShippingCarrier[] = [
   //
   // Its lookup lives behind a hash route on a tab (#!?tab=tra-cuu-hanh-trinh),
   // which is a fragment the server never sees, so a code cannot ride in on it.
-  { code: 'vnp', short: 'VNPost', name: 'Vietnam Post (VNPost)', logo: '/assets/carriers/vnpost.svg', trackingUrl: 'https://www.vnpost.vn/vi/ca-nhan/chuyen-phat/chuyen-phat-trong-nuoc#!?tab=tra-cuu-hanh-trinh', trackingPrefills: false, deliveryDays: { min: 2, max: 5 }, tiers: ALL_TIERS, booksWithCarrier: true, offerable: false },
+  { code: 'vnp', short: 'VNPost', name: 'Vietnam Post (VNPost)', logo: '/assets/carriers/vnpost.svg', trackingUrl: 'https://www.vnpost.vn/vi/ca-nhan/chuyen-phat/chuyen-phat-trong-nuoc#!?tab=tra-cuu-hanh-trinh', trackingPrefills: false, deliveryDays: { min: 2, max: 5 }, booksWithCarrier: true, offerable: false },
   // SPX takes the WHOLE query string as the tracking number, not a named
   // parameter — it is doing the equivalent of location.search.slice(1). So
   // `?TrackingID=SPXVN0692...` searched for the literal text
   // "TrackingID=SPXVN0692..." and returned "Không có kết quả phù hợp". The code
   // goes straight after the `?` with no name in front of it.
-  { code: 'shopee', short: 'SPX', name: 'Shopee Express', logo: '/assets/carriers/shopee.svg', trackingUrl: 'https://spx.vn/track?{code}', trackingPrefills: true, deliveryDays: { min: 2, max: 4 }, tiers: ALL_TIERS, booksWithCarrier: true, offerable: true },
-  { code: 'best', short: 'BEST', name: 'BEST Express', logo: '/assets/carriers/best.svg', trackingUrl: 'https://best-inc.vn/track', trackingPrefills: false, deliveryDays: { min: 2, max: 5 }, tiers: ALL_TIERS, booksWithCarrier: true, offerable: false },
-  { code: 'jnt', short: 'J&T', name: 'J&T Express', logo: '/assets/carriers/jnt.svg', trackingUrl: 'https://jtexpress.vn/vi/tracking', trackingPrefills: false, deliveryDays: { min: 2, max: 5 }, tiers: ALL_TIERS, booksWithCarrier: true, offerable: true },
+  { code: 'shopee', short: 'SPX', name: 'Shopee Express', logo: '/assets/carriers/shopee.svg', trackingUrl: 'https://spx.vn/track?{code}', trackingPrefills: true, deliveryDays: { min: 2, max: 4 }, booksWithCarrier: true, offerable: true },
+  { code: 'best', short: 'BEST', name: 'BEST Express', logo: '/assets/carriers/best.svg', trackingUrl: 'https://best-inc.vn/track', trackingPrefills: false, deliveryDays: { min: 2, max: 5 }, booksWithCarrier: true, offerable: true },
+  { code: 'jnt', short: 'J&T', name: 'J&T Express', logo: '/assets/carriers/jnt.svg', trackingUrl: 'https://jtexpress.vn/vi/tracking', trackingPrefills: false, deliveryDays: { min: 2, max: 5 }, booksWithCarrier: true, offerable: true },
   // Hand delivery, retired on 2026-09-11. It priced at 0đ and sorted first, so
   // once the buyer stopped choosing a carrier every same-province order silently
   // became a meeting nobody had agreed to — and the range on the listing, which
   // deliberately excludes a 0đ nobody outside the province can have, could never
   // contain the figure such a buyer was actually charged. Orders already placed
   // this way still resolve their name and their free fee through this entry.
-  { code: 'self', short: 'Tự giao', name: 'Tự giao / Gặp mặt', logo: null, trackingUrl: null, trackingPrefills: false, deliveryDays: null, tiers: ['intra'], booksWithCarrier: false, offerable: false },
+  { code: 'self', short: 'Tự giao', name: 'Tự giao / Gặp mặt', logo: null, trackingUrl: null, trackingPrefills: false, deliveryDays: null, booksWithCarrier: false, offerable: false },
 ];
 
 /**
@@ -151,7 +139,7 @@ export const SHIPPING_CARRIERS: ShippingCarrier[] = [
  * history, which has to describe a parcel that already went out, reads the full
  * list. A code that stops being offerable therefore disappears from pickers and
  * quotes on the next load without touching any shop's stored preference — and
- * offeredCarriers filters what a shop saved through this list, so a shop that
+ * shipmentCarriers filters what a shop saved through this list, so a shop that
  * had ticked VNPost simply stops being quoted for it.
  */
 export const OFFERABLE_CARRIERS: ShippingCarrier[] = SHIPPING_CARRIERS.filter((c) => c.offerable);
@@ -172,16 +160,6 @@ export const getCarrier = (code: string): ShippingCarrier | undefined =>
  */
 export const booksWithCarrier = (code: string | null | undefined): boolean =>
   getCarrier(code ?? '')?.booksWithCarrier ?? true;
-
-/**
- * Can this carrier serve a delivery of this distance?
- *
- * An unknown code answers no. It is only ever asked about a carrier a shop
- * offers, and a shop offering something this app does not know about should not
- * have that treated as a yes.
- */
-export const carrierServesTier = (code: string | null | undefined, tier: ShippingTier): boolean =>
-  !!code && (getCarrier(code)?.tiers.includes(tier) ?? false);
 
 /** Estimated delivery window (days from pickup) for a carrier code, or null. */
 export const getDeliveryDays = (code: string | null | undefined): { min: number; max: number } | null =>

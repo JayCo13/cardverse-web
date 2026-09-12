@@ -3,7 +3,6 @@
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
-import { KHAI_GIA_FREE_ALLOWANCE } from '@/lib/khai-gia';
 import { PRODUCT_KINDS, PRODUCT_CONDITIONS, productCopy, flexibleProductsEnabled, type ProductKind, type ProductDetails } from '@/lib/product-listing';
 import { ProductFields } from '@/components/product-fields';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -50,7 +49,7 @@ import { CatalogCardPicker, catalogTabToCategory, type CatalogPick, type Catalog
 import { VnMarketPrice } from '@/components/vn-market-price';
 import { SearchableSetPicker } from '@/components/searchable-set-picker';
 import { SenderAddressForm } from '@/components/sender-address-form';
-import { ShopFeeTable } from '@/components/shop-fee-table';
+import { ShopShippingSetup } from '@/components/shop-shipping-setup';
 import { OFFERABLE_CARRIERS } from '@/lib/shipping-carriers';
 
 // Lazy-loaded: the picker dialog (and its catalog deps) only mount when opened,
@@ -164,17 +163,8 @@ type LocaleCopy = {
   acceptOffersDesc: string;
   bundleOfferNote: string;
   minOffer: string;
-  shippingTitle: string;
-  shippingHint: string;
-  flatFeeKhaiGiaWarning: string;
-  shopTableLabel: string;
-  shopTableHint: string;
-  shippingFeeLabel: string;
-  shippingFeeRequired: string;
-  shippingFeePlaceholder: string;
   freeShippingLabel: string;
   freeShippingHint: string;
-  shippingCostNote: string;
   acceptAllOffers: string;
   nearOriginalPrice: string;
   payoutNote: string;
@@ -222,8 +212,8 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       checkingSellerDesc: 'しばらくお待ちください。',
       kycNeeded: 'KYCが未承認です',
       kycNeededDesc: '出品する前にSellerページで本人確認を完了してください。',
-      addShipping: '送料を設定',
-      addShippingDesc: '発送に使う業者を選び、距離ごとの送料を確認します。空欄のままなら既定額（20,000/22,000/25,000đ）が適用されます。',
+      addShipping: '配送業者を選ぶ',
+      addShippingDesc: '発送に使う業者と、通常の荷物の種類を選びます。送料は購入者の住所に対するGoShipの実際の料金です。',
       stepPickup: '発送元住所',
       stepShipping: '送料',
       addPickup: '集荷住所を追加',
@@ -296,17 +286,8 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       acceptOffersDesc: '購入者が価格提案を送れるようにします',
       bundleOfferNote: 'オファーはセット全体（ロット単位）に適用され、カード単位ではありません。',
       minOffer: 'この割合未満のオファーは受けない',
-      shippingTitle: '送料',
-      shippingHint: '購入者が支払う金額です。実際の配送料がこれを上回った分は、あなたの受取額から差し引かれます。',
-      flatFeeKhaiGiaWarning: 'このカードは1,000,000đ以上です。表に従えば保険料は決済時に自動加算されますが、固定額にすると差額は受取額から差し引かれます。',
-      shopTableLabel: 'ショップの送料表に従う',
-      shopTableHint: '買い手の住所とカードの価値に応じて自動計算されます。出品ごとに固定したい場合はオフに。',
-      shippingFeeLabel: '送料（đ）',
-      shippingFeeRequired: '送料を入力するか、送料無料を選んでください。',
-      shippingFeePlaceholder: '例: 25.000',
       freeShippingLabel: '送料無料',
       freeShippingHint: '配送料は全額あなたの負担になります。商品価格に含めてください。',
-      shippingCostNote: '実際の配送料の目安：カード1枚（200g）でベトナム国内 15.400〜18.900đ。申告価格が 2.500.000đ を超えると保険料が約 25.000đ 加算されます。',
       acceptAllOffers: 'すべてのオファーを受ける',
       nearOriginalPrice: '元値に近いオファーのみ',
       payoutNote: '売上に関する注意',
@@ -354,8 +335,8 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       checkingSellerDesc: 'Vui lòng đợi trong giây lát.',
       kycNeeded: 'Bạn chưa được duyệt KYC',
       kycNeededDesc: 'Hoàn tất xác minh ở trang Seller để bắt đầu đăng bán.',
-      addShipping: 'Đặt giá vận chuyển',
-      addShippingDesc: 'Chọn đơn vị bạn nhận gửi và xem giá cho từng khoảng cách. Để trống một ô là dùng giá mặc định 20.000/22.000/25.000đ.',
+      addShipping: 'Chọn đơn vị vận chuyển',
+      addShippingDesc: 'Chọn hãng bạn nhận gửi và loại gói bạn thường gửi. Giá ship là giá GoShip thật theo địa chỉ người mua — bạn không cần đặt.',
       stepPickup: 'Địa chỉ gửi hàng',
       stepShipping: 'Giá vận chuyển',
       addPickup: 'Thêm địa chỉ lấy hàng',
@@ -428,17 +409,8 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       acceptOffersDesc: 'Cho phép người mua gửi đề nghị giá cho thẻ này',
       bundleOfferNote: 'Offer áp dụng cho CẢ LÔ (toàn bộ bundle), không theo từng thẻ.',
       minOffer: 'Không nhận offer dưới',
-      shippingTitle: 'Phí vận chuyển',
-      shippingHint: 'Số tiền người mua trả. Nếu cước thật cao hơn mức này, phần vượt sẽ trừ vào tiền bạn nhận được.',
-      flatFeeKhaiGiaWarning: 'Thẻ này từ 1.000.000đ trở lên. Nếu dùng bảng phí của shop, phí khai giá được cộng tự động khi thanh toán; đặt số cố định thì phần chênh trừ vào tiền bạn nhận.',
-      shopTableLabel: 'Dùng bảng phí của shop',
-      shopTableHint: 'Phí tự tính theo địa chỉ người mua và giá trị thẻ. Tắt nếu muốn đặt số cố định riêng cho thẻ này.',
-      shippingFeeLabel: 'Phí ship người mua trả (đ)',
-      shippingFeeRequired: 'Nhập phí ship bạn thu, hoặc chọn miễn phí vận chuyển.',
-      shippingFeePlaceholder: 'VD: 25.000',
       freeShippingLabel: 'Miễn phí vận chuyển',
       freeShippingHint: 'Bạn chịu toàn bộ cước. Nhớ tính sẵn vào giá bán.',
-      shippingCostNote: 'Cước thật tham khảo: một thẻ (200g) gửi trong nước 15.400–18.900đ tuỳ nơi gửi. Khai giá trên 2.500.000đ hãng thu thêm khoảng 25.000đ bảo hiểm.',
       acceptAllOffers: 'Nhận mọi offer',
       nearOriginalPrice: 'Chỉ nhận gần giá gốc',
       payoutNote: 'Lưu ý về tiền bán',
@@ -485,8 +457,8 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
     checkingSellerDesc: 'Please wait a moment.',
     kycNeeded: 'KYC has not been approved',
     kycNeededDesc: 'Complete verification on the Seller page before listing cards.',
-    addShipping: 'Set your shipping prices',
-    addShippingDesc: 'Pick the carriers you ship with and check the price for each distance. An empty box uses the default 20,000/22,000/25,000đ.',
+    addShipping: 'Pick your carriers',
+    addShippingDesc: 'Pick the carriers you ship with and the parcel you usually send. Postage is GoShip’s real price for the buyer’s address — nothing for you to set.',
     stepPickup: 'Pickup address',
     stepShipping: 'Shipping prices',
     addPickup: 'Add pickup address',
@@ -559,17 +531,8 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
     acceptOffersDesc: 'Allow buyers to send price offers for this card',
     bundleOfferNote: 'Offers apply to the WHOLE LOT (entire bundle), not per card.',
     minOffer: 'Do not accept offers below',
-    shippingTitle: 'Shipping',
-    shippingHint: 'What the buyer pays. If the carrier costs more than this, the difference comes off your payout.',
-    flatFeeKhaiGiaWarning: 'This card is worth 1,000,000đ or more. The shop table adds khai giá automatically at checkout; a flat number does not, and the shortfall comes off your payout.',
-    shopTableLabel: "Use the shop's fee table",
-    shopTableHint: 'Priced from the buyer’s address and what the card is worth. Turn off to fix one number for this card.',
-    shippingFeeLabel: 'Shipping charged to the buyer (đ)',
-    shippingFeeRequired: 'Enter the shipping you charge, or tick free shipping.',
-    shippingFeePlaceholder: 'e.g. 25.000',
     freeShippingLabel: 'Free shipping',
     freeShippingHint: 'You carry the whole carrier bill. Price it into the item.',
-    shippingCostNote: 'For reference: one card (200g) costs 15,400–18,900đ to send anywhere in Vietnam. Declared value above 2,500,000đ adds about 25,000đ of insurance.',
     acceptAllOffers: 'Accept all offers',
     nearOriginalPrice: 'Only near original price',
     payoutNote: 'Seller payout note',
@@ -688,24 +651,8 @@ const getFormSchema = (copy: LocaleCopy, nonCard = false) => z.object({
   ),
   description: z.string().min(DESCRIPTION_MIN, { message: copy.descriptionMin }).max(DESCRIPTION_MAX, { message: copy.descriptionMax }),
   images: z.array(z.instanceof(File)).min(1, copy.minImages).max(4, copy.maxImages),
-  // Shipping the buyer pays. Free is a choice, so 0 is valid and distinct
-  // from "not answered" — the form always sends a number.
-  // Absent, not zero: a listing that says nothing follows the shop's table,
-  // which is a different answer from free shipping and costs the seller far
-  // less when they meant to say nothing at all.
-  useShopTable: z.boolean().default(true),
+  // Unchecked follows GoShip's live rate; checked means the seller covers it.
   freeShipping: z.boolean().default(false),
-  shippingFee: z.preprocess(
-    (a) => {
-      if (typeof a === 'number') return a;
-      if (typeof a === 'string') {
-        const digits = a.replace(/[^\d]/g, '');
-        return digits === '' ? undefined : parseInt(digits, 10);
-      }
-      return undefined;
-    },
-    z.number().int().min(0).max(99999).optional(),
-  ),
   // Offer settings
   acceptOffers: z.boolean().default(false),
   minOfferPercent: z.preprocess(
@@ -735,12 +682,6 @@ const getFormSchema = (copy: LocaleCopy, nonCard = false) => z.object({
   // Publisher: bắt buộc theo dropdown ở category thường; ở category "Khác"
   // (free-text) thì thay bằng ô freePublisher. Bundle dùng pool nhiều giá trị
   // (validate riêng), nên bỏ qua hai ràng buộc này.
-  // Shipping used to arrive pre-filled with the platform's 25.000đ. A seller
-  // who never looked at the field still shipped a listing that claimed they had
-  // chosen that number, so the figure on the card was the platform's opinion
-  // wearing the seller's name. It is asked for now.
-  .refine(data => data.useShopTable || data.freeShipping || data.shippingFee !== undefined,
-    { message: copy.shippingFeeRequired, path: ['shippingFee'] })
   .refine(data => {
     if (nonCard || data.isBundle || isFreeText(data.category)) return true;
     return data.publisher !== undefined && data.publisher !== '';
@@ -794,10 +735,9 @@ export default function CreateListingPage() {
   /**
    * Has this shop said which carriers it ships with?
    *
-   * Deliberately not "has it priced anything": an empty cell is a real price
-   * (DEFAULT_SHOP_TIER_FEES), so demanding numbers would rebuild the gate the
-   * database just dropped. What is worth asking once is which couriers the
-   * seller actually hands parcels to.
+   * The only shipping question a seller answers: postage is GoShip's price at
+   * checkout, so there is nothing to price. What is worth asking once is which
+   * couriers the seller actually hands parcels to.
    */
   const [hasShippingTable, setHasShippingTable] = useState(false);
   const supabase = useSupabase();
@@ -837,9 +777,7 @@ export default function CreateListingPage() {
       isBundle: false,
       acceptOffers: false,
       minOfferPercent: 0,
-      useShopTable: true,
       freeShipping: false,
-      shippingFee: undefined,
       freePublisher: "",
       freeSetName: "",
       freeSeason: "",
@@ -1494,14 +1432,9 @@ export default function CreateListingPage() {
         grading_company: values.gradingCompany,
         grade: values.gradingCompany !== 'raw' ? values.grade : null,
         finish: values.finish,
-        // Three distinct answers, and null is one of them. Null follows the
-        // shop's fee table, which moves with the buyer's address and the card's
-        // value — and carries khai giá, which is why a dear card quoted from
-        // the table costs more to send than a cheap one. Zero is free shipping.
-        // A number is the seller opting out of both for this listing.
-        shipping_fee: values.useShopTable
-          ? null
-          : (values.freeShipping ? 0 : values.shippingFee),
+        // Null follows GoShip's live rate; zero means the seller offers free
+        // shipping and covers the carrier charge from their payout.
+        shipping_fee: values.freeShipping ? 0 : null,
       };
 
       if (nonCard) Object.assign(cardData, {
@@ -1709,7 +1642,7 @@ export default function CreateListingPage() {
                 onSaved={() => setHasPickupAddress(true)}
               />
             ) : (
-              <ShopFeeTable requireCarrier onSaved={() => setHasShippingTable(true)} />
+              <ShopShippingSetup requireCarrier onSaved={() => setHasShippingTable(true)} />
             )}
           </div>
         </div>
@@ -2684,40 +2617,9 @@ export default function CreateListingPage() {
                 )}
               />
 
-              {/* Shipping the seller sets. Its own card rather than a line in
-                  the price group: it is the one number here the seller pays for
-                  getting wrong, since anything the carrier charges above it
-                  comes off their payout. */}
+              {/* GoShip is the default. The seller only chooses whether to cover
+                  that charge and offer free shipping for this listing. */}
               <div className="space-y-3 rounded-lg border border-border/60 bg-background/50 p-4">
-                <div>
-                  <p className="text-sm font-medium">{copy.shippingTitle}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{copy.shippingHint}</p>
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name="useShopTable"
-                  render={({ field }) => (
-                    <FormItem className="flex items-center justify-between gap-3 space-y-0">
-                      <div className="min-w-0">
-                        <FormLabel className="text-sm font-medium">{copy.shopTableLabel}</FormLabel>
-                        <p className="mt-0.5 text-xs text-muted-foreground">{copy.shopTableHint}</p>
-                      </div>
-                      <FormControl>
-                        <Switch checked={field.value} onCheckedChange={field.onChange} />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                {!form.watch('useShopTable') && Number(watchedPrice) >= KHAI_GIA_FREE_ALLOWANCE && (
-                  <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-500">
-                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span>{copy.flatFeeKhaiGiaWarning}</span>
-                  </div>
-                )}
-
-                {!form.watch('useShopTable') && (
                 <FormField
                   control={form.control}
                   name="freeShipping"
@@ -2735,36 +2637,6 @@ export default function CreateListingPage() {
                     </FormItem>
                   )}
                 />
-
-                )}
-
-                {!form.watch('useShopTable') && !form.watch('freeShipping') && (
-                  <FormField
-                    control={form.control}
-                    name="shippingFee"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{copy.shippingFeeLabel}</FormLabel>
-                        <FormControl>
-                          <Input
-                            inputMode="numeric"
-                            placeholder={copy.shippingFeePlaceholder}
-                            value={field.value === undefined ? '' : Number(field.value).toLocaleString('vi-VN')}
-                            onChange={(e) => {
-                              const digits = e.target.value.replace(/[^\d]/g, '');
-                              field.onChange(digits === '' ? undefined : parseInt(digits, 10));
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
-
-                <p className="border-t border-border/60 pt-3 text-xs leading-5 text-muted-foreground">
-                  {nonCard ? pc.shipping : copy.shippingCostNote}
-                </p>
               </div>
 
               {isBundle && (

@@ -10,6 +10,7 @@ import { AuthModal, AuthModalProvider } from '@/components/auth-modal';
 import { TransactionLockProvider } from '@/components/transaction-lock-provider';
 import { CurrencyProvider } from '@/contexts/currency-context';
 import { CardCacheProvider } from '@/contexts/card-cache-context';
+import { BuyerShippingQuotesProvider } from '@/components/buyer-shipping-quotes';
 import { AuthReady } from '@/components/auth-ready';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
@@ -89,6 +90,7 @@ export default function RootLayout({
                   <SubscriptionProvider>
                   <TransactionLockProvider>
                     <CardCacheProvider>
+                    <BuyerShippingQuotesProvider>
                       {/*
                         * Header and Footer live here, not in each page.
                         *
@@ -115,6 +117,7 @@ export default function RootLayout({
                         </div>
                         <Footer />
                       </div>
+                    </BuyerShippingQuotesProvider>
                     </CardCacheProvider>
                   </TransactionLockProvider>
                   <AuthModal />

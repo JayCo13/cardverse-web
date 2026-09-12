@@ -6,7 +6,8 @@ import { getPayOS } from '@/lib/payos';
 import { matchBundleSelection, type BundleSelection } from '@/lib/bundle';
 import { randomInt } from 'crypto';
 import { hashFinancialRequest, stableFinancialUuid } from '@/lib/financial-idempotency';
-import { quoteConfiguredShipping } from '@/lib/verified-shipping';
+import { CheckoutShippingError, quoteCheckoutShipping, shippingQuoteRecord, type CheckoutShippingQuote } from '@/lib/verified-shipping';
+import { CheckoutAddressError, checkoutAddressStatus, loadCheckoutAddress } from '@/lib/checkout-address';
 import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link-claim';
 import { translateRequest } from '@/lib/request-localization';
 import { walletCheckoutError } from '@/lib/wallet-checkout-error';
@@ -71,37 +72,7 @@ async function handlePOST(request: NextRequest) {
 
         const body = await request.json();
         const idempotencyKey = request.headers.get('idempotency-key');
-        const {
-            card_id, payment_method, shipping_address,
-            shipping_carrier: clientCarrier,
-            to_name, to_phone,
-            to_district_id, to_district_name,
-            to_province_id, to_province_name,
-            to_ward_code, to_ward_name,
-            to_address_detail,
-            to_goship,
-        } = body;
-
-        /**
-         * GoShip's own ids for the delivery address, if the buyer picked them.
-         *
-         * Not derived from to_province_id / to_ward_code and never can be:
-         * those are the 2025 structure and GoShip routes on the pre-2025 one.
-         * Optional for now — an order without them simply cannot have a waybill
-         * booked through GoShip until the buyer supplies them.
-         */
-        const goshipDestination = (() => {
-            const g = to_goship as { city?: unknown; district?: unknown; ward?: unknown } | null | undefined;
-            if (!g || typeof g !== 'object') return null;
-            const id = /^[0-9]{1,12}$/;
-            const city = String(g.city ?? '').trim();
-            const district = String(g.district ?? '').trim();
-            const ward = String(g.ward ?? '').trim();
-            // All three or none: a partial set looks bookable and is not.
-            return id.test(city) && id.test(district) && id.test(ward)
-                ? { city, district, ward }
-                : null;
-        })();
+        const { card_id, payment_method, shipping_carrier: clientCarrier, address_id } = body;
 
         if (!card_id || !payment_method) {
             return NextResponse.json({ error: 'card_id and payment_method are required' }, { status: 400 });
@@ -114,19 +85,21 @@ async function handlePOST(request: NextRequest) {
             return NextResponse.json({ error: 'Idempotency-Key is required' }, { status: 400 });
         }
 
-        // District is not part of a complete address any more: the tier was
-        // abolished on 1/7/2025, so the picker cannot supply one.
-        if (
-            !to_name ||
-            !to_phone ||
-            !to_province_id ||
-            !to_province_name ||
-            !to_ward_code ||
-            !to_ward_name ||
-            !to_address_detail
-        ) {
-            return NextResponse.json({ error: 'Shipping address is incomplete' }, { status: 400 });
+        // The address is the buyer's saved row, read here — never the text and
+        // ids the browser sent, which could name two different places and price
+        // the parcel for the cheaper one. See checkout-address.ts.
+        let address;
+        try {
+            address = await loadCheckoutAddress(user.id, address_id);
+        } catch (addressError) {
+            const code = addressError instanceof CheckoutAddressError ? addressError.code : 'address_read_failed';
+            return NextResponse.json({ error: 'Shipping address is missing or unusable.', code }, { status: checkoutAddressStatus(code) });
         }
+        const goshipDestination = address.goship;
+        const {
+            shipping_address, to_name, to_phone, to_district_id, to_district_name,
+            to_province_id, to_province_name, to_ward_code, to_ward_name, to_address_detail,
+        } = address;
 
         const selection: BundleSelection[] = Array.isArray(body.bundle_selection)
             ? body.bundle_selection.map((item: unknown) => {
@@ -140,6 +113,7 @@ async function handlePOST(request: NextRequest) {
             user_id: user.id,
             card_id,
             payment_method,
+            address_id: address.id,
             shipping_address: shipping_address || null,
             shipping_carrier: clientCarrier || null,
             to_name,
@@ -269,31 +243,36 @@ async function handlePOST(request: NextRequest) {
             amount = Number(card.price);
         }
 
-        // Never trust a fee echoed by the browser. The browser only chooses an
-        // enabled carrier; the server resolves the tier and amount again from
-        // the seller's stored shipping configuration.
-        let shippingFee: number;
+        // Never trust a fee echoed by the browser. The browser only says which
+        // carrier the buyer picked; GoShip prices that carrier on this route
+        // again here, and that is the number billed.
+        let shippingQuote: CheckoutShippingQuote;
         try {
-            shippingFee = await quoteConfiguredShipping({
+            const quotes = await quoteCheckoutShipping([{
                 sellerId: card.seller_id,
                 cardIds: [card.id],
-                carrier: String(clientCarrier || ''),
-                toProvinceId: Number(to_province_id),
-                toProvinceName: String(to_province_name),
-            });
+                carrier: clientCarrier ? String(clientCarrier) : undefined,
+                to: { city: goshipDestination.city, district: goshipDestination.district },
+            }]);
+            shippingQuote = quotes.get(card.seller_id)!;
         } catch (shippingError) {
-            const code = shippingError instanceof Error ? shippingError.message : 'shipping_fee_not_configured';
+            const known = shippingError instanceof CheckoutShippingError;
+            const code = known ? shippingError.code : 'shipping_quote_failed';
+            if (!known) console.error('Buy shipping quote failed:', shippingError);
             const invalidCarrier = code === 'invalid_shipping_carrier';
             return NextResponse.json(
                 {
                     error: invalidCarrier
                         ? 'The selected shipping carrier is not available.'
-                        : 'The seller shipping fee is not configured for this address.',
-                    code: invalidCarrier ? 'invalid_carrier' : 'shipping_fee_not_configured',
+                        : code === 'shipping_quote_failed'
+                            ? 'Could not quote shipping right now.'
+                            : 'The seller cannot ship to this address.',
+                    code: invalidCarrier ? 'invalid_carrier' : code,
                 },
-                { status: invalidCarrier ? 400 : 409 },
+                { status: invalidCarrier ? 400 : code === 'shipping_quote_failed' ? 503 : 409 },
             );
         }
+        const shippingFee = shippingQuote.fee;
 
         const totalPaid = amount + shippingFee; // Buyer pays selected price + shipping fee
 
@@ -320,7 +299,12 @@ async function handlePOST(request: NextRequest) {
                     bundle_items_before: card.bundle_items || [],
                     bundle_inventory_state: 'reserved',
                 } : {}),
-                ...(clientCarrier ? { shipping_carrier: String(clientCarrier) } : {}),
+                // The carrier the buyer picked (or the only one, for a
+                // seller-priced listing), the parcel and the GoShip quote. A
+                // trigger lifts these into their own columns on insert.
+                shipping_carrier: shippingQuote.carrier,
+                parcel_preset: shippingQuote.parcelPreset,
+                shipping_quote: shippingQuoteRecord(shippingQuote, { city: goshipDestination.city, district: goshipDestination.district }),
             },
             ...(isBundle ? { bundle_items_before: card.bundle_items || [] } : {}),
             shipping_address: shipping_address || null,
@@ -416,7 +400,7 @@ async function handlePOST(request: NextRequest) {
                     amount,
                     shippingFee,
                     totalPaid,
-                    carrierName: clientCarrier ? String(clientCarrier) : null,
+                    carrierName: shippingQuote.carrier,
                     shippingAddress: destination || null,
                 }),
                 sendOrderPlacedToSeller(sellerProfile?.email || '', {

@@ -1,10 +1,17 @@
 /**
  * What a carrier charges to insure a parcel for its declared value.
  *
- * Khai giá is the second half of a shipping bill and the half the tier table
- * cannot see: it does not move with distance at all, only with what is inside
- * the box. A 200g card costs 15,385–31,450đ to send anywhere in Vietnam; the
- * same card declared at 10,000,000đ costs up to 55,000đ more than that.
+ * Since 2026-09-12 this is NOT part of what the buyer pays. Khai giá is the
+ * sender's insurance — the carrier pays the sender if the parcel is lost — and
+ * the buyer is already made whole by escrow. So it is the seller's decision at
+ * booking, off by default, and what they choose comes off their own payout
+ * (see /api/shipping/book). The models below are kept for two jobs: to show a
+ * seller what a declaration will cost before they ask GoShip, and as the
+ * fallback when a booking cannot quote the same parcel twice to measure it.
+ *
+ * Khai giá does not move with distance at all, only with what is inside the
+ * box. A 200g card costs 15,385–31,450đ to send anywhere in Vietnam; the same
+ * card declared at 10,000,000đ costs up to 55,000đ more than that.
  *
  * MEASURED, not documented. Every figure below came from GoShip's live /rates
  * on 2026-09-10, 200g parcel, both Ho Chi Minh City → Hanoi and inside Ho Chi
@@ -85,15 +92,83 @@ const MODELS: Record<string, KhaiGiaModel> = {
 export const khaiGiaModel = (carrier: string): KhaiGiaModel => MODELS[carrier] ?? [];
 
 /**
- * Below this declared value, no carrier charges anything.
+ * What a declaration actually buys, per carrier, and what proof it takes.
  *
- * Derived rather than typed, so it cannot drift from the table above. Used by
- * the listing form to decide whether a flat, all-in shipping price is a risk
- * worth warning about.
+ * Read from the carriers' published compensation policies on 2026-09-12 (SPX's
+ * current one took effect 2026-06-27). Every carrier pays the declared value
+ * for a lost parcel, but each caps it and each wants a different kind of proof
+ * of what the parcel was worth — and that is the part a card seller has to
+ * know, because a marketplace order with a bank receipt is proof to SPX, weak
+ * proof to J&T, and no proof at all to GHN or BEST, which want an invoice.
+ *
+ *   - `invoice`      cap when a VAT / sales invoice is produced
+ *   - `transaction`  cap when the proof is a transaction screenshot or bank
+ *                    receipt matching sender, receiver, goods and value;
+ *                    null = not accepted, treated as no proof
+ *   - `noProof`      cap with a declaration but nothing to show for it;
+ *                    'fee_x4' = four times the postage
+ *   - `undeclared`   what a parcel declared at 0 gets
+ *
+ * Shown to the seller next to the fee so the choice is an informed one — a
+ * 50,000đ premium on a 10,000,000đ card that GHN will settle at 5,000,000đ,
+ * and only against an invoice, is a decision, not a default.
  */
-export const KHAI_GIA_FREE_ALLOWANCE = Math.min(
-    ...Object.values(MODELS).flatMap((bands) => (bands.length ? [bands[0].from] : [])),
-);
+export type CompensationCap = number | 'fee_x4' | null;
+
+export type CarrierCompensation = {
+    invoice: number | null;
+    transaction: number | null;
+    noProof: CompensationCap;
+    undeclared: CompensationCap;
+    source: string;
+    checkedAt: string;
+};
+
+export const CARRIER_COMPENSATION: Record<string, CarrierCompensation> = {
+    ghn: {
+        invoice: 5_000_000, transaction: null, noProof: 'fee_x4', undeclared: 'fee_x4',
+        source: 'https://ghn.vn/pages/chinh-sach-boi-thuong-cua-ghn', checkedAt: '2026-09-12',
+    },
+    shopee: {
+        invoice: 20_000_000, transaction: 20_000_000, noProof: 2_000_000, undeclared: 'fee_x4',
+        source: 'https://spx.vn/en/shipping/quy-dinh-boi-thuong.html', checkedAt: '2026-09-12',
+    },
+    jnt: {
+        invoice: 30_000_000, transaction: 1_000_000, noProof: 500_000, undeclared: 'fee_x4',
+        source: 'https://jtexpress.vn/vi/chinh-sach', checkedAt: '2026-09-12',
+    },
+    best: {
+        invoice: 10_000_000, transaction: null, noProof: 'fee_x4', undeclared: 1_000_000,
+        source: 'https://giaohangtotnhat.vn/chinh-sach-boi-thuong/', checkedAt: '2026-09-12',
+    },
+};
+
+export const carrierCompensation = (carrier: string): CarrierCompensation | null => CARRIER_COMPENSATION[carrier] ?? null;
+
+/**
+ * What the seller would get back for this parcel, by the proof they can show.
+ *
+ * `declared` is what they typed; `postage` is the carrier's fee, for the
+ * "four times the fee" floors. Each figure is min(declared, cap) — a carrier
+ * never pays more than was declared.
+ */
+export function compensationFor(carrier: string, declared: number, postage: number): {
+    invoice: number | null; transaction: number | null; noProof: number | null; undeclared: number | null;
+} | null {
+    const policy = carrierCompensation(carrier);
+    if (!policy) return null;
+    const value = Math.max(0, Math.round(declared));
+    const settle = (cap: CompensationCap, atMostDeclared: boolean): number | null =>
+        cap === null ? null
+            : cap === 'fee_x4' ? Math.round(postage * 4)
+                : atMostDeclared ? Math.min(value, cap) : cap;
+    return {
+        invoice: policy.invoice === null ? null : Math.min(value, policy.invoice),
+        transaction: policy.transaction === null ? null : Math.min(value, policy.transaction),
+        noProof: settle(policy.noProof, true),
+        undeclared: settle(policy.undeclared, false),
+    };
+}
 
 /** The band a parcel of this value falls in, or null when it is below them all. */
 export const khaiGiaBand = (carrier: string, declaredValue: number): KhaiGiaBand | null => {

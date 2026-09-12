@@ -834,6 +834,8 @@ export const en = {
   notification_order_new_message: 'The buyer completed payment. Prepare the order for shipping.',
   notification_order_shipped_title: 'Order shipped',
   notification_order_shipped_message: '',
+  notification_order_carrier_changed_title: 'Carrier changed',
+  notification_order_carrier_changed_message: 'Your parcel ships with {to} instead of {from}, which no longer serves this route. The shipping you paid does not change.',
   notification_order_completed_title: 'Order completed',
   notification_order_completed_message: 'The funds were released.',
   notification_order_refunded_title: 'Order refunded',

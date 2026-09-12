@@ -8,7 +8,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Wallet, CreditCard, Loader2, CheckCircle, ShieldCheck, ExternalLink, Truck } from 'lucide-react';
 import { useAuth } from '@/lib/supabase';
-import { cheapestShippingFee, fetchShippingOptions, ShippingOptionsError } from '@/lib/shipping-options-client';
+import { fetchShippingOptions, ShippingOptionsError, type ShippingOption } from '@/lib/shipping-options-client';
+import { getCarrier } from '@/lib/shipping-carriers';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
 import { AddressBook, type SavedAddress } from '@/components/address-book';
@@ -64,6 +65,12 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
         paymentDetails: '支払い詳細',
         cardAmount: 'カード代金',
         shippingFee: '送料',
+        freeShipping: '送料無料',
+        pickCarrier: '配送業者を選択',
+        carrierExpected: '到着予定 {expected}',
+        carrierSuccess: '配達成功率 {percent}%',
+        allInListingFee: '販売者設定の一括送料',
+        quoteUnavailable: '現在送料を計算できません。しばらくしてからお試しください。',
         chooseAddressFee: '住所を選択して計算',
         total: '合計支払い',
         paymentMethod: '支払い方法',
@@ -100,6 +107,12 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
           paymentDetails: 'Chi tiết thanh toán',
           cardAmount: 'Tiền thẻ',
           shippingFee: 'Phí vận chuyển',
+          freeShipping: 'Miễn phí',
+          pickCarrier: 'Chọn đơn vị vận chuyển',
+          carrierExpected: 'Dự kiến {expected}',
+          carrierSuccess: '{percent}% giao thành công',
+          allInListingFee: 'Phí trọn gói do người bán đặt',
+          quoteUnavailable: 'Chưa tính được phí ship lúc này. Thử lại sau ít phút.',
           chooseAddressFee: 'Chọn địa chỉ để tính',
           total: 'Tổng thanh toán',
           paymentMethod: 'Phương thức thanh toán',
@@ -135,6 +148,12 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
           paymentDetails: 'Payment details',
           cardAmount: 'Card price',
           shippingFee: 'Shipping fee',
+          freeShipping: 'Free',
+          pickCarrier: 'Pick a carrier',
+          carrierExpected: 'Expected {expected}',
+          carrierSuccess: '{percent}% delivered',
+          allInListingFee: 'All-in fee set by the seller',
+          quoteUnavailable: 'Shipping cannot be quoted right now. Try again in a few minutes.',
           chooseAddressFee: 'Choose an address to calculate',
           total: 'Total payment',
           paymentMethod: 'Payment method',
@@ -164,7 +183,13 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
 
   // Shipping — address comes from the buyer's TikTok-style address book.
   const [selectedAddress, setSelectedAddress] = useState<SavedAddress | null>(null);
-  const [shippingFee, setShippingFee] = useState<number | null>(null);
+  // Every carrier GoShip returns for this route that the seller enables,
+  // cheapest first; the buyer picks one. A seller-priced listing comes back as
+  // exactly one option with nothing to pick.
+  const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>([]);
+  const [chosenCarrier, setChosenCarrier] = useState<string | null>(null);
+  const shippingQuote = shippingOptions.find(o => o.carrier === chosenCarrier) ?? shippingOptions[0] ?? null;
+  const shippingFee = shippingQuote?.fee ?? null;
   const [loadingFee, setLoadingFee] = useState(false);
   const [feeError, setFeeError] = useState('');
   // Guards against a slow answer for an old address landing after a fast one
@@ -184,7 +209,8 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
   useEffect(() => {
     if (!open) return;
     setSelectedAddress(null);
-    setShippingFee(null);
+    setShippingOptions([]);
+    setChosenCarrier(null);
     setFeeError('');
     // Cards chosen in the pre-checkout dialog; fall back to all if none passed.
     setSelectedBundle(
@@ -222,44 +248,49 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
    * seller's own price — the dialog and the charge disagreed, and the charge
    * won. Now both ends call the same resolver.
    *
-   * The buyer picks no carrier: the cheapest the seller offers is what they
-   * pay, which is the rule the buy route applies when an order arrives with no
-   * carrier named.
+   * GoShip prices the route for every carrier the seller enables; the buyer
+   * picks one and the buy route bills that carrier, re-quoted, by code.
    */
   const calculateFee = useCallback(async (address: SavedAddress | null) => {
     const requestId = ++feeRequestRef.current;
-    setShippingFee(null);
+    setShippingOptions([]);
     setFeeError('');
 
     if (!address || !card) return;
+    // An address saved before the book moved to GoShip's geography cannot be
+    // quoted; the book flags it and opens the form instead of selecting it.
+    if (!address.goship) { setFeeError(copy.feeError); return; }
 
     setLoadingFee(true);
     try {
       const options = await fetchShippingOptions({
-        toProvinceId: Number(address.province_id),
-        toProvinceName: String(address.province_name || ''),
+        to: { city: address.goship.city, district: address.goship.district },
         sellerId: card.seller_id,
         // A bundle is one listing and one parcel, quoted by its listing id —
         // the same id /api/marketplace/buy quotes when it charges for it.
         cardIds: [card.id],
       });
       if (requestId !== feeRequestRef.current) return;
-      setShippingFee(cheapestShippingFee(options));
+      setShippingOptions(options);
+      // Keep the buyer's pick across an address change when it still applies.
+      setChosenCarrier(prev => (prev && options.some(o => o.carrier === prev) ? prev : options[0]?.carrier ?? null));
     } catch (err) {
       if (requestId !== feeRequestRef.current) return;
       const code = err instanceof ShippingOptionsError ? err.code : '';
-      setShippingFee(null);
+      setShippingOptions([]);
       setFeeError(
         code === 'seller_does_not_ship_here' ? copy.sellerNoRoute
           : code === 'seller_shipping_origin_missing' || code === 'seller_shipping_configuration_missing'
             ? copy.shippingNotConfigured
-            : copy.feeError,
+            : code === 'shipping_quote_failed'
+              ? copy.quoteUnavailable
+              : copy.feeError,
       );
       if (!code) console.error('Fee calculation error:', err);
     } finally {
       if (requestId === feeRequestRef.current) setLoadingFee(false);
     }
-  }, [card, copy.feeError, copy.sellerNoRoute, copy.shippingNotConfigured]);
+  }, [card, copy.feeError, copy.quoteUnavailable, copy.sellerNoRoute, copy.shippingNotConfigured]);
 
   const handleSelectAddress = useCallback((address: SavedAddress | null) => {
     setSelectedAddress(address);
@@ -297,6 +328,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
         cardId: card.id,
         paymentMethod,
         shippingFee,
+        shippingCarrier: shippingQuote?.carrier ?? null,
         selectedBundle,
         addressId: selectedAddress.id,
       });
@@ -313,28 +345,17 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
         body: JSON.stringify({
           card_id: card.id,
           payment_method: paymentMethod,
-          // No carrier is sent: the buyer does not choose one, and the route
-          // resolves the cheapest the seller offers — the same one priced above.
+          // The buyer's carrier, by code. The route re-quotes it with GoShip
+          // and bills that; the fee is echoed only for the idempotency hash.
+          shipping_carrier: shippingQuote?.carrier ?? null,
           shipping_fee: shippingFee,
           bundle_selection: isBundle
             ? selectedBundle.map(i => ({ title: bundleItems[i]?.title || '', price: bundleItems[i]?.price || 0 }))
             : undefined,
-          to_name: selectedAddress.recipient_name,
-          to_phone: selectedAddress.phone,
-          to_district_id: selectedAddress.district_id,
-          to_district_name: selectedAddress.district_name,
-          to_province_id: selectedAddress.province_id,
-          to_province_name: selectedAddress.province_name,
-          to_ward_code: selectedAddress.ward_code,
-          to_ward_name: selectedAddress.ward_name,
-          to_address_detail: selectedAddress.detail,
-          // The carrier's ids, snapshotted onto the order so the seller can
-          // book the waybill. /checkout sends the same; without it the order
-          // is placed but never bookable through the platform.
-          to_goship: selectedAddress.goship ?? null,
-          // Filtered, not interpolated: addresses saved since the district
-          // tier was abolished have no district, and a template leaves ", ,".
-          shipping_address: [selectedAddress.detail, selectedAddress.ward_name, selectedAddress.district_name, selectedAddress.province_name].filter(Boolean).join(', '),
+          // The address by id only. The server reads the recipient, the text
+          // and GoShip's ids from the buyer's own saved row, so the parcel is
+          // priced and booked for exactly where the label says.
+          address_id: selectedAddress.id,
         }),
       });
 
@@ -456,23 +477,54 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
               <span className="text-muted-foreground">{copy.cardAmount}{isBundle ? ` (${selectedBundle.length})` : ''}</span>
               <span className="font-semibold">{formatVND(selectedSubtotal)}</span>
             </div>
-            <div className="flex items-center justify-between text-sm">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Truck className="h-4 w-4 text-blue-400" />
+            {loadingFee ? (
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
                 <span>{copy.shippingFee}</span>
+                <Loader2 className="h-4 w-4 animate-spin" />
               </div>
-              <div>
-                {loadingFee ? (
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                ) : shippingFee !== null ? (
-                  <span className="font-semibold">{formatVND(shippingFee)}</span>
-                ) : feeError ? (
-                  <span className="text-xs text-red-400">{feeError}</span>
+            ) : shippingQuote ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2 text-muted-foreground">
+                    <Truck className="h-4 w-4 text-blue-400" />
+                    {copy.shippingFee}
+                  </span>
+                  <span className="font-semibold">{shippingFee === 0 ? copy.freeShipping : formatVND(shippingQuote.fee)}</span>
+                </div>
+                {shippingQuote.listingOverride ? (
+                  <p className="pl-6 text-[11px] text-muted-foreground">{copy.allInListingFee}</p>
+                ) : shippingOptions.length > 1 ? (
+                  <RadioGroup value={shippingQuote.carrier} onValueChange={setChosenCarrier} className="space-y-1.5 pl-6" aria-label={copy.pickCarrier}>
+                    {shippingOptions.map(option => {
+                      const carrier = getCarrier(option.carrier);
+                      const on = option.carrier === shippingQuote.carrier;
+                      return (
+                        <label key={option.carrier} className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-2.5 py-2 text-xs transition-colors ${on ? 'border-orange-500/60 bg-orange-500/5' : 'border-border/60 hover:bg-accent/40'}`}>
+                          <RadioGroupItem value={option.carrier} id={`carrier-${option.carrier}`} />
+                          {carrier?.logo && <img src={carrier.logo} alt="" className="h-4 w-4 rounded object-contain" />}
+                          <span className="min-w-0 flex-1">
+                            <span className="font-medium">{carrier?.name ?? option.carrier.toUpperCase()}</span>
+                            <span className="block text-[11px] text-muted-foreground">
+                              {[
+                                option.expected ? copy.carrierExpected.replace('{expected}', option.expected) : null,
+                                typeof option.successPercent === 'number' ? copy.carrierSuccess.replace('{percent}', String(Math.round(option.successPercent))) : null,
+                              ].filter(Boolean).join(' · ')}
+                            </span>
+                          </span>
+                          <span className="font-semibold">{formatVND(option.fee)}</span>
+                        </label>
+                      );
+                    })}
+                  </RadioGroup>
                 ) : (
-                  <span className="text-xs text-muted-foreground">{copy.chooseAddressFee}</span>
+                  <p className="pl-6 text-[11px] text-muted-foreground">{getCarrier(shippingQuote.carrier)?.name ?? shippingQuote.carrier.toUpperCase()}</p>
                 )}
               </div>
-            </div>
+            ) : (
+              <div className={`text-xs ${feeError ? 'text-red-400' : 'text-muted-foreground'}`}>
+                {feeError || copy.chooseAddressFee}
+              </div>
+            )}
             <div className="border-t border-border/50 pt-3 flex items-center justify-between">
               <span className="font-semibold">{copy.total}</span>
               <span className="text-2xl font-bold text-orange-400">
