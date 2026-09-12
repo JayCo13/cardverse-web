@@ -6,6 +6,7 @@ import { isEvidenceVideoUrl } from '@/lib/evidence-video';
 import { parseParcel, parcelCopy } from '@/lib/parcel';
 import { getRequestLocale } from '@/lib/request-localization';
 import { booksWithCarrier } from '@/lib/shipping-carriers';
+import { shipmentCarriers } from '@/lib/shipment-carriers';
 
 /**
  * Book a parcel with a carrier.
@@ -194,11 +195,12 @@ export async function POST(request: NextRequest) {
 
     const { data: profile } = await supabase
         .from('profiles')
-        .select('goship_pickup')
+        .select('goship_pickup,shipping_carriers')
         .eq('id', user.id)
         .single();
 
-    const from = (profile as { goship_pickup: Record<string, string> | null } | null)?.goship_pickup;
+    const seller = profile as { goship_pickup: Record<string, string> | null; shipping_carriers: string[] | null } | null;
+    const from = seller?.goship_pickup;
     if (!from?.city || !from?.district || !from?.ward || !from?.street || !from?.name || !from?.phone) {
         return NextResponse.json(
             { error: 'Bạn cần lưu đầy đủ thông tin người gửi trước khi đặt vận đơn.', code: 'missing_goship_pickup' },
@@ -243,9 +245,10 @@ export async function POST(request: NextRequest) {
             { status: 409 },
         );
     }
-    // A quote that failed to load is not a stale rate. Booking still goes
-    // ahead — the seller is not made to wait on GoShip twice — and the fee is
-    // filled in from the shipment itself further down.
+    if (!fresh.ok) return NextResponse.json({ code: 'shipping_quote_failed' }, { status: 503 });
+    if (!priced || !shipmentCarriers(seller?.shipping_carriers).includes(priced.carrierCode)) {
+        return NextResponse.json({ code: 'invalid_shipping_carrier' }, { status: 409 });
+    }
     const quotedFee = priced?.totalFee ?? null;
 
     const result = await goshipCreateShipment({

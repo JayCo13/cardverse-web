@@ -550,7 +550,9 @@ export const vi = {
   help_faq_7_q: 'Người bán nhận tiền rồi mà không gửi hàng thì sao?',
   help_faq_7_a: 'Người bán có 24 giờ kể từ lúc bạn thanh toán để nhập mã vận đơn. Quá hạn, đơn tự động huỷ, tiền hoàn về ví bạn và uy tín người bán bị trừ. Bạn không cần làm gì cả.',
   help_faq_8_q: 'Vận chuyển thế nào, có gửi ra nước ngoài không?',
-  help_faq_8_a: 'Hiện tại chúng tôi chỉ giao trong nước Việt Nam qua Giao Hàng Nhanh (GHN). Phí ship tính theo địa chỉ của bạn và hiển thị trước khi thanh toán. Chưa hỗ trợ đơn quốc tế.',
+  // Carrier names here follow OFFERABLE_COURIERS in shipping-carriers.ts —
+  // update this answer when one is retired or added.
+  help_faq_8_a: 'Hiện tại chúng tôi chỉ giao trong nước Việt Nam, qua đơn vị mà người bán chọn: Giao Hàng Nhanh (GHN), Shopee Express (SPX) hoặc J&T Express — hoặc người bán tự giao tận tay nếu bạn ở cùng tỉnh. Phí ship tính theo địa chỉ của bạn và hiển thị trước khi thanh toán. Chưa hỗ trợ đơn quốc tế.',
   help_faq_9_q: 'Những loại thẻ nào được phép bán?',
   help_faq_9_a: 'Mọi thẻ bài chính hãng: Pokémon, One Piece, Yu-Gi-Oh!, thẻ thể thao và nhiều dòng khác. Nghiêm cấm thẻ giả, thẻ in lại không phép và thẻ "proxy" tự làm. Phát hiện vi phạm, tài khoản sẽ bị khoá.',
   help_faq_10_q: 'Thẻ cũ, sờn góc có bán được không?',

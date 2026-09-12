@@ -549,7 +549,9 @@ export const ja = {
   help_faq_7_q: '出品者が入金後に発送しない場合は？',
   help_faq_7_a: '出品者はお支払いから24時間以内に追跡番号を登録する必要があります。過ぎた場合、注文は自動でキャンセルされ、代金はウォレットに返金、出品者の信頼度が下がります。お客様の操作は不要です。',
   help_faq_8_q: '配送について。海外発送はできますか？',
-  help_faq_8_a: '現在はGiao Hàng Nhanh（GHN）によるベトナム国内配送のみです。送料はご住所から計算され、お支払い前に表示されます。海外発送には未対応です。',
+  // Carrier names here follow OFFERABLE_COURIERS in shipping-carriers.ts —
+  // update this answer when one is retired or added.
+  help_faq_8_a: '現在はベトナム国内配送のみです。販売者が選んだ業者（Giao Hàng Nhanh（GHN）、Shopee Express（SPX）、J&T Express）、または同一省内であれば販売者による手渡しで配送します。送料はご住所から計算され、お支払い前に表示されます。海外発送には未対応です。',
   help_faq_9_q: '出品できるカードの種類は？',
   help_faq_9_a: 'ポケモン、ワンピース、遊戯王、スポーツカードなど、正規のトレーディングカードであれば出品できます。偽造品、無許可の再版、自作の「プロキシ」カードは禁止で、発覚したアカウントは停止されます。',
   help_faq_10_q: '傷みのあるカードでも出品できますか？',

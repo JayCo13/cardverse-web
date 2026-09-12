@@ -7,9 +7,8 @@ import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Wallet, CreditCard, Loader2, CheckCircle, ShieldCheck, ExternalLink, Truck } from 'lucide-react';
-import { useAuth, useSupabase } from '@/lib/supabase';
-import { listingShippingFee } from '@/lib/shipping-fee';
-import { getCarrier } from '@/lib/shipping-carriers';
+import { useAuth } from '@/lib/supabase';
+import { cheapestShippingFee, fetchShippingOptions, ShippingOptionsError } from '@/lib/shipping-options-client';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
 import { AddressBook, type SavedAddress } from '@/components/address-book';
@@ -45,14 +44,14 @@ type CheckoutModalProps = {
 
 export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselectedBundle }: CheckoutModalProps) {
   const { user } = useAuth();
-  const supabase = useSupabase();
   const { setOpen: setAuthOpen } = useAuthModal();
   const { toast } = useToast();
   const { locale, t } = useLocalization();
   const copy = locale === 'ja-JP'
     ? {
         feeError: '送料を計算できませんでした。もう一度お試しください。',
-        shippingNotConfigured: '販売者が配送業者と送料をまだ設定していません。購入前にご連絡ください。',
+        shippingNotConfigured: '販売者が発送元住所をまだ設定していないため、送料を計算できません。販売者にご連絡ください。',
+        sellerNoRoute: 'この販売者は選択した住所へ発送できません。別の住所を選ぶか、販売者にご連絡ください。',
         unavailableTitle: 'カードは先に購入されました',
         unavailableDesc: 'このカードは現在利用できません。別のカードを選んでください。',
         redirecting: 'リダイレクト中...',
@@ -75,7 +74,6 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
         payosDesc: '銀行から直接支払い',
         walletShortage: 'ウォレット残高が不足しています。あと {amount} 必要です。',
         topUpNow: '今すぐ入金',
-        sellerAddressMissing: '販売者が発送元住所をまだ設定していません。送料は注文後に確定されます。',
         cancel: 'キャンセル',
         chooseAddressFirst: '先に住所を選択',
         payViaPayos: 'PayOSで支払う',
@@ -84,12 +82,12 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
         payAmount: '支払う {amount}',
         cardsToBuy: '購入するカード',
         cardFallback: 'カード {number}',
-        carrier: '配送業者',
       }
     : locale === 'vi-VN'
       ? {
           feeError: 'Không thể tính phí ship. Vui lòng thử lại.',
-          shippingNotConfigured: 'Người bán chưa chọn đơn vị vận chuyển và phí ship nên chưa đặt đơn được. Bạn thử nhắn cho người bán xem sao.',
+          shippingNotConfigured: 'Người bán chưa cập nhật địa chỉ gửi hàng nên chưa tính được phí ship. Bạn thử nhắn cho người bán xem sao.',
+          sellerNoRoute: 'Người bán này không giao tới địa chỉ bạn chọn. Thử địa chỉ khác hoặc nhắn cho người bán.',
           unavailableTitle: 'Thẻ đã có người mua trước',
           unavailableDesc: 'Thẻ này không còn khả dụng. Vui lòng chọn thẻ khác.',
           redirecting: 'Đang chuyển hướng...',
@@ -112,7 +110,6 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
           payosDesc: 'Thanh toán trực tiếp qua ngân hàng',
           walletShortage: 'Số dư ví không đủ. Bạn cần thêm {amount}.',
           topUpNow: 'Nạp tiền ngay',
-          sellerAddressMissing: 'Người bán chưa cập nhật địa chỉ gửi hàng. Phí ship sẽ được tính sau khi đặt hàng.',
           cancel: 'Hủy',
           chooseAddressFirst: 'Chọn địa chỉ trước',
           payViaPayos: 'Thanh toán qua PayOS',
@@ -121,11 +118,11 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
           payAmount: 'Thanh toán {amount}',
           cardsToBuy: 'Thẻ sẽ mua',
           cardFallback: 'Thẻ {number}',
-          carrier: 'Đơn vị vận chuyển',
         }
       : {
           feeError: 'Could not calculate shipping fee. Please try again.',
-          shippingNotConfigured: 'This seller has not set up carriers and shipping fees yet, so the order cannot be placed. You can message them.',
+          shippingNotConfigured: 'The seller has not set a shipping origin address yet, so the fee cannot be calculated. You can message them.',
+          sellerNoRoute: 'This seller cannot deliver to the address you picked. Try another address, or message them.',
           unavailableTitle: 'Card already taken',
           unavailableDesc: 'This card is no longer available. Please choose another card.',
           redirecting: 'Redirecting...',
@@ -148,7 +145,6 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
           payosDesc: 'Direct bank payment',
           walletShortage: 'Wallet balance is insufficient. You need {amount} more.',
           topUpNow: 'Top up now',
-          sellerAddressMissing: 'The seller has not set a shipping origin address yet. Shipping will be finalized after ordering.',
           cancel: 'Cancel',
           chooseAddressFirst: 'Choose address first',
           payViaPayos: 'Pay via PayOS',
@@ -157,7 +153,6 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
           payAmount: 'Pay {amount}',
           cardsToBuy: 'Cards to buy',
           cardFallback: 'Card {number}',
-          carrier: 'Carrier',
         };
   const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'direct_payos'>('wallet');
   // Bundle: indices of the cards the buyer wants to buy (default = all).
@@ -171,11 +166,10 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
   const [selectedAddress, setSelectedAddress] = useState<SavedAddress | null>(null);
   const [shippingFee, setShippingFee] = useState<number | null>(null);
   const [loadingFee, setLoadingFee] = useState(false);
-  // Carrier options for the current tier; buyer picks one when there is > 1.
-  const [shipOptions, setShipOptions] = useState<{ code: string; fee: number }[]>([]);
-  const [selectedCarrier, setSelectedCarrier] = useState('');
-  const selectedCarrierRef = useRef('');
   const [feeError, setFeeError] = useState('');
+  // Guards against a slow answer for an old address landing after a fast one
+  // for the new address, which would show a fee for somewhere else entirely.
+  const feeRequestRef = useRef(0);
   const userId = user?.id ?? null;
 
   useEffect(() => {
@@ -219,65 +213,58 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
     }
   };
 
-  // Seller-declared shipping: pick the tier from the seller's province vs the
-  // buyer's delivery province, then the cheapest carrier's fee for that tier.
+  /**
+   * What this parcel costs to the address the buyer picked.
+   *
+   * Asked of the server, never worked out here. This used to read the listing
+   * row and fall back to a constant whenever the listing set no fee of its own,
+   * which printed 25,000đ on parcels /api/marketplace/buy then billed at the
+   * seller's own price — the dialog and the charge disagreed, and the charge
+   * won. Now both ends call the same resolver.
+   *
+   * The buyer picks no carrier: the cheapest the seller offers is what they
+   * pay, which is the rule the buy route applies when an order arrives with no
+   * carrier named.
+   */
   const calculateFee = useCallback(async (address: SavedAddress | null) => {
+    const requestId = ++feeRequestRef.current;
     setShippingFee(null);
     setFeeError('');
 
-    if (!address || !card) {
-      return;
-    }
+    if (!address || !card) return;
 
     setLoadingFee(true);
     try {
-      // The listing's own fee, read here rather than passed in: it is the
-      // number the buyer is about to be charged, and the server will read the
-      // same row when it charges them.
-      const [profile, listing] = await Promise.all([
-        supabase.from('profiles')
-          .select('address_province_id, address_province_name')
-          .eq('id', card.seller_id).single(),
-        supabase.from('cards').select('shipping_fee').eq('id', card.id).single(),
-      ]);
-      if (profile.error) throw profile.error;
-      const p = profile.data as { address_province_id: number | null; address_province_name: string | null } | null;
-
-      // Nothing to choose between, and nothing a seller can leave blank in a
-      // fee table any more. What can still be missing is somewhere to collect
-      // the parcel from, and that is worth stopping for: it is the seller's own
-      // address, not a price they forgot to type.
-      if (!p?.address_province_id || !p?.address_province_name?.trim()) {
-        setShipOptions([]);
-        selectedCarrierRef.current = '';
-        setSelectedCarrier('');
-        setShippingFee(null);
-        setFeeError(copy.shippingNotConfigured);
-        return;
-      }
-
-      setShipOptions([]);
-      setShippingFee(listingShippingFee((listing.data as { shipping_fee: number | null } | null)?.shipping_fee));
-    } catch (err: any) {
-      console.error('Fee calculation error:', err);
-      setFeeError(copy.feeError);
+      const options = await fetchShippingOptions({
+        toProvinceId: Number(address.province_id),
+        toProvinceName: String(address.province_name || ''),
+        sellerId: card.seller_id,
+        // A bundle is one listing and one parcel, quoted by its listing id —
+        // the same id /api/marketplace/buy quotes when it charges for it.
+        cardIds: [card.id],
+      });
+      if (requestId !== feeRequestRef.current) return;
+      setShippingFee(cheapestShippingFee(options));
+    } catch (err) {
+      if (requestId !== feeRequestRef.current) return;
+      const code = err instanceof ShippingOptionsError ? err.code : '';
+      setShippingFee(null);
+      setFeeError(
+        code === 'seller_does_not_ship_here' ? copy.sellerNoRoute
+          : code === 'seller_shipping_origin_missing' || code === 'seller_shipping_configuration_missing'
+            ? copy.shippingNotConfigured
+            : copy.feeError,
+      );
+      if (!code) console.error('Fee calculation error:', err);
     } finally {
-      setLoadingFee(false);
+      if (requestId === feeRequestRef.current) setLoadingFee(false);
     }
-  }, [card, supabase, copy.feeError, copy.shippingNotConfigured]);
+  }, [card, copy.feeError, copy.sellerNoRoute, copy.shippingNotConfigured]);
 
   const handleSelectAddress = useCallback((address: SavedAddress | null) => {
     setSelectedAddress(address);
     void calculateFee(address);
   }, [calculateFee]);
-
-  const handleSelectCarrier = (code: string) => {
-    const opt = shipOptions.find(o => o.code === code);
-    if (!opt) return;
-    selectedCarrierRef.current = code;
-    setSelectedCarrier(code);
-    setShippingFee(opt.fee);
-  };
 
   // Recalculate whenever the buyer's address / card changes.
   useEffect(() => {
@@ -310,7 +297,6 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
         cardId: card.id,
         paymentMethod,
         shippingFee,
-        selectedCarrier,
         selectedBundle,
         addressId: selectedAddress.id,
       });
@@ -327,8 +313,9 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
         body: JSON.stringify({
           card_id: card.id,
           payment_method: paymentMethod,
+          // No carrier is sent: the buyer does not choose one, and the route
+          // resolves the cheapest the seller offers — the same one priced above.
           shipping_fee: shippingFee,
-          shipping_carrier: selectedCarrier || undefined,
           bundle_selection: isBundle
             ? selectedBundle.map(i => ({ title: bundleItems[i]?.title || '', price: bundleItems[i]?.price || 0 }))
             : undefined,
@@ -341,6 +328,10 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
           to_ward_code: selectedAddress.ward_code,
           to_ward_name: selectedAddress.ward_name,
           to_address_detail: selectedAddress.detail,
+          // The carrier's ids, snapshotted onto the order so the seller can
+          // book the waybill. /checkout sends the same; without it the order
+          // is placed but never bookable through the platform.
+          to_goship: selectedAddress.goship ?? null,
           // Filtered, not interpolated: addresses saved since the district
           // tier was abolished have no district, and a template leaves ", ,".
           shipping_address: [selectedAddress.detail, selectedAddress.ward_name, selectedAddress.district_name, selectedAddress.province_name].filter(Boolean).join(', '),
@@ -458,58 +449,6 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
               onSelect={handleSelectAddress}
             />
           </div>
-
-          {/* Carrier: single = default, multiple = buyer chooses */}
-          {selectedAddress && shipOptions.length > 0 && (
-            <div className="space-y-2">
-              <Label className="flex items-center gap-1.5 text-sm font-medium">
-                <Truck className="h-4 w-4" />
-                {copy.carrier}
-              </Label>
-              {shipOptions.length === 1 ? (
-                (() => {
-                  const c = getCarrier(shipOptions[0].code);
-                  return (
-                    <div className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
-                      {c?.logo && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={c.logo} alt="" className="h-5 w-5 rounded" />
-                      )}
-                      <span>{c?.name || shipOptions[0].code}</span>
-                      <span className="ml-auto font-semibold text-orange-500">{formatVND(shipOptions[0].fee)}</span>
-                    </div>
-                  );
-                })()
-              ) : (
-                <div className="space-y-1.5">
-                  {shipOptions.map(o => {
-                    const c = getCarrier(o.code);
-                    const active = selectedCarrier === o.code;
-                    return (
-                      <label
-                        key={o.code}
-                        className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 transition-colors ${active ? 'border-orange-500 bg-orange-500/5' : 'hover:bg-accent/50'}`}
-                      >
-                        <input
-                          type="radio"
-                          name="ship-carrier"
-                          checked={active}
-                          onChange={() => handleSelectCarrier(o.code)}
-                          className="h-4 w-4 accent-orange-500"
-                        />
-                        {c?.logo && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={c.logo} alt="" className="h-5 w-5 rounded" />
-                        )}
-                        <span className="text-sm">{c?.name || o.code}</span>
-                        <span className="ml-auto text-sm font-semibold text-orange-500">{formatVND(o.fee)}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
 
           <div className="rounded-xl border border-orange-500/20 bg-gradient-to-b from-accent/40 to-orange-500/5 p-4 space-y-3">
             <p className="text-sm font-semibold">{copy.paymentDetails}</p>

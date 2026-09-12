@@ -1,42 +1,50 @@
 import { khaiGiaSurcharge } from '@/lib/khai-gia';
-import { booksWithCarrier, carrierServesTier, SHIPPING_CARRIERS } from '@/lib/shipping-carriers';
-import { isValidListingShippingFee, type ShippingTier, type ShopFeeTable } from '@/lib/shipping-fee';
+import { booksWithCarrier, carrierServesTier, OFFERABLE_COURIERS } from '@/lib/shipping-carriers';
+import {
+    DEFAULT_SHOP_TIER_FEES,
+    isValidListingShippingFee,
+    shopFeeCell,
+    type ShippingTier,
+    type ShopFeeTable,
+} from '@/lib/shipping-fee';
 
 /**
  * What a listing's shipping might cost, before anybody knows where it is going.
  *
  * A grid cannot name one number and be telling the truth. The price depends on
- * how far the parcel goes, which carrier the buyer picks, and what the card is
- * worth — and only the last of those is known before checkout. Printing the
- * platform default instead was a number nobody would be charged: measured
- * against GoShip, a 200g card leaves Ho Chi Minh City for 15,385đ and reaches
- * Hanoi for 15,700–31,450đ depending on carrier, none of which is 25,000đ.
+ * how far the parcel goes and what the card is worth, and neither is known
+ * before checkout: the shop's own table already spans three distances, and khai
+ * giá adds more on top of each of them for a dear card.
  *
  * So this returns the span, and the exact figure is quoted at checkout against
- * the buyer's own address by the resolver that bills the order.
+ * the buyer's own address by the resolver that bills the order. Both read the
+ * same cells through the same shopFeeCell, so the span a buyer is shown always
+ * contains the number they are charged.
  *
- * Hand delivery is left out on purpose. It is free, but only for a buyer in the
- * seller's own province, and a range starting at 0đ would advertise to everyone
- * a price most of them cannot have. A buyer who can gets it as a cheaper option
- * at checkout, which is the right direction for a surprise to run.
+ * Hand delivery was left out of this span for exactly one reason — a 0đ start
+ * advertises to the whole country a price only the seller's own province could
+ * have — and that reason is why it was retired from checkout altogether on
+ * 2026-09-11: the span and the charge could not both be true.
  */
 
 const TIERS: readonly ShippingTier[] = ['intra', 'inter', 'region'];
 
-const COURIERS: readonly string[] = SHIPPING_CARRIERS.filter((c) => c.booksWithCarrier).map((c) => c.code);
+const COURIERS: readonly string[] = OFFERABLE_COURIERS.map((c) => c.code);
 
 export type ShippingRange = { min: number; max: number };
 
 export function shopShippingRange(input: {
-    /** What the seller set, cell by cell. */
+    /** What the seller set, cell by cell; anything absent is the default. */
     set?: ShopFeeTable | null;
-    /** What GoShip quoted for their pickup address. */
-    quoted?: ShopFeeTable | null;
     /** The carriers this shop offers; empty means it has expressed no preference. */
     carriers?: readonly string[] | null;
     /** The card's price, which is what khai giá is charged on. */
     declaredValue?: number | null;
 }): ShippingRange | null {
+    // An empty list is no preference, not no carriers: the whole bookable set
+    // applies, the same way checkout resolves it. A shop whose saved list has
+    // nothing offerable left in it — everything it ticked has since been
+    // retired — lands here too, and for the same reason.
     const offered = (input.carriers ?? []).filter((code) => booksWithCarrier(code) && COURIERS.includes(code));
     const carriers = offered.length ? offered : COURIERS;
 
@@ -45,12 +53,10 @@ export function shopShippingRange(input: {
         const khaiGia = khaiGiaSurcharge(carrier, input.declaredValue ?? 0);
         for (const tier of TIERS) {
             if (!carrierServesTier(carrier, tier)) continue;
-            // Only cells somebody actually priced. Falling back to the platform
-            // figure here would put a number in the range that no carrier
-            // quoted, which is the thing this exists to stop.
-            const cell = input.set?.[carrier]?.[tier] ?? input.quoted?.[carrier]?.[tier];
-            if (!isValidListingShippingFee(cell)) continue;
-            prices.push(cell + khaiGia);
+            // Every cell has a price now: the seller's, or the fixed default
+            // for that distance. There is no longer an unpriced shop, so the
+            // grid never has to say "tính khi thanh toán" for want of a quote.
+            prices.push((shopFeeCell(input.set, carrier, tier) ?? DEFAULT_SHOP_TIER_FEES[tier]) + khaiGia);
         }
     }
 
@@ -68,7 +74,6 @@ export function shopShippingRange(input: {
 export function listingShippingRange(input: {
     listingFee?: number | null;
     set?: ShopFeeTable | null;
-    quoted?: ShopFeeTable | null;
     carriers?: readonly string[] | null;
     declaredValue?: number | null;
 }): ShippingRange | null {
@@ -101,7 +106,6 @@ export const formatShippingRange = (
 export function parcelShippingRange(input: {
     cards: { listingFee?: number | null; price?: number | null }[];
     set?: ShopFeeTable | null;
-    quoted?: ShopFeeTable | null;
     carriers?: readonly string[] | null;
 }): ShippingRange | null {
     if (input.cards.length === 0) return null;

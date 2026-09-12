@@ -16,7 +16,11 @@
 
 import assert from 'node:assert/strict';
 import {
+  DEFAULT_SHOP_TIER_FEES,
   PLATFORM_SHIPPING_FEE,
+  SHOP_TIER_FEE_MAX,
+  SHOP_TIER_FEE_MIN,
+  isValidShopTierFee,
   listingShippingFee,
   parcelShippingFee,
   resolveShippingTier,
@@ -84,26 +88,36 @@ check('across regions', () => assert.equal(
   resolveShippingTier({ provinceName: 'Hồ Chí Minh' }, { provinceName: 'Hà Nội' }), 'region'));
 
 console.log('\n— shop table resolution —');
-const set: ShopFeeTable = { ghn: { intra: 18_000, region: 27_000 } };
-const quoted: ShopFeeTable = {
-  ghn: { intra: 18_325, inter: 26_200, region: 26_200 },
-  vnp: { intra: 15_385, inter: 18_010, region: 18_010 },
-};
+// One cell moved off the default, one cell left alone, and — the case that
+// matters for money — one cell stored below the floor by an older save.
+const set: ShopFeeTable = { ghn: { intra: 30_000, region: 11_000 } };
 check("seller's own number wins", () => assert.equal(
-  shopShippingFee({ set, quoted, carrier: 'ghn', tier: 'intra' }), 18_000));
-check('an unset cell keeps following the quote', () => assert.equal(
-  shopShippingFee({ set, quoted, carrier: 'ghn', tier: 'inter' }), 26_200));
-check('a carrier with no table at all falls to the platform figure', () => assert.equal(
-  shopShippingFee({ set, quoted, carrier: 'jnt', tier: 'inter' }), PLATFORM_SHIPPING_FEE));
+  shopShippingFee({ set, carrier: 'ghn', tier: 'intra' }), 30_000));
+check('an unset cell is the default for its distance', () => assert.equal(
+  shopShippingFee({ set, carrier: 'ghn', tier: 'inter' }), DEFAULT_SHOP_TIER_FEES.inter));
+check('a cell stored below the floor is not charged', () => assert.equal(
+  shopShippingFee({ set, carrier: 'ghn', tier: 'region' }), DEFAULT_SHOP_TIER_FEES.region));
+check('a carrier with no table at all is the default too', () => assert.equal(
+  shopShippingFee({ set, carrier: 'jnt', tier: 'inter' }), DEFAULT_SHOP_TIER_FEES.inter));
+check('the band is 20k to 50k', () => {
+  assert.equal(isValidShopTierFee(SHOP_TIER_FEE_MIN - 1), false);
+  assert.equal(isValidShopTierFee(SHOP_TIER_FEE_MIN), true);
+  assert.equal(isValidShopTierFee(SHOP_TIER_FEE_MAX), true);
+  assert.equal(isValidShopTierFee(SHOP_TIER_FEE_MAX + 1), false);
+  assert.equal(isValidShopTierFee(0), false);
+});
+check('every default sits inside the band', () => {
+  Object.values(DEFAULT_SHOP_TIER_FEES).forEach((fee) => assert.equal(isValidShopTierFee(fee), true));
+});
 
 console.log('\n— what a buyer is actually charged —');
 const charge = (carrier: string, tier: 'intra' | 'inter' | 'region', value: number) =>
-  shopShippingFee({ set, quoted, carrier, tier }) + khaiGiaSurcharge(carrier, value);
-check('a cheap card pays postage only', () => assert.equal(charge('ghn', 'inter', 500_000), 26_200));
-check('a 5tr card on GHN adds 25,000đ', () => assert.equal(charge('ghn', 'inter', 5_000_000), 51_200));
-check('the same card on VNPost adds nothing', () => assert.equal(charge('vnp', 'inter', 5_000_000), 18_010));
+  shopShippingFee({ set, carrier, tier }) + khaiGiaSurcharge(carrier, value);
+check('a cheap card pays postage only', () => assert.equal(charge('ghn', 'inter', 500_000), 22_000));
+check('a 5tr card on GHN adds 25,000đ', () => assert.equal(charge('ghn', 'inter', 5_000_000), 47_000));
+check('SPX steps once and stays there', () => assert.equal(charge('shopee', 'inter', 5_000_000), 22_000 + 25_000));
 check('a 20tr card on GHN is covered, not merely approximated', () => assert.equal(
-  charge('ghn', 'inter', 20_000_000), 26_200 + 100_000));
+  charge('ghn', 'inter', 20_000_000), 22_000 + 100_000));
 
 console.log('\n— listing override —');
 const shopCell = 18_325;   // postage for one GHN parcel, intra
@@ -124,43 +138,66 @@ check('a missing card cannot make a parcel free', () => assert.equal(
 check('one unpriced listing pulls the parcel up to the shop cell', () => assert.equal(
   parcelShippingFee([0, null], shopCell), shopCell));
 
-console.log('\n— what the grid shows before an address exists —');
-const shopQuoted = {
-  ghn: { intra: 18_325, inter: 26_200, region: 26_200 },
+console.log('\n— what the grid shows before a delivery address exists —');
+// One shop that moved two cells, with a third stored below the floor and a
+// retired carrier still ticked. Neither of the last two may reach a buyer.
+const shopSet: ShopFeeTable = {
+  ghn: { region: 40_000 },
+  shopee: { intra: 11_000 },
   vnp: { intra: 15_385, inter: 18_010, region: 18_010 },
 };
-check('a cheap card spans the cheapest and dearest cell', () => {
-  const range = shopShippingRange({ quoted: shopQuoted, carriers: ['ghn', 'vnp'], declaredValue: 500_000 });
-  assert.deepEqual(range, { min: 15_385, max: 26_200 });
+const D = DEFAULT_SHOP_TIER_FEES;
+
+check('a shop that set nothing spans the defaults', () => {
+  const range = shopShippingRange({ carriers: ['ghn', 'shopee'], declaredValue: 500_000 });
+  assert.deepEqual(range, { min: D.intra, max: D.region });
+});
+check('a raised cell becomes the dear end', () => {
+  const range = shopShippingRange({ set: shopSet, carriers: ['ghn', 'shopee'], declaredValue: 500_000 });
+  assert.deepEqual(range, { min: D.intra, max: 40_000 });
+});
+check('a cell below the floor never reaches the grid', () => {
+  const range = shopShippingRange({ set: shopSet, carriers: ['shopee'], declaredValue: 500_000 });
+  // The stored 11,000đ is ignored; the cheap end is the intra default.
+  assert.deepEqual(range, { min: D.intra, max: D.region });
+});
+check('a retired carrier is never quoted, however the shop saved it', () => {
+  const withRetired = shopShippingRange({ set: shopSet, carriers: ['ghn', 'shopee', 'vnp'], declaredValue: 500_000 });
+  const without = shopShippingRange({ set: shopSet, carriers: ['ghn', 'shopee'], declaredValue: 500_000 });
+  // VNPost's 15,385đ is the cheapest cell stored and must not appear.
+  assert.deepEqual(withRetired, without);
 });
 check('a dear card carries khai giá into the span', () => {
-  const range = shopShippingRange({ quoted: shopQuoted, carriers: ['ghn', 'vnp'], declaredValue: 5_000_000 });
-  // VNPost charges nothing for value; GHN adds 0.5% of five million.
-  assert.deepEqual(range, { min: 15_385, max: 26_200 + 25_000 });
+  const range = shopShippingRange({ carriers: ['ghn'], declaredValue: 5_000_000 });
+  // GHN adds 0.5% of five million to every cell, so the whole span moves.
+  assert.deepEqual(range, { min: D.intra + 25_000, max: D.region + 25_000 });
 });
-check('hand delivery never widens the span down to zero', () => {
-  const range = shopShippingRange({ quoted: shopQuoted, carriers: ['ghn', 'vnp', 'self'], declaredValue: 500_000 });
-  assert.deepEqual(range, { min: 15_385, max: 26_200 });
+check('a retired hand-delivery tick never widens the span down to zero', () => {
+  const range = shopShippingRange({ carriers: ['ghn', 'self'], declaredValue: 500_000 });
+  assert.deepEqual(range, { min: D.intra, max: D.region });
 });
-check('a shop with nothing priced says nothing', () => assert.equal(
-  shopShippingRange({ carriers: ['ghn'], declaredValue: 0 }), null));
+check('a shop left with nothing offerable falls back to every courier', () => {
+  // Everything this shop ticked has since been retired, which is no preference
+  // rather than no shipping — the same reading the checkout resolver takes.
+  const range = shopShippingRange({ carriers: ['self', 'vnp'], declaredValue: 0 });
+  assert.deepEqual(range, shopShippingRange({ carriers: [], declaredValue: 0 }));
+});
 check('a listing that set its own price has no span', () => assert.deepEqual(
-  listingShippingRange({ listingFee: 30_000, quoted: shopQuoted, carriers: ['ghn'] }), { min: 30_000, max: 30_000 }));
+  listingShippingRange({ listingFee: 30_000, carriers: ['ghn'] }), { min: 30_000, max: 30_000 }));
 check('freeship on the listing shows as zero, not as a span', () => assert.deepEqual(
-  listingShippingRange({ listingFee: 0, quoted: shopQuoted, carriers: ['ghn'] }), { min: 0, max: 0 }));
+  listingShippingRange({ listingFee: 0, carriers: ['ghn'] }), { min: 0, max: 0 }));
 
 console.log('\n— one parcel, several cards, still a span —');
 check('a flat listing outranks the cheap end and not the dear one', () => {
   const range = parcelShippingRange({
-    cards: [{ listingFee: 20_000, price: 100_000 }, { listingFee: null, price: 100_000 }],
-    quoted: shopQuoted,
-    carriers: ['ghn', 'vnp'],
+    cards: [{ listingFee: 21_000, price: 100_000 }, { listingFee: null, price: 100_000 }],
+    carriers: ['ghn'],
   });
-  // 20,000đ beats VNPost's 15,385đ but loses to GHN's 26,200đ.
-  assert.deepEqual(range, { min: 20_000, max: 26_200 });
+  // 21,000đ beats the intra default and loses to the region one.
+  assert.deepEqual(range, { min: 21_000, max: D.region });
 });
 check('every card priced itself, so there is nothing to vary', () => assert.deepEqual(
-  parcelShippingRange({ cards: [{ listingFee: 0 }, { listingFee: 30_000 }], quoted: shopQuoted, carriers: ['ghn'] }),
+  parcelShippingRange({ cards: [{ listingFee: 0 }, { listingFee: 30_000 }], carriers: ['ghn'] }),
   { min: 30_000, max: 30_000 }));
 
 console.log('\n— payout, the way seller_payout_for does it —');

@@ -1,25 +1,17 @@
 import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { findProvince, findWard } from '@/lib/vn-address';
+import { GOSHIP_REGION_ERROR, parseGoshipRegion, resolveGoshipRegion } from '@/lib/goship-region';
 
 type AddressBody = {
     recipient_name?: string;
     phone?: string;
     /**
-     * GoShip's own city/district/ward ids. Never derived from the fields below:
-     * GoShip routes on the pre-2025 structure and those are the 34-province
-     * one, so a translated id books a courier to the wrong city.
+     * GoShip's city/district/ward ids, from /api/shipping/address/*. The only
+     * geography an address is collected in now; the province/ward columns are
+     * copied from GoShip's names on save. See ../route.ts.
      */
     goship?: { city?: string; district?: string; ward?: string } | null;
-    province_id?: number;
-    province_name?: string;
-    /** @deprecated No district level since 1/7/2025. Null on anything saved now. */
-    district_id?: number | null;
-    /** @deprecated See `district_id`. */
-    district_name?: string | null;
-    ward_code?: string;
-    ward_name?: string;
     detail?: string;
     is_default?: boolean;
 };
@@ -37,52 +29,63 @@ async function handlePATCH(
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = (await request.json()) as AddressBody;
-    const changesAddress = [
-        body.province_id,
-        body.province_name,
-        body.district_id,
-        body.district_name,
-        body.ward_code,
-        body.ward_name,
-        body.detail,
-    ].some(value => value !== undefined);
-    let provinceId = body.province_id;
-    let wardCode = body.ward_code;
-    let detail = body.detail;
+    const body = (await request.json().catch(() => ({}))) as AddressBody;
+    const movesAddress = body.goship !== undefined || body.detail !== undefined;
 
-    // Promoting an existing row used to validate only values supplied in this
-    // PATCH. A legacy row promoted with `{ is_default: true }` therefore
-    // bypassed the current dataset and was copied into the seller profile by
-    // the synchronization trigger. Read the owned row first and validate the
-    // exact address that will become the default.
-    if (!changesAddress && body.is_default === true) {
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (body.recipient_name !== undefined) {
+        if (!body.recipient_name.trim()) return NextResponse.json({ error: 'Tên người nhận là bắt buộc' }, { status: 400 });
+        updates.recipient_name = body.recipient_name.trim();
+    }
+    if (body.phone !== undefined) {
+        if (!body.phone.trim()) return NextResponse.json({ error: 'Số điện thoại là bắt buộc' }, { status: 400 });
+        updates.phone = body.phone.trim();
+    }
+
+    if (movesAddress) {
+        // Region and street are replaced together: a street belongs to the
+        // ward it was typed under, so a PATCH that moves one must carry both.
+        const region = parseGoshipRegion(body.goship);
+        if (!region) return NextResponse.json({ error: 'Vui lòng chọn đầy đủ Tỉnh/Thành, Quận/Huyện, Phường/Xã' }, { status: 400 });
+        if (!body.detail?.trim()) return NextResponse.json({ error: 'Vui lòng nhập địa chỉ chi tiết' }, { status: 400 });
+
+        const resolved = await resolveGoshipRegion(region);
+        if (!resolved.ok) {
+            return NextResponse.json(
+                { error: GOSHIP_REGION_ERROR[resolved.reason] },
+                { status: resolved.reason === 'unavailable' ? 503 : 400 },
+            );
+        }
+        updates.province_id = Number(resolved.value.city);
+        updates.province_name = resolved.value.cityName;
+        updates.district_id = Number(resolved.value.district);
+        updates.district_name = resolved.value.districtName;
+        updates.ward_code = resolved.value.ward;
+        updates.ward_name = resolved.value.wardName;
+        updates.detail = body.detail.trim();
+        updates.goship = region;
+    } else if (body.is_default === true) {
+        // Promoting a row saved before addresses moved to GoShip's geography
+        // would make the default one that no waybill can be booked against.
+        // Ask for it to be re-picked instead; the form does that on edit.
         const { data: stored, error: storedError } = await supabase
             .from('shipping_addresses')
-            .select('province_id, ward_code, detail')
+            .select('goship')
             .eq('id', id)
             .eq('user_id', user.id)
-            .maybeSingle<{ province_id: number; ward_code: string; detail: string }>();
-
+            .maybeSingle<{ goship: unknown }>();
         if (storedError) {
             return NextResponse.json({ error: storedError.message }, { status: 500 });
         }
         if (!stored) {
             return NextResponse.json({ error: 'Không tìm thấy địa chỉ' }, { status: 404 });
         }
-        provinceId = stored.province_id;
-        wardCode = stored.ward_code;
-        detail = stored.detail;
-    }
-
-    const validatesAddress = changesAddress || body.is_default === true;
-    const province = validatesAddress ? findProvince(provinceId) : null;
-    const ward = validatesAddress ? findWard(provinceId, wardCode) : null;
-    if (validatesAddress && (!province || !ward || !detail?.trim())) {
-        return NextResponse.json(
-            { error: 'Địa chỉ dùng mã hành chính cũ hoặc Phường/Xã không thuộc Tỉnh/Thành đã chọn' },
-            { status: 400 },
-        );
+        if (!parseGoshipRegion(stored.goship)) {
+            return NextResponse.json(
+                { error: 'Địa chỉ này cần chọn lại Tỉnh/Thành, Quận/Huyện, Phường/Xã trước khi đặt làm mặc định.', code: 'address_needs_region' },
+                { status: 400 },
+            );
+        }
     }
 
     // If this address is being promoted to default, demote the current one.
@@ -93,37 +96,6 @@ async function handlePATCH(
             .eq('user_id', user.id)
             .eq('is_default', true)
             .neq('id', id);
-    }
-
-    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (body.recipient_name !== undefined) updates.recipient_name = body.recipient_name.trim();
-    if (body.phone !== undefined) updates.phone = body.phone.trim();
-    if (validatesAddress && province && ward) {
-        updates.province_id = province.code;
-        updates.province_name = province.name;
-        updates.district_id = null;
-        updates.district_name = null;
-        updates.ward_code = ward.code.toString();
-        updates.ward_name = ward.name;
-        updates.detail = detail!.trim();
-    }
-    if (body.goship !== undefined) {
-        // Explicit null clears it. A partial object is treated as no address at
-        // all rather than stored: half a set of ids looks bookable and is not.
-        const g = body.goship;
-        const id3 = /^[0-9]{1,12}$/;
-        const city = String(g?.city ?? '').trim();
-        const district = String(g?.district ?? '').trim();
-        const ward = String(g?.ward ?? '').trim();
-        updates.goship = id3.test(city) && id3.test(district) && id3.test(ward)
-            ? { city, district, ward }
-            : null;
-    }
-    // Moving the address invalidates ids picked for the old one. Clearing is
-    // the safe direction: an unbookable address asks the buyer to choose again,
-    // where a stale one sends a courier somewhere they no longer live.
-    if (validatesAddress && province && ward && body.goship === undefined) {
-        updates.goship = null;
     }
     if (body.is_default !== undefined) updates.is_default = body.is_default;
 

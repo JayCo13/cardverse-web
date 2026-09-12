@@ -160,15 +160,45 @@ async function call<T>(
     }
 }
 
-/** GoShip's own geography, three levels deep. See the note in goshipRates. */
+/**
+ * GoShip's own geography, three levels deep. See the note in goshipRates.
+ *
+ * Memoised per process for a day, successful answers only. Provinces do not
+ * move, and one page load of /sell used to reach GoShip for the same city
+ * list four times over — the sender form, its remount once the saved address
+ * arrived, the quote preview, the region resolver — each a round trip the
+ * page waited on. In-flight lookups are shared too, so two components asking
+ * at once cost one call.
+ */
+const GEO_TTL_MS = 24 * 60 * 60 * 1000;
+const geoCache = new Map<string, { until: number; value: unknown }>();
+const geoInflight = new Map<string, Promise<unknown>>();
+
+function memoGeo<T>(path: string): Promise<{ ok: true; data: T } | { ok: false; reason: string }> {
+    type R = { ok: true; data: T } | { ok: false; reason: string };
+    const key = `${goshipEnv()}:${path}`;
+    const hit = geoCache.get(key);
+    if (hit && hit.until > Date.now()) return Promise.resolve(hit.value as R);
+    const running = geoInflight.get(key);
+    if (running) return running as Promise<R>;
+    const request = call<T>(path).then((result) => {
+        if (result.ok && Array.isArray(result.data) && result.data.length > 0) {
+            geoCache.set(key, { until: Date.now() + GEO_TTL_MS, value: result });
+        }
+        return result;
+    }).finally(() => geoInflight.delete(key));
+    geoInflight.set(key, request);
+    return request;
+}
+
 export const goshipCities = () =>
-    call<Array<{ id: string; name: string }>>('/cities');
+    memoGeo<Array<{ id: string; name: string }>>('/cities');
 
 export const goshipDistricts = (cityId: string) =>
-    call<Array<{ id: string; name: string }>>(`/cities/${encodeURIComponent(cityId)}/districts`);
+    memoGeo<Array<{ id: string; name: string }>>(`/cities/${encodeURIComponent(cityId)}/districts`);
 
 export const goshipWards = (districtId: string) =>
-    call<Array<{ id: number; name: string }>>(`/districts/${encodeURIComponent(districtId)}/wards`);
+    memoGeo<Array<{ id: number; name: string }>>(`/districts/${encodeURIComponent(districtId)}/wards`);
 
 /**
  * What the carriers would charge for this parcel, cheapest first.

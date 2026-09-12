@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { carrierAddressOptions } from '@/lib/carrier-address-options';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, Loader2, Truck } from 'lucide-react';
+import { AlertCircle, ChevronDown, Loader2, Truck } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useLocalization } from '@/context/localization-context';
 
 /**
@@ -43,6 +45,7 @@ const COPY = {
         none: 'Không có hãng nào phục vụ tuyến này.', failed: 'Không lấy được bảng giá.',
         success: 'giao thành công', days: '',
         hint: 'Chỉ tra giá, không tạo vận đơn và không gọi shipper.',
+        open: 'Mở thử giá', close: 'Ẩn thử giá', recipient: 'Thông tin người nhận để đặt vận đơn',
     },
     'en-US': {
         missing: 'Still needed: {fields}', fWard: 'ward', fStreet: 'street address', fName: 'recipient name', fPhone: 'a valid phone number', fDeclared: 'declared value',
@@ -59,6 +62,7 @@ const COPY = {
         none: 'No carrier serves this route.', failed: 'Could not fetch the rates.',
         success: 'delivered', days: '',
         hint: 'Rates only — nothing is booked and no courier is called.',
+        open: 'Open rate checker', close: 'Hide rate checker', recipient: 'Recipient details for booking',
     },
     'ja-JP': {
         missing: '不足: {fields}', fWard: '坊/社', fStreet: '住所', fName: '受取人名', fPhone: '有効な電話番号', fDeclared: '申告価格',
@@ -75,6 +79,7 @@ const COPY = {
         none: 'この経路に対応する業者がありません。', failed: '料金を取得できませんでした。',
         success: '配達成功', days: '',
         hint: '料金の確認のみ。送り状は作成されず、集荷も依頼しません。',
+        open: '料金試算を開く', close: '料金試算を閉じる', recipient: '送り状作成の受取人情報',
     },
 } as const;
 
@@ -99,25 +104,30 @@ export function ShippingQuotePreview() {
     const [rates, setRates] = useState<Rate[] | null>(null);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [open, setOpen] = useState(false);
+    const [bookingDetailsOpen, setBookingDetailsOpen] = useState(false);
 
+    // Through the shared client cache: the sender form above has usually
+    // fetched the same city list a moment ago, and there is no reason to
+    // reach GoShip for it twice on one page.
     useEffect(() => {
-        fetch('/api/shipping/address/cities', { cache: 'force-cache' })
-            .then((r) => r.json()).then((b) => setCities(b.data ?? [])).catch(() => {});
+        carrierAddressOptions('/api/shipping/address/cities')
+            .then(setCities).catch(() => {});
     }, []);
 
     useEffect(() => {
         setDistrict('');
         setRates(null);
         if (!city) { setDistricts([]); return; }
-        fetch(`/api/shipping/address/districts?city_code=${encodeURIComponent(city)}`, { cache: 'force-cache' })
-            .then((r) => r.json()).then((b) => setDistricts(b.data ?? [])).catch(() => {});
+        carrierAddressOptions(`/api/shipping/address/districts?city_code=${encodeURIComponent(city)}`)
+            .then(setDistricts).catch(() => {});
     }, [city]);
 
     useEffect(() => {
         setWard('');
         if (!district) { setWards([]); return; }
-        fetch(`/api/shipping/address/wards?district_code=${encodeURIComponent(district)}`, { cache: 'force-cache' })
-            .then((r) => r.json()).then((b) => setWards(b.data ?? [])).catch(() => {});
+        carrierAddressOptions(`/api/shipping/address/wards?district_code=${encodeURIComponent(district)}`)
+            .then(setWards).catch(() => {});
     }, [district]);
 
     const run = async () => {
@@ -183,12 +193,23 @@ export function ShippingQuotePreview() {
     };
 
     return (
-        <div className="space-y-4 rounded-lg border border-border/60 p-4">
-            <div className="flex items-center gap-2">
-                <Truck className="h-4 w-4 text-orange-400" />
-                <h4 className="font-medium">{copy.title}</h4>
-            </div>
-            <p className="text-xs text-muted-foreground">{copy.hint}</p>
+        <Collapsible open={open} onOpenChange={setOpen} className="rounded-lg border border-border/60">
+            <CollapsibleTrigger asChild>
+                <button type="button" className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-accent/40">
+                    <span className="flex min-w-0 items-center gap-2">
+                        <Truck className="h-4 w-4 shrink-0 text-orange-400" />
+                        <span className="min-w-0">
+                            <span className="block font-medium">{copy.title}</span>
+                            <span className="block truncate text-xs text-muted-foreground">{copy.hint}</span>
+                        </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                        {open ? copy.close : copy.open}
+                        <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+                    </span>
+                </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-4 border-t border-border/60 p-4">
 
             <div className="grid gap-3 sm:grid-cols-3">
                 <div className="space-y-1.5">
@@ -233,7 +254,14 @@ export function ShippingQuotePreview() {
             {/* Only asked for once there is something to book: a quote needs a
                 district, a waybill needs a person to hand the parcel to. */}
             {rates && rates.length > 0 && (
-                <div className="space-y-3 rounded-md border border-border/60 p-3">
+                <Collapsible open={bookingDetailsOpen} onOpenChange={setBookingDetailsOpen} className="rounded-md border border-border/60">
+                    <CollapsibleTrigger asChild>
+                        <button type="button" className="flex w-full items-center justify-between gap-3 p-3 text-left text-sm font-medium hover:bg-accent/40">
+                            {copy.recipient}
+                            <ChevronDown className={`h-4 w-4 transition-transform ${bookingDetailsOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="space-y-3 border-t border-border/60 p-3">
                     <div className="grid gap-3 sm:grid-cols-2">
                         <div className="space-y-1.5">
                             <Label htmlFor="q-ward">{copy.ward}</Label>
@@ -272,7 +300,8 @@ export function ShippingQuotePreview() {
                             {copy.missing.replace('{fields}', missingFields.join(', '))}
                         </p>
                     )}
-                </div>
+                    </CollapsibleContent>
+                </Collapsible>
             )}
 
             {rates && rates.length > 0 && (
@@ -327,6 +356,7 @@ export function ShippingQuotePreview() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </div>
+            </CollapsibleContent>
+        </Collapsible>
     );
 }

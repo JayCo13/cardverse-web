@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { createServiceSupabaseClient } from '@/lib/supabase/service';
-import { quoteSellerTiers } from '@/lib/goship-tiers';
-import { booksWithCarrier, carrierServesTier, SHIPPING_CARRIERS } from '@/lib/shipping-carriers';
+import { carrierServesTier, OFFERABLE_CARRIERS, OFFERABLE_COURIERS } from '@/lib/shipping-carriers';
 import {
-    isValidListingShippingFee,
-    LISTING_SHIPPING_FEE_MAX,
+    DEFAULT_SHOP_TIER_FEES,
+    isValidShopTierFee,
+    SHOP_TIER_FEE_MAX,
+    SHOP_TIER_FEE_MIN,
     type ShippingTier,
     type ShopFeeTable,
 } from '@/lib/shipping-fee';
@@ -17,30 +17,35 @@ import {
  * is not stored per shop at all — it is the same on every route, so it lives as
  * a measured model in khai-gia.ts and is added at checkout.
  *
- * Two tables, never merged here. `shipping_fees` is what the seller decided and
- * is the only thing this route writes. `goship_tier_fees` is what GoShip quotes
- * for their pickup address and is written only by a re-quote — it is the
- * recommendation the setup page shows behind each empty box, and the fallback
- * checkout uses for a box the seller never filled.
+ * `shipping_fees` is what the seller decided and the only thing this route
+ * writes. Everything they did not decide is DEFAULT_SHOP_TIER_FEES — the same
+ * fixed 20/22/25k this route offers as the recommendation, so an empty box and
+ * a box filled from the suggestion are charged identically and a seller cannot
+ * be surprised by the difference.
  *
- * Keeping them apart is what lets a seller edit one cell without freezing the
- * other five at today's prices.
+ * Live GoShip quotes used to fill that role and no longer do. They needed a
+ * pickup address before any price could be shown, went missing whenever GoShip
+ * was unreachable, and moved a seller's prices without telling them.
  */
 
 const TIERS: readonly ShippingTier[] = ['intra', 'inter', 'region'];
 
-/**
- * Carriers a fee may be set for: the ones a courier is paid for.
- *
- * Hand delivery is not among them and gets no row at all. It is not a price of
- * zero the seller chose — it is the absence of a carrier bill, decided by what
- * the delivery is rather than by what anybody typed, so there is nothing here
- * to fill in and nothing that could be filled in wrong.
- */
-const TABLE_CARRIERS = SHIPPING_CARRIERS.filter((c) => c.booksWithCarrier).map((c) => c.code);
+/** Carriers a fee may be set for: every one a seller can still offer. */
+const TABLE_CARRIERS = OFFERABLE_COURIERS.map((c) => c.code);
 
-/** GoShip prices all of them; the split exists for readers, not for the code. */
-const QUOTABLE = TABLE_CARRIERS;
+/**
+ * What every carrier is recommended at, which is the same fixed table for all
+ * of them. Built once here so the page, the placeholder and the fallback at
+ * checkout are provably the same three numbers.
+ */
+const RECOMMENDED: ShopFeeTable = Object.fromEntries(
+    TABLE_CARRIERS.map((code) => [
+        code,
+        Object.fromEntries(
+            TIERS.filter((tier) => carrierServesTier(code, tier)).map((tier) => [tier, DEFAULT_SHOP_TIER_FEES[tier]]),
+        ),
+    ]),
+);
 
 /**
  * Read a table out of a request body.
@@ -56,12 +61,7 @@ function parseTable(value: unknown): { ok: true; value: ShopFeeTable } | { ok: f
     const out: ShopFeeTable = {};
     for (const [carrier, tiers] of Object.entries(value as Record<string, unknown>)) {
         if (!TABLE_CARRIERS.includes(carrier as never)) {
-            return {
-                ok: false,
-                error: booksWithCarrier(carrier)
-                    ? `Không hỗ trợ đơn vị vận chuyển "${carrier}".`
-                    : 'Giao tận tay không có phí để đặt.',
-            };
+            return { ok: false, error: `Không hỗ trợ đơn vị vận chuyển "${carrier}".` };
         }
         if (!tiers || typeof tiers !== 'object' || Array.isArray(tiers)) {
             return { ok: false, error: `Bảng phí của ${carrier} không hợp lệ.` };
@@ -78,14 +78,15 @@ function parseTable(value: unknown): { ok: true; value: ShopFeeTable } | { ok: f
             if (!carrierServesTier(carrier, tier as ShippingTier)) {
                 return { ok: false, error: `${carrier} không nhận giao ở mức "${tier}".` };
             }
-            // An empty box is an absent cell, not a zero. Zero is free shipping
-            // and a seller has to type it on purpose.
+            // An empty box is an absent cell, and an absent cell is the
+            // default — not a zero. Free shipping is a decision a seller makes
+            // per listing, where they can see the card it applies to.
             if (fee === null || fee === '') continue;
             const amount = Number(fee);
-            if (!isValidListingShippingFee(amount)) {
+            if (!isValidShopTierFee(amount)) {
                 return {
                     ok: false,
-                    error: `Phí phải là số nguyên từ 0 đến ${LISTING_SHIPPING_FEE_MAX.toLocaleString('vi-VN')}đ.`,
+                    error: `Phí phải từ ${SHOP_TIER_FEE_MIN.toLocaleString('vi-VN')}đ đến ${SHOP_TIER_FEE_MAX.toLocaleString('vi-VN')}đ.`,
                 };
             }
             row[tier as ShippingTier] = amount;
@@ -98,21 +99,18 @@ function parseTable(value: unknown): { ok: true; value: ShopFeeTable } | { ok: f
 function parseCarriers(value: unknown): { ok: true; value: string[] } | { ok: false; error: string } {
     if (!Array.isArray(value)) return { ok: false, error: 'Danh sách đơn vị vận chuyển không hợp lệ.' };
     const codes = [...new Set(value.map((c) => String(c)))];
-    const unknown = codes.find((c) => !SHIPPING_CARRIERS.some((sc) => sc.code === c));
+    const unknown = codes.find((c) => !OFFERABLE_CARRIERS.some((sc) => sc.code === c));
     if (unknown) return { ok: false, error: `Không hỗ trợ "${unknown}".` };
+
     return { ok: true, value: codes };
 }
 
 type ShopRow = {
     shipping_carriers: string[] | null;
     shipping_fees: ShopFeeTable | null;
-    goship_tier_fees: ShopFeeTable | null;
-    goship_tier_fees_at: string | null;
-    goship_pickup: { city: string; district: string } | null;
-    address_province_name: string | null;
 };
 
-const SHOP_COLUMNS = 'shipping_carriers, shipping_fees, goship_tier_fees, goship_tier_fees_at, goship_pickup, address_province_name';
+const SHOP_COLUMNS = 'shipping_carriers, shipping_fees';
 
 export async function GET() {
     const supabase = await createServerSupabaseClient();
@@ -127,15 +125,30 @@ export async function GET() {
     if (error) return NextResponse.json({ error: 'Không đọc được bảng phí.' }, { status: 500 });
 
     const row = data as unknown as ShopRow;
+
+    // Rows written before a carrier was retired still carry it — `vtp` from the
+    // first list, `vnp` and `best` since. Both the picker and the price list are
+    // filtered on the way out: an unfiltered fee row would be invisible on the
+    // page and still ride back up on the next save, where parseTable rejects it
+    // and the seller watches a save fail over a carrier they cannot even see.
+    const offered = (codes: string[]) => codes.filter(code => OFFERABLE_CARRIERS.some(carrier => carrier.code === code));
+
     return NextResponse.json({
         data: {
-            carriers: row.shipping_carriers ?? [],
-            fees: row.shipping_fees ?? {},
-            recommended: row.goship_tier_fees ?? {},
-            recommendedAt: row.goship_tier_fees_at,
-            // Without a pickup address there is nothing to quote from, and the
-            // page needs to say that rather than show six empty boxes.
-            hasPickup: !!row.goship_pickup?.city && !!row.goship_pickup?.district,
+            carriers: offered(row.shipping_carriers ?? []),
+            // Cells outside today's band are dropped the same way, and for the
+            // same reason: shopFeeCell already refuses to charge them, so
+            // showing one would print a number the checkout does not use.
+            fees: Object.fromEntries(
+                Object.entries(row.shipping_fees ?? {})
+                    .filter(([code]) => offered([code]).length)
+                    .map(([code, tiers]) => [
+                        code,
+                        Object.fromEntries(Object.entries(tiers ?? {}).filter(([, fee]) => isValidShopTierFee(fee))),
+                    ])
+                    .filter(([, tiers]) => Object.keys(tiers).length > 0),
+            ),
+            recommended: RECOMMENDED,
         },
     });
 }
@@ -166,61 +179,4 @@ export async function PUT(request: NextRequest) {
     }
 
     return NextResponse.json({ data: { carriers: carriers.value, fees: fees.value } });
-}
-
-/**
- * Re-quote the recommendation from the seller's pickup address.
- *
- * Also runs on its own whenever the pickup address is saved; this is the button
- * for the rest of the time, since carrier prices move without anybody moving
- * house. Six upstream calls, so it is a press rather than a page load.
- */
-export async function POST() {
-    const supabase = await createServerSupabaseClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const { data, error } = await supabase
-        .from('profiles')
-        .select(SHOP_COLUMNS)
-        .eq('id', user.id)
-        .single();
-    if (error) return NextResponse.json({ error: 'Không đọc được hồ sơ.' }, { status: 500 });
-
-    const row = data as unknown as ShopRow;
-    if (!row.goship_pickup?.city || !row.goship_pickup?.district) {
-        return NextResponse.json(
-            { error: 'Cần địa chỉ lấy hàng trước khi tính giá đề xuất.', code: 'pickup_missing' },
-            { status: 409 },
-        );
-    }
-
-    const quoted = await quoteSellerTiers({
-        pickup: { city: row.goship_pickup.city, district: row.goship_pickup.district },
-        provinceName: row.address_province_name,
-        allowedCarriers: QUOTABLE,
-    });
-
-    if (Object.keys(quoted).length === 0) {
-        // Upstream said nothing usable. Keep the previous table rather than
-        // replacing real numbers with an empty object.
-        return NextResponse.json(
-            { error: 'GoShip chưa trả về giá nào. Thử lại sau.', code: 'quote_empty' },
-            { status: 503 },
-        );
-    }
-
-    const at = new Date().toISOString();
-    const service = createServiceSupabaseClient();
-    const { error: writeError } = await service
-        .from('profiles')
-        .update({ goship_tier_fees: quoted, goship_tier_fees_at: at } as never)
-        .eq('id', user.id);
-
-    if (writeError) {
-        console.error('[FeeTable] Could not store quote:', writeError.message);
-        return NextResponse.json({ error: 'Không lưu được giá đề xuất.' }, { status: 500 });
-    }
-
-    return NextResponse.json({ data: { recommended: quoted, recommendedAt: at } });
 }

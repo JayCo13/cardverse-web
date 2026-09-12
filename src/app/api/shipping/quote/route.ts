@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { goshipRates } from '@/lib/goship';
 import { parseParcel, parcelCopy } from '@/lib/parcel';
 import { getRequestLocale } from '@/lib/request-localization';
+import { shipmentCarriers } from '@/lib/shipment-carriers';
 
 /**
  * What the carriers would charge to send this seller's parcel to that address.
@@ -33,14 +34,24 @@ export async function POST(request: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await request.json().catch(() => null) as {
+        orderId?: string;
         to?: { city?: unknown; district?: unknown };
         weight?: unknown;
         width?: unknown; height?: unknown; length?: unknown;
         declaredValue?: unknown;
     } | null;
 
-    const toCity = typeof body?.to?.city === 'string' ? body.to.city.trim() : '';
-    const toDistrict = typeof body?.to?.district === 'string' ? body.to.district.trim() : '';
+    let destination = body?.to;
+    if (body?.orderId) {
+        const { data: order, error } = await supabase.from('orders').select('to_goship,status,goship_code').eq('id', body.orderId).eq('seller_id', user.id).maybeSingle();
+        const row = order as { to_goship: { city?: string; district?: string; ward?: string } | null; status: string; goship_code: string | null } | null;
+        if (error) return NextResponse.json({ code: 'preparation_failed' }, { status: 503 });
+        if (!row) return NextResponse.json({ code: 'order_not_found' }, { status: 404 });
+        if (row.status !== 'paid' || row.goship_code) return NextResponse.json({ code: 'not_bookable' }, { status: 409 });
+        destination = row.to_goship as typeof destination;
+    }
+    const toCity = typeof destination?.city === 'string' ? destination.city.trim() : '';
+    const toDistrict = typeof destination?.district === 'string' ? destination.district.trim() : '';
     if (!ID.test(toCity) || !ID.test(toDistrict)) {
         return NextResponse.json({ error: 'Thiếu tỉnh/thành hoặc quận/huyện của người nhận.' }, { status: 400 });
     }
@@ -50,11 +61,12 @@ export async function POST(request: NextRequest) {
 
     const { data: profile } = await supabase
         .from('profiles')
-        .select('goship_pickup')
+        .select('goship_pickup,shipping_carriers')
         .eq('id', user.id)
         .single();
 
-    const pickup = (profile as { goship_pickup: { city?: string; district?: string } | null } | null)?.goship_pickup;
+    const seller = profile as { goship_pickup: { city?: string; district?: string } | null; shipping_carriers: string[] | null } | null;
+    const pickup = seller?.goship_pickup;
     if (!pickup?.city || !pickup?.district) {
         return NextResponse.json(
             { error: 'Bạn cần lưu địa chỉ lấy hàng theo đơn vị vận chuyển trước.', code: 'missing_goship_pickup' },
@@ -79,5 +91,7 @@ export async function POST(request: NextRequest) {
 
     // An empty list is a route nobody serves, which is a different answer from
     // a failed lookup and has to read differently to whoever is choosing.
-    return NextResponse.json({ data: result.rates, servable: result.rates.length > 0 });
+    const allowed = shipmentCarriers(seller?.shipping_carriers);
+    const rates = body?.orderId ? result.rates.filter(rate => allowed.includes(rate.carrierCode)) : result.rates;
+    return NextResponse.json({ data: rates, servable: rates.length > 0 });
 }

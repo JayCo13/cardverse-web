@@ -563,7 +563,7 @@ export default function OrderDetailsPage() {
 
             {/* Right: the seller's whole job on a paid order. */}
             {showDesk && (
-              <div className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1">
+              <div className="min-w-0">
                 <OrderShippingDesk
                   productKind={order.card?.product_kind || 'card'}
                   orderId={order.id}

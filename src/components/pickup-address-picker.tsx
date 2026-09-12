@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { useLocalization } from '@/context/localization-context';
+import { carrierAddressOptions } from '@/lib/carrier-address-options';
 
 /**
  * The sender block on a waybill, picked in the carrier's own geography.
@@ -67,12 +68,9 @@ const COPY = {
     },
 } as const;
 
-async function fetchOptions(url: string): Promise<Option[]> {
-    const response = await fetch(url, { cache: 'force-cache' });
-    if (!response.ok) throw new Error(String(response.status));
-    const body = await response.json();
-    return Array.isArray(body?.data) ? body.data : [];
-}
+// Shared with every other picker on the page: one list, fetched once, and a
+// lookup already in flight is joined rather than repeated.
+const fetchOptions = carrierAddressOptions;
 
 export function PickupAddressPicker({
     value,

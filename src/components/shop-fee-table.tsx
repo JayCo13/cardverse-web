@@ -3,13 +3,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, RefreshCw, Save, Truck } from 'lucide-react';
+import { ChevronDown, Loader2, Save, Truck } from 'lucide-react';
 import { useLocalization } from '@/context/localization-context';
 import { useToast } from '@/hooks/use-toast';
-import { carrierServesTier, SHIPPING_CARRIERS } from '@/lib/shipping-carriers';
-import { khaiGiaModel, khaiGiaSurcharge } from '@/lib/khai-gia';
+import { carrierServesTier, getCarrier, OFFERABLE_CARRIERS } from '@/lib/shipping-carriers';
+import { khaiGiaModel } from '@/lib/khai-gia';
 import {
-    LISTING_SHIPPING_FEE_MAX,
+    DEFAULT_SHOP_TIER_FEES,
+    isValidShopTierFee,
+    SHOP_TIER_FEE_MAX,
+    SHOP_TIER_FEE_MIN,
     type ShippingTier,
     type ShopFeeTable as FeeTable,
 } from '@/lib/shipping-fee';
@@ -18,14 +21,19 @@ import {
  * The shop's postage price list: three boxes per carrier, each with the real
  * GoShip price behind it.
  *
- * The recommendation is a placeholder rather than a prefilled value, and that
- * distinction is the whole design. A box the seller leaves empty keeps
- * following the quote as carrier prices move; a box they type into is theirs
- * and stops moving. Prefilling would silently convert every seller into the
- * second kind on their first save.
+ * The recommendation is a placeholder rather than a prefilled value: an empty
+ * box is charged at the default and says so through the placeholder, and a box
+ * the seller types into is theirs. Both end up at the same number unless the
+ * seller moves one, which is the point — the suggestion and the fallback are
+ * one table, DEFAULT_SHOP_TIER_FEES, not two that can drift.
  *
- * Khai giá is deliberately NOT a box. GHN, BEST and J&T charge a percentage of
- * the card's value with no ceiling, so any number a seller typed would be right
+ * A typed number has to land between SHOP_TIER_FEE_MIN and SHOP_TIER_FEE_MAX.
+ * The floor is the load-bearing half: under it the seller pays the difference
+ * on every order the cell prices, and one shop really did type 11,000đ when the
+ * boxes took any number at all.
+ *
+ * Khai giá is deliberately NOT a box. GHN and J&T charge a percentage of the
+ * card's value with no ceiling, so any number a seller typed would be right
  * for one card and short for the next dearer one. It is added at checkout from
  * the measured model instead, and shown here so nobody is surprised by it.
  *
@@ -37,16 +45,15 @@ import {
 
 const TIERS: ShippingTier[] = ['intra', 'inter', 'region'];
 
-/** The card values the khai giá examples are worked at. */
-const EXAMPLE_VALUE = 5_000_000;
-const EXAMPLE_HIGH_VALUE = 20_000_000;
+/** One line of the disclosure below the fields. */
+const Note = ({ children }: { children: React.ReactNode }) => (
+    <li className="leading-5">{children}</li>
+);
 
 type Loaded = {
     carriers: string[];
     fees: FeeTable;
     recommended: FeeTable;
-    recommendedAt: string | null;
-    hasPickup: boolean;
 };
 
 /** Boxes hold what was typed, so a half-finished number is never a price. */
@@ -78,7 +85,23 @@ const fromDraft = (draft: Draft): FeeTable => {
     return fees;
 };
 
-export function ShopFeeTable() {
+type ShopFeeTableProps = {
+    /**
+     * Told after a save the server accepted, so a caller gating on "this shop
+     * has shipping" can move on without re-reading the profile.
+     */
+    onSaved?: () => void;
+    /**
+     * Refuse to save until at least one carrier is on.
+     *
+     * Off everywhere except the listing wizard. On /sell an empty list is a
+     * real answer — it means "buyers see every carrier" — and demanding a pick
+     * there would break shops that are selling perfectly well today.
+     */
+    requireCarrier?: boolean;
+};
+
+export function ShopFeeTable({ onSaved, requireCarrier = false }: ShopFeeTableProps = {}) {
     const { locale } = useLocalization();
     const { toast } = useToast();
     const tx = (vi: string, en: string, ja: string) =>
@@ -90,9 +113,7 @@ export function ShopFeeTable() {
     const [carriers, setCarriers] = useState<string[]>([]);
     const [draft, setDraft] = useState<Draft>({});
     const [recommended, setRecommended] = useState<FeeTable>({});
-    const [recommendedAt, setRecommendedAt] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
-    const [isRefreshing, setIsRefreshing] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -107,18 +128,25 @@ export function ShopFeeTable() {
                 setCarriers(data.carriers);
                 setDraft(toDraft(data.fees));
                 setRecommended(data.recommended);
-                setRecommendedAt(data.recommendedAt);
             } catch {
-                if (!cancelled) setLoaded({ carriers: [], fees: {}, recommended: {}, recommendedAt: null, hasPickup: false });
+                if (!cancelled) setLoaded({ carriers: [], fees: {}, recommended: {} });
             }
         })();
         return () => { cancelled = true; };
     }, []);
 
+    /**
+     * What this cell costs when the seller leaves it alone.
+     *
+     * The server sends the same table, and the constant answers before it
+     * arrives and if the request ever fails — a placeholder that says "Chưa có
+     * giá" was the old failure mode, and it told the seller nothing about what
+     * a buyer would actually be charged.
+     */
     const suggestion = useCallback(
-        (carrier: string, tier: ShippingTier): number | null => {
+        (carrier: string, tier: ShippingTier): number => {
             const value = recommended?.[carrier]?.[tier];
-            return typeof value === 'number' ? value : null;
+            return typeof value === 'number' ? value : DEFAULT_SHOP_TIER_FEES[tier];
         },
         [recommended],
     );
@@ -130,13 +158,12 @@ export function ShopFeeTable() {
         }));
     };
 
-    /** Copy today's quote into the boxes, where there is one to copy. */
+    /** Write the default into every box of one carrier. */
     const applySuggestions = (carrier: string) => {
         setDraft(current => {
             const row: Record<string, string> = { ...(current[carrier] ?? {}) };
             TIERS.filter(tier => carrierServesTier(carrier, tier)).forEach(tier => {
-                const value = suggestion(carrier, tier);
-                if (value !== null) row[tier] = String(value);
+                row[tier] = String(suggestion(carrier, tier));
             });
             return { ...current, [carrier]: row };
         });
@@ -147,21 +174,14 @@ export function ShopFeeTable() {
             current.includes(code) ? current.filter(c => c !== code) : [...current, code]);
     };
 
-    const refresh = async () => {
-        setIsRefreshing(true);
-        try {
-            const response = await fetch('/api/shipping/fee-table', { method: 'POST' });
-            const payload = await response.json().catch(() => null);
-            if (!response.ok) throw new Error(payload?.error || 'refresh failed');
-            setRecommended(payload.data.recommended);
-            setRecommendedAt(payload.data.recommendedAt);
-            toast({ title: tx('Đã cập nhật giá đề xuất.', 'Suggestions updated.', '目安を更新しました。') });
-        } catch (error: any) {
-            toast({ variant: 'destructive', title: error.message });
-        } finally {
-            setIsRefreshing(false);
-        }
-    };
+    /**
+     * Is any box holding a number the server would refuse?
+     *
+     * Read off the draft rather than tracked per box, so a cell that becomes
+     * valid again re-enables the button without any bookkeeping.
+     */
+    const hasInvalidCell = Object.values(draft).some(row =>
+        Object.values(row).some(raw => raw !== '' && !isValidShopTierFee(Number(raw))));
 
     const save = async () => {
         setIsSaving(true);
@@ -174,6 +194,7 @@ export function ShopFeeTable() {
             const payload = await response.json().catch(() => null);
             if (!response.ok) throw new Error(payload?.error || 'save failed');
             toast({ title: tx('Đã lưu bảng phí.', 'Fee table saved.', '送料表を保存しました。') });
+            onSaved?.();
         } catch (error: any) {
             toast({ variant: 'destructive', title: error.message });
         } finally {
@@ -197,129 +218,134 @@ export function ShopFeeTable() {
     };
 
     /**
-     * What this carrier adds for declared value, in one line.
+     * What this carrier adds for declared value, in as few words as possible.
      *
      * Written from the model rather than typed out per carrier, so a corrected
      * measurement changes the number the seller reads as well as the number
-     * they are charged. Carriers with more than one band get a worked example
-     * at the top of the range too — BEST doubling to 1% above 10,000,000đ is
-     * exactly the kind of thing a seller should not discover from a payout.
+     * they are charged. Every band is still listed — a carrier that changes
+     * rate partway up the range is exactly what a seller should not discover
+     * from a payout — but the worked examples are gone: they restated the rule
+     * in longer form directly under it, and one per carrier is what buried the
+     * fields this page exists for.
      */
-    const khaiGiaLine = (code: string): string => {
+    const khaiGiaLine = (code: string): string | null => {
         const bands = khaiGiaModel(code);
-        if (bands.length === 0) {
-            return tx(
-                'Không thu phí khai giá — thẻ 100 triệu cũng như thẻ 50 nghìn.',
-                'Charges nothing for declared value — a 100M card costs the same as a 50k one.',
-                '保険評価額の料金なし — 1億đのカードでも5万đのカードと同額です。',
-            );
-        }
+        if (bands.length === 0) return null;
 
         const part = (band: typeof bands[number]) => {
             const from = tx(`từ ${fmt(band.from)}`, `from ${fmt(band.from)}`, `${fmt(band.from)}以上`);
             const cost = band.rate === 0
                 ? `+${fmt(band.flat)}`
                 : `+${pct(band.rate)}` + (band.flat ? ` +${fmt(band.flat)}` : '');
-            return `${from}: ${cost}`;
+            return `${from} ${cost}`;
         };
 
-        const examples = (bands.length > 1 ? [EXAMPLE_VALUE, EXAMPLE_HIGH_VALUE] : [EXAMPLE_VALUE])
-            .map(value => `${fmt(value)} → +${fmt(khaiGiaSurcharge(code, value))}`)
-            .join(', ');
-
-        const rules = bands.map(part).join('; ');
-        return tx(
-            `Phí khai giá tự cộng — ${rules}. Ví dụ: thẻ ${examples}.`,
-            `Khai giá is added automatically — ${rules}. For example: a ${examples}.`,
-            `保険評価額の料金を自動加算 — ${rules}。例: ${examples}。`,
-        );
+        const rules = bands.map(part).join(' · ');
+        return tx(`Khai giá: ${rules}`, `Declared value: ${rules}`, `保険評価額: ${rules}`);
     };
 
     return (
         <div className="space-y-4 text-sm">
-            <p className="text-muted-foreground">
-                {tx(
-                    'Chọn đơn vị vận chuyển bạn nhận gửi, rồi đặt cước gửi người mua trả cho từng khoảng cách. Ô để trống sẽ tự dùng giá GoShip thật bên dưới và tự cập nhật khi hãng đổi giá — điền số vào là số của bạn, không đổi nữa.',
-                    'Pick the carriers you ship with, then set the postage the buyer pays for each distance. An empty box follows the real GoShip price below and keeps following it; a number you type is yours and stops moving.',
-                    '発送に使う業者を選び、距離ごとに買い手が払う送料を設定します。空欄なら下の実際のGoShip価格に追従し、入力した数値はそのまま固定されます。',
-                )}
-            </p>
-            <p className="text-muted-foreground">
-                {tx(
-                    'Phí khai giá KHÔNG nằm trong các ô này — hệ thống tự cộng theo giá trị từng thẻ lúc thanh toán, đúng công thức của hãng. Nghĩa là bạn không bao giờ lỗ vì bán thẻ đắt, và người mua thẻ rẻ không phải gánh hộ.',
-                    'Khai giá is NOT in these boxes — it is added at checkout from each card’s value, on the carrier’s own formula. So a dear card can never leave you short, and a cheap card’s buyer never subsidises one.',
-                    '保険評価額の料金はこの欄に含まれません。決済時に各カードの価値から業者の計算式で自動加算されます。高額カードで赤字にならず、安価なカードの買い手が肩代わりすることもありません。',
-                )}
-            </p>
+            <div className="space-y-2.5">
+                <p className="text-muted-foreground">
+                    {tx(
+                        'Chọn hãng bạn nhận gửi. Giá mặc định đã đặt sẵn, muốn đổi thì điền số của bạn.',
+                        'Pick the carriers you ship with. The default prices are already set; type your own to change one.',
+                        '発送に使う業者を選びます。既定の送料が設定済みで、変更したい場合のみ入力します。',
+                    )}
+                </p>
 
-            <div className="flex flex-wrap gap-2">
-                {SHIPPING_CARRIERS.map(carrier => {
-                    const on = carriers.includes(carrier.code);
-                    return (
-                        <button
-                            key={carrier.code}
-                            type="button"
-                            onClick={() => toggleCarrier(carrier.code)}
-                            aria-pressed={on}
-                            className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                                on ? 'border-orange-500/60 bg-orange-500/10 text-foreground' : 'border-zinc-800 text-muted-foreground hover:border-zinc-700'
-                            }`}
-                        >
-                            {carrier.logo
-                                ? <img src={carrier.logo} alt="" className="h-4 w-4 rounded object-contain" />
-                                : <Truck aria-hidden="true" className="h-4 w-4" />}
-                            {carrier.short}
-                        </button>
-                    );
-                })}
+                <div className="flex flex-wrap gap-2">
+                    {OFFERABLE_CARRIERS.map(carrier => {
+                        const on = carriers.includes(carrier.code);
+                        return (
+                            <button
+                                key={carrier.code}
+                                type="button"
+                                onClick={() => toggleCarrier(carrier.code)}
+                                aria-pressed={on}
+                                className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                                    on ? 'border-orange-500/60 bg-orange-500/10 text-foreground' : 'border-zinc-800 text-muted-foreground hover:border-zinc-700'
+                                }`}
+                            >
+                                {carrier.logo
+                                    ? <img src={carrier.logo} alt="" className="h-4 w-4 rounded object-contain" />
+                                    : <Truck aria-hidden="true" className="h-4 w-4" />}
+                                {carrier.short}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                {/* The rules used to be four paragraphs above the fields, and a
+                    seller had to read all of them to reach the thing they came
+                    to type. They are still all here, one line each, behind a
+                    disclosure — closed for the seller who already knows how the
+                    table works, one click away for the one who does not. */}
+                <details className="group rounded-lg border border-zinc-800 bg-background/30">
+                    <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
+                        <ChevronDown aria-hidden className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+                        {tx('Phí này tính thế nào?', 'How the fee works', '送料の仕組み')}
+                    </summary>
+                    <ul className="space-y-1.5 px-3 pb-3 text-xs text-muted-foreground">
+                        <Note>
+                            {tx(
+                                `Ô trống tính theo giá mặc định: nội tỉnh ${fmt(DEFAULT_SHOP_TIER_FEES.intra)}, liên tỉnh ${fmt(DEFAULT_SHOP_TIER_FEES.inter)}, liên miền ${fmt(DEFAULT_SHOP_TIER_FEES.region)}.`,
+                                `An empty box is charged at the default: ${fmt(DEFAULT_SHOP_TIER_FEES.intra)} same province, ${fmt(DEFAULT_SHOP_TIER_FEES.inter)} same region, ${fmt(DEFAULT_SHOP_TIER_FEES.region)} across regions.`,
+                                `空欄は既定額: 同一省内${fmt(DEFAULT_SHOP_TIER_FEES.intra)}、同一地域${fmt(DEFAULT_SHOP_TIER_FEES.inter)}、地域をまたぐ${fmt(DEFAULT_SHOP_TIER_FEES.region)}。`,
+                            )}
+                        </Note>
+                        <Note>
+                            {tx(
+                                `Muốn đổi thì điền số của bạn, trong khoảng ${fmt(SHOP_TIER_FEE_MIN)} – ${fmt(SHOP_TIER_FEE_MAX)}.`,
+                                `To change one, type your own number between ${fmt(SHOP_TIER_FEE_MIN)} and ${fmt(SHOP_TIER_FEE_MAX)}.`,
+                                `変更する場合は${fmt(SHOP_TIER_FEE_MIN)}〜${fmt(SHOP_TIER_FEE_MAX)}の範囲で入力してください。`,
+                            )}
+                        </Note>
+                        <Note>
+                            {tx(
+                                'Phí khai giá không nằm trong các ô này — tự cộng theo giá trị từng thẻ lúc thanh toán, nên bán thẻ đắt không lỗ.',
+                                'Khai giá is not in these boxes — it is added at checkout from each card’s value, so a dear card never leaves you short.',
+                                '保険評価額の料金は欄に含まれず、決済時に各カードの価値から加算されます。',
+                            )}
+                        </Note>
+                        <Note>
+                            {tx(
+                                'Mỗi bài đăng vẫn đặt được phí ship riêng, đè lên bảng này.',
+                                'Any listing can still set its own shipping fee, overriding this table.',
+                                '出品ごとに独自の送料を設定してこの表を上書きできます。',
+                            )}
+                        </Note>
+                        <Note>
+                            {tx(
+                                'Người mua trả theo hãng rẻ nhất bạn bật. Cước thực tế cao hơn phí đã thu thì phần vượt trừ vào tiền bạn nhận.',
+                                'The buyer pays for the cheapest carrier you enable. If the real bill exceeds the fee collected, the difference comes off your payout.',
+                                '買い手は有効にした中で最も安い業者の料金を支払います。実際の料金が徴収額を超えた分は受取額から差し引かれます。',
+                            )}
+                        </Note>
+                    </ul>
+                </details>
             </div>
 
             {carriers.length === 0 && (
                 <p className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-400">
-                    {tx(
-                        'Chưa chọn hãng nào — người mua sẽ thấy tất cả các hãng khả dụng.',
-                        'No carrier picked — buyers will see every available carrier.',
-                        '業者が未選択です。買い手にはすべての業者が表示されます。',
-                    )}
-                </p>
-            )}
-
-            {!loaded.hasPickup && (
-                <p className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-400">
-                    {tx(
-                        'Chưa có địa chỉ lấy hàng nên chưa tính được giá đề xuất. Lưu địa chỉ ở trên trước.',
-                        'No pickup address yet, so nothing can be quoted. Save one above first.',
-                        '集荷先住所が未設定のため見積もりできません。先に上で保存してください。',
-                    )}
+                    {requireCarrier
+                        ? tx(
+                            'Chọn ít nhất một đơn vị vận chuyển để tiếp tục.',
+                            'Pick at least one carrier to continue.',
+                            '続けるには配送業者を1社以上選んでください。',
+                        )
+                        : tx(
+                            'Chưa chọn hãng nào — người mua sẽ thấy tất cả các hãng.',
+                            'No carrier picked — buyers see every carrier.',
+                            '業者が未選択です。買い手には全業者が表示されます。',
+                        )}
                 </p>
             )}
 
             {carriers.map(code => {
-                const carrier = SHIPPING_CARRIERS.find(c => c.code === code);
-
-                // Hand delivery has no boxes because it has no price. Shown as
-                // a row anyway so a seller who turned it on can see what they
-                // turned on, and see that it costs nobody anything.
-                if (carrier && !carrier.booksWithCarrier) {
-                    return (
-                        <div key={code} className="rounded-xl border border-zinc-800 bg-background/30 p-3">
-                            <div className="mb-1 flex items-center gap-2">
-                                <Truck aria-hidden="true" className="h-5 w-5 text-muted-foreground" />
-                                <span className="text-sm font-semibold">{carrier.name}</span>
-                                <span className="ml-auto text-sm font-semibold text-green-400">
-                                    {tx('Miễn phí', 'Free', '無料')}
-                                </span>
-                            </div>
-                            <p className="text-xs leading-5 text-muted-foreground">
-                                {tx(
-                                    'Chỉ hiện với người mua cùng tỉnh/thành với bạn, hai bên tự hẹn địa chỉ gặp mặt. Người mua không trả phí ship và bạn cũng không bị trừ gì — khác với miễn phí vận chuyển, ở đây không có cước của hãng nào cả.',
-                                    'Only shown to buyers in your own province; the two of you agree where to meet. The buyer pays no shipping and nothing is deducted from you either — unlike free shipping, there is no carrier bill at all.',
-                                    '同じ省・市の買い手にのみ表示され、待ち合わせ場所は当事者間で決めます。買い手は送料を払わず、あなたからも何も差し引かれません。送料無料と違い、そもそも業者の料金が発生しません。',
-                                )}
-                            </p>
-                        </div>
-                    );
-                }
+                const carrier = getCarrier(code);
+                const khaiGia = khaiGiaLine(code);
 
                 return (
                     <div key={code} className="rounded-xl border border-zinc-800 bg-background/30 p-3">
@@ -341,7 +367,12 @@ export function ShopFeeTable() {
 
                         <div className="grid gap-3 sm:grid-cols-3">
                             {TIERS.filter(tier => carrierServesTier(code, tier)).map(tier => {
-                                const hint = suggestion(code, tier);
+                                const typed = draft[code]?.[tier] ?? '';
+                                // Flagged while typing rather than on save: the
+                                // server refuses the same number, and finding
+                                // that out after pressing Lưu means hunting for
+                                // which of six boxes it meant.
+                                const outOfBand = typed !== '' && !isValidShopTierFee(Number(typed));
                                 return (
                                     <label key={tier} className="block">
                                         <span className="mb-1 block text-xs font-medium text-muted-foreground">
@@ -350,39 +381,36 @@ export function ShopFeeTable() {
                                         <Input
                                             inputMode="numeric"
                                             aria-label={`${carrier?.short || code} · ${tierLabel[tier]}`}
-                                            value={draft[code]?.[tier] ?? ''}
+                                            aria-invalid={outOfBand}
+                                            value={typed}
                                             onChange={event => setCell(code, tier, event.target.value)}
-                                            placeholder={hint === null
-                                                ? tx('Chưa có giá', 'No quote', '見積もりなし')
-                                                : fmt(hint)}
-                                            max={LISTING_SHIPPING_FEE_MAX}
-                                            className="h-9 text-sm"
+                                            placeholder={fmt(suggestion(code, tier))}
+                                            min={SHOP_TIER_FEE_MIN}
+                                            max={SHOP_TIER_FEE_MAX}
+                                            className={`h-9 text-sm ${outOfBand ? 'border-red-500/60 focus-visible:ring-red-500/40' : ''}`}
                                         />
                                     </label>
                                 );
                             })}
                         </div>
 
-                        <p className="mt-2 text-xs leading-5 text-muted-foreground">{khaiGiaLine(code)}</p>
+                        {khaiGia && <p className="mt-2 text-[11px] text-muted-foreground/80">{khaiGia}</p>}
                     </div>
                 );
             })}
 
-            <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" onClick={save} disabled={isSaving}>
+            <div className="flex flex-wrap items-center gap-3">
+                <Button type="button" onClick={save} disabled={isSaving || hasInvalidCell || (requireCarrier && carriers.length === 0)}>
                     {isSaving ? null : <Save className="mr-2 h-4 w-4" />}
                     {tx('Lưu bảng phí', 'Save fee table', '送料表を保存')}
                 </Button>
-                <Button type="button" variant="outline" onClick={refresh} disabled={isRefreshing || !loaded.hasPickup}>
-                    {isRefreshing ? null : <RefreshCw className="mr-2 h-4 w-4" />}
-                    {tx('Tính lại giá đề xuất', 'Refresh suggestions', '目安を再計算')}
-                </Button>
-                {recommendedAt && (
-                    <span className="text-xs text-muted-foreground">
-                        {tx('Giá đề xuất lúc ', 'Quoted ', '見積もり日時 ')}
-                        {new Date(recommendedAt).toLocaleString(locale)}
-                    </span>
-                )}
+                <span className={`text-xs ${hasInvalidCell ? 'text-red-400' : 'text-muted-foreground'}`}>
+                    {tx(
+                        `Phí trong khoảng ${fmt(SHOP_TIER_FEE_MIN)} – ${fmt(SHOP_TIER_FEE_MAX)}.`,
+                        `Fees run ${fmt(SHOP_TIER_FEE_MIN)} – ${fmt(SHOP_TIER_FEE_MAX)}.`,
+                        `送料は${fmt(SHOP_TIER_FEE_MIN)}〜${fmt(SHOP_TIER_FEE_MAX)}の範囲。`,
+                    )}
+                </span>
             </div>
         </div>
     );

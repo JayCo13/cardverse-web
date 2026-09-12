@@ -355,6 +355,7 @@ export interface Database {
                     ward_code: string
                     ward_name: string
                     detail: string
+                    goship: { city: string; district: string; ward: string } | null
                     is_default: boolean
                     created_at: string
                     updated_at: string
@@ -371,6 +372,7 @@ export interface Database {
                     ward_code: string
                     ward_name: string
                     detail: string
+                    goship?: { city: string; district: string; ward: string } | null
                     is_default?: boolean
                     created_at?: string
                     updated_at?: string

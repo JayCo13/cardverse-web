@@ -61,7 +61,6 @@ export function mapSaleCard(c: any): Card {
           shippingRange: listingShippingRange({
               listingFee: typeof c.shipping_fee === 'number' ? c.shipping_fee : null,
               set: c.profiles?.shipping_fees ?? null,
-              quoted: c.profiles?.goship_tier_fees ?? null,
               carriers: c.profiles?.shipping_carriers ?? null,
               declaredValue: Number(c.price ?? 0),
           }),
