@@ -69,7 +69,10 @@ export default function EditListingPage() {
     const [productDetails, setProductDetails] = useState<ProductDetails>({});
     const [productTypeLabel, setProductTypeLabel] = useState('');
     const [condition, setCondition] = useState('');
-    const [shippingFee, setShippingFee] = useState(25000);
+    // Empty means "use the shop's fee table". It used to open at 25.000đ, so a
+    // seller who reopened a listing they had left on the table and pressed Lưu
+    // pinned it to the platform's figure without ever touching the field.
+    const [shippingFee, setShippingFee] = useState('');
     const nonCard = isNonCard(listing?.product_kind);
     const pc = productCopy(locale);
     const [name, setName] = useState("");
@@ -196,7 +199,7 @@ export default function EditListingPage() {
                 setProductDetails(next.product_details || {});
                 setProductTypeLabel(next.product_type_label || '');
                 setCondition(next.condition || '');
-                setShippingFee(next.shipping_fee ?? 25000);
+                setShippingFee(next.shipping_fee === null || next.shipping_fee === undefined ? '' : String(next.shipping_fee));
                 setName(next.name);
                 const nextDescription = next.description || "";
                 setDescription(nextDescription);
@@ -243,7 +246,14 @@ export default function EditListingPage() {
                     price: parsePrice(price),
                     acceptOffers,
                     minOfferPercent,
-                    ...(nonCard ? { product_details: productDetails, product_type_label: productTypeLabel, condition, shipping_fee: shippingFee } : {}),
+                    ...(nonCard ? {
+                        product_details: productDetails,
+                        product_type_label: productTypeLabel,
+                        condition,
+                        // Blank stays blank: null is "follow the shop table",
+                        // and 0 is free shipping the seller typed on purpose.
+                        shipping_fee: shippingFee.trim() === '' ? null : Number(shippingFee),
+                    } : {}),
                 }),
             });
             const payload = await response.json();
@@ -334,7 +344,7 @@ export default function EditListingPage() {
                             <form className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-7" onSubmit={handleSubmit}>
                                 {nonCard && <div className="space-y-3 lg:col-span-2"><p>{pc.locked}</p>
                                     <ProductFields locale={locale} condition={condition} onCondition={setCondition} details={productDetails} onDetails={setProductDetails} typeLabel={productTypeLabel} onTypeLabel={setProductTypeLabel} other={listing.product_kind === 'other'} disabled={!editable || hasOpenOffers || isSaving} />
-                                    <label className="block space-y-2"><span>{pc.shipping}</span><Input type="number" min={0} max={99999} required value={shippingFee} onChange={e => setShippingFee(Number(e.target.value))} disabled={!editable || hasOpenOffers || isSaving} /></label>
+                                    <label className="block space-y-2"><span>{pc.shipping}</span><Input type="number" min={0} max={99999} value={shippingFee} onChange={e => setShippingFee(e.target.value)} placeholder={pc.shippingFromTable} disabled={!editable || hasOpenOffers || isSaving} /></label>
                                 </div>}
                                 <div className="space-y-3 lg:col-span-2">
                                     <div className="flex gap-3 rounded-xl border border-amber-500/30 bg-gradient-to-r from-amber-500/12 to-amber-500/5 p-4 text-sm text-amber-100 shadow-sm">

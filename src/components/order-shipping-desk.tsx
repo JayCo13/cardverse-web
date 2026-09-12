@@ -11,6 +11,8 @@ import { AlertCircle, ArrowRight, Check, Loader2, MapPin, Package, PencilLine, T
 import { useLocalization } from '@/context/localization-context';
 import { PackingVideoField } from '@/components/packing-video-field';
 import { GoshipRegionPicker, type GoshipRegion } from '@/components/goship-region-picker';
+import { carrierAddressOptions } from '@/lib/carrier-address-options';
+import { carrierShortLabels } from '@/lib/shipping-carriers';
 
 /**
  * Where a seller turns one paid order into a real waybill.
@@ -93,14 +95,20 @@ const COPY = {
     },
 } as const;
 
-const fetchOptions = async (url: string): Promise<{ code: string; name: string }[]> => {
-    const res = await fetch(url, { cache: 'force-cache' });
-    if (!res.ok) return [];
-    const body = await res.json();
-    return Array.isArray(body?.data) ? body.data : [];
-};
+const fetchOptions = carrierAddressOptions;
 
 const money = (n: number) => `${n.toLocaleString('vi-VN')}đ`;
+
+/**
+ * Keep the previous state object when a refetch brings back the same values.
+ *
+ * The preparation is re-read on every window focus, and the quote effect keys
+ * on the pickup and region objects. A fresh object with identical contents
+ * used to count as a change, so tabbing back to the page threw the rate list
+ * away and fetched it again — the "flicker" a seller saw mid-choice.
+ */
+const same = <T,>(prev: T, next: T): T =>
+    JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
 
 export function OrderShippingDesk({
     productKind = 'card',
@@ -140,7 +148,33 @@ export function OrderShippingDesk({
     // Evidence: dispute_evidence_verdict reads it as the seller's side.
     const [packingVideo, setPackingVideo] = useState<string | null>(null);
     const [pickedRegion, setPickedRegion] = useState<GoshipRegion | null>(null);
-    const region = destination ?? pickedRegion;
+    const [savedRegion, setSavedRegion] = useState<GoshipRegion | null>(destination);
+    const region = savedRegion;
+    const [carriers, setCarriers] = useState<string[]>([]);
+    const [preparationError, setPreparationError] = useState(false);
+    const [refresh, setRefresh] = useState(0);
+    const [preferredCarrier, setPreferredCarrier] = useState<string | null>(null);
+    const words = locale === 'vi-VN'
+        ? { heading: 'Chuẩn bị gửi hàng', sender: 'Lấy hàng tại', recipient: 'Giao đến', retry: 'Thử lại', missing: 'Cần bổ sung khu vực giao hàng cho đơn này.', save: 'Lưu khu vực giao đến', carriers: 'Hãng đã bật tại shop', loadError: 'Chưa tải được cấu hình gửi hàng.', declared: 'Giá trị hàng hóa. Cước bên dưới bao gồm phí khai giá của hãng.', unserved: 'Hãng không nhận tuyến này' }
+        : locale === 'ja-JP'
+        ? { heading: '発送の準備', sender: '集荷先', recipient: '配送先', retry: '再試行', missing: 'この注文の配送地域を補完してください。', save: '配送地域を保存', carriers: 'ショップの配送業者', loadError: '発送設定を取得できませんでした。', declared: '商品の価値。以下の送料には業者の申告手数料が含まれます。', unserved: 'この経路に対応していない業者' }
+        : { heading: 'Prepare shipment', sender: 'Pickup from', recipient: 'Deliver to', retry: 'Retry', missing: 'Complete the delivery region for this order.', save: 'Save delivery region', carriers: 'Shop carriers', loadError: 'Could not load shipping settings.', declared: 'Item value. Rates below include the carrier’s declared-value fee.', unserved: 'Not serving this route' };
+    const saveRegion = async () => {
+        if (!pickedRegion) return;
+        try {
+            const response = await fetch(`/api/shipping/preparation?orderId=${orderId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pickedRegion) });
+            if (!response.ok) { setError(copy.failed); setRefresh(v => v + 1); return; }
+            setSavedRegion(pickedRegion); setError(null);
+        } catch { setError(copy.failed); }
+    };
+    // Re-read the preparation when the seller comes back from another tab —
+    // /sell, most likely, where the pickup address and carriers live. Nothing
+    // is cleared here: if what comes back is unchanged, the rates stay put.
+    useEffect(() => {
+        const reload = () => setRefresh(v => v + 1);
+        window.addEventListener('focus', reload);
+        return () => window.removeEventListener('focus', reload);
+    }, []);
 
     // The sender half of the reconciliation. Stored as GoShip ids, so the names
     // have to be looked up — an id tells the seller nothing about whether the
@@ -152,17 +186,22 @@ export function OrderShippingDesk({
         let off = false;
         (async () => {
             try {
-                const res = await fetch('/api/shipping/pickup-address');
+                setPreparationError(false);
+                const res = await fetch(`/api/shipping/preparation?orderId=${orderId}`, { cache: 'no-store' });
+                if (!res.ok) throw new Error('preparation_failed');
                 const body = await res.json();
-                const p = body?.data as Pickup | null;
+                const p = body?.data?.pickup as Pickup | null;
                 if (off) return;
+                setCarriers(prev => same(prev, body.data.carriers as string[]));
+                setSavedRegion(prev => same(prev, body.data.order.to_goship as GoshipRegion | null));
+                setPreferredCarrier(body.data.order.metadata?.shipping_carrier ?? null);
                 if (!p) { setPickup('missing'); return; }
-                setPickup(p);
+                setPickup(prev => same(prev, p));
                 const [cities, districts, wards] = await Promise.all([
                     fetchOptions('/api/shipping/address/cities'),
                     fetchOptions(`/api/shipping/address/districts?city_code=${encodeURIComponent(p.city)}`),
                     fetchOptions(`/api/shipping/address/wards?district_code=${encodeURIComponent(p.district)}`),
-                ]);
+                ]).catch(() => [[], [], []]);
                 if (off) return;
                 setPickupPlace([
                     p.street,
@@ -171,21 +210,24 @@ export function OrderShippingDesk({
                     cities.find((c) => String(c.code) === String(p.city))?.name,
                 ].filter(Boolean).join(', '));
             } catch {
-                if (!off) setPickup('missing');
+                if (!off) setPreparationError(true);
             }
         })();
         return () => { off = true; };
-    }, []);
+    }, [orderId, refresh]);
 
     const quote = useCallback(async () => {
         const requestId = ++quoteRequest.current;
-        if (!region || !parseParcel({ weight, ...dimensions }, true)) { setRates(null); setChosen(null); return; }
-        setBusy(true); setError(null); setRates(null); setChosen(null);
+        if (!region || !pickup || pickup === 'missing' || preparationError || !parseParcel({ weight, ...dimensions }, true)) { setRates(null); setChosen(null); setBusy(false); return; }
+        // The old list stays on screen while the new one loads. Rate ids are
+        // replaced when it lands; the seller's carrier choice carries over.
+        setBusy(true); setError(null);
         try {
             const res = await fetch('/api/shipping/quote', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
+                    orderId,
                     to: region,
                     weight: Number(weight), ...dimensions,
                     // Priced with the declared value: the carrier charges for it
@@ -199,17 +241,34 @@ export function OrderShippingDesk({
                 setError(body.code === 'missing_goship_pickup' ? copy.noPickup : (body.error || copy.failed));
                 return;
             }
-            setRates(body.data ?? []);
+            const next: Rate[] = body.data ?? [];
+            setRates(next);
+            setChosen(prev => {
+                const kept = prev ? rates?.find(r => r.id === prev)?.carrierCode : null;
+                return next.find(r => r.carrierCode === kept)?.id
+                    ?? next.find(r => r.carrierCode === preferredCarrier)?.id
+                    ?? next[0]?.id
+                    ?? null;
+            });
         } catch {
             setError(copy.failed);
         } finally {
             if (requestId === quoteRequest.current) setBusy(false);
         }
-    }, [region, weight, dimensions, declared, copy.noPickup, copy.failed]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `rates` is read only to carry the chosen carrier over; keying on it would re-quote after every quote
+    }, [region, pickup, preparationError, orderId, preferredCarrier, weight, dimensions, declared, copy.noPickup, copy.failed]);
 
-    useEffect(() => { void quote(); return () => { ++quoteRequest.current; }; }, [quote]);
+    useEffect(() => {
+        setConfirming(false);
+        const timer = setTimeout(() => void quote(), 400);
+        return () => { clearTimeout(timer); ++quoteRequest.current; };
+    }, [quote]);
 
     const selected = useMemo(() => rates?.find((r) => r.id === chosen) ?? null, [rates, chosen]);
+    const unserved = useMemo(
+        () => (rates && rates.length > 0 ? carriers.filter(code => !rates.some(r => r.carrierCode === code)) : []),
+        [rates, carriers],
+    );
 
     const book = async () => {
         if (!selected) return;
@@ -254,9 +313,11 @@ export function OrderShippingDesk({
         <section className="overflow-hidden rounded-xl border border-orange-500/30 bg-card">
             <header className="border-b border-orange-500/20 bg-orange-500/[0.07] px-5 py-4">
                 <h2 className="flex items-center gap-2 font-semibold">
-                    <Truck className="h-5 w-5 text-orange-400" />{copy.heading}
+                    <Truck className="h-5 w-5 text-orange-400" />{words.heading}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">{copy.lead}</p>
+                <p className="mt-2 text-sm">{words.carriers}: {carrierShortLabels(carriers) || '—'}</p>
+                {preparationError && <div role="alert" className="mt-2 text-sm text-destructive">{words.loadError} <Button variant="outline" onClick={() => setRefresh(v => v + 1)}>{words.retry}</Button></div>}
             </header>
 
             {/* One column. The page puts this beside the order's own record
@@ -269,20 +330,21 @@ export function OrderShippingDesk({
                         <div className="grid gap-3 sm:grid-cols-2">
                             <div className="rounded-lg border border-border/60 bg-background/40 p-3">
                                 <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                    <Package className="h-3.5 w-3.5" />{copy.sender}
+                                    <Package className="h-3.5 w-3.5" />{words.sender}
                                 </p>
                                 {pickup === 'missing' ? (
                                     <p className="text-sm text-amber-300">{copy.senderMissing}</p>
-                                ) : pickup === null ? (
+                                ) : pickup === null && !preparationError ? (
                                     <p className="flex items-center gap-2 text-sm text-muted-foreground">
                                         <Loader2 className="h-3.5 w-3.5 animate-spin" />…
                                     </p>
-                                ) : (
+                                ) : pickup ? (
                                     <>
-                                        <p className="text-sm font-medium">{pickup.name} · {pickup.phone}</p>
+                                        <p className="text-sm font-medium">{pickup.name}</p>
+                                        <p className="text-sm">{pickup.phone}</p>
                                         <p className="text-sm text-muted-foreground">{pickupPlace || pickup.street}</p>
                                     </>
-                                )}
+                                ) : null}
                                 <Link href="/sell#shop-shipping" className="mt-2 inline-flex items-center gap-1 text-xs text-orange-400 hover:underline">
                                     <PencilLine className="h-3 w-3" />{copy.editSender}
                                 </Link>
@@ -290,11 +352,17 @@ export function OrderShippingDesk({
 
                             <div className="rounded-lg border border-border/60 bg-background/40 p-3">
                                 <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                    <MapPin className="h-3.5 w-3.5" />{copy.recipient}
+                                    <MapPin className="h-3.5 w-3.5" />{words.recipient}
                                 </p>
-                                <p className="text-sm font-medium">{recipient.name} · {recipient.phone}</p>
+                                <p className="text-sm font-medium">{recipient.name}</p>
+                                <p className="text-sm">{recipient.phone}</p>
                                 <p className="text-sm text-muted-foreground">{recipient.address}</p>
                                 <p className="mt-2 text-xs text-muted-foreground/70">{copy.fromOrder}</p>
+                                {!region && !preparationError && <div className="mt-3 space-y-3">
+                                    <p className="text-sm text-amber-400">{words.missing}</p>
+                                    <GoshipRegionPicker idPrefix={`osd-${orderId}`} onChange={setPickedRegion} />
+                                    <Button disabled={!pickedRegion} onClick={saveRegion}>{words.save}</Button>
+                                </div>}
                             </div>
                         </div>
                         <p className="text-sm">
@@ -316,10 +384,10 @@ export function OrderShippingDesk({
                                 <Label htmlFor="osd-declared">{copy.declared}</Label>
                                 <Input id="osd-declared" value={declared} inputMode="numeric"
                                     onChange={(e) => setDeclared(e.target.value.replace(/\D/g, '').slice(0, 9))} />
-                                <p className="text-xs text-muted-foreground">{copy.declaredHint}</p>
+                                <p className="text-xs text-muted-foreground">{words.declared}</p>
                             </div>
                         </div>
-                        <div className="grid gap-3 sm:grid-cols-3">{(['width','height','length'] as const).map(key => <label className="space-y-2" key={key}><span>{parcelText[key]}</span><Input type="number" min={1} max={200} required disabled={booking} value={dimensions[key]} onChange={e => { setChosen(null); setRates(null); setDimensions(d => ({ ...d, [key]: e.target.value })); }} /></label>)}</div>
+                        <div className="grid gap-3 sm:grid-cols-3">{(['width','height','length'] as const).map(key => <label className="space-y-2" key={key}><span>{parcelText[key]}</span><Input type="number" min={1} max={200} required disabled={booking} value={dimensions[key]} onChange={e => setDimensions(d => ({ ...d, [key]: e.target.value }))} /></label>)}</div>
                         {!parseParcel({ weight, ...dimensions }, true) && <p className="text-sm text-amber-400">{parcelText.invalid}</p>}
                         <PackingVideoField value={packingVideo} onChange={setPackingVideo} locale={locale} />
                     </div>
@@ -333,10 +401,7 @@ export function OrderShippingDesk({
 
                             {!region ? (
                                 <div className="space-y-3">
-                                    <p className="flex items-start gap-2 text-sm text-amber-400">
-                                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{copy.pickRegion}
-                                    </p>
-                                    <GoshipRegionPicker idPrefix={`osd-${orderId}`} onChange={setPickedRegion} />
+                                    <p className="text-sm text-muted-foreground">{words.missing}</p>
                                 </div>
                             ) : (
                                 <>
@@ -352,6 +417,15 @@ export function OrderShippingDesk({
 
                                     {rates && rates.length === 0 && !busy && (
                                         <p className="text-sm text-muted-foreground">{copy.none}</p>
+                                    )}
+
+                                    {/* GoShip quotes only the carriers that serve a route —
+                                        SPX, for one, returns nothing out of Cà Mau — so a
+                                        carrier the shop enabled can be missing here through
+                                        no fault of the seller's. Say so, or the list reads
+                                        as a bug. */}
+                                    {unserved.length > 0 && (
+                                        <p className="text-xs text-muted-foreground">{words.unserved}: {carrierShortLabels(unserved)}</p>
                                     )}
 
                                     {rates && rates.length > 0 && (
@@ -410,6 +484,7 @@ export function OrderShippingDesk({
                             {error && (
                                 <p className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
                                     <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}
+                                    <Button variant="outline" size="sm" onClick={quote}>{words.retry}</Button>
                                 </p>
                             )}
                         </div>

@@ -5,6 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { useLocalization } from '@/context/localization-context';
+import { carrierAddressOptions } from '@/lib/carrier-address-options';
+import { Button } from '@/components/ui/button';
 
 /**
  * Tỉnh → Quận → Phường, in the carrier's geography.
@@ -41,12 +43,7 @@ const COPY = {
     },
 } as const;
 
-const fetchOptions = async (url: string): Promise<Option[]> => {
-    const res = await fetch(url, { cache: 'force-cache' });
-    if (!res.ok) throw new Error(String(res.status));
-    const body = await res.json();
-    return Array.isArray(body?.data) ? body.data : [];
-};
+const fetchOptions = carrierAddressOptions;
 
 export function GoshipRegionPicker({
     value,
@@ -66,6 +63,7 @@ export function GoshipRegionPicker({
     const [wards, setWards] = useState<Option[]>([]);
     const [busy, setBusy] = useState<'city' | 'district' | 'ward' | null>('city');
     const [failed, setFailed] = useState(false);
+    const [retry, setRetry] = useState(0);
 
     const [city, setCity] = useState(value?.city ?? '');
     const [district, setDistrict] = useState(value?.district ?? '');
@@ -86,7 +84,7 @@ export function GoshipRegionPicker({
             .catch(() => { if (!off) setFailed(true); })
             .finally(() => { if (!off) setBusy(null); });
         return () => { off = true; };
-    }, []);
+    }, [retry]);
 
     // Each level clears the ones under it: a ward id means nothing outside the
     // district it came from.
@@ -99,7 +97,7 @@ export function GoshipRegionPicker({
             .catch(() => { if (!off) setFailed(true); })
             .finally(() => { if (!off) setBusy(null); });
         return () => { off = true; };
-    }, [city]);
+    }, [city, retry]);
 
     useEffect(() => {
         if (!district) { setWards([]); return; }
@@ -110,7 +108,7 @@ export function GoshipRegionPicker({
             .catch(() => { if (!off) setFailed(true); })
             .finally(() => { if (!off) setBusy(null); });
         return () => { off = true; };
-    }, [district]);
+    }, [district, retry]);
 
     useEffect(() => {
         emit.current(city && district && ward ? { city, district, ward } : null);
@@ -140,6 +138,7 @@ export function GoshipRegionPicker({
             {failed && (
                 <p className="flex items-center gap-2 text-sm text-destructive">
                     <AlertCircle className="h-4 w-4" />{copy.error}
+                    <Button type="button" variant="outline" size="sm" onClick={() => setRetry(v => v + 1)}>{locale === 'vi-VN' ? 'Thử lại' : locale === 'ja-JP' ? '再試行' : 'Retry'}</Button>
                 </p>
             )}
             <div className="grid gap-3 sm:grid-cols-3">

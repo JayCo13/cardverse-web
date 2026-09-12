@@ -2,57 +2,34 @@ import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getRouteUser } from '@/lib/supabase/route-user';
-import { findProvince, findWard } from '@/lib/vn-address';
+import { GOSHIP_REGION_ERROR, parseGoshipRegion, resolveGoshipRegion } from '@/lib/goship-region';
+
+/**
+ * Where a user RECEIVES parcels, in GoShip's geography.
+ *
+ * The buyer picks their address from the same three lists the seller picks
+ * theirs from (/api/shipping/address/*), so both ends of a waybill sit in one
+ * geography and there is nothing to translate. The province/ward columns are
+ * copied from those lists — the city id and its name, the ward id and its
+ * name — exactly as /api/shipping/pickup-address does for the seller, which is
+ * what lets resolveShippingTier compare the two by id or by name.
+ *
+ * It used to collect the 2025 structure (34 provinces, no district) and keep
+ * GoShip's ids as an optional extra. A buyer who skipped the extra could not
+ * have a waybill booked, and the two structures beside each other on one row
+ * invited the one thing that must never happen: deriving one from the other.
+ * Ho Chi Minh City now contains wards GoShip still files under Bà Rịa - Vũng
+ * Tàu, so a name match books a courier to the wrong city and reports success.
+ */
 
 type AddressBody = {
     recipient_name?: string;
     phone?: string;
-    province_id?: number;
-    province_name?: string;
-    /** @deprecated No district level since 1/7/2025. Null on anything saved now. */
-    district_id?: number | null;
-    /** @deprecated See `district_id`. */
-    district_name?: string | null;
-    ward_code?: string;
-    ward_name?: string;
+    /** GoShip's city/district/ward ids, from /api/shipping/address/*. */
+    goship?: { city?: string; district?: string; ward?: string } | null;
     detail?: string;
     is_default?: boolean;
-    /**
-     * GoShip's own city/district/ward ids for this address.
-     *
-     * Optional, and never derived from the fields above. GoShip routes on the
-     * pre-2025 structure while those are the 34-province one, and Ho Chi Minh
-     * City now contains wards GoShip still files under a province of their own
-     * — so a translated id books a courier to the wrong city and reports
-     * success. Present only when the buyer picked it from GoShip's own lists.
-     */
-    goship?: { city?: string; district?: string; ward?: string } | null;
 };
-
-const GOSHIP_ID = /^[0-9]{1,12}$/;
-
-/** Null unless all three ids are there and well formed — a half address is worse
- *  than none, because it looks bookable. */
-function normalizeGoship(input: AddressBody['goship']): { city: string; district: string; ward: string } | null {
-    if (!input || typeof input !== 'object') return null;
-    const city = String(input.city ?? '').trim();
-    const district = String(input.district ?? '').trim();
-    const ward = String(input.ward ?? '').trim();
-    if (!GOSHIP_ID.test(city) || !GOSHIP_ID.test(district) || !GOSHIP_ID.test(ward)) return null;
-    return { city, district, ward };
-}
-
-function validate(body: AddressBody): string | null {
-    if (!body.recipient_name?.trim()) return 'Tên người nhận là bắt buộc';
-    if (!body.phone?.trim()) return 'Số điện thoại là bắt buộc';
-    // Two levels, not three: the district tier was abolished on 1/7/2025.
-    if (!body.province_id || !body.ward_code) return 'Vui lòng chọn đầy đủ Tỉnh/Phường xã';
-    if (!findProvince(body.province_id) || !findWard(body.province_id, body.ward_code)) {
-        return 'Địa chỉ dùng mã hành chính cũ hoặc Phường/Xã không thuộc Tỉnh/Thành đã chọn';
-    }
-    if (!body.detail?.trim()) return 'Vui lòng nhập địa chỉ chi tiết';
-    return null;
-}
 
 // GET — list the current user's saved addresses (default first, then newest).
 async function handleGET() {
@@ -85,14 +62,20 @@ async function handlePOST(request: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = (await request.json()) as AddressBody;
-    const validationError = validate(body);
-    if (validationError) {
-        return NextResponse.json({ error: validationError }, { status: 400 });
-    }
+    const body = (await request.json().catch(() => ({}))) as AddressBody;
+    if (!body.recipient_name?.trim()) return NextResponse.json({ error: 'Tên người nhận là bắt buộc' }, { status: 400 });
+    if (!body.phone?.trim()) return NextResponse.json({ error: 'Số điện thoại là bắt buộc' }, { status: 400 });
+    const region = parseGoshipRegion(body.goship);
+    if (!region) return NextResponse.json({ error: 'Vui lòng chọn đầy đủ Tỉnh/Thành, Quận/Huyện, Phường/Xã' }, { status: 400 });
+    if (!body.detail?.trim()) return NextResponse.json({ error: 'Vui lòng nhập địa chỉ chi tiết' }, { status: 400 });
 
-    const province = findProvince(body.province_id)!;
-    const ward = findWard(body.province_id, body.ward_code)!;
+    const resolved = await resolveGoshipRegion(region);
+    if (!resolved.ok) {
+        return NextResponse.json(
+            { error: GOSHIP_REGION_ERROR[resolved.reason] },
+            { status: resolved.reason === 'unavailable' ? 503 : 400 },
+        );
+    }
 
     const { count } = await supabase
         .from('shipping_addresses')
@@ -113,19 +96,19 @@ async function handlePOST(request: NextRequest) {
         .from('shipping_addresses')
         .insert({
             user_id: user.id,
-            recipient_name: body.recipient_name!.trim(),
-            phone: body.phone!.trim(),
-            province_id: province.code,
-            province_name: province.name,
-            // Null rather than an empty string: these columns now record that
-            // an address predates the reorganisation, and '' would claim the
-            // address has a district whose name nobody wrote down.
-            district_id: null,
-            district_name: null,
-            ward_code: ward.code.toString(),
-            ward_name: ward.name,
-            detail: body.detail!.trim(),
-            goship: normalizeGoship(body.goship),
+            recipient_name: body.recipient_name.trim(),
+            phone: body.phone.trim(),
+            // The carrier's ids, deliberately: a GoShip city id is six digits
+            // and a 2025 province code one or two, so the two code spaces
+            // cannot be confused when resolveShippingTier compares ids.
+            province_id: Number(resolved.value.city),
+            province_name: resolved.value.cityName,
+            district_id: Number(resolved.value.district),
+            district_name: resolved.value.districtName,
+            ward_code: resolved.value.ward,
+            ward_name: resolved.value.wardName,
+            detail: body.detail.trim(),
+            goship: region,
             is_default: makeDefault,
         } as never)
         .select('*')

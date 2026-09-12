@@ -60,7 +60,6 @@ type CartItem = {
       seller_verified?: boolean | null;
       shipping_carriers?: string[] | null;
       shipping_fees?: Record<string, Record<string, number>> | null;
-      goship_tier_fees?: Record<string, Record<string, number>> | null;
     } | null;
   } | null;
 };
@@ -121,7 +120,6 @@ export default function CartPage() {
       sellerFallback: "Seller trên CardVerseHub",
       cardVerseSeller: "CardVerseHub seller",
       ship: "Ship",
-      ghnReady: "GHN ready",
       payment: "Thanh toán",
       walletPayos: "Ví / PayOS",
       protection: "Bảo vệ",
@@ -177,7 +175,6 @@ export default function CartPage() {
         sellerFallback: "CardVerseHubの販売者",
         cardVerseSeller: "CardVerseHub販売者",
         ship: "配送",
-        ghnReady: "GHN対応",
         payment: "支払い",
         walletPayos: "ウォレット / PayOS",
         protection: "保護",
@@ -232,7 +229,6 @@ export default function CartPage() {
         sellerFallback: "Seller on CardVerseHub",
         cardVerseSeller: "CardVerseHub seller",
         ship: "Ship",
-        ghnReady: "GHN ready",
         payment: "Payment",
         walletPayos: "Wallet / PayOS",
         protection: "Protection",
@@ -395,9 +391,9 @@ export default function CartPage() {
     });
     if (bySeller.size === 0) return null;
 
-    // A span until an address exists. Sellers whose shop has nothing priced
-    // contribute nothing rather than a guess — the label says the rest is
-    // settled at checkout, which is where it genuinely is.
+    // A span, always: the exact figure needs a delivery address and belongs to
+    // checkout. Sellers whose shop has nothing priced contribute nothing rather
+    // than a guess; the label says the rest is settled at checkout.
     let min = 0;
     let max = 0;
     let priced = false;
@@ -409,7 +405,6 @@ export default function CartPage() {
           price: Number(item.cards?.price ?? 0),
         })),
         set: profile?.shipping_fees ?? null,
-        quoted: profile?.goship_tier_fees ?? null,
         carriers: profile?.shipping_carriers ?? null,
       });
       if (!range) return;
@@ -479,7 +474,6 @@ export default function CartPage() {
     const range = listingShippingRange({
       listingFee: card?.shipping_fee,
       set: card?.profiles?.shipping_fees ?? null,
-      quoted: card?.profiles?.goship_tier_fees ?? null,
       carriers: card?.profiles?.shipping_carriers ?? null,
       declaredValue: Number(card?.price ?? 0),
     });

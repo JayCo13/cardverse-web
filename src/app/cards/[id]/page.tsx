@@ -28,6 +28,7 @@ import {
     Truck,
 } from "lucide-react";
 import { CheckoutModal } from "@/components/checkout-modal";
+import { formatShippingRange, listingShippingRange } from "@/lib/shipping-range";
 import { ChatDrawer } from "@/components/chat-drawer";
 import { UserLink } from "@/components/user-link";
 import { OfferModal } from "@/components/offer-modal";
@@ -62,6 +63,9 @@ type SellerProfile = {
     seller_review_count?: number | null;
     address_district_id?: number | null;
     address_ward_code?: string | null;
+    /** The shop's own price list, for the span printed on this page. */
+    shipping_carriers?: string[] | null;
+    shipping_fees?: Record<string, Record<string, number>> | null;
 };
 
 type CheckoutCard = {
@@ -145,6 +149,7 @@ const mapCard = (c: any): Card => ({
     bundleItems: c.bundle_items,
     acceptOffers: c.accept_offers,
     minOfferPercent: c.min_offer_percent,
+    shippingFee: typeof c.shipping_fee === 'number' ? c.shipping_fee : null,
     priceIsVnd: true,
 });
 
@@ -327,8 +332,9 @@ export default function CardDetailsPage() {
             status: "Trạng thái",
             shippingPayments: "Vận chuyển, hoàn trả và thanh toán",
             shipping: "Vận chuyển",
-            ghnFee: "Phí GHN sẽ được tính khi thanh toán",
-            sellerArea: "Lấy hàng tại khu vực của người bán. Cần địa chỉ của người mua.",
+            shipFeeToYou: "Số chính xác tính ở bước thanh toán, theo địa chỉ nhận hàng của bạn.",
+            freeShipping: "Miễn phí",
+            shipFeeNoAddress: "Phí ship tính theo địa chỉ nhận hàng khi thanh toán.",
             delivery: "Giao hàng",
             estimatedDelivery: "Ước tính sau khi xác nhận thanh toán",
             sellerShips: "Người bán gửi hàng sau khi đơn được thanh toán.",
@@ -348,7 +354,7 @@ export default function CardDetailsPage() {
             offerHint: "Gửi đề nghị để thương lượng với người bán",
             buyHint: "Mua ngay với PayOS hoặc ví CardVerseHub",
             watchHint: "Lưu thẻ này để theo dõi giá",
-            fastShip: "GHN nội địa",
+            fastShip: "Giao toàn quốc",
             paymentReady: "PayOS / Ví",
             listingId: "Mã listing",
             offers: "Đề xuất giá",
@@ -425,8 +431,9 @@ export default function CardDetailsPage() {
                 status: "ステータス",
                 shippingPayments: "配送・返品・支払い",
                 shipping: "配送",
-                ghnFee: "GHN送料は決済時に計算されます",
-                sellerArea: "販売者の集荷エリアから発送。購入者住所が必要です。",
+                shipFeeToYou: "正確な金額は決済時にお届け先住所から計算されます。",
+                freeShipping: "送料無料",
+                shipFeeNoAddress: "送料は決済時にお届け先住所から計算されます。",
                 delivery: "配達",
                 estimatedDelivery: "支払い確認後に予定が表示されます",
                 sellerShips: "注文の支払い後に販売者が発送します。",
@@ -446,7 +453,7 @@ export default function CardDetailsPage() {
                 offerHint: "販売者に交渉オファーを送信",
                 buyHint: "PayOSまたはCardVerseHubウォレットで購入",
                 watchHint: "このカードを保存して価格を追跡",
-                fastShip: "GHN国内配送",
+                fastShip: "全国配送",
                 paymentReady: "PayOS / ウォレット",
                 listingId: "出品ID",
                 offers: "オファー",
@@ -522,8 +529,9 @@ export default function CardDetailsPage() {
                 status: "Status",
                 shippingPayments: "Shipping, returns, and payments",
                 shipping: "Shipping",
-                ghnFee: "GHN fee calculated at checkout",
-                sellerArea: "Located in seller pickup area. Buyer address required.",
+                shipFeeToYou: "The exact amount is calculated at checkout, from your delivery address.",
+                freeShipping: "Free",
+                shipFeeNoAddress: "Shipping is priced from your delivery address at checkout.",
                 delivery: "Delivery",
                 estimatedDelivery: "Estimated after payment confirmation",
                 sellerShips: "Seller ships after order is paid.",
@@ -543,7 +551,7 @@ export default function CardDetailsPage() {
                 offerHint: "Send a private offer to negotiate",
                 buyHint: "Buy instantly with PayOS or CardVerseHub wallet",
                 watchHint: "Save this card and track price changes",
-                fastShip: "Domestic GHN",
+                fastShip: "Nationwide delivery",
                 paymentReady: "PayOS / Wallet",
                 listingId: "Listing ID",
                 offers: "Offers",
@@ -557,6 +565,29 @@ export default function CardDetailsPage() {
                 processed: "Processed",
             };
     const formatVND = (amount: number | null | undefined) => formatCurrency(amount, copy.contact);
+
+    /**
+     * The shipping row: the span this listing can be charged at.
+     *
+     * A span rather than a figure, and the same span the grid and the cart
+     * print, because the exact number needs a delivery address — it is quoted
+     * at checkout, against the address the buyer picks there. This page briefly
+     * showed one number resolved from the buyer's saved address, and it made
+     * the same card read differently in three places.
+     */
+    const shippingLines = (): { headline: string; note?: string } => {
+        const range = card ? listingShippingRange({
+            listingFee: card.shippingFee,
+            set: seller?.shipping_fees ?? null,
+            carriers: seller?.shipping_carriers ?? null,
+            declaredValue: Number(card.price ?? 0),
+        }) : null;
+        if (!range) return { headline: copy.shipFeeNoAddress };
+        return {
+            headline: formatShippingRange(range, locale, copy.freeShipping),
+            note: copy.shipFeeToYou,
+        };
+    };
 
     const [card, setCard] = useState<Card | null>(null);
     const [seller, setSeller] = useState<SellerProfile | null>(null);
@@ -675,7 +706,9 @@ export default function CardDetailsPage() {
                         seller_rating,
                         seller_review_count,
                         address_district_id,
-                        address_ward_code
+                        address_ward_code,
+                        shipping_carriers,
+                        shipping_fees
                     )
                 `)
                 .eq("id", cardId)
@@ -1258,8 +1291,12 @@ export default function CardDetailsPage() {
                                 <span className="flex min-w-0 items-start gap-2.5">
                                     <Truck className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                                     <span>
-                                        <span className="block text-sm font-medium">{copy.shipping} GHN · {copy.returns} · {copy.paymentReady}</span>
-                                        <span className="mt-0.5 block text-xs text-muted-foreground">{copy.estimatedDelivery}</span>
+                                        {/* The summary used to name GHN here, on
+                                            every listing, whichever carriers the
+                                            seller actually offers. It carries the
+                                            buyer's own number instead. */}
+                                        <span className="block text-sm font-medium">{copy.shipping}: {shippingLines().headline}</span>
+                                        <span className="mt-0.5 block text-xs text-muted-foreground">{copy.returns} · {copy.paymentReady}</span>
                                     </span>
                                 </span>
                                 <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1270,8 +1307,10 @@ export default function CardDetailsPage() {
                                 <div className="grid grid-cols-[110px_1fr] gap-x-4 gap-y-4 text-sm">
                                     <span className="font-medium">{copy.shipping}:</span>
                                     <div>
-                                        <p><b>{copy.ghnFee}</b></p>
-                                        <p className="text-muted-foreground">{copy.sellerArea}</p>
+                                        <p><b>{shippingLines().headline}</b></p>
+                                        {shippingLines().note && (
+                                            <p className="text-muted-foreground">{shippingLines().note}</p>
+                                        )}
                                     </div>
                                     <span className="font-medium">{copy.delivery}:</span>
                                     <div>
@@ -1430,8 +1469,10 @@ export default function CardDetailsPage() {
                         <div className="grid grid-cols-[96px_1fr] gap-x-3 gap-y-4 text-sm">
                             <span className="font-medium">{copy.shipping}:</span>
                             <div>
-                                <p><b>{copy.ghnFee}</b></p>
-                                <p className="text-muted-foreground">{copy.sellerArea}</p>
+                                <p><b>{shippingLines().headline}</b></p>
+                                {shippingLines().note && (
+                                    <p className="text-muted-foreground">{shippingLines().note}</p>
+                                )}
                             </div>
                             <span className="font-medium">{copy.delivery}:</span>
                             <div>

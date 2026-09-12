@@ -6,7 +6,7 @@ import {
     type ShopFeeTable,
 } from '@/lib/shipping-fee';
 import { khaiGiaSurcharge } from '@/lib/khai-gia';
-import { booksWithCarrier, carrierServesTier, SHIPPING_CARRIERS } from '@/lib/shipping-carriers';
+import { booksWithCarrier, carrierServesTier, OFFERABLE_CARRIERS } from '@/lib/shipping-carriers';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 
 /**
@@ -57,11 +57,16 @@ type SellerShippingProfile = {
     address_province_name: string | null;
     shipping_carriers: string[] | null;
     shipping_fees: ShopFeeTable | null;
-    goship_tier_fees: ShopFeeTable | null;
 };
 
-/** Carriers a parcel can actually go out with. */
-const OFFERABLE: readonly string[] = SHIPPING_CARRIERS.map((c) => c.code);
+/**
+ * Carriers a parcel can actually go out with.
+ *
+ * Retired carriers are excluded, which also filters what a shop saved earlier:
+ * a shop that ticked VNPost before it was retired stops being quoted for it,
+ * rather than offering a buyer a carrier the seller can no longer book.
+ */
+const OFFERABLE: readonly string[] = OFFERABLE_CARRIERS.map((c) => c.code);
 
 export class CheckoutShippingError extends Error {
     constructor(
@@ -104,7 +109,7 @@ async function readQuoteInputs(inputs: ShippingQuoteInput[]) {
     const [profiles, cards] = await Promise.all([
         service
             .from('profiles')
-            .select('id, display_name, address_province_id, address_province_name, shipping_carriers, shipping_fees, goship_tier_fees')
+            .select('id, display_name, address_province_id, address_province_name, shipping_carriers, shipping_fees')
             .in('id', [...new Set(inputs.map((input) => input.sellerId))])
             .returns<(SellerShippingProfile & { id: string; display_name: string | null })[]>(),
         cardIds.length
@@ -180,7 +185,6 @@ function resolveSeller(
         // the parcel goes, the other is what is inside it.
         const shopFee = shopShippingFee({
             set: profile.shipping_fees,
-            quoted: profile.goship_tier_fees,
             carrier,
             tier,
         }) + khaiGiaSurcharge(carrier, declaredValue);

@@ -3,6 +3,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
+import { KHAI_GIA_FREE_ALLOWANCE } from '@/lib/khai-gia';
 import { PRODUCT_KINDS, PRODUCT_CONDITIONS, productCopy, flexibleProductsEnabled, type ProductKind, type ProductDetails } from '@/lib/product-listing';
 import { ProductFields } from '@/components/product-fields';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -13,10 +14,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { KHAI_GIA_FREE_ALLOWANCE } from '@/lib/khai-gia';
 import { useLocalization } from '@/context/localization-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Upload, ShieldAlert, X, Loader2, Info, HandCoins, Plus, Trash2, Layers, MapPin, Sparkles, Truck, ArrowRight } from 'lucide-react';
+import { Upload, ShieldAlert, X, Loader2, Info, HandCoins, Plus, Trash2, Layers, MapPin, Sparkles, Truck, ArrowRight, CheckCircle, ChevronRight } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useSupabase, useUser } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
@@ -50,6 +50,8 @@ import { CatalogCardPicker, catalogTabToCategory, type CatalogPick, type Catalog
 import { VnMarketPrice } from '@/components/vn-market-price';
 import { SearchableSetPicker } from '@/components/searchable-set-picker';
 import { SenderAddressForm } from '@/components/sender-address-form';
+import { ShopFeeTable } from '@/components/shop-fee-table';
+import { OFFERABLE_CARRIERS } from '@/lib/shipping-carriers';
 
 // Lazy-loaded: the picker dialog (and its catalog deps) only mount when opened,
 // so keep it out of the initial bundle to make the page load lighter.
@@ -92,6 +94,8 @@ type LocaleCopy = {
   addPickupDesc: string;
   addShipping: string;
   addShippingDesc: string;
+  stepPickup: string;
+  stepShipping: string;
   saveAndContinue: string;
   missingTitle: string;
   missingDesc: string;
@@ -213,13 +217,15 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       createErrorTitle: 'エラー',
       createErrorDesc: '出品の作成中に問題が発生しました。',
       shippingConfigTitle: '配送設定が未完了です',
-      shippingConfigDesc: '出品前に「出品」ページで配送業者と送料を設定してください。設定がないと購入者は決済できません。入力内容はこのまま残ります。',
+      shippingConfigDesc: '出品前に配送業者と送料の設定が必要です。ページを再読み込みしてもう一度お試しください。入力内容はこのまま残ります。',
       checkingSeller: '販売者権限を確認中',
       checkingSellerDesc: 'しばらくお待ちください。',
       kycNeeded: 'KYCが未承認です',
       kycNeededDesc: '出品する前にSellerページで本人確認を完了してください。',
-      addShipping: '配送設定を追加',
-      addShippingDesc: '出品ページで配送業者と送料を設定してください。設定がないと購入者は決済できません。手渡しのみでは足りず、配送業者が1つ以上必要です。',
+      addShipping: '送料を設定',
+      addShippingDesc: '発送に使う業者を選び、距離ごとの送料を確認します。空欄のままなら既定額（20,000/22,000/25,000đ）が適用されます。',
+      stepPickup: '発送元住所',
+      stepShipping: '送料',
       addPickup: '集荷住所を追加',
       addPickupDesc: '出品前に集荷住所を設定してください。購入者向けの送料計算に必要です。',
       saveAndContinue: '住所を保存して続行',
@@ -343,13 +349,15 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       createErrorTitle: 'Lỗi',
       createErrorDesc: 'Có lỗi khi tạo bài đăng.',
       shippingConfigTitle: 'Chưa thiết lập vận chuyển',
-      shippingConfigDesc: 'Vào trang Bán chọn đơn vị vận chuyển và điền phí ship trước đã. Chưa có thì người mua không thanh toán được. Nội dung bạn vừa nhập vẫn còn nguyên.',
+      shippingConfigDesc: 'Cần chọn đơn vị vận chuyển trước khi đăng bán. Tải lại trang rồi thử lại — nội dung bạn vừa nhập vẫn còn nguyên.',
       checkingSeller: 'Đang kiểm tra quyền người bán',
       checkingSellerDesc: 'Vui lòng đợi trong giây lát.',
       kycNeeded: 'Bạn chưa được duyệt KYC',
       kycNeededDesc: 'Hoàn tất xác minh ở trang Seller để bắt đầu đăng bán.',
-      addShipping: 'Thiết lập vận chuyển',
-      addShippingDesc: 'Vào trang Bán chọn đơn vị vận chuyển và điền phí ship trước đã. Chưa có thì người mua không thanh toán được. Chọn mỗi Tự giao / Gặp mặt là chưa đủ, cần ít nhất 1 đơn vị vận chuyển.',
+      addShipping: 'Đặt giá vận chuyển',
+      addShippingDesc: 'Chọn đơn vị bạn nhận gửi và xem giá cho từng khoảng cách. Để trống một ô là dùng giá mặc định 20.000/22.000/25.000đ.',
+      stepPickup: 'Địa chỉ gửi hàng',
+      stepShipping: 'Giá vận chuyển',
       addPickup: 'Thêm địa chỉ lấy hàng',
       addPickupDesc: 'Trước khi đăng bán, vui lòng thiết lập địa chỉ lấy hàng của bạn. Chúng tôi cần địa chỉ này để tính cước phí vận chuyển cho người mua.',
       saveAndContinue: 'Lưu địa chỉ & tiếp tục',
@@ -472,13 +480,15 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
     createErrorTitle: 'Error',
     createErrorDesc: 'There was a problem creating your listing.',
     shippingConfigTitle: 'Shipping is not set up',
-    shippingConfigDesc: 'Set your carriers and fees on the Sell page first. Without them buyers cannot check out. What you have entered here is kept.',
+    shippingConfigDesc: 'Carriers have to be set before listing. Reload the page and try again — what you entered here is kept.',
     checkingSeller: 'Checking seller access',
     checkingSellerDesc: 'Please wait a moment.',
     kycNeeded: 'KYC has not been approved',
     kycNeededDesc: 'Complete verification on the Seller page before listing cards.',
-    addShipping: 'Set up shipping',
-    addShippingDesc: 'Go to the Sell page and pick your carriers and fees first. Without them buyers cannot check out. Hand delivery on its own is not enough; you need at least one carrier.',
+    addShipping: 'Set your shipping prices',
+    addShippingDesc: 'Pick the carriers you ship with and check the price for each distance. An empty box uses the default 20,000/22,000/25,000đ.',
+    stepPickup: 'Pickup address',
+    stepShipping: 'Shipping prices',
     addPickup: 'Add pickup address',
     addPickupDesc: 'Before listing, set your pickup address. We need it to calculate shipping fees for buyers.',
     saveAndContinue: 'Save address & continue',
@@ -553,7 +563,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
     shippingHint: 'What the buyer pays. If the carrier costs more than this, the difference comes off your payout.',
     flatFeeKhaiGiaWarning: 'This card is worth 1,000,000đ or more. The shop table adds khai giá automatically at checkout; a flat number does not, and the shortfall comes off your payout.',
     shopTableLabel: "Use the shop's fee table",
-    shopTableHint: 'Priced from the buyer\u2019s address and what the card is worth. Turn off to fix one number for this card.',
+    shopTableHint: 'Priced from the buyer’s address and what the card is worth. Turn off to fix one number for this card.',
     shippingFeeLabel: 'Shipping charged to the buyer (đ)',
     shippingFeeRequired: 'Enter the shipping you charge, or tick free shipping.',
     shippingFeePlaceholder: 'e.g. 25.000',
@@ -729,7 +739,7 @@ const getFormSchema = (copy: LocaleCopy, nonCard = false) => z.object({
   // who never looked at the field still shipped a listing that claimed they had
   // chosen that number, so the figure on the card was the platform's opinion
   // wearing the seller's name. It is asked for now.
-  .refine(data => data.freeShipping || data.shippingFee !== undefined,
+  .refine(data => data.useShopTable || data.freeShipping || data.shippingFee !== undefined,
     { message: copy.shippingFeeRequired, path: ['shippingFee'] })
   .refine(data => {
     if (nonCard || data.isBundle || isFreeText(data.category)) return true;
@@ -781,6 +791,15 @@ export default function CreateListingPage() {
   const [isCheckingSellerAccess, setIsCheckingSellerAccess] = useState(true);
   const [hasSellerAccess, setHasSellerAccess] = useState(false);
   const [hasPickupAddress, setHasPickupAddress] = useState(false);
+  /**
+   * Has this shop said which carriers it ships with?
+   *
+   * Deliberately not "has it priced anything": an empty cell is a real price
+   * (DEFAULT_SHOP_TIER_FEES), so demanding numbers would rebuild the gate the
+   * database just dropped. What is worth asking once is which couriers the
+   * seller actually hands parcels to.
+   */
+  const [hasShippingTable, setHasShippingTable] = useState(false);
   const supabase = useSupabase();
 
   const copy = getLocaleCopy(locale);
@@ -1031,13 +1050,19 @@ export default function CreateListingPage() {
         // filling in the whole form only to be refused at the end.
         const { data: profile } = await supabase
           .from('profiles')
-          .select('address_province_id, address_ward_code')
+          .select('address_province_id, address_ward_code, shipping_carriers')
           .eq('id', user.id)
           .single();
         const p = profile as Record<string, any> | null;
         // Province + ward: the district column is null on anything saved
         // since that tier was abolished, so it can no longer gate this.
-        setHasPickupAddress(!!(p?.address_province_id && p?.address_ward_code));
+        const pickupReady = !!(p?.address_province_id && p?.address_ward_code);
+        // Read raw, so filter here: a shop still carrying `vtp` or `self` is
+        // pointing at carriers nobody can book and has not really chosen.
+        const shippingReady = ((p?.shipping_carriers ?? []) as string[]).some(code =>
+          OFFERABLE_CARRIERS.some(carrier => carrier.code === code));
+        setHasPickupAddress(pickupReady);
+        setHasShippingTable(shippingReady);
       } catch {
         setHasSellerAccess(false);
         router.replace('/sell');
@@ -1471,8 +1496,9 @@ export default function CreateListingPage() {
         finish: values.finish,
         // Three distinct answers, and null is one of them. Null follows the
         // shop's fee table, which moves with the buyer's address and the card's
-        // value. Zero is free shipping — chosen on purpose, and settlement nets
-        // the whole carrier bill off the payout.
+        // value — and carries khai giá, which is why a dear card quoted from
+        // the table costs more to send than a cheap one. Zero is free shipping.
+        // A number is the seller opting out of both for this listing.
         shipping_fee: values.useShopTable
           ? null
           : (values.freeShipping ? 0 : values.shippingFee),
@@ -1627,25 +1653,64 @@ export default function CreateListingPage() {
       );
     }
 
-    // Approved sellers must set a pickup address before they can list anything —
-    // shipping fees are calculated from this address.
-    if (!hasPickupAddress) {
+    // Two things have to exist before a listing can be priced: somewhere to
+    // collect the parcel from, and the carriers this shop hands parcels to.
+    // Asked here, one step at a time, rather than after the seller has filled
+    // in the whole form — which is what the old flow did, and it ended with a
+    // toast telling them to go to another page and start over.
+    if (!hasPickupAddress || !hasShippingTable) {
+      const steps = [
+        { number: 1, title: copy.stepPickup, icon: <MapPin className="h-4 w-4" />, done: hasPickupAddress },
+        { number: 2, title: copy.stepShipping, icon: <Truck className="h-4 w-4" />, done: hasShippingTable },
+      ];
+      // Derived, not stored: the step IS whichever prerequisite is still
+      // missing, so there is no second copy of it to fall out of step.
+      const step = hasPickupAddress ? 2 : 1;
+
       return (
         <div className="space-y-6 py-4">
+          <div className="flex items-center justify-center gap-2">
+            {steps.map((entry, idx) => (
+              <div key={entry.number} className="flex items-center gap-2">
+                <span
+                  className={`flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium transition-all ${
+                    entry.done
+                      ? 'border border-green-500/30 bg-green-500/20 text-green-500'
+                      : entry.number === step
+                        ? 'scale-105 bg-orange-500 text-white shadow-md'
+                        : 'bg-zinc-100 text-muted-foreground dark:bg-zinc-800'
+                  }`}
+                >
+                  {entry.done ? <CheckCircle className="h-4 w-4" /> : entry.icon}
+                  <span className="hidden sm:inline">{entry.title}</span>
+                  <span className="sm:hidden">B{entry.number}</span>
+                </span>
+                {idx < steps.length - 1 && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+              </div>
+            ))}
+          </div>
+
           <div className="flex flex-col items-center text-center">
-            <div className="h-14 w-14 rounded-full bg-orange-500/10 flex items-center justify-center mb-3">
-              <MapPin className="h-7 w-7 text-orange-500" />
+            <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-orange-500/10">
+              {step === 1
+                ? <MapPin className="h-7 w-7 text-orange-500" />
+                : <Truck className="h-7 w-7 text-orange-500" />}
             </div>
-            <h2 className="text-2xl font-semibold mb-1">{copy.addPickup}</h2>
-            <p className="text-muted-foreground max-w-md">
-              {copy.addPickupDesc}
+            <h2 className="mb-1 text-2xl font-semibold">{step === 1 ? copy.addPickup : copy.addShipping}</h2>
+            <p className="max-w-md text-muted-foreground">
+              {step === 1 ? copy.addPickupDesc : copy.addShippingDesc}
             </p>
           </div>
-          <div className="max-w-xl mx-auto rounded-xl border border-orange-500/20 bg-orange-500/5 p-5">
-            <SenderAddressForm
-              submitLabel={copy.saveAndContinue}
-              onSaved={() => setHasPickupAddress(true)}
-            />
+
+          <div className={`mx-auto rounded-xl border border-orange-500/20 bg-orange-500/5 p-5 ${step === 1 ? 'max-w-xl' : 'max-w-3xl'}`}>
+            {step === 1 ? (
+              <SenderAddressForm
+                submitLabel={copy.saveAndContinue}
+                onSaved={() => setHasPickupAddress(true)}
+              />
+            ) : (
+              <ShopFeeTable requireCarrier onSaved={() => setHasShippingTable(true)} />
+            )}
           </div>
         </div>
       );

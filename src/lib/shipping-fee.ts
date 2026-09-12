@@ -10,9 +10,10 @@
  * costs — and one seller's 11,000đ nội tỉnh was below the floor, losing money
  * on every order it priced.
  *
- * So the fee is flat and set here, not by sellers. The tier helpers survive
- * because goship-tiers still groups its own quotes by route to show a seller
- * what their address costs to ship from.
+ * The tiers are back, and what makes them defensible this time is that nobody
+ * invents a number: every cell starts at DEFAULT_SHOP_TIER_FEES below, a seller
+ * may only move one inside a band that has a floor under it, and a cell stored
+ * outside that band is ignored rather than charged.
  */
 
 export type VnRegion = 'bac' | 'trung' | 'nam';
@@ -114,6 +115,47 @@ export const PLATFORM_SHIPPING_FEE = 25_000;
  * postage.
  */
 
+/**
+ * The shop price list, fixed.
+ *
+ * These three numbers are the price list every shop starts with, the values
+ * "Dùng giá đề xuất" fills in, and what an empty cell is charged at. They
+ * replaced live GoShip quotes on 2026-09-11: a quote needed a pickup address to
+ * exist before any price could be shown, came back empty whenever GoShip was
+ * unreachable, and moved under sellers without warning. A fixed table is a
+ * number the seller can read on day one and the same number a month later.
+ *
+ * They sit at or above what GoShip was measured at for postage on the common
+ * routes (15,385-31,450d) on purpose. Postage is only half a bill - khai gia is
+ * added on top at checkout - and anything a buyer pays above what the parcel
+ * actually costs stays with the platform rather than being refunded, so the
+ * floor is set where a seller is not left short.
+ */
+export const DEFAULT_SHOP_TIER_FEES: Readonly<Record<ShippingTier, number>> = {
+  intra: 20_000,
+  inter: 22_000,
+  region: 25_000,
+};
+
+/**
+ * The band a seller may move a cell inside.
+ *
+ * Below the floor a seller loses money on every order the cell prices - the
+ * 11,000d one shop actually typed under the old free-form rules was under every
+ * carrier's cheapest route. Above the ceiling the listing simply stops selling.
+ * Enforced in three places for one reason each: the input stops a typo, the
+ * fee-table route stops a crafted request, and shopFeeCell stops a cell that is
+ * already stored outside the band from ever being charged.
+ */
+export const SHOP_TIER_FEE_MIN = 20_000;
+export const SHOP_TIER_FEE_MAX = 50_000;
+
+export const isValidShopTierFee = (value: unknown): value is number =>
+  typeof value === 'number'
+  && Number.isSafeInteger(value)
+  && value >= SHOP_TIER_FEE_MIN
+  && value <= SHOP_TIER_FEE_MAX;
+
 /** What a listing may charge. Zero is free shipping, and is a real answer. */
 export const LISTING_SHIPPING_FEE_MIN = 0;
 export const LISTING_SHIPPING_FEE_MAX = 99_999;
@@ -160,39 +202,48 @@ export const parcelShippingFee = (
  * GHN, BEST and J&T charge a percentage of the card's value with no ceiling, so
  * any fixed number a seller typed would be short on the next dearer card.
  *
- * Stored twice per seller and read in this order: profiles.shipping_fees is
- * what the seller set, profiles.goship_tier_fees is what GoShip quoted for
- * their pickup address at declared value 0. The first overrides the second cell
- * by cell, so a seller who edited one number keeps live prices for the other
- * two.
+ * Stored once per seller, in profiles.shipping_fees, and only for the cells a
+ * seller moved off the default. An absent cell is DEFAULT_SHOP_TIER_FEES, so
+ * every shop has a complete price list from the moment it exists - including
+ * one that has never opened the shipping page.
+ *
+ * profiles.goship_tier_fees was the second source here and is no longer read;
+ * see DEFAULT_SHOP_TIER_FEES for why. The column stays for the orders that were
+ * priced from it.
  */
 export type CarrierFeeTable = Partial<Record<ShippingTier, number>>;
 
 export type ShopFeeTable = Record<string, CarrierFeeTable>;
 
-const cell = (
+/**
+ * A cell the seller set, if it is still one this app would let them set.
+ *
+ * A stored cell outside the band answers null and is charged at the default
+ * instead. Cells written before the band existed are the case that matters:
+ * honouring a 15,000d one would keep billing below every carrier's cheapest
+ * route for as long as the seller never reopened the page.
+ */
+export const shopFeeCell = (
   table: ShopFeeTable | null | undefined,
   carrier: string,
   tier: ShippingTier,
 ): number | null => {
   const value = table?.[carrier]?.[tier];
-  return isValidListingShippingFee(value) ? value : null;
+  return isValidShopTierFee(value) ? value : null;
 };
 
 /**
  * The postage for one parcel, before any listing decides to override it.
  *
- * Seller's own number first, the live quote second, the platform figure last.
+ * The seller's own number, or the fixed default for that distance.
  */
 export const shopShippingFee = (input: {
   set?: ShopFeeTable | null;
-  quoted?: ShopFeeTable | null;
   carrier: string;
   tier: ShippingTier;
 }): number =>
-  cell(input.set, input.carrier, input.tier)
-  ?? cell(input.quoted, input.carrier, input.tier)
-  ?? PLATFORM_SHIPPING_FEE;
+  shopFeeCell(input.set, input.carrier, input.tier)
+  ?? DEFAULT_SHOP_TIER_FEES[input.tier];
 
 /** Is this a table this app can read at all? Shape only; cells validate above. */
 export const isShopFeeTable = (value: unknown): value is ShopFeeTable =>

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="VNPost">
+  <rect width="64" height="64" rx="14" fill="#F4B400"/>
+  <path d="M14 19h13l5 8 5-8h13L34 45h-4L14 19Z" fill="#D82B2B"/>
+  <path d="M22 19h8l2 4 2-4h8L34 34h-4L22 19Z" fill="#fff"/>
+</svg>

@@ -551,7 +551,9 @@ export const en = {
   help_faq_7_q: 'What if a seller takes my money and never ships?',
   help_faq_7_a: 'Sellers have 24 hours from your payment to enter a tracking number. Past that the order cancels itself, the money returns to your wallet and the seller loses reputation. You do not have to do anything.',
   help_faq_8_q: 'How does shipping work, and do you ship abroad?',
-  help_faq_8_a: 'We currently ship within Vietnam only, through Giao Hàng Nhanh (GHN). The fee is calculated from your address and shown before you pay. International orders are not supported yet.',
+  // Carrier names here follow OFFERABLE_COURIERS in shipping-carriers.ts —
+  // update this answer when one is retired or added.
+  help_faq_8_a: 'We currently ship within Vietnam only, through whichever carrier the seller offers: Giao Hàng Nhanh (GHN), Shopee Express (SPX) or J&T Express — or hand delivery, if you are in the seller\'s own province. The fee is calculated from your address and shown before you pay. International orders are not supported yet.',
   help_faq_9_q: 'Which cards am I allowed to sell?',
   help_faq_9_a: 'Any genuine trading card: Pokémon, One Piece, Yu-Gi-Oh!, sports and more. Counterfeits, unlicensed reprints and home-made "proxy" cards are banned, and accounts caught selling them are suspended.',
   help_faq_10_q: 'Can I sell a worn or played card?',

@@ -950,36 +950,6 @@ export default function SellPage() {
   // the checkout routes use. The form keeps fees as formatted strings; parse
   // them back, keeping a typed 0 (free shipping) distinct from a blank box.
 
-  // The shop's price list, and the per-listing override that beats it.
-  //
-  // The tiers are back, and the reason they are defensible this time is that
-  // nobody types them from nothing: every box carries the real GoShip price for
-  // this seller's pickup address behind it, and an empty box keeps following
-  // that price. The old version asked sellers to invent nine numbers, which is
-  // how one of them ended up at 11,000đ — below the floor, losing money on
-  // every order it priced.
-  const renderShippingConfigForm = () => (
-    <div className="space-y-4 text-sm">
-      <ShopFeeTable />
-      <div className="space-y-3 border-t border-zinc-800 pt-4">
-        <p className="text-muted-foreground">
-          {tx(
-            'Từng bài đăng vẫn đè được bảng này: trong form đăng bán có ô phí ship riêng và lựa chọn miễn phí vận chuyển cho thẻ đó — một con số cố định, không đổi theo nơi giao.',
-            'Any listing can override this table: the listing form has its own shipping box and a free-shipping option for that card — one fixed number, the same wherever it goes.',
-            '出品ごとにこの表を上書きできます。出品フォームには送料欄と送料無料の選択があり、そちらは配送先にかかわらず固定額です。',
-          )}
-        </p>
-        <p className="text-muted-foreground">
-          {tx(
-            'Người mua chọn hãng khi thanh toán, trong số hãng bạn bật ở trên, và trả đúng ô tương ứng. Nếu cước bạn chọn khi tạo vận đơn cao hơn phí đã thu, phần vượt trừ vào tiền bạn nhận.',
-            'The buyer picks a carrier at checkout, from the ones you enabled above, and pays the matching box. If the carrier you pick at booking costs more than the fee collected, the difference comes off your payout.',
-            '買い手は上で有効にした業者から決済時に選び、対応する欄の金額を支払います。発送時に選んだ業者の料金が徴収額を超えた分は、受取額から差し引かれます。',
-          )}
-        </p>
-      </div>
-    </div>
-  );
-
   const renderListingTab = (key: string, listings: MyListing[], statusLabel: string) => {
     const visibleListings = showAllListings[key] ? listings : listings.slice(0, 5);
 
@@ -1084,9 +1054,9 @@ export default function SellPage() {
     const soldListings = myListings.filter(listing => listing.status === 'sold');
     const draftListings = myListings.filter(listing => !activeListings.includes(listing) && !soldListings.includes(listing));
     const shippingSummary = tx(
-      'Phí ship theo bảng của shop · người mua chọn hãng khi thanh toán',
-      'Shipping priced from your shop table · the buyer picks the carrier at checkout',
-      'ショップの送料表で計算 · 業者は買い手が決済時に選択',
+      'Phí ship theo bảng của shop · từng bài đăng có thể đặt số riêng',
+      'Shipping priced from your shop table · any listing can set its own number',
+      'ショップの送料表で計算 · 出品ごとに固定額も設定可',
     );
 
     return (
@@ -1245,10 +1215,7 @@ export default function SellPage() {
               </button>
               {shippingSectionOpen && (
                 <CardContent id="shop-shipping-panel">
-                  <p className="mb-4 text-sm text-muted-foreground">
-                    {tx('Phí ship do sàn đặt và người mua trả khi thanh toán. Bạn không cần khai gì ở đây.', 'The platform sets the shipping fee and the buyer pays it at checkout. Nothing to fill in here.', '送料はプラットフォームが設定し、購入者が決済時に支払います。ここで入力する項目はありません。')}
-                  </p>
-                  {renderShippingConfigForm()}
+                  <ShopFeeTable />
                 </CardContent>
               )}
             </Card>
@@ -1467,11 +1434,11 @@ export default function SellPage() {
             <DrawerHeader>
               <DrawerTitle>{tx('Vận chuyển của shop', 'Shop shipping', 'ショップ配送')}</DrawerTitle>
               <DrawerDescription>
-                {tx('Phí ship cố định do sàn đặt.', 'A flat shipping fee, set by the platform.', 'プラットフォームが定める一律送料。')}
+                {tx('Hãng bạn nhận gửi và cước cho từng khoảng cách.', 'The carriers you ship with, and postage per distance.', '発送に使う業者と距離ごとの送料。')}
               </DrawerDescription>
             </DrawerHeader>
             <div className="max-h-[80vh] overflow-y-auto px-4 pb-6">
-              {renderShippingConfigForm()}
+              <ShopFeeTable />
             </div>
           </DrawerContent>
         </Drawer>
