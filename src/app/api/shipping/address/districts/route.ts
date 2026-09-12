@@ -23,7 +23,11 @@ async function handleGET(request: NextRequest) {
 
     return NextResponse.json(
         { data: result.data.map((d) => ({ code: d.id, name: d.name })) },
-        { headers: { 'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800' } },
+        // This response varies by city_code. Netlify's Next.js adapter does
+        // not include arbitrary query parameters in its default CDN cache key,
+        // so public caching here can serve one city's districts to every city.
+        // GoShip responses are already memoised server-side in goship.ts.
+        { headers: { 'Cache-Control': 'private, no-store' } },
     );
 }
 

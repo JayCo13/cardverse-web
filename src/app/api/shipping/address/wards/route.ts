@@ -25,7 +25,10 @@ async function handleGET(request: NextRequest) {
 
     return NextResponse.json(
         { data: result.data.map((w) => ({ code: String(w.id), name: w.name })) },
-        { headers: { 'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800' } },
+        // This response varies by district_code. Keep it out of Netlify's
+        // shared cache or the first district requested can populate every
+        // other district's ward list. goship.ts already caches the upstream.
+        { headers: { 'Cache-Control': 'private, no-store' } },
     );
 }
 
