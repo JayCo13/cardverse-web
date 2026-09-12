@@ -5,7 +5,8 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { getPayOS } from '@/lib/payos';
 import { hashFinancialRequest, stableFinancialUuid } from '@/lib/financial-idempotency';
-import { quoteCheapestConfiguredShipping } from '@/lib/verified-shipping';
+import { CheckoutShippingError, quoteCheapestCheckoutShipping, shippingQuoteRecord } from '@/lib/verified-shipping';
+import { CheckoutAddressError, checkoutAddressStatus, loadCheckoutAddress } from '@/lib/checkout-address';
 import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link-claim';
 import { translateRequest } from '@/lib/request-localization';
 import { announcePaidOrdersInChat } from '@/lib/order-paid-chat';
@@ -41,26 +42,24 @@ async function handlePOST(
     }
 
     const body = await request.json();
-    const {
-      payment_method, shipping_address,
-      to_name, to_phone,
-      to_district_id, to_district_name,
-      to_province_id, to_province_name,
-      to_ward_code, to_ward_name, to_address_detail,
-    } = body;
+    const { payment_method, address_id } = body;
 
     if (!['wallet', 'direct_payos'].includes(payment_method)) {
       return NextResponse.json({ error: 'Invalid payment method' }, { status: 400 });
     }
-    // District is not part of a complete address any more: the tier was
-    // abolished on 1/7/2025, so the picker cannot supply one.
-    if (
-      !to_name || !to_phone
-      || !to_province_id || !to_province_name || !to_ward_code
-      || !to_ward_name || !to_address_detail
-    ) {
-      return NextResponse.json({ error: 'Shipping address is incomplete' }, { status: 400 });
+    // The address is the buyer's saved row, read here — see checkout-address.ts.
+    let address;
+    try {
+      address = await loadCheckoutAddress(user.id, address_id);
+    } catch (addressError) {
+      const code = addressError instanceof CheckoutAddressError ? addressError.code : 'address_read_failed';
+      return NextResponse.json({ error: 'Shipping address is missing or unusable.', code }, { status: checkoutAddressStatus(code) });
     }
+    const {
+      shipping_address, to_name, to_phone, to_district_id, to_district_name,
+      to_province_id, to_province_name, to_ward_code, to_ward_name, to_address_detail,
+    } = address;
+    const goshipTo = { city: address.goship.city, district: address.goship.district };
 
     const apiRequestHash = hashFinancialRequest({
       version: 1,
@@ -68,6 +67,7 @@ async function handlePOST(
       user_id: user.id,
       transaction_id: transactionId,
       payment_method,
+      address_id: address.id,
       shipping_address: shipping_address || null,
       to_name,
       to_phone,
@@ -78,6 +78,7 @@ async function handlePOST(
       to_ward_code,
       to_ward_name,
       to_address_detail,
+      to_goship: goshipTo,
     });
     const service = createServiceSupabaseClient();
     const { data: replayData, error: replayError } = await service.rpc(
@@ -153,12 +154,18 @@ async function handlePOST(
     }
 
     const amount = Number(transaction.price);
-    const { fee: shippingFee, carrier: shippingCarrier } = await quoteCheapestConfiguredShipping({
-      sellerId: transaction.seller_id,
-      cardIds: [card.id],
-      toProvinceId: Number(to_province_id),
-      toProvinceName: String(to_province_name),
-    });
+    // No carrier picker on this path, so the cheapest GoShip carrier the shop
+    // enables is what the buyer is charged.
+    let shippingQuote;
+    try {
+      shippingQuote = (await quoteCheapestCheckoutShipping([{ sellerId: transaction.seller_id, cardIds: [card.id], to: goshipTo }])).get(transaction.seller_id);
+    } catch (shippingError) {
+      const code = shippingError instanceof CheckoutShippingError ? shippingError.code : 'shipping_quote_failed';
+      return NextResponse.json({ error: 'Could not quote shipping for this address.', code }, { status: code === 'shipping_quote_failed' ? 503 : 409 });
+    }
+    if (!shippingQuote) return NextResponse.json({ error: 'Could not quote shipping for this address.', code: 'seller_does_not_ship_here' }, { status: 409 });
+    const shippingFee = shippingQuote.fee;
+    const shippingCarrier = shippingQuote.carrier;
     const totalPaid = amount + shippingFee;
     const orderId = stableFinancialUuid(`transaction-pay:${user.id}:${idempotencyKey}:${transactionId}`);
     const orderShipping = {
@@ -184,7 +191,12 @@ async function handlePOST(
       total_paid: totalPaid,
       // shipping_carrier is what the seller ships with: this path picks the
       // carrier on the buyer's behalf, so the order has to record which one.
-      metadata: { api_request_hash: apiRequestHash, shipping_carrier: shippingCarrier },
+      metadata: {
+        api_request_hash: apiRequestHash,
+        shipping_carrier: shippingCarrier,
+        parcel_preset: shippingQuote.parcelPreset,
+        shipping_quote: shippingQuoteRecord(shippingQuote, goshipTo),
+      },
       ...orderShipping,
     };
 

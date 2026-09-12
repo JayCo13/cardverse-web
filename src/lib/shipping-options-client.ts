@@ -1,72 +1,84 @@
 /**
- * Ask the server what one seller's parcel costs to this address.
+ * The browser's one way to learn what shipping costs.
  *
- * The browser never prices a parcel. Every surface that shows a buyer a
- * shipping figure — the one-click dialog, the listing page, the cart's
- * checkout — asks this, which asks `/api/shipping/options`, which calls the
- * same resolver that bills the order. So the number a buyer reads and the
- * number they are charged come from one piece of arithmetic, run once, on the
- * server.
+ * Every buyer-facing figure — grid, listing page, cart, both checkouts — comes
+ * from POST /api/shipping/options, which prices the parcel with GoShip the same
+ * way the order routes bill it. The browser never adds, rounds or estimates a
+ * fee of its own: it shows what came back, and sends back the carrier code the
+ * buyer picked.
  *
- * That was not always true: the one-click dialog used to read the listing row
- * itself and fall back to a constant when the listing had no fee of its own,
- * and it showed 25,000đ on a parcel the server then billed at something else.
- *
- * The options come back sorted cheapest first, and the cheapest is what the
- * buyer pays: nobody picks a carrier here. `quoteCheckoutConfiguredShippingBatch`
- * applies the identical rule server-side when an order arrives without a stated
- * carrier, so `[0]` is a preview of the real decision rather than a guess at it.
+ * Options arrive cheapest first, so `[0]` is the default selection and what a
+ * path with no picker (paying an accepted offer) is charged.
  */
 
-export type ShippingOption = { carrier: string; fee: number };
+import type { ParcelPreset } from '@/lib/parcel';
+
+export type GoshipTo = { city: string; district: string };
+
+export type ShippingOption = {
+    carrier: string;
+    /** What the buyer pays, rounded up to the thousand. */
+    fee: number;
+    feeRaw: number;
+    rateId: string | null;
+    expected: string | null;
+    successPercent: number | null;
+    parcelPreset: ParcelPreset;
+    /** Seller-priced listing: one option, no carrier choice. */
+    listingOverride: boolean;
+};
 
 /**
  * A refusal the caller is expected to show, not to log.
  *
  * `code` is the server's own — `seller_does_not_ship_here`,
- * `seller_shipping_origin_missing`, `shipping_quote_failed` — because the
- * distinctions matter to a buyer: one is "this seller cannot reach you", the
- * next is "this seller is not set up", the last is "try again".
+ * `seller_shipping_origin_missing`, `shipping_quote_failed`,
+ * `shipping_address_invalid` — because the distinctions matter to a buyer.
  */
 export class ShippingOptionsError extends Error {
-    constructor(public readonly code: string) {
+    constructor(public readonly code: string, public readonly sellerId?: string) {
         super(code);
         this.name = 'ShippingOptionsError';
     }
 }
 
-export async function fetchShippingOptions(input: {
-    toProvinceId: number;
-    toProvinceName: string;
-    sellerId: string;
-    /**
-     * The listings going in this parcel. One per listing, even for a bundle —
-     * a bundle is one listing and ships as one parcel, which is exactly what
-     * /api/marketplace/buy quotes.
-     */
-    cardIds: string[];
+export type ShippingOptionsBatch = {
+    data: Record<string, ShippingOption[]>;
+    errors: Record<string, { code: string; seller_name: string | null }>;
+};
+
+/** Several sellers at once — the grid, the cart, the cart checkout. */
+export async function fetchShippingOptionsBatch(input: {
+    to: GoshipTo;
+    /** `key` names the answer when one seller is asked about several listings; defaults to the seller id. */
+    sellers: { sellerId: string; cardIds: string[]; key?: string }[];
     signal?: AbortSignal;
-}): Promise<ShippingOption[]> {
+}): Promise<ShippingOptionsBatch> {
     const response = await fetch('/api/shipping/options', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: input.signal,
-        body: JSON.stringify({
-            toProvinceId: input.toProvinceId,
-            toProvinceName: input.toProvinceName,
-            sellers: [{ sellerId: input.sellerId, cardIds: input.cardIds }],
-        }),
+        body: JSON.stringify({ to: input.to, sellers: input.sellers }),
     });
-
     const payload = await response.json().catch(() => null);
-    if (!response.ok) throw new ShippingOptionsError(payload?.code || 'shipping_quote_failed');
-
-    const options: ShippingOption[] = payload?.data?.[input.sellerId] ?? [];
-    // An empty list is a refusal too, and the honest one to report: the seller
-    // offers nothing that can reach this address.
-    if (options.length === 0) throw new ShippingOptionsError('seller_does_not_ship_here');
-    return options;
+    if (!response.ok) throw new ShippingOptionsError(payload?.code || 'shipping_quote_failed', payload?.seller_id);
+    return { data: payload?.data ?? {}, errors: payload?.errors ?? {} };
 }
 
-/** The carrier a buyer gets when nobody chooses: the cheapest one offered. */
-export const cheapestShippingFee = (options: ShippingOption[]): number => options[0].fee;
+/** One seller — the one-click dialog and the listing page. */
+export async function fetchShippingOptions(input: {
+    to: GoshipTo;
+    sellerId: string;
+    /** The listings going in this parcel; a bundle is one listing. */
+    cardIds: string[];
+    signal?: AbortSignal;
+}): Promise<ShippingOption[]> {
+    const batch = await fetchShippingOptionsBatch({ to: input.to, sellers: [{ sellerId: input.sellerId, cardIds: input.cardIds }], signal: input.signal });
+    const failed = batch.errors[input.sellerId];
+    if (failed) throw new ShippingOptionsError(failed.code, input.sellerId);
+    const options = batch.data[input.sellerId] ?? [];
+    // An empty list is a refusal too, and the honest one to report: the seller
+    // offers nothing that can reach this address.
+    if (options.length === 0) throw new ShippingOptionsError('seller_does_not_ship_here', input.sellerId);
+    return options;
+}

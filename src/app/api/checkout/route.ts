@@ -5,7 +5,8 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { hashFinancialRequest, stableFinancialUuid } from '@/lib/financial-idempotency';
 import { getPayOS } from '@/lib/payos';
-import { CheckoutShippingError, quoteCheckoutConfiguredShippingBatch } from '@/lib/verified-shipping';
+import { CheckoutShippingError, quoteCheckoutShipping, shippingQuoteRecord, type CheckoutShippingQuote } from '@/lib/verified-shipping';
+import { CheckoutAddressError, checkoutAddressStatus, loadCheckoutAddress, type CheckoutAddress } from '@/lib/checkout-address';
 import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link-claim';
 import { translateRequest } from '@/lib/request-localization';
 import { walletCheckoutError } from '@/lib/wallet-checkout-error';
@@ -25,40 +26,6 @@ type CheckoutItemInput = {
   card_id?: string;
   shipping_fee?: number;
 };
-
-type ShippingBody = {
-  to_name: string;
-  to_phone: string;
-  to_district_id: number;
-  to_district_name: string;
-  to_province_id: number;
-  to_province_name: string;
-  to_ward_code: string;
-  to_ward_name: string;
-  to_address_detail: string;
-  shipping_address?: string;
-  /**
-   * GoShip's own city/district/ward ids for this address.
-   *
-   * Never derived from to_province_id / to_ward_code: those are the 2025
-   * structure and GoShip routes on the pre-2025 one. Optional — an order
-   * without them asks its seller to pick the district when they book.
-   */
-  to_goship?: { city?: unknown; district?: unknown; ward?: unknown } | null;
-};
-
-const GOSHIP_ID = /^[0-9]{1,12}$/;
-
-/** All three ids or none: a partial set looks bookable and is not. */
-function goshipDestination(input: ShippingBody['to_goship']) {
-  if (!input || typeof input !== 'object') return null;
-  const city = String(input.city ?? '').trim();
-  const district = String(input.district ?? '').trim();
-  const ward = String(input.ward ?? '').trim();
-  return GOSHIP_ID.test(city) && GOSHIP_ID.test(district) && GOSHIP_ID.test(ward)
-    ? { city, district, ward }
-    : null;
-}
 
 /**
  * File the carrier's ids on orders once they exist.
@@ -101,34 +68,20 @@ type CheckoutCard = {
 
 type CreatedOrder = Record<string, unknown>;
 
-function orderShipping(body: ShippingBody) {
+/** The columns an order carries about where it goes — all from the saved address. */
+function orderShipping(address: CheckoutAddress) {
   return {
-    // Joined with a filter because there is no district level any more; an
-    // address built by template used to read "detail, ward, , province".
-    shipping_address: body.shipping_address
-      || [body.to_address_detail, body.to_ward_name, body.to_district_name, body.to_province_name].filter(Boolean).join(', '),
-    to_name: body.to_name,
-    to_phone: body.to_phone,
-    to_district_id: body.to_district_id,
-    to_district_name: body.to_district_name,
-    to_province_id: body.to_province_id,
-    to_province_name: body.to_province_name,
-    to_ward_code: body.to_ward_code,
-    to_ward_name: body.to_ward_name,
-    to_address_detail: body.to_address_detail,
+    shipping_address: address.shipping_address,
+    to_name: address.to_name,
+    to_phone: address.to_phone,
+    to_district_id: address.to_district_id,
+    to_district_name: address.to_district_name,
+    to_province_id: address.to_province_id,
+    to_province_name: address.to_province_name,
+    to_ward_code: address.to_ward_code,
+    to_ward_name: address.to_ward_name,
+    to_address_detail: address.to_address_detail,
   };
-}
-
-function shippingIsComplete(body: Partial<ShippingBody>) {
-  return !!(
-    body.to_name &&
-    body.to_phone &&
-    body.to_province_id &&
-    body.to_province_name &&
-    body.to_ward_code &&
-    body.to_ward_name &&
-    body.to_address_detail
-  );
 }
 
 async function handlePOST(request: NextRequest) {
@@ -156,9 +109,17 @@ async function handlePOST(request: NextRequest) {
       return NextResponse.json({ error: 'Idempotency-Key is required' }, { status: 400 });
     }
 
-    if (!shippingIsComplete(body)) {
-      return NextResponse.json({ error: 'Shipping address is incomplete' }, { status: 400 });
+    // The address is the buyer's saved row, read here — never the text and
+    // ids the browser sent, which could name two different places. See
+    // checkout-address.ts.
+    let address: CheckoutAddress;
+    try {
+      address = await loadCheckoutAddress(user.id, body.address_id);
+    } catch (addressError) {
+      const code = addressError instanceof CheckoutAddressError ? addressError.code : 'address_read_failed';
+      return NextResponse.json({ error: 'Shipping address is missing or unusable.', code }, { status: checkoutAddressStatus(code) });
     }
+    const goshipTo = { city: address.goship.city, district: address.goship.district };
 
     // Older cart clients omit this map and retain their cheapest-carrier default.
     const cartCarriers = mode === 'cart' ? body.shipping_carriers : undefined;
@@ -182,7 +143,8 @@ async function handlePOST(request: NextRequest) {
       offer_id: body.offer_id || null,
       ...(mode === 'offer' && body.shipping_carrier ? { shipping_carrier: body.shipping_carrier } : {}),
       ...(cartCarriers !== undefined ? { shipping_carriers: cartCarriers } : {}),
-      ...orderShipping(body as ShippingBody),
+      address_id: address.id,
+      ...orderShipping(address),
     });
     const service = createServiceSupabaseClient();
     const { data: replayData, error: replayError } = await service.rpc(
@@ -245,6 +207,7 @@ async function handlePOST(request: NextRequest) {
       shippingFee: number;
       /** The carrier the fee was quoted from — the seller ships with this one. */
       shippingCarrier?: string;
+      shippingQuote?: CheckoutShippingQuote;
       offerBuyerId?: string;
       /** Set only for a bundle offer: the cards this payment takes out of the listing. */
       bundleSelection?: BundleItem[];
@@ -406,18 +369,18 @@ async function handlePOST(request: NextRequest) {
     )) {
       return NextResponse.json({ error: 'Choose a carrier for each seller.', code: 'invalid_shipping_carrier' }, { status: 400 });
     }
-    let shippingQuotes: Map<string, { carrier: string; fee: number }>;
+    let shippingQuotes: Map<string, CheckoutShippingQuote>;
     try {
-      shippingQuotes = await quoteCheckoutConfiguredShippingBatch(checkoutSellerIds.map(sellerId => ({
+      shippingQuotes = await quoteCheckoutShipping(checkoutSellerIds.map(sellerId => ({
         sellerId,
-        // Every listing bought from this seller. One parcel, priced from the
-        // dearest of them — see parcelShippingFee.
+        // Every listing bought from this seller: one parcel, sized from them.
         cardIds: checkoutItems.filter(item => item.card.seller_id === sellerId).map(item => item.card.id),
+        // The buyer's pick. Required unless the listing priced itself — the
+        // resolver refuses to bill a guess.
         carrier: mode === 'offer'
           ? (body.shipping_carrier ? String(body.shipping_carrier).trim() : undefined)
           : (cartCarriers !== undefined ? cartCarriers[sellerId].trim() : undefined),
-        toProvinceId: Number(body.to_province_id),
-        toProvinceName: String(body.to_province_name),
+        to: goshipTo,
       })));
     } catch (shippingError) {
       const known = shippingError instanceof CheckoutShippingError;
@@ -438,6 +401,7 @@ async function handlePOST(request: NextRequest) {
       const quote = shippingQuotes.get(sellerId)!;
       item.shippingFee = chargedSellers.has(sellerId) ? 0 : quote.fee;
       item.shippingCarrier = quote.carrier;
+      item.shippingQuote = quote;
       chargedSellers.add(sellerId);
     }
 
@@ -445,7 +409,7 @@ async function handlePOST(request: NextRequest) {
     const plannedOrderIds = checkoutItems.map((item, index) => stableFinancialUuid(
       `checkout:${user.id}:${idempotencyKey}:${index}:${item.card.id}`,
     ));
-    const shipping = orderShipping(body as ShippingBody);
+    const shipping = orderShipping(address);
 
     // Wallet mutations go through the service-role client: RLS allows owners
     // to SELECT their wallet but all writes are server-trusted only.
@@ -481,8 +445,12 @@ async function handlePOST(request: NextRequest) {
         total_paid: item.amount + item.shippingFee,
         metadata: {
           api_request_hash: apiRequestHash,
-          // What the seller ships with. Read by the fulfilment dialog.
-          ...(item.shippingCarrier ? { shipping_carrier: item.shippingCarrier } : {}),
+          // The carrier the buyer picked, the parcel it was priced for and the
+          // GoShip quote itself. The RPC copies metadata verbatim and a trigger
+          // lifts these three into their own columns — see the 20260912 migration.
+          shipping_carrier: item.shippingCarrier,
+          parcel_preset: item.shippingQuote?.parcelPreset,
+          shipping_quote: item.shippingQuote ? shippingQuoteRecord(item.shippingQuote, goshipTo) : undefined,
           // The immutable inventory snapshot a refund is allowed to restore,
           // written the same way /api/marketplace/buy writes it.
           ...(item.bundleSelection ? {
@@ -518,7 +486,7 @@ async function handlePOST(request: NextRequest) {
         }
         const walletResult = walletResultData as unknown as { orders?: CreatedOrder[] };
         const orders = walletResult.orders || [];
-        await attachGoshipDestination(service, orders, goshipDestination(body.to_goship));
+        await attachGoshipDestination(service, orders, address.goship);
         if (orders.length !== checkoutItems.length) {
           throw new Error('Atomic wallet checkout returned an inconsistent order count');
         }
@@ -571,7 +539,7 @@ async function handlePOST(request: NextRequest) {
       };
       const paymentOrder = staged?.payment_order;
       const orders = staged?.orders || [];
-      await attachGoshipDestination(service, orders, goshipDestination(body.to_goship));
+      await attachGoshipDestination(service, orders, address.goship);
       if (stageError) {
         console.error('Atomic PayOS checkout staging failed:', stageError);
         const mapped = walletCheckoutError(stageError);

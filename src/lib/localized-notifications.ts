@@ -21,6 +21,7 @@ const NOTIFICATION_KEYS: Partial<Record<Notification['type'], readonly [Translat
   order_cancelled: ['notification_order_cancelled_title', 'notification_order_cancelled_message'],
   order_disputed: ['notification_order_disputed_title', 'notification_order_disputed_message'],
   shipping_update: ['notification_shipping_update_title', 'notification_shipping_update_message'],
+  order_carrier_changed: ['notification_order_carrier_changed_title', 'notification_order_carrier_changed_message'],
   dispute_resolved: ['notification_dispute_resolved_title', 'notification_dispute_resolved_message'],
   withdrawal_completed: ['notification_withdrawal_completed_title', 'notification_withdrawal_completed_message'],
   withdrawal_rejected: ['notification_withdrawal_rejected_title', 'notification_withdrawal_rejected_message'],
@@ -35,6 +36,11 @@ export function localizeSystemNotification(notification: Notification, t: Transl
   const metadata = notification.metadata ?? {};
   let title = keys ? t(keys[0]) : notification.title;
   let message = keys ? t(keys[1]) : notification.message;
+  // The carrier swap names both carriers; the row carries them as metadata so
+  // every locale can say it in its own word order.
+  if (notification.type === 'order_carrier_changed' && keys) {
+    message = t(keys[1], { from: String(metadata.from_carrier ?? ''), to: String(metadata.to_carrier ?? '') });
+  }
   const extraKeys: Partial<Record<Notification['type'], TranslationKey>> = {
     offer_expired: 'notification_context_expired',
     offer_payment_expired: 'notification_context_expired',

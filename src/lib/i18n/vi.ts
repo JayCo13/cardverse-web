@@ -833,6 +833,8 @@ export const vi = {
   notification_order_new_message: 'Người mua đã thanh toán. Vui lòng chuẩn bị giao hàng.',
   notification_order_shipped_title: 'Đơn hàng đã được gửi',
   notification_order_shipped_message: '',
+  notification_order_carrier_changed_title: 'Đơn vị vận chuyển đã đổi',
+  notification_order_carrier_changed_message: 'Đơn của bạn sẽ đi {to} thay cho {from} vì hãng đó không nhận tuyến này. Phí ship bạn đã trả không thay đổi.',
   notification_order_completed_title: 'Đơn hàng hoàn tất',
   notification_order_completed_message: 'Tiền đã được giải ngân.',
   notification_order_refunded_title: 'Đơn hàng đã hoàn tiền',

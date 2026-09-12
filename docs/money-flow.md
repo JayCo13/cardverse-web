@@ -1,6 +1,6 @@
 # CardVerse Money Flow
 
-Definitive reference for how money moves through the marketplace. Last updated: 2026-09-05 (17TRACK delivery signal, dispute evidence videos, pg_cron settlement).
+Definitive reference for how money moves through the marketplace. Last updated: 2026-09-12 (shipping priced by GoShip at checkout; khai giá is the seller's; `seller_shipping_charge`).
 
 ## Order state machine
 
@@ -35,7 +35,7 @@ Wallet checkout skips `pending_payment` — orders are created directly as `paid
 | create `paid` (wallet) / `pending_payment` (PayOS) | `src/app/api/checkout/route.ts` (also legacy: `marketplace/buy`, `transaction/[id]/pay`) |
 | `pending_payment → paid` | `src/app/api/payos/webhook/route.ts` (signature-verified, idempotent at `payment_orders` level) |
 | `pending_payment → cancelled` | PayOS cancel webhook; `release_expired_card_reservations()` (3-min reservation, `20260609_card_reservation_expiry.sql`) |
-| `paid → shipping` | `marketplace/orders/route.ts` PATCH `ship`. Manual for every carrier: the seller books on the carrier's own system and pastes the code back |
+| `paid → shipping` | `api/shipping/book` — the seller books a GoShip waybill from the order page desk (`order-shipping-desk.tsx`); the platform's GoShip account is billed and `orders.goship_code/goship_fee/seller_shipping_charge` are stamped |
 | `shipping → delivered` | `src/app/api/shipping/webhook/route.ts` (token-authenticated, idempotent; resets `auto_complete_at = now + 72h`) |
 | `delivered → completed` (manual) | `marketplace/orders/route.ts` PATCH `confirm_received` (`buyer_confirmed_at` set) |
 | `delivered → completed` (auto) | `complete_delivered_orders()` (`20260617_auto_release_escrow.sql`; `buyer_confirmed_at` stays NULL). Called opportunistically from `marketplace/orders` GET and `wallet` GET |
@@ -46,9 +46,9 @@ Wallet checkout skips `pending_payment` — orders are created directly as `paid
 ## Escrow lifecycle
 
 1. **Buyer pays** → money held by the platform. Wallet: debited immediately (optimistic-locked, service client). PayOS: real money lands in the PayOS merchant account.
-2. **Seller ships** via GHN. The card is already `sold`.
-3. **GHN delivers** → 72h buyer window starts (**at delivery**, not at ship time).
-4. **Release**: buyer confirms, or 72h lapses → seller wallet credited the **full sale `amount`** (shipping fee is not part of the seller payout; it was paid to GHN).
+2. **Seller ships**: books the waybill through the desk with the carrier the buyer picked (GHN / SPX / J&T / BEST via GoShip); if that carrier no longer serves the route they pick a backup and the buyer is notified (`order_carrier_changed`). The card is already `sold`.
+3. **Carrier delivers** (17TRACK signal) → 72h buyer window starts (**at delivery**, not at ship time).
+4. **Release**: buyer confirms, or 72h lapses → seller wallet credited `seller_payout_for(order)` = **`amount − seller_shipping_charge`**. The buyer's `shipping_fee` is GoShip's postage for the carrier they picked, quoted at checkout and rounded up to the thousand, and it pays the GoShip bill; the seller is charged only for what they chose at booking — declared value (khai giá), a parcel bigger than the one quoted, or postage over a price they set on the listing (free shipping included). Orders from before 2026-09-12 carry `seller_shipping_charge = null` and settle on the older `goship_fee − shipping_fee` rule. Postage drift, and the gap when the seller must book a backup carrier, are absorbed by the platform out of the rounding.
 5. **Withdrawal**: seller (KYC-approved only) requests payout to their KYC bank account → wallet debited immediately, `wallet_withdrawals` row `pending` → admin transfers manually and marks `completed`, or rejects → `refund_withdrawal()` RPC restores the balance.
 
 ## Fee model (owner decision, 2026-06-11)

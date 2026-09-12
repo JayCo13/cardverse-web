@@ -73,7 +73,6 @@ export interface Card {
    * the card's own value all move it. Null when the seller's shop has nothing
    * priced yet and there is nothing honest to show.
    */
-  shippingRange?: { min: number; max: number } | null;
 }
 
 export interface Offer {
@@ -154,6 +153,9 @@ export interface Notification {
     amount?: number;
     tracking_number?: string;
     shipping_provider?: string;
+    /** order_carrier_changed: short labels of the carrier the buyer picked and the one booked. */
+    from_carrier?: string;
+    to_carrier?: string;
     reason?: string;
   };
   id: string;
@@ -161,7 +163,7 @@ export interface Notification {
   type:
     | 'offer_received' | 'offer_accepted' | 'offer_rejected' | 'card_sold' | 'message_received'
     | 'order_new' | 'order_shipped' | 'order_completed' | 'order_refunded' | 'order_cancelled' | 'order_disputed'
-    | 'shipping_update' | 'dispute_resolved' | 'withdrawal_completed' | 'withdrawal_rejected'
+    | 'shipping_update' | 'order_carrier_changed' | 'dispute_resolved' | 'withdrawal_completed' | 'withdrawal_rejected'
     | 'kyc_identity_approved' | 'kyc_approved' | 'kyc_rejected'
     | 'offer_expired' | 'offer_payment_expired' | 'offer_card_taken' | 'unboxing_video_submitted'
     | 'offer_on_hold' | 'offer_revived' | 'offer_queue_reopened' | 'offer_released';

@@ -33,7 +33,7 @@ const nextServer = {
 };
 function query(result, calls, table) {
   const chain = {};
-  for (const method of ['select', 'eq', 'in', 'single', 'maybeSingle', 'returns', 'order', 'limit', 'delete', 'insert']) {
+  for (const method of ['select', 'eq', 'in', 'is', 'lt', 'single', 'maybeSingle', 'returns', 'order', 'limit', 'delete', 'insert', 'update', 'upsert']) {
     chain[method] = (...args) => {
       calls.push({ table, method, args });
       return chain;
@@ -55,38 +55,92 @@ const claimsAuth = (userId) => ({
 });
 
 const shippingFee = loadTs('src/lib/shipping-fee.ts');
-function shippingHarness(profiles, error = null) {
+const parcel = loadTs('src/lib/parcel.ts', { '@/lib/product-listing': loadTs('src/lib/product-listing.ts') });
+const shippingCarriers = loadTs('src/lib/shipping-carriers.ts');
+const shipmentCarriers = loadTs('src/lib/shipment-carriers.ts', { '@/lib/shipping-carriers': shippingCarriers });
+
+// GoShip stands in as a function of the route: one price list for every
+// pickup except a sentinel city nobody serves. Rates are what /rates returns
+// after goshipRates maps carrier codes — already the app's own codes.
+const RATES = [
+  { id: 'r-ghn', carrierName: 'Giao Hàng Nhanh', carrierCode: 'ghn', service: 'Tiêu chuẩn', totalFee: 26200, expected: '3 ngày', successPercent: 95 },
+  { id: 'r-jnt', carrierName: 'J&T Express', carrierCode: 'jnt', service: 'Tiêu chuẩn', totalFee: 36070, expected: '1 ngày', successPercent: 96 },
+];
+function shippingHarness(profiles, error = null, cards = [], goship = {}) {
   const calls = [];
-  const service = { from: table => query({ data: profiles, error }, calls, table) };
+  const service = { from: table => query({ data: table === 'cards' ? cards : profiles, error }, calls, table) };
   const shipping = loadTs('src/lib/verified-shipping.ts', {
     'server-only': {},
-    '@/lib/ghn': {},
     '@/lib/shipping-fee': shippingFee,
+    '@/lib/parcel': parcel,
+    '@/lib/shipment-carriers': shipmentCarriers,
+    '@/lib/goship-rate-cache': {
+      cachedGoshipRates: async (queryInput) => {
+        calls.push({ goship: queryInput });
+        if (goship.fail) return { ok: false, reason: 'offline' };
+        if (queryInput.from.city === '999999') return { ok: true, rates: [], cached: false };
+        return { ok: true, rates: goship.rates ?? RATES, cached: false };
+      },
+    },
     '@/lib/supabase/service': { createServiceSupabaseClient: () => service },
   });
   return { shipping, calls };
 }
-const seller = (id, fees = { intra: 20000, inter: 30000, region: 40000 }) => ({
-  id, shipping_carriers: ['self', 'ghn'], shipping_fees: { ghn: fees },
-  address_province_id: 1, address_province_name: 'Hà Nội',
+const seller = (id, overrides = {}) => ({
+  id, display_name: id, shipping_carriers: ['ghn', 'jnt'], carrier_coverage: null, parcel_overrides: {},
+  goship_pickup: { city: '100000', district: '100100', ward: '100101' },
+  ...overrides,
 });
-const quoteInput = sellerId => ({ sellerId, toProvinceId: 1, toProvinceName: 'Hà Nội' });
+const TO = { city: '700000', district: '700100' };
+const quoteInput = sellerId => ({ sellerId, cardIds: [], to: TO });
 
 test('shipping batch reads profiles once and matches single-seller quoting', async () => {
   const { shipping, calls } = shippingHarness([seller('s1'), seller('s2')]);
-  const result = await shipping.quoteCheapestConfiguredShippingBatch([quoteInput('s1'), quoteInput('s2'), quoteInput('s1')]);
+  const result = await shipping.quoteCheapestCheckoutShipping([quoteInput('s1'), quoteInput('s2')]);
   assert.equal(calls.filter(call => call.method === 'select').length, 1);
   assert.deepEqual(Array.from(calls.find(call => call.method === 'in').args[1]), ['s1', 's2']);
+  // Same pickup, same destination, same parcel: one GoShip call serves both.
+  assert.equal(calls.filter(call => call.goship).length, 1);
+  const apart = shippingHarness([seller('s1'), seller('s2', { goship_pickup: { city: '100000', district: '100200', ward: '1' } })]);
+  await apart.shipping.quoteCheapestCheckoutShipping([quoteInput('s1'), quoteInput('s2')]);
+  assert.equal(apart.calls.filter(call => call.goship).length, 2);
   for (const id of ['s1', 's2']) {
-    const single = shippingHarness(seller(id)).shipping;
-    assert.equal(JSON.stringify(result.get(id)), JSON.stringify(await single.quoteCheapestConfiguredShipping(quoteInput(id))));
+    const single = shippingHarness([seller(id)]).shipping;
+    const one = (await single.quoteCheapestCheckoutShipping([quoteInput(id)])).get(id);
+    assert.equal(JSON.stringify(result.get(id)), JSON.stringify(one));
   }
 });
 
-test('shipping batch rejects missing sellers, invalid fees, and database errors', async () => {
-  await assert.rejects(shippingHarness([]).shipping.quoteCheapestConfiguredShippingBatch([quoteInput('missing')]), /configuration_missing/);
-  await assert.rejects(shippingHarness([seller('s1', { intra: 0 })]).shipping.quoteCheapestConfiguredShippingBatch([quoteInput('s1')]), /fee_not_configured/);
-  await assert.rejects(shippingHarness(null, { message: 'offline' }).shipping.quoteCheapestConfiguredShippingBatch([quoteInput('s1')]), /shipping_quote_failed/);
+test('shipping quote is GoShip\'s price rounded up to the thousand, cheapest first', async () => {
+  const { shipping } = shippingHarness([seller('s1')], null, [{ id: 'card1', seller_id: 's1', shipping_fee: null, product_kind: 'card' }]);
+  const options = (await shipping.listCheckoutShippingOptions([{ sellerId: 's1', cardIds: ['card1'], to: TO }])).get('s1');
+  assert.deepEqual(options.map(o => o.carrier), ['ghn', 'jnt']);
+  assert.equal(options[0].fee, 27000);
+  assert.equal(options[0].feeRaw, 26200);
+  assert.equal(options[0].rateId, 'r-ghn');
+  assert.equal(options[0].parcelPreset, 'card');
+  assert.equal(options[0].listingOverride, false);
+  assert.equal(options[1].fee, 37000);
+});
+
+test('a listing the seller priced is one option with no carrier to pick', async () => {
+  const { shipping } = shippingHarness([seller('s1')], null, [{ id: 'card1', seller_id: 's1', shipping_fee: 0, product_kind: 'card' }]);
+  const options = (await shipping.listCheckoutShippingOptions([{ sellerId: 's1', cardIds: ['card1'], to: TO }])).get('s1');
+  assert.equal(options.length, 1);
+  assert.equal(options[0].fee, 0);
+  assert.equal(options[0].listingOverride, true);
+  // Billing ignores whatever carrier the browser sends for it.
+  const billed = (await shipping.quoteCheckoutShipping([{ sellerId: 's1', cardIds: ['card1'], to: TO, carrier: 'nope' }])).get('s1');
+  assert.equal(billed.fee, 0);
+});
+
+test('shipping batch rejects missing sellers, missing pickups, and outages', async () => {
+  await assert.rejects(shippingHarness([]).shipping.quoteCheapestCheckoutShipping([quoteInput('missing')]), /configuration_missing/);
+  await assert.rejects(shippingHarness([seller('s1', { goship_pickup: null })]).shipping.quoteCheapestCheckoutShipping([quoteInput('s1')]), /seller_shipping_origin_missing/);
+  await assert.rejects(shippingHarness(null, { message: 'offline' }).shipping.quoteCheapestCheckoutShipping([quoteInput('s1')]), /shipping_quote_failed/);
+  await assert.rejects(shippingHarness([seller('s1')], null, [], { fail: true }).shipping.quoteCheapestCheckoutShipping([quoteInput('s1')]), /shipping_quote_failed/);
+  await assert.rejects(shippingHarness([seller('s1', { goship_pickup: { city: '999999', district: '1' } })]).shipping.quoteCheapestCheckoutShipping([quoteInput('s1')]), /seller_does_not_ship_here/);
+  await assert.rejects(shippingHarness([seller('s1')]).shipping.quoteCheckoutShipping([quoteInput('s1')]), /invalid_shipping_carrier/);
 });
 
 function checkoutHarness({ authenticated = true, missingCart = false, cardOverride = {}, shippingError = false, offerMode = false, multipleSellers = false, seller2Overrides = {} } = {}) {
@@ -100,8 +154,14 @@ function checkoutHarness({ authenticated = true, missingCart = false, cardOverri
     from: table => query({ data: table === 'offers' ? { id: 'offer1', card_id: 'card1', buyer_id: 'buyer', price: 75000, status: 'chosen' } : table === 'orders' ? null : table === 'cart_items' ? (missingCart ? [] : cart) : offerMode ? cards[0] : cards, error: null }, calls, table),
     rpc: async name => { calls.push({ rpc: name }); return { data: 0, error: null }; },
   };
+  const savedAddress = {
+    id: '22222222-2222-4222-8222-222222222222', recipient_name: 'Test', phone: '0900000000',
+    province_id: 700000, province_name: 'Hồ Chí Minh', district_id: 700100, district_name: 'Quận 1',
+    ward_code: '700101', ward_name: 'Bến Nghé', detail: '1 Test St',
+    goship: { city: '700000', district: '700100', ward: '700101' },
+  };
   const service = {
-    from: table => query({ data: null, error: null }, calls, table),
+    from: table => query({ data: table === 'shipping_addresses' ? savedAddress : null, error: null }, calls, table),
     rpc: async (name, payload) => {
       calls.push({ rpc: name });
       if (name === 'get_marketplace_checkout_replay') return { data: { found: false }, error: null };
@@ -118,6 +178,11 @@ function checkoutHarness({ authenticated = true, missingCart = false, cardOverri
   };
   const route = loadTs('src/app/api/checkout/route.ts', {
     'next/server': nextServer,
+    '@/lib/account-route': { accountRoute: handler => handler },
+    '@/lib/checkout-address': loadTs('src/lib/checkout-address.ts', {
+      'server-only': {},
+      '@/lib/supabase/service': { createServiceSupabaseClient: () => service },
+    }),
     '@/lib/supabase/server': { createServerSupabaseClient: async () => supabase },
     '@/lib/supabase/service': { createServiceSupabaseClient: () => service },
     '@/lib/financial-idempotency': { hashFinancialRequest: input => { calls.push({ hashInput: input }); return loadTs('src/lib/financial-idempotency.ts').hashFinancialRequest(input); }, stableFinancialUuid: value => value },
@@ -125,13 +190,13 @@ function checkoutHarness({ authenticated = true, missingCart = false, cardOverri
     '@/lib/wallet-checkout-error': {}, '@/lib/bundle': {},
     '@/lib/order-paid-chat': { announcePaidOrdersInChat: async () => {} },
     '@/lib/verified-shipping': shippingHarness([
-      { ...seller('seller'), shipping_carriers: ['ghn', 'vtp'], shipping_fees: { ghn: { intra: 20000, region: 40000 }, vtp: { intra: 35000, region: 55000 } } },
-      { ...seller('seller2'), display_name: 'Second Seller', shipping_carriers: ['ghn'], shipping_fees: { ghn: { intra: 15000, region: 30000 } }, ...seller2Overrides },
+      seller('seller'),
+      seller('seller2', { display_name: 'Second Seller', shipping_carriers: ['ghn'], ...seller2Overrides }),
     ], shippingError ? { message: 'missing profile' } : null).shipping,
   });
   const request = (items = [{ cart_item_id: 'cart1' }, { cart_item_id: 'cart2' }]) => ({
     headers: new Headers({ 'idempotency-key': '11111111-1111-4111-8111-111111111111' }),
-    json: async () => ({ mode: 'cart', payment_method: 'wallet', items, to_name: 'Test', to_phone: 'test', to_district_id: 1, to_district_name: 'District', to_province_id: 1, to_province_name: 'Hà Nội', to_ward_code: '1', to_ward_name: 'Ward', to_address_detail: 'Test' }),
+    json: async () => ({ mode: 'cart', payment_method: 'wallet', items, shipping_carriers: { seller: 'ghn' }, address_id: '22222222-2222-4222-8222-222222222222' }),
   });
   return { route, request, calls, settlement: () => settlement };
 }
@@ -144,9 +209,12 @@ test('cart checkout batches reads while retaining atomic RPC, ordering, and one 
   assert.ok(h.calls.some(call => call.table === 'cart_items' && call.method === 'eq' && call.args[0] === 'user_id' && call.args[1] === 'buyer'));
   const orders = h.settlement().p_orders;
   assert.deepEqual(Array.from(orders, order => order.card_id), ['card2', 'card1']);
-  assert.deepEqual(Array.from(orders, order => order.shipping_fee), [20000, 0]);
+  assert.deepEqual(Array.from(orders, order => order.shipping_fee), [27000, 0]);
   assert.ok(orders.every(order => order.metadata.shipping_carrier === 'ghn'));
-  assert.equal(orders.reduce((sum, order) => sum + order.total_paid, 0), 220000);
+  assert.ok(orders.every(order => order.metadata.parcel_preset === 'card'));
+  assert.equal(orders[0].metadata.shipping_quote.rate_id, 'r-ghn');
+  assert.equal(orders[0].metadata.shipping_quote.fee_raw, 26200);
+  assert.equal(orders.reduce((sum, order) => sum + order.total_paid, 0), 227000);
   assert.equal(h.settlement().p_idempotency_key, '11111111-1111-4111-8111-111111111111');
 });
 
@@ -183,7 +251,7 @@ test('wallet notifications identify each exact paid order', async () => {
   }
 });
 
-for (const carrier of ['vtp', 'ghn', 'self', 'unknown']) {
+for (const carrier of ['jnt', 'ghn', 'self', 'unknown']) {
   test(`offer checkout validates selected carrier ${carrier} and ignores browser fees`, async () => {
     const h = checkoutHarness({ offerMode: true });
     const request = h.request();
@@ -198,7 +266,7 @@ for (const carrier of ['vtp', 'ghn', 'self', 'unknown']) {
     assert.equal(response.status, 200);
     const order = h.settlement().p_orders[0];
     assert.equal(order.amount, 75000);
-    assert.equal(order.shipping_fee, carrier === 'vtp' ? 35000 : 20000);
+    assert.equal(order.shipping_fee, carrier === 'jnt' ? 37000 : 27000);
     assert.equal(order.metadata.shipping_carrier, carrier);
     assert.equal(h.calls.find(call => call.hashInput).hashInput.shipping_carrier, carrier);
     const notification = h.calls.find(call => call.table === 'notifications' && call.method === 'insert').args[0];
@@ -212,13 +280,13 @@ for (const paymentMethod of ['wallet', 'direct_payos']) {
     const h = checkoutHarness({ multipleSellers: true });
     const request = h.request([{ cart_item_id: 'cart1' }, { cart_item_id: 'cart3' }, { cart_item_id: 'cart2' }]);
     const body = await request.json();
-    request.json = async () => ({ ...body, payment_method: paymentMethod, shipping_carriers: { seller: 'vtp', seller2: 'ghn' }, shipping_fee: 1 });
+    request.json = async () => ({ ...body, payment_method: paymentMethod, shipping_carriers: { seller: 'jnt', seller2: 'ghn' }, shipping_fee: 1 });
     const response = await h.route.POST(request);
     assert.equal(response.status, 200);
     const orders = h.settlement().p_orders;
-    assert.deepEqual(Array.from(orders, order => order.shipping_fee), [35000, 15000, 0]);
-    assert.deepEqual(Array.from(orders, order => order.metadata.shipping_carrier), ['vtp', 'ghn', 'vtp']);
-    assert.equal(orders.reduce((sum, order) => sum + order.total_paid, 0), 350000);
+    assert.deepEqual(Array.from(orders, order => order.shipping_fee), [37000, 27000, 0]);
+    assert.deepEqual(Array.from(orders, order => order.metadata.shipping_carrier), ['jnt', 'ghn', 'jnt']);
+    assert.equal(orders.reduce((sum, order) => sum + order.total_paid, 0), 364000);
     assert.equal(h.calls.filter(call => call.table === 'notifications' && call.method === 'insert').length, paymentMethod === 'wallet' ? 3 : 0);
     if (paymentMethod === 'direct_payos') assert.equal((await response.json()).checkoutUrl, 'https://pay.example.test/checkout');
   });
@@ -249,25 +317,23 @@ test('carrier choices affect idempotency even with equal fees; object key order 
   assert.equal(first, hashFinancialRequest({ shipping_carriers: { seller2: 'vtp', seller: 'ghn' } }));
 });
 
-test('selected shipping batch recalculates tiers and validates each seller in one read', async () => {
-  const { shipping, calls } = shippingHarness([
-    { ...seller('s1'), shipping_carriers: ['ghn', 'vtp'], shipping_fees: { ghn: { intra: 20000, region: 40000 }, vtp: { intra: 35000, region: 55000 } } },
-    seller('s2'),
-  ]);
-  const quotes = await shipping.quoteCheckoutConfiguredShippingBatch([
-    { ...quoteInput('s1'), carrier: 'vtp', toProvinceId: 2, toProvinceName: 'Hồ Chí Minh' },
+test('selected shipping batch bills the buyer\'s carrier per seller in one read', async () => {
+  const { shipping, calls } = shippingHarness([seller('s1'), seller('s2')]);
+  const quotes = await shipping.quoteCheckoutShipping([
+    { ...quoteInput('s1'), carrier: 'jnt' },
     { ...quoteInput('s2'), carrier: 'ghn' },
   ]);
-  assert.equal(quotes.get('s1').fee, 55000);
-  assert.equal(quotes.get('s2').fee, 20000);
+  assert.equal(quotes.get('s1').fee, 37000);
+  assert.equal(quotes.get('s1').carrier, 'jnt');
+  assert.equal(quotes.get('s2').fee, 27000);
   assert.equal(calls.filter(call => call.method === 'select').length, 1);
-  await assert.rejects(shipping.quoteCheckoutConfiguredShippingBatch([{ ...quoteInput('s2'), carrier: 'vtp' }]), /invalid_shipping_carrier/);
+  await assert.rejects(shipping.quoteCheckoutShipping([{ ...quoteInput('s2'), carrier: 'vtp' }]), /invalid_shipping_carrier/);
 });
 
 for (const [overrides, expectedCode] of [
-  [{ shipping_fees: { ghn: {} } }, 'shipping_fee_not_configured'],
-  [{ address_province_name: null }, 'seller_shipping_origin_missing'],
-  [{ shipping_carriers: ['vtp'] }, 'invalid_shipping_carrier'],
+  [{ goship_pickup: null }, 'seller_shipping_origin_missing'],
+  [{ goship_pickup: { city: '999999', district: '1', ward: '1' } }, 'seller_does_not_ship_here'],
+  [{ shipping_carriers: ['jnt'] }, 'invalid_shipping_carrier'],
 ]) {
   test(`checkout identifies the affected seller for ${expectedCode}`, async () => {
     const h = checkoutHarness({ multipleSellers: true, seller2Overrides: overrides });

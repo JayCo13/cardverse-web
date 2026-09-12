@@ -23,6 +23,8 @@ import { UserLink } from "@/components/user-link";
 import { VerifiedSellerBadge } from "@/components/verified-seller-badge";
 import { NewSellerFrame } from "@/components/new-seller-frame";
 import { standingFromProfile, type ReputationStanding } from "@/lib/reputation";
+import { getCarrier } from "@/lib/shipping-carriers";
+import { fetchShippingOptionsBatch, ShippingOptionsError, type ShippingOption } from "@/lib/shipping-options-client";
 
 type CheckoutItem = {
   cartItemId?: string;
@@ -110,6 +112,12 @@ export default function CheckoutPage() {
       itemPrice: "Giá thẻ",
       shippingAtCheckout: "Phí ship theo địa chỉ",
       combinedShipping: "Gộp chung lô",
+      parcelShipping: "Vận chuyển · 1 kiện hàng",
+      pickCarrier: "Chọn đơn vị vận chuyển",
+      carrierExpected: "Dự kiến {expected}",
+      carrierSuccess: "{percent}% giao thành công",
+      allInListingFee: "Phí trọn gói do người bán đặt",
+      quoteUnavailable: "Chưa tính được phí ship lúc này. Thử lại sau ít phút.",
       paymentMethod: "Phương thức thanh toán",
       wallet: "Ví CardVerseHub",
       balance: "Số dư",
@@ -158,6 +166,12 @@ export default function CheckoutPage() {
         itemPrice: "商品価格",
         shippingAtCheckout: "住所に基づく送料",
         combinedShipping: "同梱配送",
+        parcelShipping: "配送・1個口",
+        pickCarrier: "配送業者を選択",
+        carrierExpected: "到着予定 {expected}",
+        carrierSuccess: "配達成功率 {percent}%",
+        allInListingFee: "販売者設定の一括送料",
+        quoteUnavailable: "現在送料を計算できません。しばらくしてからお試しください。",
         paymentMethod: "支払い方法",
         wallet: "CardVerseHubウォレット",
         balance: "残高",
@@ -205,6 +219,12 @@ export default function CheckoutPage() {
         itemPrice: "Item price",
         shippingAtCheckout: "Address-based shipping",
         combinedShipping: "Combined shipment",
+        parcelShipping: "Shipping · 1 parcel",
+        pickCarrier: "Pick a carrier",
+        carrierExpected: "Expected {expected}",
+        carrierSuccess: "{percent}% delivered",
+        allInListingFee: "All-in fee set by the seller",
+        quoteUnavailable: "Shipping cannot be quoted right now. Try again in a few minutes.",
         paymentMethod: "Payment method",
         wallet: "CardVerseHub Wallet",
         balance: "Balance",
@@ -225,6 +245,15 @@ export default function CheckoutPage() {
   const [walletBalance, setWalletBalance] = useState(0);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [isLoadingFee, setIsLoadingFee] = useState(false);
+  // Every carrier GoShip offers per seller for this address, cheapest first,
+  // and the one the buyer picked. One parcel per seller, so one pick per seller.
+  const [sellerShippingOptions, setSellerShippingOptions] = useState<Record<string, ShippingOption[]>>({});
+  const [sellerCarrier, setSellerCarrier] = useState<Record<string, string>>({});
+  const sellerShippingQuotes = useMemo<Record<string, ShippingOption>>(() => Object.fromEntries(
+    Object.entries(sellerShippingOptions)
+      .filter(([, options]) => options.length > 0)
+      .map(([sellerId, options]) => [sellerId, options.find(o => o.carrier === sellerCarrier[sellerId]) ?? options[0]]),
+  ), [sellerShippingOptions, sellerCarrier]);
   const [isPaying, setIsPaying] = useState(false);
   const checkoutRequestRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
@@ -373,6 +402,16 @@ export default function CheckoutPage() {
   const calculateFees = useCallback(async (address: SavedAddress | null, currentItems: CheckoutItem[]) => {
     const requestId = ++feeRequestRef.current;
     if (!address || !currentItems.length) {
+      setSellerShippingOptions({});
+      setItems(currentItems.map(item => ({ ...item, shippingFee: null })));
+      setIsLoadingFee(false);
+      return;
+    }
+    // An address saved before the book moved to GoShip's geography cannot be
+    // quoted; the book opens the form for it instead of selecting it.
+    if (!address.goship) {
+      setSellerShippingOptions({});
+      setItems(currentItems.map(item => ({ ...item, shippingFee: null })));
       setIsLoadingFee(false);
       return;
     }
@@ -385,56 +424,70 @@ export default function CheckoutPage() {
         bySeller.set(item.card.sellerId, ids);
       });
 
-      const response = await fetch('/api/shipping/options', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          toProvinceId: address.province_id,
-          toProvinceName: address.province_name,
-          sellers: [...bySeller].map(([sellerId, cardIds]) => ({ sellerId, cardIds })),
-        }),
+      const batch = await fetchShippingOptionsBatch({
+        to: { city: address.goship.city, district: address.goship.district },
+        sellers: [...bySeller].map(([sellerId, cardIds]) => ({ sellerId, cardIds })),
       });
-      const payload = await response.json().catch(() => null);
       if (requestId !== feeRequestRef.current) return;
-      if (!response.ok) {
-        // The server names the reason; say it in the buyer's language rather
-        // than passing through a message written for a log.
-        const named = payload?.code === 'seller_does_not_ship_here'
+
+      // Name the seller who cannot be quoted, in the buyer's language. A
+      // GoShip outage is a different message from a seller with no pickup.
+      const failed = Object.entries(batch.errors)[0];
+      if (failed) {
+        const [, detail] = failed;
+        const named = detail.code === 'seller_does_not_ship_here'
           ? copy.sellerNoRoute
-          : payload?.code === 'seller_shipping_origin_missing'
+          : detail.code === 'seller_shipping_origin_missing' || detail.code === 'seller_shipping_configuration_missing'
             ? copy.sellerShippingMissingHint
-            : null;
-        throw new Error(named || payload?.error || copy.shippingFeeTitle);
+            : detail.code === 'shipping_quote_failed'
+              ? copy.quoteUnavailable
+              : copy.shippingFeeTitle;
+        toast({ variant: "destructive", title: copy.shippingFeeTitle, description: named });
       }
 
-      // Cheapest first, and cheapest is what the buyer pays — nobody picks a
-      // carrier here any more. The server applies the identical rule when an
-      // order arrives with no carrier named, so this preview cannot drift from
-      // the charge by the buyer having chosen differently.
-      const nextOptions: Record<string, { carrier: string; fee: number }[]> = payload?.data || {};
-
-      // Shipping is charged once per seller, so only the first item of each
-      // seller carries the fee — but a seller with no bookable option poisons
-      // every one of their rows, so `hasMissingFee` blocks the whole order
-      // rather than charging a partial one.
-      const seenSeller = new Set<string>();
-      const nextItems = currentItems.map(item => {
-        const sid = item.card.sellerId;
-        const cheapest = (nextOptions[sid] || [])[0];
-        if (!cheapest) return { ...item, shippingFee: null };
-        if (seenSeller.has(sid)) return { ...item, shippingFee: 0 };
-        seenSeller.add(sid);
-        return { ...item, shippingFee: cheapest.fee };
-      });
-      setItems(nextItems);
+      const nextOptions = batch.data;
+      setSellerShippingOptions(nextOptions);
+      // Keep a pick that still applies; default the rest to the cheapest.
+      setSellerCarrier(prev => Object.fromEntries(
+        Object.entries(nextOptions)
+          .filter(([, options]) => options.length > 0)
+          .map(([sellerId, options]) => [sellerId, options.some(o => o.carrier === prev[sellerId]) ? prev[sellerId] : options[0].carrier]),
+      ));
     } catch (error: any) {
       if (requestId !== feeRequestRef.current) return;
-      toast({ variant: "destructive", title: copy.shippingFeeTitle, description: error.message });
+      const code = error instanceof ShippingOptionsError ? error.code : '';
+      toast({
+        variant: "destructive",
+        title: copy.shippingFeeTitle,
+        description: code === 'shipping_quote_failed' ? copy.quoteUnavailable : (error.message || copy.shippingFeeTitle),
+      });
+      setSellerShippingOptions({});
       setItems(currentItems.map(item => ({ ...item, shippingFee: null })));
     } finally {
       if (requestId === feeRequestRef.current) setIsLoadingFee(false);
     }
-  }, [copy.shippingFeeTitle, toast]);
+  }, [copy.quoteUnavailable, copy.sellerNoRoute, copy.sellerShippingMissingHint, copy.shippingFeeTitle, toast]);
+
+  // Shipping is charged once per seller, so only the first item of each
+  // seller carries the fee — and a seller with no bookable option poisons
+  // every one of their rows, so `hasMissingFee` blocks the whole order rather
+  // than charging a partial one. Derived from the picked carrier, so changing
+  // the pick re-prices without another round trip.
+  useEffect(() => {
+    if (!selectedAddress || isLoadingFee) return;
+    setItems(current => {
+      const seen = new Set<string>();
+      let changed = false;
+      const next = current.map(item => {
+        const quote = sellerShippingQuotes[item.card.sellerId];
+        const fee = !quote ? null : seen.has(item.card.sellerId) ? 0 : quote.fee;
+        seen.add(item.card.sellerId);
+        if (item.shippingFee !== fee) changed = true;
+        return { ...item, shippingFee: fee };
+      });
+      return changed ? next : current;
+    });
+  }, [sellerShippingQuotes, selectedAddress, isLoadingFee]);
 
   const handleSelectAddress = (address: SavedAddress | null) => {
     if (address === selectedAddress) return;
@@ -491,6 +544,7 @@ export default function CheckoutPage() {
         offerId,
         paymentMethod,
         addressId: selectedAddress.id,
+        carriers: sellerCarrier,
         items: items.map((item) => [item.card.id, item.amount, item.shippingFee]),
       });
       if (checkoutRequestRef.current?.fingerprint !== fingerprint) {
@@ -507,27 +561,20 @@ export default function CheckoutPage() {
           mode: isOfferCheckout ? "offer" : "cart",
           offer_id: offerId,
           payment_method: paymentMethod,
+          // The buyer's carrier per seller, by code. The server re-quotes each
+          // with GoShip and bills that; fees below are echoed for the hash only.
+          ...(isOfferCheckout
+            ? { shipping_carrier: Object.values(sellerCarrier)[0] ?? null }
+            : { shipping_carriers: Object.fromEntries(sellerGroups.map(group => [group.id, sellerCarrier[group.id] ?? null])) }),
           shipping_fee: items[0]?.shippingFee || 0,
           items: items.map(item => ({
             cart_item_id: item.cartItemId,
             card_id: item.card.id,
             shipping_fee: item.shippingFee || 0,
           })),
-          to_name: selectedAddress.recipient_name,
-          to_phone: selectedAddress.phone,
-          to_district_id: selectedAddress.district_id,
-          to_district_name: selectedAddress.district_name,
-          to_province_id: selectedAddress.province_id,
-          to_province_name: selectedAddress.province_name,
-          to_ward_code: selectedAddress.ward_code,
-          to_ward_name: selectedAddress.ward_name,
-          to_address_detail: selectedAddress.detail,
-          // Null until the buyer picks them; an order without these simply
-          // cannot have a GoShip waybill booked until they do.
-          to_goship: selectedAddress.goship ?? null,
-          // Filtered, not interpolated: addresses saved since the district
-          // tier was abolished have no district, and a template leaves ", ,".
-          shipping_address: [selectedAddress.detail, selectedAddress.ward_name, selectedAddress.district_name, selectedAddress.province_name].filter(Boolean).join(', '),
+          // The address by id only; the server reads every field of it from
+          // the buyer's own saved row.
+          address_id: selectedAddress.id,
         }),
       });
       const payload = await response.json();
@@ -591,6 +638,7 @@ export default function CheckoutPage() {
                 <h2 className="mb-4 px-1 text-lg font-semibold sm:px-0">{copy.products}</h2>
                 <div className="space-y-4">
                   {sellerGroups.map(group => {
+                    const shippingQuote = sellerShippingQuotes[group.id];
                     const groupBlocked = !!selectedAddress && !isLoadingFee
                       && group.items.some(item => item.shippingFee === null);
                     return (
@@ -618,21 +666,7 @@ export default function CheckoutPage() {
                         </p>
                       )}
 
-                      {group.items.map(item => {
-                        // A null fee means one of two different things: no
-                        // address chosen yet, or an address chosen and the
-                        // seller having no shipping table to quote from.
-                        const shippingLabel = isLoadingFee
-                          ? copy.calculating
-                          : item.shippingFee !== null
-                            ? item.shippingFee === 0
-                              ? `${formatVND(0)} · ${copy.combinedShipping}`
-                              : formatVND(item.shippingFee)
-                            : selectedAddress
-                              ? copy.sellerShippingMissing
-                              : copy.chooseAddressForFee;
-
-                        return (
+                      {group.items.map(item => (
                           <article key={item.cartItemId || item.offerId || item.card.id} className="group flex gap-3 border-b border-zinc-800 px-3 py-3 last:border-b-0 sm:gap-0 sm:px-0 sm:py-0">
                             <div className="relative w-24 shrink-0 self-start overflow-hidden rounded-lg bg-zinc-900 aspect-[3/4] sm:flex sm:w-40 sm:items-center sm:justify-center sm:rounded-none sm:bg-gradient-to-br sm:from-zinc-900 sm:to-black sm:p-4">
                               <div className="relative h-full w-full overflow-hidden rounded-lg border border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.45)] sm:aspect-[3/4] sm:h-auto">
@@ -665,27 +699,78 @@ export default function CheckoutPage() {
                               )}
                               <p className="mt-2 text-base font-bold text-orange-500 sm:hidden">{formatVND(item.amount)}</p>
                               <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground sm:mt-auto sm:gap-x-4 sm:pt-4 sm:text-xs">
-                                <span className="inline-flex items-center gap-1"><Truck className="h-3 w-3 text-orange-300 sm:h-3.5 sm:w-3.5" />{copy.shipping}: {shippingLabel}</span>
                                 <span className="inline-flex items-center gap-1"><ShieldCheck className="h-3 w-3 text-emerald-400 sm:h-3.5 sm:w-3.5" />{copy.protected}</span>
                                 <span className="inline-flex items-center gap-1"><CreditCard className="h-3 w-3 text-orange-300 sm:h-3.5 sm:w-3.5" />{copy.walletPayos}</span>
                               </div>
                             </div>
 
                             <div className="hidden w-52 flex-col justify-between gap-3 border-l bg-background/30 p-5 sm:flex">
-                              <div className="space-y-2.5">
-                                <div>
-                                  <p className="text-xs text-muted-foreground">{copy.itemPrice}</p>
-                                  <p className="whitespace-nowrap text-2xl font-bold tracking-normal text-orange-400">{formatVND(item.amount)}</p>
-                                </div>
-                                <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 px-3 py-2">
-                                  <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Truck className="h-3.5 w-3.5 text-orange-300" />{copy.shipping}</p>
-                                  <p className="mt-0.5 whitespace-nowrap text-sm font-semibold text-foreground">{shippingLabel}</p>
-                                </div>
+                              <div>
+                                <p className="text-xs text-muted-foreground">{copy.itemPrice}</p>
+                                <p className="whitespace-nowrap text-2xl font-bold tracking-normal text-orange-400">{formatVND(item.amount)}</p>
                               </div>
                             </div>
                           </article>
-                        );
-                      })}
+                      ))}
+
+                      <div className="border-t border-zinc-800 bg-blue-500/[0.035] px-3 py-3 sm:px-4">
+                        <div className="mb-2.5 flex items-center justify-between gap-3">
+                          <p className="flex items-center gap-2 text-sm font-semibold">
+                            <Truck className="h-4 w-4 text-blue-400" />
+                            {copy.parcelShipping}
+                          </p>
+                          {shippingQuote && (
+                            <span className="rounded-full border border-blue-400/20 bg-blue-400/10 px-2 py-0.5 text-[11px] font-medium text-blue-300">
+                              {getCarrier(shippingQuote.carrier)?.short || shippingQuote.carrier.toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                        {isLoadingFee ? (
+                          <p className="text-xs text-muted-foreground">{copy.calculating}</p>
+                        ) : shippingQuote ? (
+                          <div className="space-y-2 text-sm">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-muted-foreground">{copy.shipping}</span>
+                              <span className="font-medium">{formatVND(shippingQuote.fee)}</span>
+                            </div>
+                            {shippingQuote.listingOverride ? (
+                              <p className="text-[11px] text-muted-foreground">{copy.allInListingFee}</p>
+                            ) : (sellerShippingOptions[group.id]?.length ?? 0) > 1 ? (
+                              <RadioGroup
+                                value={shippingQuote.carrier}
+                                onValueChange={carrier => setSellerCarrier(prev => ({ ...prev, [group.id]: carrier }))}
+                                className="space-y-1.5"
+                                aria-label={copy.pickCarrier}
+                              >
+                                {sellerShippingOptions[group.id].map(option => {
+                                  const carrier = getCarrier(option.carrier);
+                                  const on = option.carrier === shippingQuote.carrier;
+                                  return (
+                                    <label key={option.carrier} className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-2.5 py-2 text-xs transition-colors ${on ? 'border-orange-500/60 bg-orange-500/5' : 'border-border/60 hover:bg-accent/40'}`}>
+                                      <RadioGroupItem value={option.carrier} id={`carrier-${group.id}-${option.carrier}`} />
+                                      {carrier?.logo && <img src={carrier.logo} alt="" className="h-4 w-4 rounded object-contain" />}
+                                      <span className="min-w-0 flex-1">
+                                        <span className="font-medium">{carrier?.name ?? option.carrier.toUpperCase()}</span>
+                                        <span className="block text-[11px] text-muted-foreground">
+                                          {[
+                                            option.expected ? copy.carrierExpected.replace('{expected}', option.expected) : null,
+                                            typeof option.successPercent === 'number' ? copy.carrierSuccess.replace('{percent}', String(Math.round(option.successPercent))) : null,
+                                          ].filter(Boolean).join(' · ')}
+                                        </span>
+                                      </span>
+                                      <span className="font-semibold">{formatVND(option.fee)}</span>
+                                    </label>
+                                  );
+                                })}
+                              </RadioGroup>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <p className={`text-xs ${groupBlocked ? 'text-red-300' : 'text-muted-foreground'}`}>
+                            {groupBlocked ? copy.sellerShippingMissing : copy.chooseAddressForFee}
+                          </p>
+                        )}
+                      </div>
                     </section>
                     );
                   })}

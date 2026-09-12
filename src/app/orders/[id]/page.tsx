@@ -85,12 +85,14 @@ export default function OrderDetailsPage() {
   } as Record<string, string>)[s] || s;
 
   const isBuyer = role === 'buyer';
-  const carrier = order ? getCarrier(order.metadata?.shipping_carrier) : undefined;
+  // The column since 2026-09-12; metadata for orders placed before it.
+  const quotedCarrier: string | undefined = order?.shipping_carrier ?? order?.metadata?.shipping_carrier ?? undefined;
+  const carrier = order ? getCarrier(quotedCarrier ?? '') : undefined;
   // shipping_provider first: it is the carrier actually booked, kept in step by
   // GoShip's webhooks, where metadata holds whatever checkout guessed before
   // the buyer stopped choosing one.
   const trackingUrl = order
-    ? parcelTrackingUrl(order.shipping_provider || order.metadata?.shipping_carrier, order.tracking_number, order.carrier_tracking_url)
+    ? parcelTrackingUrl(order.shipping_provider || quotedCarrier, order.tracking_number, order.carrier_tracking_url)
     : null;
   // The only thing that widens this page. A buyer, or a seller whose waybill
   // already exists, has nothing to put in a second column — and a lone narrow
@@ -101,7 +103,7 @@ export default function OrderDetailsPage() {
   const counterpartyId: string | null = counterparty?.id ?? null;
 
   // Shipping timing (from carrier pickup → delivery estimate).
-  const estDays = order ? getDeliveryDays(order.shipping_provider || order.metadata?.shipping_carrier) : null;
+  const estDays = order ? getDeliveryDays(order.shipping_provider || quotedCarrier) : null;
   // The order escalates to admin review at auto_complete_at if the buyer never
   // confirms (money is held, not paid to the seller). Nudge the buyer as that
   // deadline approaches (within the last 2 days).
@@ -117,7 +119,7 @@ export default function OrderDetailsPage() {
   const [packingVideoUrl, setPackingVideoUrl] = useState<string | null>(null);
   const [videoBusy, setVideoBusy] = useState(false);
   const [trackOpen, setTrackOpen] = useState(false);
-  const orderCarrier: string | undefined = order?.metadata?.shipping_carrier;
+  const orderCarrier: string | undefined = quotedCarrier;
   // The carrier is whatever was booked; there is no picker on this page any
   // more. shipping_provider is filled from GoShip's answer and then kept in
   // step by its webhooks.
@@ -317,8 +319,18 @@ export default function OrderDetailsPage() {
                   the carrier they picked cost more than the shipping collected.
                   Said here rather than discovered in the wallet later. */}
               {!isBuyer && typeof order.goship_fee === 'number' && (() => {
-                const excess = Math.max(0, order.goship_fee - (order.shipping_fee || 0));
-                const payout = Math.max(0, order.amount - Math.min(order.amount, excess));
+                // Since 2026-09-12 the booking route writes what the seller
+                // chose to spend — declared value, a bigger parcel, postage
+                // over a fee they set on the listing — and nothing else comes
+                // off. Orders booked before that carry no charge and settle on
+                // the old rule: whatever GoShip billed over the buyer's fee.
+                const legacy = order.seller_shipping_charge == null;
+                const charge = legacy
+                  ? Math.max(0, order.goship_fee - (order.shipping_fee || 0))
+                  : Number(order.seller_shipping_charge);
+                const khaiGia = Number(order.khai_gia_fee) || 0;
+                const rest = Math.max(0, charge - khaiGia);
+                const payout = Math.max(0, order.amount - Math.min(order.amount, charge));
                 return (
                   <div className="mt-3 space-y-2 rounded-lg border border-border/60 bg-background/40 p-3">
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -329,15 +341,37 @@ export default function OrderDetailsPage() {
                       <span className="text-muted-foreground">{tx('Cước vận chuyển thực tế', 'Actual carrier cost', '実際の送料')}</span>
                       <span>{fmt(order.goship_fee)}</span>
                     </div>
-                    {excess > 0 ? (
-                      <div className="flex justify-between text-sm text-amber-300">
-                        <span>{tx('Trừ phần vượt phí ship', 'Less shipping over the fee collected', '送料超過分の差引')}</span>
-                        <span>−{fmt(excess)}</span>
-                      </div>
+                    {legacy ? (
+                      charge > 0 ? (
+                        <div className="flex justify-between text-sm text-amber-300">
+                          <span>{tx('Trừ phần vượt phí ship', 'Less shipping over the fee collected', '送料超過分の差引')}</span>
+                          <span>−{fmt(charge)}</span>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          {tx('Cước nằm trong phí ship người mua đã trả, không trừ gì thêm.', 'Within the shipping the buyer paid, so nothing is deducted.', '購入者が支払った送料の範囲内のため、差引はありません。')}
+                        </p>
+                      )
                     ) : (
-                      <p className="text-xs text-muted-foreground">
-                        {tx('Cước nằm trong phí ship người mua đã trả, không trừ gì thêm.', 'Within the shipping the buyer paid, so nothing is deducted.', '購入者が支払った送料の範囲内のため、差引はありません。')}
-                      </p>
+                      <>
+                        {khaiGia > 0 && (
+                          <div className="flex justify-between text-sm text-amber-300">
+                            <span>{tx('Khai giá bạn chọn', 'Declared value you chose', '選択した申告価格')}</span>
+                            <span>−{fmt(khaiGia)}</span>
+                          </div>
+                        )}
+                        {rest > 0 && (
+                          <div className="flex justify-between text-sm text-amber-300">
+                            <span>{tx('Gói to hơn / cước vượt phí bạn đặt', 'Bigger parcel / postage over your fee', '大きい荷物／設定送料の超過分')}</span>
+                            <span>−{fmt(rest)}</span>
+                          </div>
+                        )}
+                        {charge === 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            {tx('Người mua đã trả đúng cước hãng. Không trừ gì thêm.', 'The buyer paid the carrier’s postage. Nothing is deducted.', '購入者が業者の送料を支払済みのため、差引はありません。')}
+                          </p>
+                        )}
+                      </>
                     )}
                     <div className="flex justify-between border-t pt-2 text-base font-bold"><span>{tx('Thực nhận', 'Net payout', '受取額')}</span><span className="text-orange-500">{fmt(payout)}</span></div>
                   </div>
@@ -570,6 +604,9 @@ export default function OrderDetailsPage() {
                   destination={order.to_goship ?? null}
                   defaultDeclaredValue={order.amount}
                   buyerPaidShipping={order.shipping_fee}
+                  buyerCarrier={order.shipping_carrier ?? null}
+                  orderParcelPreset={order.parcel_preset ?? order.card?.product_kind ?? null}
+                  listingOverride={!!order.shipping_quote?.listing_override}
                   recipient={{
                     name: order.to_name,
                     phone: order.to_phone,

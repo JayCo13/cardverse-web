@@ -832,6 +832,8 @@ export const ja = {
   notification_order_new_message: '購入者が支払いを完了しました。発送の準備をしてください。',
   notification_order_shipped_title: '注文を発送しました',
   notification_order_shipped_message: '',
+  notification_order_carrier_changed_title: '配送業者が変更されました',
+  notification_order_carrier_changed_message: 'この経路に対応しなくなった{from}の代わりに{to}で発送します。お支払いの送料は変わりません。',
   notification_order_completed_title: '注文完了',
   notification_order_completed_message: '代金が支払われました。',
   notification_order_refunded_title: '注文を返金しました',

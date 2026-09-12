@@ -4,6 +4,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { goshipCities, goshipDistricts, goshipWards } from '@/lib/goship';
 import { shipmentCarriers } from '@/lib/shipment-carriers';
+import { parseParcelOverrides } from '@/lib/parcel';
 
 type PreparationOrder = {
   id: string;
@@ -16,12 +17,17 @@ type PreparationOrder = {
   to_address_detail: string | null;
   shipping_fee: number;
   metadata: { shipping_carrier?: string } | null;
+  shipping_carrier: string | null;
+  parcel_preset: string | null;
+  shipping_quote: { listing_override?: boolean } | null;
+  card: { product_kind: string | null } | null;
 };
 
 type SellerPreparation = {
   goship_pickup: Record<string, string> | null;
   shipping_carriers: string[] | null;
-  shipping_fees: Record<string, Record<string, number>> | null;
+  carrier_coverage: { carriers?: string[] } | null;
+  parcel_overrides: unknown;
 };
 
 async function handle(request: NextRequest) {
@@ -31,7 +37,7 @@ async function handle(request: NextRequest) {
   const orderId = request.nextUrl.searchParams.get('orderId');
   if (!orderId || !/^[0-9a-f-]{36}$/i.test(orderId)) return NextResponse.json({ code: 'invalid_order' }, { status: 400 });
   const { data: order, error } = await supabase.from('orders')
-    .select('id,seller_id,status,goship_code,to_goship,to_name,to_phone,to_address_detail,shipping_fee,metadata')
+    .select('id,seller_id,status,goship_code,to_goship,to_name,to_phone,to_address_detail,shipping_fee,metadata,shipping_carrier,parcel_preset,shipping_quote,card:cards(product_kind)')
     .eq('id', orderId).eq('seller_id', user.id).maybeSingle();
   const row = order as PreparationOrder | null;
   if (error) return NextResponse.json({ code: 'preparation_failed' }, { status: 503 });
@@ -50,10 +56,10 @@ async function handle(request: NextRequest) {
     if (!data) return NextResponse.json({ code: 'destination_conflict' }, { status: 409 });
     return NextResponse.json({ data: region });
   }
-  const { data: seller, error: profileError } = await supabase.from('profiles').select('goship_pickup,shipping_carriers,shipping_fees').eq('id', user.id).single();
+  const { data: seller, error: profileError } = await supabase.from('profiles').select('goship_pickup,shipping_carriers,carrier_coverage,parcel_overrides').eq('id', user.id).single();
   if (profileError) return NextResponse.json({ code: 'preparation_failed' }, { status: 503 });
   const profile = seller as SellerPreparation;
-  return NextResponse.json({ data: { order: row, pickup: profile.goship_pickup, carriers: shipmentCarriers(profile.shipping_carriers), fees: profile.shipping_fees } }, { headers: { 'Cache-Control': 'private, no-store' } });
+  return NextResponse.json({ data: { order: row, pickup: profile.goship_pickup, carriers: shipmentCarriers(profile.shipping_carriers, profile.carrier_coverage), parcelOverrides: parseParcelOverrides(profile.parcel_overrides) } }, { headers: { 'Cache-Control': 'private, no-store' } });
 }
 export const GET = accountRoute(handle);
 export const PUT = accountRoute(handle);

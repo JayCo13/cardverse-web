@@ -2,6 +2,7 @@ import { accountRoute } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { goshipCities } from '@/lib/goship';
+import { refreshCarrierCoverage } from '@/lib/carrier-coverage';
 
 /**
  * The seller's pickup address — the ONE address a seller sets, in GoShip's
@@ -150,11 +151,12 @@ async function handlePUT(request: NextRequest) {
         return NextResponse.json({ error: 'Không lưu được địa chỉ lấy hàng.' }, { status: 500 });
     }
 
-    // Nothing to reprice. The shop's price list is the fixed table in
-    // shipping-fee.ts, which does not depend on where the parcel leaves from —
-    // this used to re-quote GoShip from the new address and write
-    // goship_tier_fees, and that column is no longer read by anything.
-    return NextResponse.json({ data: parsed.value });
+    // A new door may have different couriers at it. Probe them now so the
+    // carrier picker can grey out the ones that do not collect here, and drop
+    // any the shop had ticked that no longer do. Best-effort: a GoShip outage
+    // must not stop the address from saving.
+    const coverage = await refreshCarrierCoverage(user.id, { city: parsed.value.city, district: parsed.value.district });
+    return NextResponse.json({ data: parsed.value, coverage });
 }
 
 export const GET = accountRoute(handleGET);

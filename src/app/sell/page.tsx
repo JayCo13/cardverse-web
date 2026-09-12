@@ -9,10 +9,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckCircle, XCircle, Phone, FileCheck, ChevronRight, ChevronLeft, ChevronDown, Sparkles, AlertTriangle, MapPin, Truck, HandCoins } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckCircle, XCircle, Phone, FileCheck, ChevronRight, ChevronLeft, Sparkles, AlertTriangle, MapPin, Truck, HandCoins } from 'lucide-react';
 import { type PickupAddress } from '@/components/pickup-address-picker';
 import { ShippingQuotePreview } from '@/components/shipping-quote-preview';
-import { ShopFeeTable } from '@/components/shop-fee-table';
+import { ShopShippingSetup } from '@/components/shop-shipping-setup';
 import { getAccountSummary, invalidateAccountSummary } from '@/lib/account-summary';
 import { useAuth, useSupabase } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
@@ -288,7 +288,6 @@ export default function SellPage() {
         resubmit: '再申請する',
         dashboardTitle: 'Seller Dashboard',
         dashboardDesc: '出品と注文を管理',
-        addPickupAddress: '集荷先住所を追加',
         listCard: '新しいカードを出品',
         waitingShip: '発送待ち',
         shipping: '配送中',
@@ -329,7 +328,6 @@ export default function SellPage() {
           resubmit: 'Gửi lại yêu cầu xác minh',
           dashboardTitle: 'Seller Dashboard',
           dashboardDesc: 'Quản lý bài đăng và đơn hàng',
-          addPickupAddress: 'Thêm địa chỉ để bán',
           listCard: 'Đăng thẻ mới',
           waitingShip: 'Chờ giao hàng',
           shipping: 'Đang giao',
@@ -369,8 +367,7 @@ export default function SellPage() {
           resubmit: 'Submit verification again',
           dashboardTitle: 'Seller Dashboard',
           dashboardDesc: 'Manage listings and orders',
-          addPickupAddress: 'Add pickup address',
-          listCard: 'List a new card',
+            listCard: 'List a new card',
           waitingShip: 'Waiting to ship',
           shipping: 'Shipping',
           completed: 'Completed',
@@ -1054,9 +1051,9 @@ export default function SellPage() {
     const soldListings = myListings.filter(listing => listing.status === 'sold');
     const draftListings = myListings.filter(listing => !activeListings.includes(listing) && !soldListings.includes(listing));
     const shippingSummary = tx(
-      'Phí ship theo bảng của shop · từng bài đăng có thể đặt số riêng',
-      'Shipping priced from your shop table · any listing can set its own number',
-      'ショップの送料表で計算 · 出品ごとに固定額も設定可',
+      'Chọn hãng đến lấy hàng. GoShip tự tính phí theo địa chỉ người mua.',
+      'Choose pickup carriers. GoShip calculates the fee for each buyer’s address.',
+      '集荷業者を選択します。送料は購入者の住所に応じてGoShipが計算します。',
     );
 
     return (
@@ -1072,17 +1069,6 @@ export default function SellPage() {
                 <p className="text-muted-foreground mt-1">{copy.dashboardDesc}</p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                {!pickupAddress && !isLoadingAddress && (
-                  <Button
-                    className="hidden bg-orange-500 hover:bg-orange-600 md:inline-flex"
-                    onClick={() => {
-                      document.getElementById('pickup-address')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }}
-                  >
-                    <MapPin className="mr-2 h-4 w-4" />
-                    {copy.addPickupAddress}
-                  </Button>
-                )}
                 {/* The primary action, opposite the title where a dashboard's
                     main action belongs. Desktop only: the phone keeps the
                     floating button, which sits under the thumb. A real link, so
@@ -1183,41 +1169,25 @@ export default function SellPage() {
               <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
             </button>
 
-            {/* Collapsed by default. Shipping is set once and rarely revisited,
-                but the form is long enough to push the listing grid — the thing
-                a seller actually came for — below the fold on every visit. */}
+            {/* Match the sender-address card: a stable heading followed by a
+                compact saved-state row. Editing expands only the fields below,
+                and saving returns to the summary instead of collapsing the
+                whole section into an ambiguous accordion header. */}
             <Card className="hidden md:block">
-              <button
-                type="button"
-                onClick={() => setShippingSectionOpen(open => !open)}
-                aria-expanded={shippingSectionOpen}
-                aria-controls="shop-shipping-panel"
-                className="w-full rounded-lg text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <CardTitle className="flex items-center gap-2">
-                        <Truck className="h-5 w-5 shrink-0 text-orange-400" />
-                        {tx('Vận chuyển của shop', 'Shop shipping', 'ショップ配送')}
-                      </CardTitle>
-                      {/* A collapsed card should report state, not repeat the
-                          instructions — the how-to lives inside the panel, next
-                          to the fields it describes. */}
-                      <CardDescription className="mt-1.5">{shippingSummary}</CardDescription>
-                    </div>
-                    <ChevronDown
-                      className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-200 ${shippingSectionOpen ? 'rotate-180' : ''}`}
-                      aria-hidden
-                    />
-                  </div>
-                </CardHeader>
-              </button>
-              {shippingSectionOpen && (
-                <CardContent id="shop-shipping-panel">
-                  <ShopFeeTable />
-                </CardContent>
-              )}
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Truck className="h-5 w-5 shrink-0 text-orange-400" />
+                  {tx('Vận chuyển của shop', 'Shop shipping', 'ショップ配送')}
+                </CardTitle>
+                <CardDescription>{shippingSummary}</CardDescription>
+              </CardHeader>
+              <CardContent id="shop-shipping-panel">
+                <ShopShippingSetup
+                  summaryMode
+                  startEditing={shippingSectionOpen}
+                  onSaved={() => setShippingSectionOpen(false)}
+                />
+              </CardContent>
             </Card>
             </div>
 
@@ -1434,11 +1404,11 @@ export default function SellPage() {
             <DrawerHeader>
               <DrawerTitle>{tx('Vận chuyển của shop', 'Shop shipping', 'ショップ配送')}</DrawerTitle>
               <DrawerDescription>
-                {tx('Hãng bạn nhận gửi và cước cho từng khoảng cách.', 'The carriers you ship with, and postage per distance.', '発送に使う業者と距離ごとの送料。')}
+                {shippingSummary}
               </DrawerDescription>
             </DrawerHeader>
             <div className="max-h-[80vh] overflow-y-auto px-4 pb-6">
-              <ShopFeeTable />
+              <ShopShippingSetup summaryMode />
             </div>
           </DrawerContent>
         </Drawer>

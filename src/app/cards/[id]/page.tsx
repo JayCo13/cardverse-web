@@ -28,7 +28,7 @@ import {
     Truck,
 } from "lucide-react";
 import { CheckoutModal } from "@/components/checkout-modal";
-import { formatShippingRange, listingShippingRange } from "@/lib/shipping-range";
+import { ShippingQuoteLabel } from "@/components/shipping-quote-label";
 import { ChatDrawer } from "@/components/chat-drawer";
 import { UserLink } from "@/components/user-link";
 import { OfferModal } from "@/components/offer-modal";
@@ -332,7 +332,7 @@ export default function CardDetailsPage() {
             status: "Trạng thái",
             shippingPayments: "Vận chuyển, hoàn trả và thanh toán",
             shipping: "Vận chuyển",
-            shipFeeToYou: "Số chính xác tính ở bước thanh toán, theo địa chỉ nhận hàng của bạn.",
+            shipFeeToYou: "Giá GoShip thật theo địa chỉ của bạn · chọn hãng ở bước thanh toán.",
             freeShipping: "Miễn phí",
             shipFeeNoAddress: "Phí ship tính theo địa chỉ nhận hàng khi thanh toán.",
             delivery: "Giao hàng",
@@ -431,7 +431,7 @@ export default function CardDetailsPage() {
                 status: "ステータス",
                 shippingPayments: "配送・返品・支払い",
                 shipping: "配送",
-                shipFeeToYou: "正確な金額は決済時にお届け先住所から計算されます。",
+                shipFeeToYou: "お届け先に対するGoShipの実料金 · 業者は決済時に選択。",
                 freeShipping: "送料無料",
                 shipFeeNoAddress: "送料は決済時にお届け先住所から計算されます。",
                 delivery: "配達",
@@ -529,7 +529,7 @@ export default function CardDetailsPage() {
                 status: "Status",
                 shippingPayments: "Shipping, returns, and payments",
                 shipping: "Shipping",
-                shipFeeToYou: "The exact amount is calculated at checkout, from your delivery address.",
+                shipFeeToYou: "GoShip’s real price for your address · pick the carrier at checkout.",
                 freeShipping: "Free",
                 shipFeeNoAddress: "Shipping is priced from your delivery address at checkout.",
                 delivery: "Delivery",
@@ -566,28 +566,6 @@ export default function CardDetailsPage() {
             };
     const formatVND = (amount: number | null | undefined) => formatCurrency(amount, copy.contact);
 
-    /**
-     * The shipping row: the span this listing can be charged at.
-     *
-     * A span rather than a figure, and the same span the grid and the cart
-     * print, because the exact number needs a delivery address — it is quoted
-     * at checkout, against the address the buyer picks there. This page briefly
-     * showed one number resolved from the buyer's saved address, and it made
-     * the same card read differently in three places.
-     */
-    const shippingLines = (): { headline: string; note?: string } => {
-        const range = card ? listingShippingRange({
-            listingFee: card.shippingFee,
-            set: seller?.shipping_fees ?? null,
-            carriers: seller?.shipping_carriers ?? null,
-            declaredValue: Number(card.price ?? 0),
-        }) : null;
-        if (!range) return { headline: copy.shipFeeNoAddress };
-        return {
-            headline: formatShippingRange(range, locale, copy.freeShipping),
-            note: copy.shipFeeToYou,
-        };
-    };
 
     const [card, setCard] = useState<Card | null>(null);
     const [seller, setSeller] = useState<SellerProfile | null>(null);
@@ -606,6 +584,15 @@ export default function CardDetailsPage() {
     const [acceptingOfferId, setAcceptingOfferId] = useState<string | null>(null);
     const offerActionKeys = useRef<Record<string, string>>({});
     const [rejectingOfferId, setRejectingOfferId] = useState<string | null>(null);
+
+    /**
+     * The shipping row: GoShip's real price to the buyer's saved address, or
+     * an invitation to add one. The grid and the cart print the same thing
+     * through the same component, so the card reads the same in all three.
+     */
+    const shippingHeadline = card
+        ? <ShippingQuoteLabel sellerId={card.sellerId} cardId={card.id} listingFee={card.shippingFee} />
+        : null;
 
     const isOwner = user?.id === card?.sellerId;
     const isSale = card?.listingType === "sale";
@@ -1295,7 +1282,7 @@ export default function CardDetailsPage() {
                                             every listing, whichever carriers the
                                             seller actually offers. It carries the
                                             buyer's own number instead. */}
-                                        <span className="block text-sm font-medium">{copy.shipping}: {shippingLines().headline}</span>
+                                        <span className="block text-sm font-medium">{copy.shipping}: {shippingHeadline}</span>
                                         <span className="mt-0.5 block text-xs text-muted-foreground">{copy.returns} · {copy.paymentReady}</span>
                                     </span>
                                 </span>
@@ -1307,10 +1294,8 @@ export default function CardDetailsPage() {
                                 <div className="grid grid-cols-[110px_1fr] gap-x-4 gap-y-4 text-sm">
                                     <span className="font-medium">{copy.shipping}:</span>
                                     <div>
-                                        <p><b>{shippingLines().headline}</b></p>
-                                        {shippingLines().note && (
-                                            <p className="text-muted-foreground">{shippingLines().note}</p>
-                                        )}
+                                        <p><b>{shippingHeadline}</b></p>
+                                        <p className="text-muted-foreground">{copy.shipFeeToYou}</p>
                                     </div>
                                     <span className="font-medium">{copy.delivery}:</span>
                                     <div>
@@ -1469,10 +1454,8 @@ export default function CardDetailsPage() {
                         <div className="grid grid-cols-[96px_1fr] gap-x-3 gap-y-4 text-sm">
                             <span className="font-medium">{copy.shipping}:</span>
                             <div>
-                                <p><b>{shippingLines().headline}</b></p>
-                                {shippingLines().note && (
-                                    <p className="text-muted-foreground">{shippingLines().note}</p>
-                                )}
+                                <p><b>{shippingHeadline}</b></p>
+                                <p className="text-muted-foreground">{copy.shipFeeToYou}</p>
                             </div>
                             <span className="font-medium">{copy.delivery}:</span>
                             <div>

@@ -24,7 +24,9 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowRight, Clock, CreditCard, Eye, ShieldCheck, ShoppingCart, Trash2, Truck } from "lucide-react";
 import { optimizeCloudinaryUrl } from "@/lib/cloudinary-url";
 import { getCategoryCode } from "@/lib/category-code";
-import { parcelShippingRange, listingShippingRange, formatShippingRange } from "@/lib/shipping-range";
+import { isValidListingShippingFee } from "@/lib/shipping-fee";
+import { askKey, useBuyerShippingQuotes, type ParcelAsk } from "@/components/buyer-shipping-quotes";
+import { ShippingQuoteLabel } from "@/components/shipping-quote-label";
 import { useLocalization } from "@/context/localization-context";
 import { isNonCard, productConditionLabel, productCopy } from "@/lib/product-listing";
 import { UserLink } from "@/components/user-link";
@@ -378,42 +380,38 @@ export default function CartPage() {
     [selectedItems],
   );
   // Shipping across the selected items. One fee per seller, not per item: a
-  // seller sends one parcel however many cards were bought from them, and
-  // charging twice for one parcel is charging for a parcel nobody sends. Which
-  // of their fees applies is parcelShippingFee's business, and the server
-  // recomputes the same way at checkout.
-  const shipEstimate = useMemo(() => {
-    const bySeller = new Map<string, typeof selectedItems>();
+  // seller sends one parcel however many cards were bought from them. A
+  // seller whose cards all price themselves contributes the dearest of those;
+  // anyone else contributes GoShip's cheapest to the buyer's default address.
+  // Null until every seller has a number — a partial total is a wrong total.
+  // One parcel per seller, holding every selected card of theirs — priced as
+  // checkout will price it, not card by card.
+  const parcelAsks = useMemo<ParcelAsk[]>(() => {
+    const bySeller = new Map<string, string[]>();
     selectedItems.forEach(item => {
       const sellerId = item.cards?.seller_id;
-      if (!sellerId) return;
-      bySeller.set(sellerId, [...(bySeller.get(sellerId) ?? []), item]);
+      if (!sellerId || !item.cards?.id) return;
+      bySeller.set(sellerId, [...(bySeller.get(sellerId) ?? []), item.cards.id]);
     });
-    if (bySeller.size === 0) return null;
-
-    // A span, always: the exact figure needs a delivery address and belongs to
-    // checkout. Sellers whose shop has nothing priced contribute nothing rather
-    // than a guess; the label says the rest is settled at checkout.
-    let min = 0;
-    let max = 0;
-    let priced = false;
-    bySeller.forEach(items => {
-      const profile = items[0]?.cards?.profiles;
-      const range = parcelShippingRange({
-        cards: items.map(item => ({
-          listingFee: item.cards?.shipping_fee,
-          price: Number(item.cards?.price ?? 0),
-        })),
-        set: profile?.shipping_fees ?? null,
-        carriers: profile?.shipping_carriers ?? null,
-      });
-      if (!range) return;
-      priced = true;
-      min += range.min;
-      max += range.max;
-    });
-    return priced ? { min, max } : null;
+    return [...bySeller].map(([sellerId, cardIds]) => ({ sellerId, cardIds }));
   }, [selectedItems]);
+  const sellerQuotes = useBuyerShippingQuotes(parcelAsks);
+  const shipEstimate = useMemo<number | null>(() => {
+    if (parcelAsks.length === 0) return null;
+    let total = 0;
+    for (const ask of parcelAsks) {
+      const cards = selectedItems.filter(item => item.cards?.seller_id === ask.sellerId).map(item => item.cards);
+      const fees = cards.map(card => card?.shipping_fee);
+      if (fees.length && fees.every(fee => isValidListingShippingFee(fee))) {
+        total += Math.max(...(fees as number[]));
+        continue;
+      }
+      const quote = sellerQuotes[askKey(ask)];
+      if (!quote || quote.status !== 'ready') return null;
+      total += quote.cheapest.fee;
+    }
+    return total;
+  }, [parcelAsks, selectedItems, sellerQuotes]);
 
   const toggleItem = (id: string) => {
     setSelectedIds(prev => {
@@ -465,24 +463,9 @@ export default function CartPage() {
 
   const estShippingLabel = locale === "vi-VN" ? "Phí ship tạm tính" : locale === "ja-JP" ? "送料（目安）" : "Est. shipping";
   const shippingTBD = locale === "vi-VN" ? "Tính khi nhập địa chỉ" : locale === "ja-JP" ? "住所入力時に計算" : "At checkout";
-  const freeShippingLabel = locale === "vi-VN" ? "Miễn phí" : locale === "ja-JP" ? "送料無料" : "Free";
-  // A listing with no fee of its own is priced from the shop's table, and that
-  // is a span until a delivery address exists — carrier and distance both move
-  // it. The cart shows the span and says where it settles.
-  const atCheckoutLabel = locale === "vi-VN" ? "Tính khi thanh toán" : locale === "ja-JP" ? "決済時に計算" : "At checkout";
-  const cardShippingLabel = (card: CartItem["cards"]) => {
-    const range = listingShippingRange({
-      listingFee: card?.shipping_fee,
-      set: card?.profiles?.shipping_fees ?? null,
-      carriers: card?.profiles?.shipping_carriers ?? null,
-      declaredValue: Number(card?.price ?? 0),
-    });
-    return range ? formatShippingRange(range, locale, freeShippingLabel) : atCheckoutLabel;
-  };
-  const shipText = (range: { min: number; max: number } | null) =>
-    !range ? shippingTBD : range.min === range.max ? formatVND(range.min) : `${formatVND(range.min)} – ${formatVND(range.max)}`;
-  const totalText = shipEstimate
-    ? `${formatVND(subtotal + shipEstimate.min)}${shipEstimate.min === shipEstimate.max ? "" : ` – ${formatVND(subtotal + shipEstimate.max)}`}`
+  const shipText = (fee: number | null) => (fee === null ? shippingTBD : formatVND(fee));
+  const totalText = shipEstimate !== null
+    ? formatVND(subtotal + shipEstimate)
     : formatVND(subtotal);
   const sellerGroups = useMemo(() => {
     const groups = new Map<string, SellerGroup>();
@@ -738,7 +721,7 @@ export default function CartPage() {
                               </div>
                               <p className="mt-2 text-base font-bold text-orange-500">{formatVND(Number(card?.price || 0))}</p>
                               <div className="mt-2 flex flex-wrap items-start gap-x-2 gap-y-1 text-[10px] leading-4 text-muted-foreground">
-                                <span className="inline-flex items-start gap-1"><Truck className="mt-0.5 h-3 w-3 shrink-0 text-orange-300" />{estShippingLabel}: {cardShippingLabel(card)}</span>
+                                <span className="inline-flex items-start gap-1"><Truck className="mt-0.5 h-3 w-3 shrink-0 text-orange-300" />{estShippingLabel}: <ShippingQuoteLabel sellerId={card?.seller_id} cardId={card?.id} listingFee={card?.shipping_fee} /></span>
                                 <span className="inline-flex items-start gap-1"><ShieldCheck className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />{copy.protected}</span>
                                 <span className="inline-flex items-start gap-1"><CreditCard className="mt-0.5 h-3 w-3 shrink-0 text-orange-300" />{copy.walletPayos}</span>
                               </div>
@@ -853,7 +836,7 @@ export default function CartPage() {
                         </div>
                       </div>
                       <div className="flex w-52 flex-col justify-between gap-3 border-l bg-background/30 p-5">
-                        <div className="space-y-2.5"><div><p className="text-xs text-muted-foreground">{copy.itemPrice}</p><p className="text-2xl font-bold tracking-normal text-orange-400">{formatVND(Number(card?.price || 0))}</p></div><div className="rounded-lg border border-orange-500/20 bg-orange-500/5 px-3 py-2"><p className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Truck className="h-3.5 w-3.5 text-orange-300" />{estShippingLabel}</p><p className={`mt-0.5 text-sm font-semibold ${card?.shipping_fee === 0 ? 'text-green-400' : 'text-foreground'}`}>{cardShippingLabel(card)}</p></div></div>
+                        <div className="space-y-2.5"><div><p className="text-xs text-muted-foreground">{copy.itemPrice}</p><p className="text-2xl font-bold tracking-normal text-orange-400">{formatVND(Number(card?.price || 0))}</p></div><div className="rounded-lg border border-orange-500/20 bg-orange-500/5 px-3 py-2"><p className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Truck className="h-3.5 w-3.5 text-orange-300" />{estShippingLabel}</p><p className="mt-0.5 text-sm font-semibold"><ShippingQuoteLabel sellerId={card?.seller_id} cardId={card?.id} listingFee={card?.shipping_fee} /></p></div></div>
                         <div className="grid gap-2">
                           {card && <Button variant="outline" size="sm" className="justify-center gap-2 border-orange-500/35 bg-orange-500/10 text-orange-200 hover:bg-orange-500/20" onClick={() => router.push(`/cards/${card.id}`)}><Eye className="h-4 w-4" />{copy.viewDetail}</Button>}
                           <Button variant="ghost" size="sm" className="justify-center gap-2 text-muted-foreground hover:text-red-300" disabled={isBulkRemoving} onClick={() => setPendingRemoval({ kind: "one", id: item.id, name: card?.name || copy.missingCard })}><Trash2 className="h-4 w-4" />{copy.removeFromCart}</Button>

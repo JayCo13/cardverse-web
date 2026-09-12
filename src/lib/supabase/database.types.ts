@@ -217,6 +217,8 @@ export interface Database {
                     default_shipping_detail: string | null
                     shipping_carriers: string[]
                     shipping_fees: Json
+                    carrier_coverage: Json | null
+                    parcel_preset: string
                     created_at: string
                     updated_at: string
                 }
@@ -257,6 +259,8 @@ export interface Database {
                     default_shipping_detail?: string | null
                     shipping_carriers?: string[]
                     shipping_fees?: Json
+                    carrier_coverage?: Json | null
+                    parcel_preset?: string
                     created_at?: string
                     updated_at?: string
                 }
@@ -297,6 +301,8 @@ export interface Database {
                     default_shipping_detail?: string | null
                     shipping_carriers?: string[]
                     shipping_fees?: Json
+                    carrier_coverage?: Json | null
+                    parcel_preset?: string
                     created_at?: string
                     updated_at?: string
                 }
@@ -434,6 +440,7 @@ export interface Database {
                     product_type_label: string | null
                     product_details: Json
                     shipping_fee: number | null
+                    parcel_preset: string | null
                     created_at: string
                     updated_at: string
                 }
@@ -476,6 +483,7 @@ export interface Database {
                     product_type_label?: string | null
                     product_details?: Json
                     shipping_fee?: number | null
+                    parcel_preset?: string | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -518,6 +526,7 @@ export interface Database {
                     product_type_label?: string | null
                     product_details?: Json
                     shipping_fee?: number | null
+                    parcel_preset?: string | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -1143,6 +1152,15 @@ export interface Database {
                     ghn_shipping_fee: number | null
                     ghn_expected_delivery: string | null
                     ghn_status: string | null
+                    shipping_carrier: string | null
+                    parcel_preset: string | null
+                    shipping_quote: Json | null
+                    khai_gia_fee: number
+                    declared_value: number
+                    seller_shipping_charge: number | null
+                    carrier_changed_from: string | null
+                    goship_fee: number | null
+                    goship_code: string | null
                     to_province_id: number | null
                     to_province_name: string | null
                     to_district_id: number | null
@@ -1186,6 +1204,13 @@ export interface Database {
                     ghn_shipping_fee?: number | null
                     ghn_expected_delivery?: string | null
                     ghn_status?: string | null
+                    shipping_carrier?: string | null
+                    parcel_preset?: string | null
+                    shipping_quote?: Json | null
+                    khai_gia_fee?: number
+                    declared_value?: number
+                    seller_shipping_charge?: number | null
+                    carrier_changed_from?: string | null
                     to_province_id?: number | null
                     to_province_name?: string | null
                     to_district_id?: number | null
@@ -1229,6 +1254,13 @@ export interface Database {
                     ghn_shipping_fee?: number | null
                     ghn_expected_delivery?: string | null
                     ghn_status?: string | null
+                    shipping_carrier?: string | null
+                    parcel_preset?: string | null
+                    shipping_quote?: Json | null
+                    khai_gia_fee?: number
+                    declared_value?: number
+                    seller_shipping_charge?: number | null
+                    carrier_changed_from?: string | null
                     to_province_id?: number | null
                     to_province_name?: string | null
                     to_district_id?: number | null

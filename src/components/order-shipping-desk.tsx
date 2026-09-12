@@ -1,18 +1,21 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
-import { parseParcel, parcelCopy } from '@/lib/parcel';
+import { parcelFor, parseParcel, parcelCopy, parcelPresetLabels, parcelPresetOr, PARCEL_PRESET_CODES, type Parcel, type ParcelOverrides, type ParcelPreset } from '@/lib/parcel';
 import Link from 'next/link';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AlertCircle, ArrowRight, Check, Loader2, MapPin, Package, PencilLine, Truck } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { compensationFor, khaiGiaSurcharge } from '@/lib/khai-gia';
+import { AlertCircle, ArrowRight, Check, Loader2, MapPin, Package, PencilLine, Save, Truck } from 'lucide-react';
 import { useLocalization } from '@/context/localization-context';
 import { PackingVideoField } from '@/components/packing-video-field';
 import { GoshipRegionPicker, type GoshipRegion } from '@/components/goship-region-picker';
 import { carrierAddressOptions } from '@/lib/carrier-address-options';
-import { carrierShortLabels } from '@/lib/shipping-carriers';
+import { carrierShortLabels, getCarrier } from '@/lib/shipping-carriers';
 
 /**
  * Where a seller turns one paid order into a real waybill.
@@ -23,9 +26,17 @@ import { carrierShortLabels } from '@/lib/shipping-carriers';
  * A dialog invites a glance; the three steps below ask to be read: check who
  * this is going between, say what is in the parcel, then choose who carries it.
  *
- * Rates are re-quoted whenever weight or declared value changes, and again on
- * open, because GoShip's rate ids expire and the price shown has to be the
- * price booked.
+ * The buyer already chose the carrier and paid GoShip's price for it, so step
+ * three is not a menu: it is that carrier, locked, at that price — and a list
+ * of backups only when GoShip no longer offers it on the route. What the
+ * seller decides here is what is THEIR cost: whether to declare a value (off
+ * by default; the buyer is covered by escrow, the declaration covers the
+ * seller), and whether to pack bigger than the parcel the buyer was quoted
+ * for. Both are priced live and shown as one line: what they will receive.
+ *
+ * Rates are re-quoted whenever the parcel or declared value changes, and
+ * again on open, because GoShip's rate ids expire and the price shown has to
+ * be the price booked.
  */
 
 type Rate = {
@@ -43,7 +54,14 @@ const COPY = {
         editSender: 'Sửa địa chỉ lấy hàng', senderMissing: 'Bạn chưa lưu địa chỉ lấy hàng. Lưu ở trang Bán hàng trước khi tạo vận đơn.',
         fromOrder: 'Lấy từ địa chỉ người mua đã nhập',
         weight: 'Cân nặng (gram)', weightHint: 'Cả gói, gồm hộp và lớp chống sốc. Một thẻ đã ép cứng thường 150–250g.',
-        declared: 'Khai giá (đ)', declaredHint: 'Số tiền hãng bồi thường nếu mất hàng. Trên 2.500.000đ hãng thu thêm phí bảo hiểm, giá bên dưới đã gồm khoản đó.',
+        parcel: 'Loại hàng', parcelUpgrade: 'Gói hàng lớn hơn kích thước đã báo giá: +{fee} sẽ trừ vào tiền bạn nhận.', parcelSmaller: 'Gói hàng nhỏ hơn kích thước đã báo giá — bạn không bị trừ thêm phí.',
+        saveParcel: 'Lưu kích thước làm mặc định', savedParcel: 'Đã lưu kích thước mặc định cho loại hàng này.', resetParcel: 'Dùng kích thước ban đầu',
+        declareToggle: 'Bảo hiểm hàng hóa (không bắt buộc)', declareOffHint: 'Bật nếu bạn muốn mua thêm quyền lợi bồi thường từ hãng khi kiện hàng bị mất hoặc hư hỏng. Phí phát sinh sẽ hiển thị rõ bên dưới và trừ vào tiền bạn nhận.',
+        declared: 'Giá trị khai (đ)', declareCost: 'Phí khai giá {carrier}: +{fee} · trừ vào tiền đơn', declarePolicy: 'Mức đền theo chính sách của hãng.',
+        payoutIfLost: 'Nếu mất hàng, {carrier} đền:', proofInvoice: 'có hóa đơn VAT / hóa đơn bán hàng', proofTransaction: 'có ảnh đơn CardVerseHub + biên lai chuyển khoản', proofNone: 'không có chứng từ', proofUndeclared: 'không khai giá', notAccepted: 'không chấp nhận', policyChecked: 'Theo chính sách công bố của hãng, kiểm tra {date}.',
+        buyerCarrier: 'Người mua đã chọn', lockedNote: 'Người mua đã trả đúng cước này. Không trừ gì thêm.',
+        carrierGone: '{carrier} hiện không nhận tuyến này. Chọn hãng khác bên dưới — người mua sẽ được thông báo, phí ship họ đã trả không đổi và phần lệch cước không trừ vào bạn.',
+        payoutTitle: 'Bạn nhận được', payoutItem: 'Tiền hàng', payoutKhaiGia: 'Khai giá', payoutUpgrade: 'Gói to hơn', payoutListing: 'Cước vượt phí ship bạn đặt cho bài đăng', payoutNet: 'Thực nhận',
         pickRegion: 'Đơn này chưa có địa giới theo đơn vị vận chuyển. Chọn theo địa chỉ người nhận bên trên:',
         buyerPaid: 'Người mua đã trả', overBudget: 'trừ vào tiền đơn', inBudget: 'trong phí đã thu',
         excessNote: 'Phần cước vượt {gap} sẽ trừ vào tiền đơn hàng của bạn khi giải ngân.',
@@ -62,7 +80,14 @@ const COPY = {
         editSender: 'Edit pickup address', senderMissing: 'No pickup address saved yet. Save one on the Sell page before booking.',
         fromOrder: 'From the address the buyer entered',
         weight: 'Weight (grams)', weightHint: 'The whole parcel, box and padding included. One slabbed card is usually 150–250g.',
-        declared: 'Declared value (đ)', declaredHint: 'What the carrier pays if the parcel is lost. Above 2,500,000đ it charges insurance, already included in the prices below.',
+        parcel: 'Item type', parcelUpgrade: 'This parcel is larger than quoted: +{fee} will be deducted from your payout.', parcelSmaller: 'This parcel is smaller than quoted — no extra charge is deducted.',
+        saveParcel: 'Save as default size', savedParcel: 'Default size saved for this item type.', resetParcel: 'Use original size',
+        declareToggle: 'Parcel insurance (optional)', declareOffHint: 'Turn this on if you want additional carrier compensation if the parcel is lost or damaged. The fee is shown below and deducted from your payout.',
+        declared: 'Declared value (đ)', declareCost: '{carrier} declaration fee: +{fee} · off your payout', declarePolicy: 'Payout per the carrier’s policy.',
+        payoutIfLost: 'If the parcel is lost, {carrier} pays:', proofInvoice: 'with a VAT / sales invoice', proofTransaction: 'with the CardVerseHub order + bank receipt', proofNone: 'with no proof', proofUndeclared: 'undeclared', notAccepted: 'not accepted', policyChecked: 'Per the carrier’s published policy, checked {date}.',
+        buyerCarrier: 'Buyer’s pick', lockedNote: 'The buyer paid exactly this postage. Nothing more is deducted.',
+        carrierGone: '{carrier} no longer serves this route. Pick another below — the buyer is told, what they paid does not change, and the postage difference is not yours.',
+        payoutTitle: 'You receive', payoutItem: 'Item price', payoutKhaiGia: 'Declared value', payoutUpgrade: 'Bigger parcel', payoutListing: 'Postage over the fee you set on the listing', payoutNet: 'Net payout',
         pickRegion: 'This order has no carrier divisions yet. Pick them from the recipient address above:',
         buyerPaid: 'Buyer paid', overBudget: 'deducted from your payout', inBudget: 'within the fee collected',
         excessNote: 'The {gap} above the shipping fee is deducted from your payout for this order.',
@@ -81,7 +106,14 @@ const COPY = {
         editSender: '集荷先を編集', senderMissing: '集荷先が未登録です。販売ページで登録してください。',
         fromOrder: '購入者が入力した住所',
         weight: '重量（グラム）', weightHint: '箱と緩衝材を含む全体。スラブ入りカード1枚で通常150〜250g。',
-        declared: '申告価格（đ）', declaredHint: '紛失時の補償額です。2,500,000đを超えると保険料が加算され、下の料金に含まれます。',
+        parcel: '商品の種類', parcelUpgrade: '見積り時より大きい荷物です。+{fee} が売上から差し引かれます。', parcelSmaller: '見積り時より小さい荷物です。追加の差し引きはありません。',
+        saveParcel: '既定サイズとして保存', savedParcel: 'この商品種類の既定サイズを保存しました。', resetParcel: '元のサイズを使用',
+        declareToggle: '荷物保険（任意）', declareOffHint: '紛失や破損の際に配送業者から追加補償を受けたい場合はオンにしてください。料金は下に表示され、売上から差し引かれます。',
+        declared: '申告価格（đ）', declareCost: '{carrier} 申告手数料: +{fee} · 売上から差引', declarePolicy: '業者の規定に従って補償。',
+        payoutIfLost: '紛失時に {carrier} が支払う額:', proofInvoice: 'VAT／販売請求書あり', proofTransaction: 'CardVerseHub注文＋振込明細あり', proofNone: '証明なし', proofUndeclared: '申告なし', notAccepted: '不可', policyChecked: '業者の公開規定に基づく（{date}確認）。',
+        buyerCarrier: '購入者の選択', lockedNote: '購入者はこの送料を支払済みです。追加の差引はありません。',
+        carrierGone: '{carrier} はこの経路に対応していません。下から別の業者を選んでください。購入者に通知され、支払額は変わらず、差額はあなたの負担になりません。',
+        payoutTitle: '受取額', payoutItem: '商品代金', payoutKhaiGia: '申告価格', payoutUpgrade: '大きい荷物', payoutListing: '出品で設定した送料を超える分', payoutNet: '実受取額',
         pickRegion: 'この注文には配送業者の行政区分がありません。上の受取人住所に合わせて選んでください：',
         buyerPaid: '購入者支払い', overBudget: '売上から差引', inBudget: '送料の範囲内',
         excessNote: '送料を超える {gap} は、この注文の支払い額から差し引かれます。',
@@ -116,6 +148,9 @@ export function OrderShippingDesk({
     destination,
     defaultDeclaredValue,
     buyerPaidShipping,
+    buyerCarrier,
+    orderParcelPreset,
+    listingOverride = false,
     recipient,
     itemName,
     onBooked,
@@ -124,9 +159,16 @@ export function OrderShippingDesk({
     orderId: string;
     /** The order's to_goship. Null means it predates the carrier ids. */
     destination: GoshipRegion | null;
+    /** The sale amount — what the seller is paid before their shipping choices. */
     defaultDeclaredValue: number;
     /** What the buyer already paid for shipping on this order. */
     buyerPaidShipping: number;
+    /** The carrier the buyer picked at checkout; null on orders from before that. */
+    buyerCarrier: string | null;
+    /** The parcel preset the buyer was quoted for; null falls to the shop default. */
+    orderParcelPreset: string | null;
+    /** The seller priced this listing themselves (free shipping included). */
+    listingOverride?: boolean;
     recipient: { name: string; phone: string; address: string };
     itemName: string;
     onBooked: (gcode: string) => void;
@@ -134,12 +176,67 @@ export function OrderShippingDesk({
     const { locale } = useLocalization();
     const copy = COPY[locale as keyof typeof COPY] ?? COPY['vi-VN'];
 
-    const [weight, setWeight] = useState(productKind === 'card' ? '200' : '');
-    const [dimensions, setDimensions] = useState(productKind === 'card' ? { width: '15', height: '3', length: '20' } : { width: '', height: '', length: '' });
+    // The kind the buyer was quoted as, then the listing's own kind; the
+    // seller may say it is something else and the numbers follow.
+    const orderKind = parcelPresetOr(orderParcelPreset, parcelPresetOr(productKind));
+    const [kind, setKind] = useState<ParcelPreset>(orderKind);
+    const [overrides, setOverrides] = useState<ParcelOverrides>({});
+    const toFields = (p: Parcel) => ({ weight: String(p.weight), width: String(p.width), height: String(p.height), length: String(p.length) });
+    const [fields, setFields] = useState(() => toFields(parcelFor(orderKind)));
+    const weight = fields.weight;
+    const dimensions = useMemo(() => ({ width: fields.width, height: fields.height, length: fields.length }), [fields.width, fields.height, fields.length]);
+    const [savingParcel, setSavingParcel] = useState(false);
+    const [savedParcel, setSavedParcel] = useState(false);
     const parcelText = parcelCopy(locale);
+    const presetLabels = parcelPresetLabels(locale);
+    const parcelValid = parseParcel({ weight, ...dimensions }, true);
+
+    // Choosing a kind refills the numbers: the seller's own for that kind if
+    // they saved some, else the researched default.
+    const pickKind = (next: ParcelPreset, saved: ParcelOverrides = overrides) => {
+        setKind(next);
+        setFields(toFields(parcelFor(next, 1, saved)));
+        setSavedParcel(false);
+    };
+
+    const saveParcel = async () => {
+        if (!parcelValid) return;
+        setSavingParcel(true);
+        try {
+            const res = await fetch('/api/shipping/shop-shipping', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ parcelOverrides: { [kind]: parcelValid } }),
+            });
+            const body = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(body?.error || copy.failed);
+            setOverrides(body?.data?.parcelOverrides ?? { ...overrides, [kind]: parcelValid });
+            setSavedParcel(true);
+        } catch (e) {
+            setError(e instanceof Error ? e.message : copy.failed);
+        } finally {
+            setSavingParcel(false);
+        }
+    };
     const quoteRequest = useRef(0);
-    const [declared, setDeclared] = useState(String(Math.max(0, Math.round(defaultDeclaredValue))));
+    // Off by default. Declaring is the seller's insurance and the seller's
+    // cost; the buyer is made whole by escrow either way.
+    const [declareOn, setDeclareOn] = useState(false);
+    // Digits only; shown with thousand separators. Prefilled with the sale
+    // amount — what the seller would want back if the parcel were lost — and
+    // re-filled with it each time the switch is turned on, so an edit from an
+    // earlier look does not linger.
+    const orderAmountDigits = String(Math.max(0, Math.round(defaultDeclaredValue)));
+    const [declared, setDeclared] = useState(orderAmountDigits);
+    const declaredValue = declareOn ? Number(declared) || 0 : 0;
+    const toggleDeclare = (on: boolean) => {
+        setDeclareOn(on);
+        if (on) setDeclared(orderAmountDigits);
+    };
+    const declaredDisplay = declared ? Number(declared).toLocaleString('vi-VN') : '';
     const [rates, setRates] = useState<Rate[] | null>(null);
+    const [baseline, setBaseline] = useState<Rate[] | null>(null);
+    const [original, setOriginal] = useState<Rate[] | null>(null);
     const [chosen, setChosen] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [booking, setBooking] = useState(false);
@@ -195,6 +292,14 @@ export function OrderShippingDesk({
                 setCarriers(prev => same(prev, body.data.carriers as string[]));
                 setSavedRegion(prev => same(prev, body.data.order.to_goship as GoshipRegion | null));
                 setPreferredCarrier(body.data.order.metadata?.shipping_carrier ?? null);
+                // The seller's saved parcel numbers, applied to the kind on
+                // screen only the first time — a refetch on window focus must
+                // not overwrite what they are typing.
+                const saved = (body.data.parcelOverrides ?? {}) as ParcelOverrides;
+                setOverrides(prev => {
+                    if (Object.keys(prev).length === 0 && saved[orderKind]) setFields(toFields(parcelFor(orderKind, 1, saved)));
+                    return same(prev, saved);
+                });
                 if (!p) { setPickup('missing'); return; }
                 setPickup(prev => same(prev, p));
                 const [cities, districts, wards] = await Promise.all([
@@ -214,11 +319,12 @@ export function OrderShippingDesk({
             }
         })();
         return () => { off = true; };
-    }, [orderId, refresh]);
+    }, [orderId, refresh, orderKind]);
 
     const quote = useCallback(async () => {
         const requestId = ++quoteRequest.current;
-        if (!region || !pickup || pickup === 'missing' || preparationError || !parseParcel({ weight, ...dimensions }, true)) { setRates(null); setChosen(null); setBusy(false); return; }
+        const parcelBody = { weight: Number(weight), ...dimensions };
+        if (!region || !pickup || pickup === 'missing' || preparationError || !parseParcel(parcelBody, true)) { setRates(null); setChosen(null); setBusy(false); return; }
         // The old list stays on screen while the new one loads. Rate ids are
         // replaced when it lands; the seller's carrier choice carries over.
         setBusy(true); setError(null);
@@ -229,10 +335,11 @@ export function OrderShippingDesk({
                 body: JSON.stringify({
                     orderId,
                     to: region,
-                    weight: Number(weight), ...dimensions,
-                    // Priced with the declared value: the carrier charges for it
-                    // above a threshold, so a quote without one understates.
-                    declaredValue: Number(declared) || 0,
+                    ...parcelBody,
+                    // Priced with the declared value the seller chose (0 when
+                    // off); the route also answers with the same parcel at 0
+                    // so the declaration's own cost can be shown.
+                    declaredValue,
                 }),
             });
             const body = await res.json();
@@ -243,9 +350,14 @@ export function OrderShippingDesk({
             }
             const next: Rate[] = body.data ?? [];
             setRates(next);
+            setBaseline(body.baseline ?? next);
+            setOriginal(body.original ?? null);
+            // The buyer's carrier, when GoShip still offers it; otherwise what
+            // the seller had picked among the backups; otherwise the cheapest.
             setChosen(prev => {
                 const kept = prev ? rates?.find(r => r.id === prev)?.carrierCode : null;
-                return next.find(r => r.carrierCode === kept)?.id
+                return next.find(r => r.carrierCode === buyerCarrier)?.id
+                    ?? next.find(r => r.carrierCode === kept)?.id
                     ?? next.find(r => r.carrierCode === preferredCarrier)?.id
                     ?? next[0]?.id
                     ?? null;
@@ -256,7 +368,7 @@ export function OrderShippingDesk({
             if (requestId === quoteRequest.current) setBusy(false);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `rates` is read only to carry the chosen carrier over; keying on it would re-quote after every quote
-    }, [region, pickup, preparationError, orderId, preferredCarrier, weight, dimensions, declared, copy.noPickup, copy.failed]);
+    }, [region, pickup, preparationError, orderId, preferredCarrier, buyerCarrier, weight, dimensions, declaredValue, copy.noPickup, copy.failed]);
 
     useEffect(() => {
         setConfirming(false);
@@ -269,6 +381,29 @@ export function OrderShippingDesk({
         () => (rates && rates.length > 0 ? carriers.filter(code => !rates.some(r => r.carrierCode === code)) : []),
         [rates, carriers],
     );
+    // The buyer's carrier is gone from the route when GoShip answered and did
+    // not name it. Before the answer, nothing is known.
+    const buyerCarrierGone = !!buyerCarrier && !!rates && rates.length >= 0 && !busy && !rates.some(r => r.carrierCode === buyerCarrier);
+
+    /**
+     * What this booking costs the seller, per carrier, from GoShip's own
+     * answers: the declaration is the gap between the chosen quote and the
+     * same parcel at 0; the upgrade is the gap between that and the parcel the
+     * buyer paid for; a seller-priced listing owes whatever postage exceeds
+     * the fee they set. Mirrors /api/shipping/book, which recomputes it.
+     */
+    const chargeFor = (r: Rate) => {
+        const base = baseline?.find(b => b.carrierCode === r.carrierCode)?.totalFee
+            ?? (declaredValue > 0 ? Math.max(0, r.totalFee - khaiGiaSurcharge(r.carrierCode, declaredValue)) : r.totalFee);
+        const khaiGia = Math.max(0, r.totalFee - base);
+        const orig = original?.find(o => o.carrierCode === r.carrierCode)?.totalFee ?? null;
+        const upgrade = orig !== null ? Math.max(0, base - orig) : 0;
+        const listing = listingOverride ? Math.max(0, base - upgrade - buyerPaidShipping) : 0;
+        return { khaiGia, upgrade, listing, total: khaiGia + upgrade + listing };
+    };
+    const selectedCharge = selected ? chargeFor(selected) : null;
+    const netPayout = Math.max(0, defaultDeclaredValue - (selectedCharge?.total ?? 0));
+    const compensation = selected ? compensationFor(selected.carrierCode, declaredValue, selectedCharge ? selected.totalFee - selectedCharge.khaiGia : selected.totalFee) : null;
 
     const book = async () => {
         if (!selected) return;
@@ -280,8 +415,9 @@ export function OrderShippingDesk({
                 body: JSON.stringify({
                     orderId,
                     rateId: selected.id,
+                    parcelKind: kind,
                     weight: Number(weight), ...dimensions,
-                    declaredValue: Number(declared) || defaultDeclaredValue,
+                    declaredValue,
                     to: region,
                     packingVideoUrl: packingVideo,
                 }),
@@ -371,24 +507,102 @@ export function OrderShippingDesk({
                         </p>
                     </div>
 
-                    <div className="space-y-3">
+                    <div className="space-y-4">
                         {stepLabel(2, copy.step2)}
-                        <div className="grid gap-4 sm:grid-cols-2">
+                        {/* What is being sent, as the carrier bills it: the kind
+                            picks the numbers, the numbers stay editable, and a
+                            seller who always packs the same way saves them once. */}
+                        <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="osd-kind">{copy.parcel}</Label>
+                                <Select value={kind} onValueChange={(v) => pickKind(v as ParcelPreset)}>
+                                    <SelectTrigger id="osd-kind" className="w-full"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        {PARCEL_PRESET_CODES.map(code => <SelectItem key={code} value={code}>{presetLabels[code]}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                             <div className="space-y-1.5">
                                 <Label htmlFor="osd-weight">{copy.weight}</Label>
                                 <Input id="osd-weight" value={weight} inputMode="numeric"
-                                    onChange={(e) => setWeight(e.target.value.replace(/\D/g, '').slice(0, 5))} />
-                                <p className="text-xs text-muted-foreground">{parcelText.hint}</p>
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label htmlFor="osd-declared">{copy.declared}</Label>
-                                <Input id="osd-declared" value={declared} inputMode="numeric"
-                                    onChange={(e) => setDeclared(e.target.value.replace(/\D/g, '').slice(0, 9))} />
-                                <p className="text-xs text-muted-foreground">{words.declared}</p>
+                                    onChange={(e) => { setFields(f => ({ ...f, weight: e.target.value.replace(/\D/g, '').slice(0, 5) })); setSavedParcel(false); }} />
                             </div>
                         </div>
-                        <div className="grid gap-3 sm:grid-cols-3">{(['width','height','length'] as const).map(key => <label className="space-y-2" key={key}><span>{parcelText[key]}</span><Input type="number" min={1} max={200} required disabled={booking} value={dimensions[key]} onChange={e => setDimensions(d => ({ ...d, [key]: e.target.value }))} /></label>)}</div>
-                        {!parseParcel({ weight, ...dimensions }, true) && <p className="text-sm text-amber-400">{parcelText.invalid}</p>}
+                        <div className="grid gap-3 sm:grid-cols-3">
+                            {(['width', 'height', 'length'] as const).map(key => (
+                                <label className="space-y-1.5 text-sm" key={key}>
+                                    <span>{parcelText[key]}</span>
+                                    <Input type="number" min={1} max={200} required disabled={booking} value={fields[key]}
+                                        onChange={e => { setFields(f => ({ ...f, [key]: e.target.value })); setSavedParcel(false); }} />
+                                </label>
+                            ))}
+                        </div>
+                        {!parcelValid && <p className="text-sm text-amber-400">{parcelText.invalid}</p>}
+                        <div className="space-y-3">
+                            {(savedParcel || (selectedCharge && selectedCharge.upgrade > 0) || (original && selected && !selectedCharge?.upgrade && JSON.stringify(parcelValid) !== JSON.stringify(parcelFor(orderKind, 1, overrides))) || kind !== orderKind) && (
+                                <p className={`text-sm ${savedParcel ? 'text-green-400' : 'text-muted-foreground'}`}>
+                                    {savedParcel
+                                        ? copy.savedParcel
+                                        : selectedCharge && selectedCharge.upgrade > 0
+                                            ? copy.parcelUpgrade.replace('{fee}', money(selectedCharge.upgrade))
+                                            : original && selected && !selectedCharge?.upgrade && JSON.stringify(parcelValid) !== JSON.stringify(parcelFor(orderKind, 1, overrides))
+                                                ? copy.parcelSmaller
+                                                : parcelText.hint}
+                                </p>
+                            )}
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Button type="button" variant="outline" onClick={saveParcel} disabled={savingParcel || !parcelValid || savedParcel} className="h-10 w-full border-orange-500/50 px-4 font-medium text-orange-400 hover:bg-orange-500/10 hover:text-orange-300 sm:w-auto">
+                                    {savingParcel ? null : <Save className="mr-2 h-4 w-4" />}
+                                    {copy.saveParcel}
+                                </Button>
+                                {overrides[kind] && (
+                                    <Button type="button" variant="ghost" size="sm" onClick={() => { setFields(toFields(parcelFor(kind))); setSavedParcel(false); }}>
+                                        {copy.resetParcel}
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* The seller's insurance, and the seller's cost. Off until
+                            they say otherwise: the buyer is covered by escrow, and a
+                            premium on a card the carrier will settle at a fraction of
+                            its value is a decision worth seeing the terms of. */}
+                        <div className="space-y-2.5 rounded-lg border border-border/60 bg-background/40 p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <Label htmlFor="osd-declare" className="text-sm font-medium">{copy.declareToggle}</Label>
+                                <Switch id="osd-declare" checked={declareOn} onCheckedChange={toggleDeclare} />
+                            </div>
+                            {declareOn ? (
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="osd-declared" className="text-xs text-muted-foreground">{copy.declared}</Label>
+                                    <Input id="osd-declared" value={declaredDisplay} inputMode="numeric" className="sm:max-w-xs"
+                                        onChange={(e) => setDeclared(e.target.value.replace(/\D/g, '').slice(0, 9))} />
+                                    {selected && selectedCharge && (
+                                        <div className="space-y-1 text-xs">
+                                            <p className="text-amber-300">
+                                                {copy.declareCost.replace('{carrier}', getCarrier(selected.carrierCode)?.short ?? selected.carrierName).replace('{fee}', money(selectedCharge.khaiGia))}
+                                            </p>
+                                            {compensation ? (
+                                                <div className="rounded-md border border-border/60 bg-background/40 p-2.5 text-muted-foreground">
+                                                    <p className="font-medium text-foreground">{copy.payoutIfLost.replace('{carrier}', getCarrier(selected.carrierCode)?.short ?? selected.carrierName)}</p>
+                                                    <ul className="mt-1 space-y-0.5">
+                                                        <li className="flex justify-between gap-3"><span>{copy.proofInvoice}</span><span className="font-semibold text-foreground">{compensation.invoice === null ? copy.notAccepted : money(compensation.invoice)}</span></li>
+                                                        <li className="flex justify-between gap-3"><span>{copy.proofTransaction}</span><span className="font-semibold text-foreground">{compensation.transaction === null ? copy.notAccepted : money(compensation.transaction)}</span></li>
+                                                        <li className="flex justify-between gap-3"><span>{copy.proofNone}</span><span className="font-semibold text-foreground">{compensation.noProof === null ? '—' : money(compensation.noProof)}</span></li>
+                                                        <li className="flex justify-between gap-3"><span>{copy.proofUndeclared}</span><span>{compensation.undeclared === null ? '—' : money(compensation.undeclared)}</span></li>
+                                                    </ul>
+                                                    <p className="mt-1 text-[11px]">{copy.policyChecked.replace('{date}', '12/09/2026')}</p>
+                                                </div>
+                                            ) : (
+                                                <p className="text-muted-foreground">{copy.declarePolicy}</p>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <p className="text-sm leading-5 text-muted-foreground">{copy.declareOffHint}</p>
+                            )}
+                        </div>
                         <PackingVideoField value={packingVideo} onChange={setPackingVideo} locale={locale} />
                     </div>
                 </div>
@@ -419,23 +633,30 @@ export function OrderShippingDesk({
                                         <p className="text-sm text-muted-foreground">{copy.none}</p>
                                     )}
 
+                                    {buyerCarrierGone && rates && (
+                                        <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs leading-5 text-amber-200">
+                                            {copy.carrierGone.replace('{carrier}', getCarrier(buyerCarrier!)?.short ?? buyerCarrier!.toUpperCase())}
+                                        </p>
+                                    )}
+
                                     {/* GoShip quotes only the carriers that serve a route —
                                         SPX, for one, returns nothing out of Cà Mau — so a
                                         carrier the shop enabled can be missing here through
                                         no fault of the seller's. Say so, or the list reads
                                         as a bug. */}
-                                    {unserved.length > 0 && (
+                                    {unserved.length > 0 && !buyerCarrierGone && (
                                         <p className="text-xs text-muted-foreground">{words.unserved}: {carrierShortLabels(unserved)}</p>
                                     )}
 
                                     {rates && rates.length > 0 && (
-                                        // No cap of its own: the column around this scrolls
-                                        // now, and a scrollbar inside a scrollbar makes the
-                                        // reader guess which one their wheel is driving.
+                                        // The buyer's carrier alone while GoShip still offers
+                                        // it — they chose and paid for it. The full list only
+                                        // when it is gone and a backup has to be picked.
                                         <ul className="space-y-2">
-                                            {rates.map((r) => {
+                                            {rates.filter(r => buyerCarrierGone || !buyerCarrier || r.carrierCode === buyerCarrier).map((r) => {
                                                 const isChosen = r.id === chosen;
-                                                const over = r.totalFee > buyerPaidShipping;
+                                                const locked = !!buyerCarrier && r.carrierCode === buyerCarrier;
+                                                const charge = chargeFor(r);
                                                 return (
                                                     <li key={r.id}>
                                                         <button
@@ -453,6 +674,9 @@ export function OrderShippingDesk({
                                                                     {isChosen && <Check className="h-3 w-3" />}
                                                                 </span>
                                                                 <span className="min-w-0 flex-1 truncate font-medium">{r.carrierName}</span>
+                                                                {locked && (
+                                                                    <span className="shrink-0 rounded-full border border-blue-400/20 bg-blue-400/10 px-2 py-0.5 text-[11px] font-medium text-blue-300">{copy.buyerCarrier}</span>
+                                                                )}
                                                                 <span className="shrink-0 font-semibold text-orange-400">{money(r.totalFee)}</span>
                                                             </span>
                                                             <span className="mt-1 flex items-center justify-between gap-2 pl-6">
@@ -461,14 +685,13 @@ export function OrderShippingDesk({
                                                                       r.successPercent != null ? `${r.successPercent}% ${copy.success}` : null]
                                                                         .filter(Boolean).join(' · ')}
                                                                 </span>
-                                                                {/* Only the excess is the seller's. Picking a cheaper
-                                                                    carrier does not pay them the difference — the fee
-                                                                    was collected to move the parcel, not as income —
-                                                                    so there is no "you keep" to show, and saying one
-                                                                    would promise money nothing pays out. */}
-                                                                <span className={`shrink-0 text-xs ${over ? 'text-amber-400' : 'text-muted-foreground'}`}>
-                                                                    {over
-                                                                        ? `${copy.overBudget} ${money(r.totalFee - buyerPaidShipping)}`
+                                                                {/* Only what the seller chose is theirs: the declaration,
+                                                                    a bigger parcel, or postage over a fee they set on the
+                                                                    listing. Postage drift on the buyer's own carrier, or on
+                                                                    a backup, is not. */}
+                                                                <span className={`shrink-0 text-xs ${charge.total > 0 ? 'text-amber-400' : 'text-muted-foreground'}`}>
+                                                                    {charge.total > 0
+                                                                        ? `${copy.overBudget} ${money(charge.total)}`
                                                                         : copy.inBudget}
                                                                 </span>
                                                             </span>
@@ -497,10 +720,16 @@ export function OrderShippingDesk({
                                     ? <>{copy.chosen}: <span className="font-medium text-foreground">{selected.carrierName}</span> · <span className="font-semibold text-orange-400">{money(selected.totalFee)}</span></>
                                     : copy.pickFirst}
                             </p>
-                            {selected && selected.totalFee > buyerPaidShipping && (
-                                <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs leading-5 text-amber-200">
-                                    {copy.excessNote.replace('{gap}', money(selected.totalFee - buyerPaidShipping))}
-                                </p>
+                            {selected && selectedCharge && (
+                                <div className="space-y-1 rounded-lg border border-border/60 bg-background/40 p-3 text-sm">
+                                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{copy.payoutTitle}</p>
+                                    <div className="flex justify-between"><span className="text-muted-foreground">{copy.payoutItem}</span><span>{money(defaultDeclaredValue)}</span></div>
+                                    {selectedCharge.khaiGia > 0 && <div className="flex justify-between text-amber-300"><span>{copy.payoutKhaiGia}</span><span>−{money(selectedCharge.khaiGia)}</span></div>}
+                                    {selectedCharge.upgrade > 0 && <div className="flex justify-between text-amber-300"><span>{copy.payoutUpgrade}</span><span>−{money(selectedCharge.upgrade)}</span></div>}
+                                    {selectedCharge.listing > 0 && <div className="flex justify-between text-amber-300"><span>{copy.payoutListing}</span><span>−{money(selectedCharge.listing)}</span></div>}
+                                    {selectedCharge.total === 0 && <p className="text-xs text-muted-foreground">{copy.lockedNote}</p>}
+                                    <div className="flex justify-between border-t border-border/60 pt-1.5 font-semibold"><span>{copy.payoutNet}</span><span className="text-orange-400">{money(netPayout)}</span></div>
+                                </div>
                             )}
                             <Button disabled={!selected} onClick={() => setConfirming(true)} className="w-full bg-orange-500 hover:bg-orange-600">
                                 <Truck className="mr-2 h-4 w-4" />{copy.book}

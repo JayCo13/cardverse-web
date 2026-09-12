@@ -3,10 +3,11 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { goshipCreateShipment, goshipCarrierToApp, goshipFindShipmentByOrderId, goshipEnv, goshipRates } from '@/lib/goship';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { isEvidenceVideoUrl } from '@/lib/evidence-video';
-import { parseParcel, parcelCopy } from '@/lib/parcel';
+import { isParcelPreset, parcelFor, parcelPresetOr, parseParcel, parseParcelOverrides, parcelCopy, type Parcel, type ParcelPreset } from '@/lib/parcel';
 import { getRequestLocale } from '@/lib/request-localization';
-import { booksWithCarrier } from '@/lib/shipping-carriers';
+import { booksWithCarrier, getCarrier } from '@/lib/shipping-carriers';
 import { shipmentCarriers } from '@/lib/shipment-carriers';
+import { khaiGiaSurcharge } from '@/lib/khai-gia';
 
 /**
  * Book a parcel with a carrier.
@@ -18,10 +19,16 @@ import { shipmentCarriers } from '@/lib/shipment-carriers';
  * Origin is the caller's saved sender address, never the request: a seller
  * cannot book a pickup from an address they have not proved is theirs.
  *
- * `declaredValue` is required and must be positive. It is GoShip's
- * parcel.amount — khai giá — and it is what the carrier pays if the parcel is
- * lost. It also costs: above a threshold the carrier charges for it, so the
- * quote the seller chose from was priced with the same figure.
+ * `declaredValue` is the seller's choice, 0 included. It is GoShip's
+ * parcel.amount — khai giá — and it is what the carrier pays the SENDER if the
+ * parcel is lost. It costs above a threshold, and that cost is the seller's:
+ * the buyer paid GoShip's postage for the carrier they picked, declared at 0,
+ * and is protected by escrow. What comes off the seller's payout is computed
+ * here from two fresh quotes — the chosen declaration against the same parcel
+ * at 0 — plus any parcel they upgraded past the one the buyer was quoted for,
+ * plus, on a listing the seller priced themselves, whatever GoShip bills over
+ * that price. Written to orders.seller_shipping_charge; seller_payout_for
+ * reads nothing else.
  */
 
 const ID = /^[0-9]{1,12}$/;
@@ -42,9 +49,13 @@ async function linkShipmentToOrder(
     created: { id?: string; tracking_number?: string; carrier_short_name?: string },
     body: Record<string, any> | null,
     destination?: { city: string; district: string; ward: string } | null,
-    /** What GoShip charges. The seller's payout is netted against it, so it is
-     *  read from a server-side quote and never from the request. */
+    /** What GoShip charges. Kept for reconciliation; the payout reads `charge`. */
     goshipFee?: number | null,
+    /** What comes off the seller, and why. Null on a recovery whose quote is gone. */
+    charge?: {
+        khaiGiaFee: number; declaredValue: number; parcelUpgrade: number; listingExcess: number;
+        total: number; carrier: string; parcelPreset: ParcelPreset | null; changedFrom: string | null;
+    } | null,
 ) {
     const gcode = created.id as string;
     const raw = body?.packingVideoUrl;
@@ -67,6 +78,16 @@ async function linkShipmentToOrder(
             ...(created.tracking_number ? { tracking_number: created.tracking_number } : {}),
             ...(created.carrier_short_name
                 ? { shipping_provider: goshipCarrierToApp(created.carrier_short_name) } : {}),
+            ...(charge ? {
+                khai_gia_fee: charge.khaiGiaFee,
+                declared_value: charge.declaredValue,
+                seller_shipping_charge: charge.total,
+                // The carrier that actually took the parcel, and the one the
+                // buyer picked when they differ.
+                shipping_carrier: charge.carrier,
+                ...(charge.changedFrom ? { carrier_changed_from: charge.changedFrom } : {}),
+                ...(charge.parcelPreset ? { parcel_preset: charge.parcelPreset } : {}),
+            } : {}),
             ...(packingVideoUrl ? { seller_packing_video_url: packingVideoUrl } : {}),
         } as never)
         .eq('id', orderId)
@@ -84,6 +105,30 @@ async function linkShipmentToOrder(
     return null;
 }
 
+/**
+ * Tell the buyer their parcel is coming with a different carrier.
+ *
+ * They picked one at checkout; it stopped serving the route before the seller
+ * could book, and the seller chose another. The price they paid does not move
+ * — the difference is the platform's — but the tracking link and the estimate
+ * do, and a parcel from a carrier you did not pick reads as a mistake unless
+ * somebody says so first. Swallows its own failure: the courier is booked.
+ */
+async function notifyCarrierChanged(orderId: string, buyerId: string, fromCarrier: string, toCarrier: string) {
+    const name = (code: string) => getCarrier(code)?.short ?? code.toUpperCase();
+    const { error } = await createServiceSupabaseClient().from('notifications').insert({
+        user_id: buyerId,
+        type: 'order_carrier_changed',
+        title: 'Đơn vị vận chuyển đã đổi',
+        message: `Đơn của bạn sẽ đi ${name(toCarrier)} thay cho ${name(fromCarrier)} vì hãng đó không nhận tuyến này. Phí ship bạn đã trả không thay đổi.`,
+        order_id: orderId,
+        // Read by localizeSystemNotification, which rewrites the text above
+        // in the reader's language.
+        metadata: { from_carrier: name(fromCarrier), to_carrier: name(toCarrier) },
+    } as never);
+    if (error) console.error('[Book] carrier-change notification failed:', error.message);
+}
+
 export async function POST(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -99,8 +144,12 @@ export async function POST(request: NextRequest) {
     };
 
     const orderId = str(body?.orderId);
-    let requireDimensions = false;
-    let order: { id: string; goship_code: string | null } | null = null;
+    let order: {
+        id: string; goship_code: string | null; buyerId: string; shippingFee: number;
+        carrier: string | null; parcelPreset: ParcelPreset; listingOverride: boolean;
+        /** Priced before 2026-09-12: no GoShip quote on the order, settles on the old rule. */
+        legacy: boolean;
+    } | null = null;
 
     // The order is the authority on who receives the parcel.
     //
@@ -111,7 +160,7 @@ export async function POST(request: NextRequest) {
     if (orderId) {
         const { data } = await supabase
             .from('orders')
-            .select('id, seller_id, status, goship_code, to_goship, to_name, to_phone, to_address_detail, metadata, card:cards(*)')
+            .select('id, seller_id, status, goship_code, to_goship, to_name, to_phone, to_address_detail, metadata, buyer_id, shipping_fee, shipping_carrier, parcel_preset, shipping_quote, card:cards(*)')
             .eq('id', orderId)
             .maybeSingle();
         const row = data as {
@@ -120,12 +169,13 @@ export async function POST(request: NextRequest) {
             to_goship: { city?: string; district?: string; ward?: string } | null;
             to_name: string | null; to_phone: string | null; to_address_detail: string | null;
             metadata: { shipping_carrier?: string } | null;
+            buyer_id: string; shipping_fee: number | null; shipping_carrier: string | null; parcel_preset: string | null;
+            shipping_quote: { listing_override?: boolean } | null;
         } | null;
 
         if (!row || row.seller_id !== user.id) {
             return NextResponse.json({ error: 'Không tìm thấy đơn hàng.' }, { status: 404 });
         }
-        requireDimensions = !!row.card?.product_kind && row.card.product_kind !== 'card';
         if (row.goship_code) {
             return NextResponse.json({ error: 'Đơn này đã có vận đơn.', code: 'already_booked' }, { status: 409 });
         }
@@ -135,7 +185,9 @@ export async function POST(request: NextRequest) {
         // the seller's payout in full at settlement — the seller would pay for
         // a courier out of the sale, on an order both sides agreed to hand
         // over in person.
-        if (!booksWithCarrier(row.metadata?.shipping_carrier)) {
+        // Orders from before the carrier had a column of its own keep it in
+        // metadata; hand delivery only ever lived there.
+        if (!booksWithCarrier(row.shipping_carrier ?? row.metadata?.shipping_carrier)) {
             return NextResponse.json({
                 error: 'Đơn này là giao tận tay nên không tạo vận đơn. Hẹn gặp người mua rồi bấm đã giao.',
                 code: 'hand_delivery',
@@ -159,7 +211,16 @@ export async function POST(request: NextRequest) {
             dest.district = String(row.to_goship.district);
             dest.ward = String(row.to_goship.ward);
         }
-        order = { id: row.id, goship_code: row.goship_code };
+        order = {
+            id: row.id, goship_code: row.goship_code, buyerId: row.buyer_id,
+            shippingFee: Number(row.shipping_fee) || 0,
+            carrier: row.shipping_carrier ?? row.metadata?.shipping_carrier ?? null,
+            // The kind the buyer was quoted as; the listing's kind for orders
+            // that predate the column (and for the old raw/slab/bundle names).
+            parcelPreset: parcelPresetOr(row.parcel_preset, parcelPresetOr(row.card?.product_kind)),
+            listingOverride: !!row.shipping_quote?.listing_override,
+            legacy: !row.shipping_quote,
+        };
     }
 
     if (!ID.test(dest.city) || !ID.test(dest.district) || !ID.test(dest.ward)) {
@@ -178,34 +239,85 @@ export async function POST(request: NextRequest) {
     const rateId = str(body?.rateId);
     if (!rateId) return NextResponse.json({ error: 'Chưa chọn gói vận chuyển.' }, { status: 400 });
 
-    // Required, not defaulted. A parcel booked at zero is a parcel the carrier
-    // owes nothing for.
-    const declaredValue = Number(body?.declaredValue);
-    if (!Number.isFinite(declaredValue) || declaredValue <= 0 || declaredValue > 500_000_000) {
-        return NextResponse.json(
-            { error: 'Khai giá phải lớn hơn 0.' },
-            { status: 400 },
-        );
+    // The seller's choice, zero included: a parcel declared at nothing is one
+    // the carrier owes only its fee for, and that is a decision the seller is
+    // shown the terms of before making.
+    const declaredRaw = Number(body?.declaredValue ?? 0);
+    if (!Number.isFinite(declaredRaw) || declaredRaw < 0 || declaredRaw > 500_000_000) {
+        return NextResponse.json({ error: 'Khai giá không hợp lệ.' }, { status: 400 });
     }
+    const declaredValue = Math.round(declaredRaw);
 
-    // Orders must always supply explicit packed dimensions. Standalone legacy
-    // previews retain their card defaults until they adopt the expanded form.
-    const parcel = parseParcel(body, requireDimensions);
+    // The parcel as typed on the desk — prefilled from the kind, editable —
+    // and the kind it was typed for, recorded on the order.
+    const parcelPreset: ParcelPreset | null = isParcelPreset(body?.parcelKind) ? body!.parcelKind as ParcelPreset : null;
+    const parcel: Parcel | null = parseParcel(body, !!orderId);
     if (!parcel) return NextResponse.json({ error: parcelCopy(getRequestLocale(request)).invalid }, { status: 400 });
+    const packed: Parcel = parcel;
 
     const { data: profile } = await supabase
         .from('profiles')
-        .select('goship_pickup,shipping_carriers')
+        .select('goship_pickup,shipping_carriers,carrier_coverage,parcel_overrides')
         .eq('id', user.id)
         .single();
 
-    const seller = profile as { goship_pickup: Record<string, string> | null; shipping_carriers: string[] | null } | null;
+    const seller = profile as {
+        goship_pickup: Record<string, string> | null; shipping_carriers: string[] | null;
+        carrier_coverage: { carriers?: string[] } | null; parcel_overrides: unknown;
+    } | null;
     const from = seller?.goship_pickup;
     if (!from?.city || !from?.district || !from?.ward || !from?.street || !from?.name || !from?.phone) {
         return NextResponse.json(
             { error: 'Bạn cần lưu đầy đủ thông tin người gửi trước khi đặt vận đơn.', code: 'missing_goship_pickup' },
             { status: 409 },
         );
+    }
+
+    const route = { from: { city: from.city, district: from.district }, to: { city: dest.city, district: dest.district } };
+    // The parcel the buyer was quoted for — the order's kind in the seller's
+    // saved numbers if any — to price an upgrade against. A seller who packs
+    // bigger pays the difference; one who packs smaller owes nothing.
+    const orderParcel = order ? parcelFor(order.parcelPreset, 1, parseParcelOverrides(seller?.parcel_overrides)) : null;
+    const parcelChanged = !!orderParcel && JSON.stringify(orderParcel) !== JSON.stringify(packed);
+
+    /**
+     * What this booking costs the seller, term by term.
+     *
+     * Each is measured from GoShip's own answers where two quotes exist — the
+     * chosen carrier at the declared value against the same parcel at 0, and
+     * that against the parcel the buyer was quoted for — and from the measured
+     * model only when the second quote could not be had. Null for an order
+     * priced before this model existed: it keeps the rule it was sold under
+     * (goship_fee − shipping_fee), and writing a charge here would switch it.
+     */
+    async function sellerCharge(
+        carrierCode: string,
+        totalFee: number,
+        prefetched?: { baseline: Awaited<ReturnType<typeof goshipRates>> | null; original: Awaited<ReturnType<typeof goshipRates>> | null },
+    ) {
+        if (!order || order.legacy) return null;
+        const [baseline, original] = prefetched
+            ? [prefetched.baseline, prefetched.original]
+            : await Promise.all([
+                declaredValue > 0 ? goshipRates({ ...route, parcel: packed, declaredValue: 0 }) : Promise.resolve(null),
+                parcelChanged ? goshipRates({ ...route, parcel: orderParcel!, declaredValue: 0 }) : Promise.resolve(null),
+            ]);
+        const sameCarrier = (rates: { carrierCode: string; totalFee: number }[] | undefined) =>
+            rates?.find((r) => r.carrierCode === carrierCode)?.totalFee ?? null;
+        const baselineFee = declaredValue > 0
+            ? (baseline?.ok ? sameCarrier(baseline.rates) : null) ?? Math.max(0, totalFee - khaiGiaSurcharge(carrierCode, declaredValue))
+            : totalFee;
+        const khaiGiaFee = Math.max(0, totalFee - baselineFee);
+        const originalFee = parcelChanged && original?.ok ? sameCarrier(original.rates) : null;
+        const parcelUpgrade = originalFee !== null ? Math.max(0, baselineFee - originalFee) : 0;
+        const listingExcess = order.listingOverride ? Math.max(0, baselineFee - parcelUpgrade - order.shippingFee) : 0;
+        return {
+            khaiGiaFee, declaredValue, parcelUpgrade, listingExcess,
+            total: khaiGiaFee + parcelUpgrade + listingExcess,
+            carrier: carrierCode,
+            parcelPreset,
+            changedFrom: order.carrier && order.carrier !== carrierCode ? order.carrier : null,
+        };
     }
 
     // Recover a booking whose answer was lost.
@@ -218,26 +330,30 @@ export async function POST(request: NextRequest) {
         const existing = await goshipFindShipmentByOrderId(order.id);
         if (existing.ok && existing.data?.id) {
             // A recovered booking carries its own price, which is better than
-            // a quote: it is what GoShip actually billed.
-            const linked = await linkShipmentToOrder(order.id, existing.data, body, null,
-                Number((existing.data as { total_fee?: number }).total_fee) || null);
+            // a quote: it is what GoShip actually billed. The seller's charge is
+            // recomputed from it the same way a fresh booking's would be, so a
+            // lost response does not change what the seller owes.
+            const found = existing.data as { id: string; total_fee?: number; carrier_short_name?: string };
+            const totalFee = Number(found.total_fee) || 0;
+            const carrierCode = goshipCarrierToApp(found.carrier_short_name ?? '') || order.carrier || '';
+            const charge = carrierCode ? await sellerCharge(carrierCode, totalFee) : null;
+            const linked = await linkShipmentToOrder(order.id, existing.data, body, null, totalFee || null, charge);
             if (linked) return linked;
-            return NextResponse.json({ data: existing.data, gcode: existing.data.id, recovered: true });
+            if (charge?.changedFrom) await notifyCarrierChanged(order.id, order.buyerId, charge.changedFrom, charge.carrier);
+            return NextResponse.json({ data: existing.data, gcode: existing.data.id, recovered: true, charge });
         }
     }
 
     // Price it again before booking, for two reasons that happen to share one
-    // call. The seller now pays whatever this costs above what the buyer was
-    // charged, so the figure that decides their payout cannot be a number the
+    // call. The figure that decides the seller's payout cannot be a number the
     // browser sent. And a rate id that has expired is no longer in the answer,
     // which catches a stale quote before a courier is dispatched rather than
     // after.
-    const fresh = await goshipRates({
-        from: { city: from.city, district: from.district },
-        to: { city: dest.city, district: dest.district },
-        parcel,
-        declaredValue,
-    });
+    const [fresh, baseline, original] = await Promise.all([
+        goshipRates({ ...route, parcel, declaredValue }),
+        declaredValue > 0 ? goshipRates({ ...route, parcel, declaredValue: 0 }) : Promise.resolve(null),
+        parcelChanged ? goshipRates({ ...route, parcel: orderParcel!, declaredValue: 0 }) : Promise.resolve(null),
+    ]);
     const priced = fresh.ok ? fresh.rates.find((r) => r.id === rateId) ?? null : null;
     if (fresh.ok && !priced) {
         return NextResponse.json(
@@ -246,10 +362,11 @@ export async function POST(request: NextRequest) {
         );
     }
     if (!fresh.ok) return NextResponse.json({ code: 'shipping_quote_failed' }, { status: 503 });
-    if (!priced || !shipmentCarriers(seller?.shipping_carriers).includes(priced.carrierCode)) {
+    if (!priced || !shipmentCarriers(seller?.shipping_carriers, seller?.carrier_coverage).includes(priced.carrierCode)) {
         return NextResponse.json({ code: 'invalid_shipping_carrier' }, { status: 409 });
     }
     const quotedFee = priced?.totalFee ?? null;
+    const charge = await sellerCharge(priced.carrierCode, priced.totalFee, { baseline, original });
 
     const result = await goshipCreateShipment({
         from: from as never,
@@ -302,9 +419,10 @@ export async function POST(request: NextRequest) {
     // order in exactly the same state.
     if (order) {
         const linked = await linkShipmentToOrder(order.id, created, body,
-            { city: dest.city, district: dest.district, ward: dest.ward }, quotedFee);
+            { city: dest.city, district: dest.district, ward: dest.ward }, quotedFee, charge);
         if (linked) return linked;
+        if (charge?.changedFrom) await notifyCarrierChanged(order.id, order.buyerId, charge.changedFrom, charge.carrier);
     }
 
-    return NextResponse.json({ data: result.data, gcode });
+    return NextResponse.json({ data: result.data, gcode, charge });
 }
