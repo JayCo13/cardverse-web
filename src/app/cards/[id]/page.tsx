@@ -320,7 +320,7 @@ export default function CardDetailsPage() {
             ownListing: "Đây là bài đăng của bạn. Buyer sẽ thấy nút mua và trả giá tại đây.",
             boughtBySomeone: "Thẻ này đã được người khác mua.",
             reservedOrUnavailable: "Thẻ này đang được giữ để thanh toán hoặc không còn khả dụng.",
-            heldFor: "Đang giữ chỗ · còn", heldExpiring: "Đang giữ chỗ · sắp mở lại",
+            heldFor: "Đang giữ chỗ, còn", heldExpiring: "Đang giữ chỗ, sắp mở lại",
             heldExplain: "Người bán đã chấp nhận một offer. Nếu người mua đó không thanh toán kịp, thẻ sẽ tự quay lại chợ.",
             buyNow: "Mua ngay",
             makeOffer: "Trả giá",
@@ -332,7 +332,7 @@ export default function CardDetailsPage() {
             status: "Trạng thái",
             shippingPayments: "Vận chuyển, hoàn trả và thanh toán",
             shipping: "Vận chuyển",
-            shipFeeToYou: "Giá GoShip thật theo địa chỉ của bạn · chọn hãng ở bước thanh toán.",
+            shipFeeToYou: "Giá GoShip thật theo địa chỉ của bạn. Chọn hãng ở bước thanh toán.",
             freeShipping: "Miễn phí",
             shipFeeNoAddress: "Phí ship tính theo địa chỉ nhận hàng khi thanh toán.",
             delivery: "Giao hàng",
@@ -419,7 +419,7 @@ export default function CardDetailsPage() {
                 ownListing: "これはあなたの出品です。購入者にはここに購入・オファーボタンが表示されます。",
                 boughtBySomeone: "このカードはすでに他のユーザーが購入しました。",
                 reservedOrUnavailable: "このカードは支払い確保中、または現在利用できません。",
-                heldFor: "確保中 · 残り", heldExpiring: "確保中 · まもなく解放",
+                heldFor: "確保中、残り", heldExpiring: "確保中、まもなく解放",
                 heldExplain: "出品者が提案を承諾しました。その購入者が期限までに支払わない場合、カードは自動的に市場へ戻ります。",
                 buyNow: "今すぐ購入",
                 makeOffer: "オファーする",
@@ -431,7 +431,7 @@ export default function CardDetailsPage() {
                 status: "ステータス",
                 shippingPayments: "配送・返品・支払い",
                 shipping: "配送",
-                shipFeeToYou: "お届け先に対するGoShipの実料金 · 業者は決済時に選択。",
+                shipFeeToYou: "お届け先に対するGoShipの実料金です。業者は決済時に選択。",
                 freeShipping: "送料無料",
                 shipFeeNoAddress: "送料は決済時にお届け先住所から計算されます。",
                 delivery: "配達",
@@ -517,7 +517,7 @@ export default function CardDetailsPage() {
                 ownListing: "This is your listing. Buyers will see the buy and offer actions here.",
                 boughtBySomeone: "This card has already been purchased by another buyer.",
                 reservedOrUnavailable: "This card is reserved for payment or is no longer available.",
-                heldFor: "Held · ", heldExpiring: "Held · reopening shortly",
+                heldFor: "Held, ", heldExpiring: "Held, reopening shortly",
                 heldExplain: "The seller accepted an offer. If that buyer does not pay in time, the card returns to the marketplace by itself.",
                 buyNow: "Buy It Now",
                 makeOffer: "Make Offer",
@@ -529,7 +529,7 @@ export default function CardDetailsPage() {
                 status: "Status",
                 shippingPayments: "Shipping, returns, and payments",
                 shipping: "Shipping",
-                shipFeeToYou: "GoShip’s real price for your address · pick the carrier at checkout.",
+                shipFeeToYou: "GoShip’s real price for your address. Pick the carrier at checkout.",
                 freeShipping: "Free",
                 shipFeeNoAddress: "Shipping is priced from your delivery address at checkout.",
                 delivery: "Delivery",
@@ -931,7 +931,7 @@ export default function CardDetailsPage() {
                     <div>
                         <p className="text-lg font-semibold">{formatVND(offer.price)}</p>
                         <p className="text-xs text-muted-foreground">
-                            {offer.buyerEmail} · {formatDistanceToNow(new Date(offer.createdAt), { addSuffix: true, locale: dateLocale })}
+                            {offer.buyerEmail}, {formatDistanceToNow(new Date(offer.createdAt), { addSuffix: true, locale: dateLocale })}
                         </p>
                         {offer.message && <p className="mt-1 text-sm text-muted-foreground">{offer.message}</p>}
                     </div>
@@ -1171,8 +1171,8 @@ export default function CardDetailsPage() {
 
                                     <div className="border-y border-white/10 py-2 text-sm text-muted-foreground xl:hidden">
                                         <span className="font-medium text-foreground">{card.condition || copy.ungraded}</span>
-                                        {" · "}{card.setName || card.publisher || copy.notSpecified}
-                                        {" · "}{card.quantity || 1} {copy.available}
+                                        {", "}{card.setName || card.publisher || copy.notSpecified}
+                                        {", "}{card.quantity || 1} {copy.available}
                                     </div>
 
                                     <div className="hidden grid-cols-1 gap-2 sm:grid-cols-2 xl:grid">
@@ -1283,7 +1283,7 @@ export default function CardDetailsPage() {
                                             seller actually offers. It carries the
                                             buyer's own number instead. */}
                                         <span className="block text-sm font-medium">{copy.shipping}: {shippingHeadline}</span>
-                                        <span className="mt-0.5 block text-xs text-muted-foreground">{copy.returns} · {copy.paymentReady}</span>
+                                        <span className="mt-0.5 block text-xs text-muted-foreground">{copy.returns}, {copy.paymentReady}</span>
                                     </span>
                                 </span>
                                 <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />

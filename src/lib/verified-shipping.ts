@@ -140,6 +140,10 @@ async function resolveSeller(input: ShippingQuoteInput, context: Awaited<ReturnT
     if (!pickup?.city || !pickup?.district || !GOSHIP_ID.test(pickup.city) || !GOSHIP_ID.test(pickup.district)) {
         throw new CheckoutShippingError('seller_shipping_origin_missing', input.sellerId, sellerName);
     }
+    const allowed = shipmentCarriers(profile.shipping_carriers, profile.carrier_coverage);
+    if (allowed.length === 0) {
+        throw new CheckoutShippingError('seller_shipping_configuration_missing', input.sellerId, sellerName);
+    }
 
     // A card id the read did not return no longer exists; it neither prices
     // nor frees the parcel. Only cards of this seller count — a crafted request
@@ -159,7 +163,6 @@ async function resolveSeller(input: ShippingQuoteInput, context: Awaited<ReturnT
         throw new CheckoutShippingError('shipping_quote_failed', input.sellerId, sellerName);
     }
 
-    const allowed = shipmentCarriers(profile.shipping_carriers, profile.carrier_coverage);
     const rates = quoted.rates.filter((r) => allowed.includes(r.carrierCode));
     if (rates.length === 0) throw new CheckoutShippingError('seller_does_not_ship_here', input.sellerId, sellerName);
 

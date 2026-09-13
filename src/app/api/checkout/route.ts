@@ -11,9 +11,10 @@ import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link
 import { translateRequest } from '@/lib/request-localization';
 import { walletCheckoutError } from '@/lib/wallet-checkout-error';
 import { announcePaidOrdersInChat } from '@/lib/order-paid-chat';
+import { sendOrderPlacedMails } from '@/lib/order-placed-mail';
 import { matchBundleSelection, type BundleItem, type BundleSelection } from '@/lib/bundle';
 
-// Fee model: the 8% platform fee is charged ONCE, at withdrawal
+// Fee model: the 10% platform fee is charged ONCE, at withdrawal
 // (src/app/api/wallet/withdraw/route.ts). Orders carry platform_fee = 0; the
 // seller is credited the full amount when the order completes.
 // How long a card is held for an unpaid checkout before it self-releases back
@@ -513,6 +514,10 @@ async function handlePOST(request: NextRequest) {
         // in the thread the two of them are actually using. Driven off the rows
         // the RPC returned, so this and the replay path above stay identical.
         await announcePaidOrdersInChat(service, orders);
+        // And the receipt in their inbox — both sides. Awaited, like the chat
+        // receipt, so a serverless function is not frozen mid-send; it swallows
+        // its own failures, so a mail outage cannot fail a paid order.
+        await sendOrderPlacedMails(service, orders.map(order => String(order.id)));
 
         if (mode === 'cart') {
           const cartItemIds = checkoutItems.map(item => item.cartItemId).filter(Boolean) as string[];

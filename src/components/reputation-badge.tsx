@@ -150,10 +150,10 @@ export function ReputationBadge({ profile, standing: given, size = 'md', classNa
             {tier === 'highly_trusted' ? <Star className={iconSize} aria-hidden />
                 : tier === 'trusted' ? <ShieldCheck className={iconSize} aria-hidden />
                 : null}
-            {label ? <span>{label} ·</span> : null}
+            {label ? <span>{label},</span> : null}
             <span>{standing.completedOrders} {copy.orders}</span>
             {standing.incidentsTotal > 0 ? (
-                <span className="opacity-60">· {standing.incidentsTotal} {copy.incidents}</span>
+                <span className="opacity-60">{standing.incidentsTotal} {copy.incidents}</span>
             ) : null}
         </span>
     );

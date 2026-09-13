@@ -16,10 +16,12 @@ function load(path, mocks) {
 const { shipmentCarriers } = load('../src/lib/shipment-carriers.ts', {
   '@/lib/shipping-carriers': { OFFERABLE_COURIERS: [{ code: 'ghn' }, { code: 'shopee' }, { code: 'jnt' }] },
 });
-test('shop preferences exclude other and retired carriers; empty preferences retain defaults', () => {
+test('shop preferences only expose carriers the seller explicitly selected', () => {
   assert.equal(JSON.stringify(shipmentCarriers(['ghn', 'best'])), '["ghn"]');
-  assert.equal(shipmentCarriers([]).length, 3);
-  assert.equal(shipmentCarriers(['best']).length, 3);
+  assert.equal(shipmentCarriers([]).length, 0);
+  assert.equal(shipmentCarriers(['best']).length, 0);
+  assert.equal(JSON.stringify(shipmentCarriers(['ghn', 'jnt'], { carriers: ['jnt'] })), '["jnt"]');
+  assert.equal(shipmentCarriers(['ghn'], { carriers: [] }).length, 0);
 });
 function setup({ user = { id: 'seller' }, order = { status: 'paid', to_goship: null, goship_code: null }, valid = true, write = { id: 'order' } } = {}) {
   const calls = [];
@@ -35,6 +37,7 @@ function setup({ user = { id: 'seller' }, order = { status: 'paid', to_goship: n
     '@/lib/supabase/server': { createServerSupabaseClient: async () => ({ auth: { getUser: async () => ({ data: { user } }) }, from: table => chain(table) }) },
     '@/lib/supabase/service': { createServiceSupabaseClient: () => ({ from: table => chain(table, true) }) },
     '@/lib/shipment-carriers': { shipmentCarriers },
+    '@/lib/parcel': { parseParcelOverrides: value => value ?? {} },
     '@/lib/goship': Object.fromEntries(['goshipCities', 'goshipDistricts', 'goshipWards'].map(key => [key, async () => ({ ok: true, data: valid ? [{ id: '1' }] : [] })])),
   });
   const request = method => ({ method, nextUrl: new URL('http://local?orderId=79c60a39-bced-4f83-b0ff-15f9cc125a20'), json: async () => ({ city: '1', district: '1', ward: '1' }) });

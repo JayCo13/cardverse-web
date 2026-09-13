@@ -118,7 +118,7 @@ Phí vận chuyển đã trả cho đơn vị vận chuyển không phải là k
 * Lệnh rút chậm: mỗi lệnh được xử lý thủ công. Nếu quá 3 ngày làm việc mà chưa nhận được tiền, vui lòng liên hệ kèm thời điểm và số tiền của lệnh rút.
 * Sai lệch số dư: gửi khiếu nại kèm thời điểm và số tiền. Chúng tôi đối chiếu sổ ví và điều chỉnh nếu có sai sót.
 * Xác minh người bán không được chấp thuận: lý do được hiển thị ngay trong trang bán hàng và bạn có thể nộp lại hồ sơ. Nếu hồ sơ bị chặn do trùng giấy tờ hoặc trùng tài khoản ngân hàng với một tài khoản khác, hãy liên hệ để được kiểm tra thủ công.
-* Phí nền tảng: phí 8% chỉ thu một lần khi rút tiền và luôn được hiển thị trước khi bạn xác nhận lệnh. Nếu số tiền thực nhận khác với số đã hiển thị, hãy khiếu nại ngay.
+* Phí nền tảng: phí 10% chỉ thu một lần khi rút tiền và luôn được hiển thị trước khi bạn xác nhận lệnh. Nếu số tiền thực nhận khác với số đã hiển thị, hãy khiếu nại ngay.
 
 ## 10. Khiếu nại lại và giải quyết tranh chấp
 

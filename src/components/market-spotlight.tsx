@@ -33,6 +33,7 @@ const CameraScanner = dynamic(
 import { useCardCache } from '@/contexts/card-cache-context';
 import { PSAGradedPrices } from '@/components/psa-graded-prices';
 import { VnMarketPrice } from '@/components/vn-market-price';
+import { noDataLabel } from '@/lib/no-data-label';
 
 // Fallback mock data for when no real data exists
 const MOCK_DATA = [
@@ -1826,7 +1827,7 @@ export function MarketSpotlight() {
 
     // Use centralized currency formatting from context
     const { formatPrice, convertPrice } = useCurrency();
-    const { t } = useLocalization();
+    const { t, locale } = useLocalization();
 
     // Get display image - use TCG image or fallback
     const getDisplayImage = () => {
@@ -2371,7 +2372,7 @@ export function MarketSpotlight() {
                                         <div className="h-3 md:h-4 w-16 md:w-24 bg-white/10 rounded animate-pulse" />
                                     ) : (
                                         <span className="text-white text-xs md:text-sm font-medium break-words">
-                                            {product?.number || '-'}
+                                            {product?.number || noDataLabel(locale)}
                                         </span>
                                     )}
                                 </div>
@@ -2383,7 +2384,7 @@ export function MarketSpotlight() {
                                         <div className="h-3 md:h-4 w-16 md:w-24 bg-white/10 rounded animate-pulse" />
                                     ) : (
                                         <span className="text-white text-xs md:text-sm font-medium break-words">
-                                            {product?.rarity || '-'}
+                                            {product?.rarity || noDataLabel(locale)}
                                         </span>
                                     )}
                                 </div>
@@ -2395,7 +2396,7 @@ export function MarketSpotlight() {
                                         <div className="h-3 md:h-4 w-32 md:w-48 bg-white/10 rounded animate-pulse" />
                                     ) : (
                                         <span className="text-white text-xs md:text-sm font-medium break-words leading-tight block">
-                                            {product?.cardType || '-'} / {product?.hp || '-'} / {product?.stage || '-'}
+                                            {product?.cardType || noDataLabel(locale)} / {product?.hp || noDataLabel(locale)} / {product?.stage || noDataLabel(locale)}
                                         </span>
                                     )}
                                 </div>
@@ -2609,7 +2610,7 @@ export function MarketSpotlight() {
                                     <div className="h-7 w-20 bg-white/10 rounded animate-pulse" />
                                 ) : (
                                     <span className="text-lg md:text-xl font-bold text-white group-hover:text-orange-400 transition-colors break-all">
-                                        {product?.low_price ? formatPrice(product.low_price) : '-'}
+                                        {product?.low_price ? formatPrice(product.low_price) : noDataLabel(locale)}
                                     </span>
                                 )}
                             </Card>
@@ -2633,7 +2634,7 @@ export function MarketSpotlight() {
                                     <div className="h-7 w-20 bg-white/10 rounded animate-pulse" />
                                 ) : (
                                     <span className="text-lg md:text-xl font-bold text-blue-400 break-all">
-                                        {product?.high_price ? formatPrice(product.high_price) : '-'}
+                                        {product?.high_price ? formatPrice(product.high_price) : noDataLabel(locale)}
                                     </span>
                                 )}
                             </Card>

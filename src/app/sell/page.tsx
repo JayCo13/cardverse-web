@@ -13,6 +13,7 @@ import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckC
 import { type PickupAddress } from '@/components/pickup-address-picker';
 import { ShippingQuotePreview } from '@/components/shipping-quote-preview';
 import { ShopShippingSetup } from '@/components/shop-shipping-setup';
+import { noDataLabel } from '@/lib/no-data-label';
 import { getAccountSummary, invalidateAccountSummary } from '@/lib/account-summary';
 import { useAuth, useSupabase } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
@@ -334,7 +335,7 @@ export default function SellPage() {
           completed: 'Hoàn tất',
           totalEarnings: 'Tổng thu nhập',
           pickupAddress: 'Địa chỉ gửi hàng',
-          pickupAddressDesc: 'Nơi bạn gửi hàng đi. Khác với địa chỉ nhận hàng khi bạn mua — sửa địa chỉ nhận ở trang Hồ sơ.',
+          pickupAddressDesc: 'Nơi bạn gửi hàng đi. Địa chỉ nhận hàng khi mua được sửa tại trang Hồ sơ.',
           update: 'Cập nhật',
           pickupNotice: 'Bạn cần thiết lập địa chỉ lấy hàng trước khi đăng bán thẻ. Chúng tôi dùng địa chỉ này để tính cước phí ship cho người mua.',
           savePickup: 'Lưu địa chỉ lấy hàng',
@@ -373,7 +374,7 @@ export default function SellPage() {
           completed: 'Completed',
           totalEarnings: 'Total earnings',
           pickupAddress: 'Where you ship from',
-        pickupAddressDesc: 'Where your parcels leave from. Not the address you receive at when buying — change that on your profile.',
+        pickupAddressDesc: 'Where your parcels leave from. Change the address you receive at when buying on your profile.',
           update: 'Update',
           pickupNotice: 'Set a pickup address before listing cards. We use this address to calculate shipping fees for buyers.',
           savePickup: 'Save pickup address',
@@ -957,7 +958,7 @@ export default function SellPage() {
         ) : (
           <>
             <div>{visibleListings.map(listing => (
-              <ListingRow key={listing.id} listing={listing} statusLabel={listing.status === 'sold' ? copy.sold : statusLabel} price={listing.price ? formatVND(listing.price) : '-'} pendingOffers={pendingOfferCounts[listing.id] || 0} offerLabel={tx('offer đang chờ', 'pending offers', '件の保留中オファー')} />
+              <ListingRow key={listing.id} listing={listing} statusLabel={listing.status === 'sold' ? copy.sold : statusLabel} price={listing.price ? formatVND(listing.price) : noDataLabel(locale)} pendingOffers={pendingOfferCounts[listing.id] || 0} offerLabel={tx('offer đang chờ', 'pending offers', '件の保留中オファー')} />
             ))}</div>
             {listings.length > 5 && !showAllListings[key] && (
               <button type="button" onClick={() => setShowAllListings(prev => ({ ...prev, [key]: true }))} className="mt-3 w-full text-sm font-medium text-primary">
@@ -1287,7 +1288,7 @@ export default function SellPage() {
                             </div>
                             <div className="flex flex-1 flex-col p-2.5">
                               <p className="line-clamp-1 text-sm font-medium">{listing.name}</p>
-                              <p className="mt-1 text-sm font-bold text-orange-400">{listing.price ? formatVND(listing.price) : '-'}</p>
+                              <p className="mt-1 text-sm font-bold text-orange-400">{listing.price ? formatVND(listing.price) : noDataLabel(locale)}</p>
                             </div>
                           </div>
                         );
@@ -1516,7 +1517,7 @@ export default function SellPage() {
                       </p>
                       <div>
                         <p className="text-muted-foreground text-xs">{tx('Tên trên giấy tờ', 'Name on document', '書類上の氏名')}</p>
-                        <p className="font-medium">{verifiedName || '-'}</p>
+                        <p className="font-medium">{verifiedName || noDataLabel(locale)}</p>
                       </div>
                     </div>
                   ) : isKycUnderReview ? (
@@ -1620,7 +1621,7 @@ export default function SellPage() {
                         <SelectContent>
                           {banks.map(b => (
                             <SelectItem key={b.bin} value={b.bin}>
-                              {b.shortName} · {b.name}
+                              {b.shortName}, {b.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1832,11 +1833,11 @@ export default function SellPage() {
                       </div>
                       <div>
                       <p className="text-muted-foreground text-xs">{tx('Số tài khoản', 'Account number', '口座番号')}</p>
-                      <p className="font-mono font-medium">{editableBankAccountNumber || '-'}</p>
+                      <p className="font-mono font-medium">{editableBankAccountNumber || noDataLabel(locale)}</p>
                     </div>
                       <div>
                         <p className="text-muted-foreground text-xs">{tx('Tên chủ tài khoản', 'Account holder name', '口座名義')}</p>
-                        <p className="font-medium">{editableBankAccountName || '-'}</p>
+                        <p className="font-medium">{editableBankAccountName || noDataLabel(locale)}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground text-xs">{tx('Tài khoản ngân hàng', 'Bank account', '銀行口座')}</p>

@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { ExternalLink, Sparkles } from "lucide-react";
 import { useCurrency } from "@/contexts/currency-context";
 import { StrawHatIcon } from "@/components/icons/onepiece-icons";
+import { useLocalization } from '@/context/localization-context';
+import { noDataLabel } from '@/lib/no-data-label';
 
 export interface OnePieceCard {
     product_id: number;
@@ -39,6 +41,7 @@ function getRarityColor(rarity: string | null): string {
 
 export const OnePieceCardItem = React.memo(function OnePieceCardItem({ card }: OnePieceCardItemProps) {
     const { formatPrice } = useCurrency();
+    const { locale } = useLocalization();
     const router = useRouter();
 
     const handleCardClick = () => {
@@ -113,13 +116,13 @@ export const OnePieceCardItem = React.memo(function OnePieceCardItem({ card }: O
                     <div className="flex items-center justify-between">
                         <span className="text-muted-foreground text-[10px] uppercase tracking-wider">Market</span>
                         <span className="font-bold text-sm sm:text-base text-red-500">
-                            {card.market_price ? formatPrice(card.market_price) : '-'}
+                            {card.market_price ? formatPrice(card.market_price) : noDataLabel(locale)}
                         </span>
                     </div>
                     <div className="flex items-center justify-between border-t border-white/5 pt-2">
                         <span className="text-muted-foreground text-[10px] uppercase tracking-wider">Low</span>
                         <span className="font-medium text-sm sm:text-base text-green-400">
-                            {card.low_price ? formatPrice(card.low_price) : '-'}
+                            {card.low_price ? formatPrice(card.low_price) : noDataLabel(locale)}
                         </span>
                     </div>
                 </div>

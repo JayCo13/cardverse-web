@@ -12,9 +12,10 @@ import { attachClaimedPayOSLink, claimPayOSLinkCreation } from '@/lib/payos-link
 import { translateRequest } from '@/lib/request-localization';
 import { walletCheckoutError } from '@/lib/wallet-checkout-error';
 import { sendOrderPlacedToBuyer, sendOrderPlacedToSeller } from '@/lib/mail';
+import { getCarrier } from '@/lib/shipping-carriers';
 import { announcePaidOrdersInChat } from '@/lib/order-paid-chat';
 
-// Fee model: the 8% platform fee is charged once, at withdrawal — orders carry
+// Fee model: the 10% platform fee is charged once, at withdrawal — orders carry
 // platform_fee = 0 and the seller is credited the full amount on completion.
 const RESERVATION_MINUTES = 15; // How long a QR/PayOS checkout holds the card
 
@@ -400,7 +401,7 @@ async function handlePOST(request: NextRequest) {
                     amount,
                     shippingFee,
                     totalPaid,
-                    carrierName: shippingQuote.carrier,
+                    carrierName: getCarrier(shippingQuote.carrier)?.name ?? shippingQuote.carrier,
                     shippingAddress: destination || null,
                 }),
                 sendOrderPlacedToSeller(sellerProfile?.email || '', {

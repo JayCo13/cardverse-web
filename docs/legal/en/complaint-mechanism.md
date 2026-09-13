@@ -118,7 +118,7 @@ Shipping fees already paid to a carrier are not funds held by the platform. Whet
 * Withdrawal delayed: every request is processed manually. If more than 3 working days pass without the money arriving, contact us with the date and amount of the request.
 * Balance discrepancy: file a complaint with the date and amount. We reconcile the wallet ledger and correct any error.
 * Seller verification not approved: the reason is shown on the seller page and you can submit again. If the submission was blocked because the document or bank account is already used by another account, contact us for a manual check.
-* Platform fee: the 8% is charged once, at withdrawal, and is always shown before you confirm. If the amount you receive differs from the amount shown, file a complaint straight away.
+* Platform fee: the 10% is charged once, at withdrawal, and is always shown before you confirm. If the amount you receive differs from the amount shown, file a complaint straight away.
 
 ## 10. Appeals and dispute resolution
 

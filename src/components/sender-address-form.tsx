@@ -114,7 +114,7 @@ export function SenderAddressForm({
                     <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-green-400" />
                     <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{saved.street}</p>
-                        <p className="truncate text-xs text-muted-foreground">{saved.name} · {saved.phone}</p>
+                        <p className="truncate text-xs text-muted-foreground">{saved.name}, {saved.phone}</p>
                     </div>
                 </div>
                 <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => setEditing(true)}>

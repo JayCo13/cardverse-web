@@ -431,7 +431,7 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
                   .replace('{total}', (saleCards || []).length.toString())}
                 {pageCount > 1 && (
                   <span className="ml-1 tabular-nums">
-                    · {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filteredAndSortedCards.length)}
+                    , {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filteredAndSortedCards.length)}
                   </span>
                 )}
               </p>

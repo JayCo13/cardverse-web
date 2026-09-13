@@ -17,6 +17,7 @@ import { formatCompactCount } from "@/lib/format";
 import { ReputationBadge } from "@/components/reputation-badge";
 import { isNewAccount, type ReputationStanding } from "@/lib/reputation";
 import { NewSellerFrame } from "@/components/new-seller-frame";
+import { noDataLabel } from '@/lib/no-data-label';
 
 /**
  * The profile, rendered once for two audiences.
@@ -43,9 +44,9 @@ import { NewSellerFrame } from "@/components/new-seller-frame";
  * price through it rendered a 300.000 ₫ card as 7.635.000.000 ₫. Format the
  * stored number directly, exactly as `/cards/[id]` does.
  */
-export const formatVnd = (amount: number | null | undefined) =>
+export const formatVnd = (amount: number | null | undefined, locale?: string) =>
     amount === null || amount === undefined
-        ? "-"
+        ? noDataLabel(locale)
         : new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
 
 /**
@@ -486,14 +487,14 @@ export function ProfileView({
                         <StatTile
                             icon={<Wallet className="h-4 w-4" />}
                             label={copy.revenue}
-                            value={formatVnd(owner.grossRevenue)}
+                            value={formatVnd(owner.grossRevenue, locale)}
                             hint={fill(copy.revenueHint, { count: soldCount })}
                             accent="text-green-500"
                         />
                         <StatTile
                             icon={<ShoppingBag className="h-4 w-4" />}
                             label={copy.spent}
-                            value={formatVnd(owner.totalSpent)}
+                            value={formatVnd(owner.totalSpent, locale)}
                             hint={fill(copy.spentHint, { count: owner.boughtCount })}
                         />
                     </>
@@ -595,7 +596,7 @@ export function ProfileView({
                                 <CardTile
                                     key={card.id}
                                     card={card}
-                                    price={formatVnd(card.price)}
+                                    price={formatVnd(card.price, locale)}
                                     priceClass="text-primary"
                                     type={listingTypeChip(card.listingType)}
                                     overlay={card.status === "in_transaction"
@@ -626,7 +627,7 @@ export function ProfileView({
                                     card={card}
                                     // The agreed sale price, falling back to the ask
                                     // only when the sale predates that column.
-                                    price={formatVnd(card.lastSoldPrice ?? card.price)}
+                                    price={formatVnd(card.lastSoldPrice ?? card.price, locale)}
                                     priceClass="text-green-500"
                                     type={listingTypeChip(card.listingType)}
                                     overlay={{ label: copy.soldTab, className: "bg-emerald-400 text-black shadow-[0_0_14px_-2px_rgba(52,211,153,0.7)]" }}
@@ -651,7 +652,7 @@ export function ProfileView({
                                         <PurchaseTile
                                             key={tx.id}
                                             tx={tx}
-                                            price={formatVnd(tx.price)}
+                                            price={formatVnd(tx.price, locale)}
                                             fallbackName={copy.unknownCard}
                                             locale={locale}
                                         />
@@ -695,7 +696,7 @@ export function ProfileView({
                                                             </span>
                                                         </div>
                                                         <p className="text-xs text-muted-foreground mt-0.5">
-                                                            {statusLabel(tx.status)} · {new Date(tx.createdAt).toLocaleDateString(locale, {
+                                                            {statusLabel(tx.status)}, {new Date(tx.createdAt).toLocaleDateString(locale, {
                                                                 day: "2-digit", month: "2-digit", year: "numeric",
                                                             })}
                                                         </p>
@@ -708,7 +709,7 @@ export function ProfileView({
                                                         : tx.direction === "sell" ? "text-green-500" : "text-primary"
                                                         }`}>
                                                         {tx.status === "completed" && (tx.direction === "sell" ? "+" : "−")}
-                                                        {formatVnd(tx.price)}
+                                                        {formatVnd(tx.price, locale)}
                                                     </p>
                                                     <Link
                                                         href={`/transaction/${tx.id}`}

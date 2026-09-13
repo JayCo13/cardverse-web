@@ -45,7 +45,7 @@ const COPY = {
         street: 'Địa chỉ cụ thể', streetPlaceholder: 'Số nhà, tên đường...',
         name: 'Tên người gửi', phone: 'Số điện thoại',
         loading: 'Đang tải...', loadError: 'Không tải được danh sách. Thử lại sau.',
-        note: 'Danh mục địa giới do đơn vị vận chuyển cung cấp nên có thể khác địa chỉ trong hồ sơ của bạn. Chọn theo địa chỉ bạn muốn in trên vận đơn — bạn vẫn có thể mang hàng ra bưu cục gửi.',
+        note: 'Danh mục địa giới do đơn vị vận chuyển cung cấp nên có thể khác địa chỉ trong hồ sơ của bạn. Chọn theo địa chỉ bạn muốn in trên vận đơn. Bạn vẫn có thể mang hàng ra bưu cục gửi.',
         phoneHint: 'Bắt đầu bằng 0, 9-11 chữ số.',
     },
     'en-US': {
@@ -54,7 +54,7 @@ const COPY = {
         street: 'Street address', streetPlaceholder: 'House number, street...',
         name: 'Sender name', phone: 'Phone number',
         loading: 'Loading...', loadError: 'Could not load the list. Try again later.',
-        note: 'These divisions come from the carrier, so they may differ from the address on your profile. Pick the address to print on the waybill — you can still drop the parcel off at a branch.',
+        note: 'These divisions come from the carrier, so they may differ from the address on your profile. Pick the address to print on the waybill. You can still drop the parcel off at a branch.',
         phoneHint: 'Starts with 0, 9-11 digits.',
     },
     'ja-JP': {

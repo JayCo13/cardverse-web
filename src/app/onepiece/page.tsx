@@ -277,7 +277,7 @@ export default function OnePiecePage() {
                         <>
                             <p className="text-white/50 mb-4">
                                 {t('cards_found').replace('{count}', totalCount.toLocaleString())}
-                                {totalPages > 1 && <span className="text-white/30"> · {page + 1}/{totalPages}</span>}
+                                {totalPages > 1 && <span className="text-white/30">, {page + 1}/{totalPages}</span>}
                             </p>
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                                 {cards.map((card) => (

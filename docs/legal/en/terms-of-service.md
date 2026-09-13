@@ -103,7 +103,7 @@ The rule is simple: whoever cannot show what they claim loses that point. The fu
 
 The CardVerseHub wallet holds your balance on the platform. It is used to pay for orders, to receive sale proceeds and to receive refunds.
 
-The platform fee is 8% and is charged exactly once, at withdrawal. Listing a card and completing a sale cost nothing.
+The platform fee is 10% and is charged exactly once, at withdrawal. Listing a card and completing a sale cost nothing.
 
 Withdrawal conditions:
 
@@ -113,7 +113,7 @@ Withdrawal conditions:
 
 When you submit a withdrawal the balance is debited immediately and the request moves to pending. The CardVerseHub team transfers the money manually to your verified bank account. If a request is rejected, the full amount is returned to your wallet with a reason.
 
-Note that the 8% applies to the whole withdrawn amount, including money you deposited into the wallet yourself.
+Note that the 10% applies to the whole withdrawn amount, including money you deposited into the wallet yourself.
 
 ## 10. Scan packages and credits
 
