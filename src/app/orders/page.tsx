@@ -15,6 +15,7 @@ import { useAuth } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
 import { useLocalization } from '@/context/localization-context';
+import { noDataLabel } from '@/lib/no-data-label';
 import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -700,7 +701,7 @@ export default function OrdersPage() {
                       {/* The whole card pushes /orders/{id} from its own onClick
                           (line ~544), so without this the click fires both
                           navigations and the order usually wins the race. */}
-                      <UserLink userId={order.seller_id} stopPropagation>{order.seller?.display_name || order.seller?.email || '-'}</UserLink>
+                      <UserLink userId={order.seller_id} stopPropagation>{order.seller?.display_name || order.seller?.email || noDataLabel(locale)}</UserLink>
                     </span>
                     <VerifiedSellerBadge verified={order.seller?.seller_verified} className="h-3.5 w-3.5" />
                     <ReputationBadge profile={order.seller as unknown as Record<string, unknown>} size="sm" />
@@ -708,7 +709,7 @@ export default function OrdersPage() {
                 ) : (
                   <span>
                     {`${copy.buyer}: `}
-                    <UserLink userId={order.buyer_id} stopPropagation>{order.buyer?.display_name || order.buyer?.email || '-'}</UserLink>
+                    <UserLink userId={order.buyer_id} stopPropagation>{order.buyer?.display_name || order.buyer?.email || noDataLabel(locale)}</UserLink>
                   </span>
                 )}
               </p>

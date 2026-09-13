@@ -26,6 +26,7 @@ import { UserLink } from "@/components/user-link";
 import { ReputationBadge } from '@/components/reputation-badge';
 import { NewSellerFrame } from '@/components/new-seller-frame';
 import { productCopy, productConditionLabel, isNonCard } from '@/lib/product-listing';
+import { noDataLabel } from '@/lib/no-data-label';
 
 // Category badge styles with colors and gradients (no icons for cleaner look)
 const getCategoryStyle = (category: string) => {
@@ -87,8 +88,8 @@ const getCategoryStyle = (category: string) => {
 };
 
 /** Format price directly in VND without conversion */
-const formatVnd = (price: number | null | undefined): string => {
-  if (price === null || price === undefined) return '-';
+const formatVnd = (price: number | null | undefined, locale?: string): string => {
+  if (price === null || price === undefined) return noDataLabel(locale);
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
 };
 
@@ -110,7 +111,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
 
   /** Use direct VND format for marketplace listings, otherwise use currency conversion */
   const displayPrice = (price: number | null | undefined) => {
-    if (card.priceIsVnd) return formatVnd(price);
+    if (card.priceIsVnd) return formatVnd(price, locale);
     return formatPrice(price ?? 0);
   };
 
@@ -523,15 +524,15 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
             <p className="hidden md:mt-1.5 md:block md:text-sm md:leading-5">
               {isNonCard(card.productKind) && <Badge className="mr-2">{productCopy(locale)[card.productKind!]}</Badge>}
               {productConditionLabel(card.condition, locale) || 'Pre-owned'}
-              {card.publisher && <span> · {card.publisher}</span>}
-              {card.setName && <span> · {card.setName}</span>}
+              {card.publisher && <span>, {card.publisher}</span>}
+              {card.setName && <span>, {card.setName}</span>}
             </p>
 
             {(() => {
               const specs = [
                 (card.gradingCompany || card.grade != null) && {
                   label: copy.grading,
-                  value: [card.gradingCompany, card.grade].filter((v) => v != null && v !== '').join(' ') || '-',
+                  value: [card.gradingCompany, card.grade].filter((v) => v != null && v !== '').join(' ') || noDataLabel(locale),
                   labelClassName: 'font-medium text-primary',
                 },
                 card.cardNumber && { label: copy.cardNumber, value: card.cardNumber },
@@ -746,7 +747,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
             variant="secondary"
             className="absolute top-2 sm:top-3 left-2 sm:left-3 bg-white/90 text-black text-[10px] sm:text-xs font-medium backdrop-blur-sm"
           >
-            {isNonCard(card.productKind) ? `${productCopy(locale)[card.productKind!]} — ${productConditionLabel(card.condition, locale)}` : card.condition}
+            {isNonCard(card.productKind) ? `${productCopy(locale)[card.productKind!]}, ${productConditionLabel(card.condition, locale)}` : card.condition}
           </Badge>
         )}
         {/* Category badge - top right - Professional Style */}
@@ -784,7 +785,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
         {/* Category & details */}
         <p className="text-xs sm:text-sm text-muted-foreground mb-1">
           {card.category}
-          {card.setName && <span className="text-muted-foreground/60"> · {card.setName}</span>}
+          {card.setName && <span className="text-muted-foreground/60">, {card.setName}</span>}
         </p>
 
         {/* Seller info */}

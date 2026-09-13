@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { OFFERABLE_COURIERS } from '@/lib/shipping-carriers';
+import { OFFERABLE_COURIERS, minShopCarriers } from '@/lib/shipping-carriers';
 import { coverageIsFresh, refreshCarrierCoverage, type CarrierCoverage } from '@/lib/carrier-coverage';
 import { parseParcelOverrides, type ParcelOverrides } from '@/lib/parcel';
 
@@ -34,7 +34,7 @@ async function readShop(userId: string) {
 
 function shape(row: ShopRow, coverage: CarrierCoverage | null) {
     const offerable = OFFERABLE_COURIERS.map((c) => c.code as string);
-    const collects = coverage?.carriers?.length ? offerable.filter((c) => coverage.carriers.includes(c)) : null;
+    const collects = coverage ? offerable.filter((c) => coverage.carriers.includes(c)) : null;
     return {
         carriers: (row.shipping_carriers ?? []).filter((c) => offerable.includes(c) && (!collects || collects.includes(c))),
         // Null means "not probed yet" — the picker offers a button; an array
@@ -76,7 +76,8 @@ export async function PUT(request: NextRequest) {
     const patch: Record<string, unknown> = {};
 
     // Carriers, when sent: every code offerable, every code collecting here,
-    // at least one.
+    // and enough of them that the seller has a backup when the buyer's pick
+    // stops serving the route (MIN_SHOP_CARRIERS, capped by who collects).
     let codes = row.shipping_carriers ?? [];
     if (body.carriers !== undefined) {
         if (!Array.isArray(body.carriers)) return NextResponse.json({ error: 'Danh sách đơn vị vận chuyển không hợp lệ.' }, { status: 400 });
@@ -84,9 +85,15 @@ export async function PUT(request: NextRequest) {
         codes = [...new Set(body.carriers.map((c) => String(c)))];
         const unknown = codes.find((c) => !offerable.includes(c));
         if (unknown) return NextResponse.json({ error: `Không hỗ trợ "${unknown}".` }, { status: 400 });
-        const outside = coverage?.carriers?.length ? codes.find((c) => !coverage.carriers.includes(c)) : undefined;
+        const outside = coverage ? codes.find((c) => !coverage.carriers.includes(c)) : undefined;
         if (outside) return NextResponse.json({ error: `"${outside}" không lấy hàng tại khu vực của bạn.`, code: 'carrier_not_collecting' }, { status: 400 });
-        if (codes.length === 0) return NextResponse.json({ error: 'Chọn ít nhất một đơn vị vận chuyển.', code: 'no_carrier' }, { status: 400 });
+        const minimum = minShopCarriers(coverage?.carriers);
+        if (codes.length < minimum) {
+            return NextResponse.json({
+                error: minimum > 1 ? `Chọn ít nhất ${minimum} đơn vị vận chuyển.` : 'Chọn ít nhất một đơn vị vận chuyển.',
+                code: codes.length === 0 ? 'no_carrier' : 'too_few_carriers',
+            }, { status: 400 });
+        }
         patch.shipping_carriers = codes;
     }
 

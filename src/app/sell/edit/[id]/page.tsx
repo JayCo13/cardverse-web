@@ -312,7 +312,7 @@ export default function EditListingPage() {
         .filter(item => item.value)
         .slice(0, 3)
         .map(item => item.value)
-        .join(" · ");
+        .join(", ");
 
     return (
         <div className="flex flex-1 flex-col bg-background">

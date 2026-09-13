@@ -147,6 +147,30 @@ export const OFFERABLE_CARRIERS: ShippingCarrier[] = SHIPPING_CARRIERS.filter((c
 /** Offerable carriers that a courier actually bills for — everything but hand delivery. */
 export const OFFERABLE_COURIERS: ShippingCarrier[] = OFFERABLE_CARRIERS.filter((c) => c.booksWithCarrier);
 
+/**
+ * How many couriers a shop must tick before it can sell.
+ *
+ * Two, not one: the buyer picks a carrier at checkout, and when that carrier
+ * turns out not to serve the route at booking time the seller has to fall
+ * back on another they already agreed to hand parcels to. A shop with a
+ * single courier has no backup, so the swap would fail and the order stall.
+ */
+export const MIN_SHOP_CARRIERS = 2;
+
+/**
+ * The smallest tick list this shop is allowed to save, given who collects at
+ * its door. Normally MIN_SHOP_CARRIERS; when coverage says fewer couriers
+ * than that come to the area, requiring two would shut the shop outright, so
+ * the floor drops to however many actually collect (never below one).
+ */
+export const minShopCarriers = (collecting: string[] | null | undefined): number => {
+  const offerable = OFFERABLE_COURIERS.map((c) => c.code as string);
+  const available = Array.isArray(collecting)
+    ? offerable.filter((c) => collecting.includes(c)).length
+    : offerable.length;
+  return Math.max(1, Math.min(MIN_SHOP_CARRIERS, available));
+};
+
 const CARRIER_BY_CODE = new Map(SHIPPING_CARRIERS.map((c) => [c.code, c]));
 
 export const getCarrier = (code: string): ShippingCarrier | undefined =>

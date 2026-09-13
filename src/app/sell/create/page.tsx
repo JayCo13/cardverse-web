@@ -50,7 +50,7 @@ import { VnMarketPrice } from '@/components/vn-market-price';
 import { SearchableSetPicker } from '@/components/searchable-set-picker';
 import { SenderAddressForm } from '@/components/sender-address-form';
 import { ShopShippingSetup } from '@/components/shop-shipping-setup';
-import { OFFERABLE_CARRIERS } from '@/lib/shipping-carriers';
+import { OFFERABLE_CARRIERS, minShopCarriers } from '@/lib/shipping-carriers';
 
 // Lazy-loaded: the picker dialog (and its catalog deps) only mount when opened,
 // so keep it out of the initial bundle to make the page load lighter.
@@ -291,7 +291,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       acceptAllOffers: 'すべてのオファーを受ける',
       nearOriginalPrice: '元値に近いオファーのみ',
       payoutNote: '売上に関する注意',
-      payoutNoteDesc: 'カードが売れると、売上はCardVerseHubウォレットに入ります。銀行口座への出金ごとに8%のプラットフォーム手数料が差し引かれます。',
+      payoutNoteDesc: 'カードが売れると、売上はCardVerseHubウォレットに入ります。銀行口座への出金ごとに10%のプラットフォーム手数料が差し引かれます。',
       usdConfirmTitle: '販売価格を確認 (VND換算)',
       usdConfirmDesc: 'USDで入力した価格は、換算後にVNDで出品されます:',
       editPrice: '価格を修正',
@@ -330,13 +330,13 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       createErrorTitle: 'Lỗi',
       createErrorDesc: 'Có lỗi khi tạo bài đăng.',
       shippingConfigTitle: 'Chưa thiết lập vận chuyển',
-      shippingConfigDesc: 'Cần chọn đơn vị vận chuyển trước khi đăng bán. Tải lại trang rồi thử lại — nội dung bạn vừa nhập vẫn còn nguyên.',
+      shippingConfigDesc: 'Cần chọn đơn vị vận chuyển trước khi đăng bán. Tải lại trang rồi thử lại. Nội dung bạn vừa nhập vẫn còn nguyên.',
       checkingSeller: 'Đang kiểm tra quyền người bán',
       checkingSellerDesc: 'Vui lòng đợi trong giây lát.',
       kycNeeded: 'Bạn chưa được duyệt KYC',
       kycNeededDesc: 'Hoàn tất xác minh ở trang Seller để bắt đầu đăng bán.',
       addShipping: 'Chọn đơn vị vận chuyển',
-      addShippingDesc: 'Chọn hãng bạn nhận gửi và loại gói bạn thường gửi. Giá ship là giá GoShip thật theo địa chỉ người mua — bạn không cần đặt.',
+      addShippingDesc: 'Chọn hãng bạn nhận gửi và loại gói bạn thường gửi. Giá ship là giá GoShip thật theo địa chỉ người mua. Bạn không cần đặt.',
       stepPickup: 'Địa chỉ gửi hàng',
       stepShipping: 'Giá vận chuyển',
       addPickup: 'Thêm địa chỉ lấy hàng',
@@ -414,7 +414,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       acceptAllOffers: 'Nhận mọi offer',
       nearOriginalPrice: 'Chỉ nhận gần giá gốc',
       payoutNote: 'Lưu ý về tiền bán',
-      payoutNoteDesc: 'Khi bán được thẻ, tiền sẽ vào ví CardVerseHub của bạn. Mỗi lần rút tiền về tài khoản ngân hàng sẽ bị trừ 8% phí nền tảng. Bạn có thể cân nhắc mức giá để bù phần phí này.',
+      payoutNoteDesc: 'Khi bán được thẻ, tiền sẽ vào ví CardVerseHub của bạn. Mỗi lần rút tiền về tài khoản ngân hàng sẽ bị trừ 10% phí nền tảng. Bạn có thể cân nhắc mức giá để bù phần phí này.',
       usdConfirmTitle: 'Xác nhận giá bán (quy đổi sang VND)',
       usdConfirmDesc: 'Bạn nhập giá bằng USD. Thẻ sẽ được đăng bán với giá VND sau quy đổi:',
       editPrice: 'Sửa lại giá',
@@ -452,13 +452,13 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
     createErrorTitle: 'Error',
     createErrorDesc: 'There was a problem creating your listing.',
     shippingConfigTitle: 'Shipping is not set up',
-    shippingConfigDesc: 'Carriers have to be set before listing. Reload the page and try again — what you entered here is kept.',
+    shippingConfigDesc: 'Carriers have to be set before listing. Reload the page and try again. What you entered here is kept.',
     checkingSeller: 'Checking seller access',
     checkingSellerDesc: 'Please wait a moment.',
     kycNeeded: 'KYC has not been approved',
     kycNeededDesc: 'Complete verification on the Seller page before listing cards.',
     addShipping: 'Pick your carriers',
-    addShippingDesc: 'Pick the carriers you ship with and the parcel you usually send. Postage is GoShip’s real price for the buyer’s address — nothing for you to set.',
+    addShippingDesc: 'Pick the carriers you ship with and the parcel you usually send. Postage is GoShip’s real price for the buyer’s address. Nothing for you to set.',
     stepPickup: 'Pickup address',
     stepShipping: 'Shipping prices',
     addPickup: 'Add pickup address',
@@ -536,7 +536,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
     acceptAllOffers: 'Accept all offers',
     nearOriginalPrice: 'Only near original price',
     payoutNote: 'Seller payout note',
-    payoutNoteDesc: 'When a card sells, the money goes to your CardVerseHub wallet. Each withdrawal to a bank account has an 8% platform fee.',
+    payoutNoteDesc: 'When a card sells, the money goes to your CardVerseHub wallet. Each withdrawal to a bank account has a 10% platform fee.',
     usdConfirmTitle: 'Confirm sale price (converted to VND)',
     usdConfirmDesc: 'You entered a USD price. The card will be listed in VND after conversion:',
     editPrice: 'Edit price',
@@ -988,7 +988,7 @@ export default function CreateListingPage() {
         // filling in the whole form only to be refused at the end.
         const { data: profile } = await supabase
           .from('profiles')
-          .select('address_province_id, address_ward_code, shipping_carriers')
+          .select('address_province_id, address_ward_code, shipping_carriers, carrier_coverage')
           .eq('id', user.id)
           .single();
         const p = profile as Record<string, any> | null;
@@ -997,8 +997,14 @@ export default function CreateListingPage() {
         const pickupReady = !!(p?.address_province_id && p?.address_ward_code);
         // Read raw, so filter here: a shop still carrying `vtp` or `self` is
         // pointing at carriers nobody can book and has not really chosen.
-        const shippingReady = ((p?.shipping_carriers ?? []) as string[]).some(code =>
-          OFFERABLE_CARRIERS.some(carrier => carrier.code === code));
+        // Enough of them, too: the seller needs a backup when the buyer's
+        // carrier stops serving the route, so the floor is minShopCarriers —
+        // the same line the setup form and the API draw.
+        const collecting = (p?.carrier_coverage?.carriers ?? null) as string[] | null;
+        const chosen = ((p?.shipping_carriers ?? []) as string[]).filter(code =>
+          OFFERABLE_CARRIERS.some(carrier => carrier.code === code)
+          && (collecting === null || collecting.includes(code)));
+        const shippingReady = chosen.length >= minShopCarriers(collecting);
         setHasPickupAddress(pickupReady);
         setHasShippingTable(shippingReady);
       } catch {
@@ -1213,7 +1219,7 @@ export default function CreateListingPage() {
 
     toast({
       title: '✅ Đã điền thông tin',
-      description: `${card.name} · ${card.setName}`,
+      description: `${card.name}, ${card.setName}`,
     });
   };
 
@@ -1260,7 +1266,7 @@ export default function CreateListingPage() {
 
     toast({
       title: '✅ Đã gắn thẻ catalog',
-      description: `${pick.name}${pick.number ? ` · #${pick.number}` : ''}${pick.language ? ` · ${pick.language.toUpperCase()}` : ''}`,
+      description: `${pick.name}${pick.number ? `, #${pick.number}` : ''}${pick.language ? `, ${pick.language.toUpperCase()}` : ''}`,
     });
   };
 
@@ -1719,8 +1725,8 @@ export default function CreateListingPage() {
                       <p className="break-words font-semibold sm:truncate">{catalogPick.name}</p>
                       <p className="break-words text-xs text-muted-foreground sm:truncate">
                         {catalogPick.setName}
-                        {catalogPick.number ? ` · #${catalogPick.number}` : ''}
-                        {catalogPick.language ? ` · ${catalogPick.language.toUpperCase()}` : ''}
+                        {catalogPick.number ? `, #${catalogPick.number}` : ''}
+                        {catalogPick.language ? `, ${catalogPick.language.toUpperCase()}` : ''}
                       </p>
                     </div>
                     {/* Icon only on a phone. The label costs about a third of a
@@ -2728,7 +2734,7 @@ export default function CreateListingPage() {
           />
 
           {/* Seller payout fee notice — shown right before posting so the seller
-              factors the 8% withdrawal fee into their price. */}
+              factors the 10% withdrawal fee into their price. */}
           <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
             <div className="flex items-start gap-3">
               <HandCoins className="h-5 w-5 text-amber-400 mt-0.5 shrink-0" />

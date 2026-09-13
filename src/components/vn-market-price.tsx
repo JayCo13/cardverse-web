@@ -85,7 +85,7 @@ export function VnMarketPrice({ productId, soccerId }: { productId?: number | nu
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm">
             <span className="font-semibold text-emerald-400">🇻🇳 {copy.label}: {formatVND(row.median_price)}</span>
             <span className="text-xs text-muted-foreground">
-                {row.sale_count} {copy.trades} · {formatVND(row.min_price)}–{formatVND(row.max_price)} · {copy.updated}{' '}
+                {row.sale_count} {copy.trades}, {formatVND(row.min_price)}–{formatVND(row.max_price)}, {copy.updated}{' '}
                 {formatDistanceToNow(new Date(row.last_sold_at), { addSuffix: true, locale: dateLocale })}
             </span>
         </div>

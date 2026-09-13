@@ -7,6 +7,7 @@ import { AlertCircle, Check, ExternalLink, Loader2, Truck } from 'lucide-react';
 import { useLocalization } from '@/context/localization-context';
 import { carrierStatusLabel } from '@/lib/carrier-status-labels';
 import { getCarrier } from '@/lib/shipping-carriers';
+import { noDataLabel } from '@/lib/no-data-label';
 
 /**
  * The parcel's journey, without leaving the site.
@@ -187,7 +188,7 @@ export function ShipmentTrackingDialog({
                                                     </div>
                                                     <div className={`min-w-0 pb-4 ${last ? '' : 'opacity-70'}`}>
                                                         <p className="text-sm font-medium">
-                                                            {e.text || (e.status ? carrierStatusLabel(e.status, locale) : '—')}
+                                                            {e.text || (e.status ? carrierStatusLabel(e.status, locale) : noDataLabel(locale))}
                                                         </p>
                                                         {e.detail && e.detail !== e.text && (
                                                             <p className="text-xs text-muted-foreground">{e.detail}</p>

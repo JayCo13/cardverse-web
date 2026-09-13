@@ -93,6 +93,13 @@ export async function POST(request: NextRequest) {
             { status: 409 },
         );
     }
+    const allowed = shipmentCarriers(seller?.shipping_carriers, seller?.carrier_coverage);
+    if (body?.orderId && allowed.length === 0) {
+        return NextResponse.json(
+            { error: 'Bạn chưa chọn đơn vị vận chuyển.', code: 'seller_shipping_configuration_missing' },
+            { status: 409 },
+        );
+    }
 
     const from = { city: pickup.city, district: pickup.district };
     const to = { city: toCity, district: toDistrict };
@@ -121,7 +128,6 @@ export async function POST(request: NextRequest) {
 
     // An empty list is a route nobody serves, which is a different answer from
     // a failed lookup and has to read differently to whoever is choosing.
-    const allowed = shipmentCarriers(seller?.shipping_carriers, seller?.carrier_coverage);
     const keep = (rates: GoshipRate[]) => (body?.orderId ? rates.filter((rate) => allowed.includes(rate.carrierCode)) : rates);
     const rates = keep(current.rates);
     return NextResponse.json({

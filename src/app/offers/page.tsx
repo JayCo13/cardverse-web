@@ -129,7 +129,7 @@ function OffersContent() {
     pendingStatus: "Đang chờ phản hồi", chosenStatus: "Đã chấp nhận, chờ thanh toán", acceptedStatus: "Đã mua",
     rejectedStatus: "Đã từ chối", expiredStatus: "Đã hết hạn", onHoldStatus: "Đang chờ lượt", backAll: "Xem tất cả offer",
     onHold: "Chờ lượt", releaseCard: "Trả lại thẻ", releaseTitle: "Trả lại thẻ này?",
-    releaseDesc: "Thẻ quay lại chợ ngay và các offer đang chờ sau bạn được kích hoạt lại. Điểm uy tín của bạn bị trừ 5 — bằng đúng mức nếu bạn để hết giờ mà không thanh toán.",
+    releaseDesc: "Thẻ quay lại chợ ngay và các offer đang chờ sau bạn được kích hoạt lại. Điểm uy tín của bạn bị trừ 5, bằng đúng mức nếu bạn để hết giờ mà không thanh toán.",
     releasedToast: "Đã trả lại thẻ", releaseFailed: "Không thể trả lại thẻ.",
     acceptTitle: "Chấp nhận offer này?", acceptDesc: "Thẻ được gỡ khỏi chợ và giữ cho người mua này trong 1 giờ. Các offer đang chờ khác chuyển sang tạm khoá. Nếu người này không thanh toán, chúng tự động hoạt động lại và bạn chọn tiếp.",
     rejectTitle: "Từ chối offer này?", rejectDesc: "Buyer sẽ được thông báo và có thể gửi lại một offer cao hơn.", cancel: "Huỷ",
@@ -148,7 +148,7 @@ function OffersContent() {
     pendingStatus: "返答待ち", chosenStatus: "承認済み・支払い待ち", acceptedStatus: "購入済み",
     rejectedStatus: "拒否済み", expiredStatus: "期限切れ", onHoldStatus: "順番待ち", backAll: "すべてのオファーを見る",
     onHold: "順番待ち", releaseCard: "カードを解放", releaseTitle: "このカードを解放しますか？",
-    releaseDesc: "カードはすぐに市場へ戻り、後ろに並んでいたオファーが再び有効になります。信頼度は5点下がります — 期限切れまで支払わなかった場合と同じです。",
+    releaseDesc: "カードはすぐに市場へ戻り、後ろに並んでいたオファーが再び有効になります。信頼度は5点下がります。期限切れまで支払わなかった場合と同じです。",
     releasedToast: "カードを解放しました", releaseFailed: "カードを解放できませんでした。",
     acceptTitle: "このオファーを承認しますか？", acceptDesc: "カードは市場から外れ、1時間この購入者のために確保されます。他の保留中オファーは順番待ちになります。支払いがなければ自動的に再び有効になり、改めて選べます。",
     rejectTitle: "このオファーを拒否しますか？", rejectDesc: "購入者に通知され、より高い価格で再提案できます。", cancel: "キャンセル",
@@ -167,7 +167,7 @@ function OffersContent() {
     pendingStatus: "Waiting for response", chosenStatus: "Accepted, awaiting payment", acceptedStatus: "Purchased",
     rejectedStatus: "Rejected", expiredStatus: "Expired", onHoldStatus: "In the queue", backAll: "View all offers",
     onHold: "Queued", releaseCard: "Release card", releaseTitle: "Release this card?",
-    releaseDesc: "The card goes back on the market immediately and the offers queued behind you become live again. Your reputation drops by 5 — the same as letting the hour run out unpaid.",
+    releaseDesc: "The card goes back on the market immediately and the offers queued behind you become live again. Your reputation drops by 5, the same as letting the hour run out unpaid.",
     releasedToast: "Card released", releaseFailed: "Unable to release the card.",
     acceptTitle: "Accept this offer?", acceptDesc: "The card comes off the marketplace and is held for this buyer for one hour. Every other pending offer goes on hold. If this buyer does not pay, they become live again and you can pick another.",
     rejectTitle: "Reject this offer?", rejectDesc: "The buyer will be notified and may submit a higher offer.", cancel: "Cancel",
@@ -644,7 +644,7 @@ function OffersContent() {
                                   <CardTitle className="line-clamp-2 text-sm leading-snug sm:text-base">{card?.name || copy.viewCard}</CardTitle>
                                   <p className="mt-1 text-xs text-muted-foreground">
                                     {card?.price != null ? `${copy.askingPrice}: ${formatVND(card.price)}` : ""}
-                                    {` · ${fill(copy.offerCount, { count: offerCount })}`}
+                                    {`, ${fill(copy.offerCount, { count: offerCount })}`}
                                   </p>
                                 </div>
                                 {!cardId && (

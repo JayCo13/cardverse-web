@@ -53,16 +53,17 @@ Wallet checkout skips `pending_payment` — orders are created directly as `paid
 
 ## Fee model (owner decision, 2026-06-11)
 
-**The 8% platform fee is charged ONCE, at withdrawal.** The authoritative rate lives in the
+**The 10% platform fee is charged ONCE, at withdrawal.** The authoritative rate lives in the
 Postgres withdrawal functions — `/api/wallet/withdraw` only relays the `fee` the RPC returns.
-It was raised from 5% by `supabase/migrations/20260902000200_withdrawal_fee_8_percent.sql`,
-which rewrites every function still computing `* 0.05)` and then raises if any remain.
+It was raised from 5% to 8% by `supabase/migrations/20260902000200_withdrawal_fee_8_percent.sql`
+and to 10% by `supabase/migrations/20260913000100_withdrawal_fee_10_percent.sql`,
+each of which rewrites every function still computing the previous rate and then raises if any remain.
 `WITHDRAW_FEE_RATE` in `src/app/wallet/page.tsx` is the client-side copy used to preview the
 fee before submitting; the two must be changed together.
 
 - Seller is credited 100% of the sale amount at completion.
 - `orders.platform_fee` = 0 on all new orders. Legacy rows have non-zero values (the old model deducted 5% at sale — combined with the withdrawal fee, sellers were double-charged; this is why the model changed).
-- Consequences (accepted): money spent in-platform escapes the fee; fee revenue is realized at withdrawal; the 8% applies to the whole withdrawn amount including self-deposited funds.
+- Consequences (accepted): money spent in-platform escapes the fee; fee revenue is realized at withdrawal; the 10% applies to the whole withdrawn amount including self-deposited funds.
 
 ## Wallet & ledger
 
@@ -81,7 +82,7 @@ Ledger `type` values:
 | `marketplace_buy` | − | buyer paid with wallet |
 | `marketplace_sale` | + | seller credited at completion (full amount) |
 | `withdrawal` | − | net amount sent to seller's bank |
-| `platform_fee` | − | 8% withdrawal fee (paired with `withdrawal`) |
+| `platform_fee` | − | 10% withdrawal fee (paired with `withdrawal`) |
 | `refund` | + | failed-checkout compensation; rejected withdrawal (RPC) |
 | `escrow_release` | + | buyer refund on cancel / admin dispute refund |
 | `scan_purchase`, `vip_subscription` | − | PayOS subscription purchases (see gaps) |

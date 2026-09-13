@@ -43,7 +43,7 @@ Mỗi con số trong tài liệu đều lấy từ code. Khi sửa một trong c
 * Mục 6, tạm giữ tiền và cửa sổ 72 giờ → `supabase/migrations/20260905000500_auto_release_on_confirmed_delivery.sql`, hàm `complete_delivered_orders()`, tổng quan trong `docs/money-flow.md`
 * Mục 7, hạn giao hàng 24 giờ và danh sách đơn vị vận chuyển → `orders.ship_deadline`, `src/lib/expire-orders.ts`, `src/lib/shipping-carriers.ts`
 * Mục 8, video đóng gói và video mở hộp → `supabase/migrations/20260905000100_dispute_evidence_videos.sql`
-* Mục 9, phí 8% và mức rút tối thiểu 50.000 đồng → `supabase/migrations/20260902000200_withdrawal_fee_8_percent.sql`, hằng `MIN_WITHDRAW` trong `src/app/api/wallet/withdraw/route.ts`
+* Mục 9, phí 10% và mức rút tối thiểu 50.000 đồng → `supabase/migrations/20260913000100_withdrawal_fee_10_percent.sql`, hằng `MIN_WITHDRAW` trong `src/app/api/wallet/withdraw/route.ts`
 * Mục 10, giá và hạn dùng các gói quét → `PACKAGES` trong `src/lib/payos.ts`
 * Mục 11, huỷ đơn và hoàn tiền → `src/app/api/marketplace/orders/route.ts`
 

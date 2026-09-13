@@ -5,6 +5,8 @@ import type { PokemonCard } from "@/lib/types";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useCurrency } from "@/contexts/currency-context";
+import { useLocalization } from '@/context/localization-context';
+import { noDataLabel } from '@/lib/no-data-label';
 import { TrendUp, TrendDown } from "@phosphor-icons/react";
 
 interface PokemonCardItemProps {
@@ -13,6 +15,7 @@ interface PokemonCardItemProps {
 
 export const PokemonCardItem = React.memo(function PokemonCardItem({ card }: PokemonCardItemProps) {
     const { formatPrice } = useCurrency();
+    const { locale } = useLocalization();
     const router = useRouter();
 
     const handleCardClick = () => {
@@ -90,13 +93,13 @@ export const PokemonCardItem = React.memo(function PokemonCardItem({ card }: Pok
                         <div className="flex items-center justify-between">
                             <span className="text-white/40 text-[10px] uppercase tracking-wider">Market</span>
                             <span className="font-bold text-sm sm:text-base text-yellow-500">
-                                {card.marketPrice ? formatPrice(card.marketPrice) : '-'}
+                                {card.marketPrice ? formatPrice(card.marketPrice) : noDataLabel(locale)}
                             </span>
                         </div>
                         <div className="flex items-center justify-between border-t border-white/5 pt-2">
                             <span className="text-white/40 text-[10px] uppercase tracking-wider">Low</span>
                             <span className="font-medium text-sm sm:text-base text-green-400">
-                                {card.lowPrice ? formatPrice(card.lowPrice) : '-'}
+                                {card.lowPrice ? formatPrice(card.lowPrice) : noDataLabel(locale)}
                             </span>
                         </div>
                     </div>

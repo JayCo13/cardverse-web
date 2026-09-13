@@ -477,7 +477,7 @@ export default function PokemonPage() {
                             <p className="text-sm text-white/50">
                                 {t('cards_found').replace('{count}', totalCount.toLocaleString())}
                                 {totalPages > 1 && (
-                                    <span className="text-white/30"> · {page + 1}/{totalPages}</span>
+                                    <span className="text-white/30">, {page + 1}/{totalPages}</span>
                                 )}
                             </p>
                         </div>

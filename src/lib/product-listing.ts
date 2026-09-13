@@ -3,7 +3,7 @@ export type ProductKind = typeof PRODUCT_KINDS[number];
 export const PRODUCT_CONDITIONS = ['sealed', 'new', 'opened', 'used'] as const;
 export const PRODUCT_DETAIL_KEYS = ['brand', 'edition', 'language', 'product_code'] as const;
 export type ProductDetails = Partial<Record<typeof PRODUCT_DETAIL_KEYS[number], string>>;
-export const flexibleProductsEnabled = process.env.NEXT_PUBLIC_FLEXIBLE_PRODUCTS_ENABLED === 'true';
+export const flexibleProductsEnabled = process.env.NEXT_PUBLIC_FLEXIBLE_PRODUCTS_ENABLED !== 'false';
 export const isProductKind = (value: unknown): value is ProductKind => PRODUCT_KINDS.includes(value as ProductKind);
 export const isNonCard = (kind?: string | null) => !!kind && kind !== 'card';
 

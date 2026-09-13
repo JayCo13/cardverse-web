@@ -169,40 +169,76 @@ export async function sendKYCSubmittedToUser(
     }
 }
 
-export async function sendOrderShippedEmail(
+/**
+ * The seller has booked the courier.
+ *
+ * Sent from /api/shipping/book the moment GoShip accepts the shipment — the
+ * first thing a buyer hears after paying, and before this existed they heard
+ * nothing until the carrier scanned the parcel, which on a slow pickup was
+ * days of silence. The tracking number may not exist yet: GoShip issues it
+ * when the carrier accepts, so the mail says so rather than printing a blank.
+ */
+export async function sendOrderBookedEmail(
     buyerEmail: string,
-    params: { cardName: string; carrierName: string; trackingNumber: string; trackingUrl: string | null },
+    params: {
+        orderId: string;
+        cardName: string;
+        carrierName: string;
+        trackingNumber: string | null;
+        trackingUrl: string | null;
+        deliveryDays: { min: number; max: number } | null;
+        /** The carrier the buyer picked, when the seller had to book another. */
+        changedFrom: string | null;
+    },
 ) {
     try {
+        if (!buyerEmail) return;
         const transporter = createMailTransporter();
         const from = getFromAddress();
         const appUrl = getAppUrl();
-        const { cardName, carrierName, trackingNumber, trackingUrl } = params;
+        const cardName = escapeHtml(params.cardName);
+        const carrierName = escapeHtml(params.carrierName);
+        const trackingNumber = params.trackingNumber ? escapeHtml(params.trackingNumber) : null;
 
-        const trackingBlock = trackingUrl
-            ? `<a href="${trackingUrl}" target="_blank" style="display:inline-block; margin-top:10px; background:#f97316; color:#fff; text-decoration:none; font-weight:700; padding:12px 22px; border-radius:10px; font-size:14px;">Theo dõi đơn: ${trackingNumber}</a>`
-            : `<p style="margin:8px 0 0; color:#e4e4e7; font-weight:700; font-size:16px;">${trackingNumber}</p>`;
+        const trackingBlock = trackingNumber && params.trackingUrl
+            ? `<a href="${params.trackingUrl}" target="_blank" style="display:inline-block; margin-top:6px; background:#f97316; color:#fff; text-decoration:none; font-weight:700; padding:12px 22px; border-radius:10px; font-size:14px;">Theo dõi đơn: ${trackingNumber}</a>`
+            : trackingNumber
+                ? `<p style="margin:2px 0 0; color:#fff; font-weight:700; font-size:16px;">${trackingNumber}</p>`
+                : `<p style="margin:2px 0 0; color:#e4e4e7;">Sẽ cập nhật khi hãng nhận hàng</p>`;
+
+        const etaRow = params.deliveryDays
+            ? `<p style="margin:12px 0 0; color:#a1a1aa; font-size:13px;">Dự kiến giao</p>
+                    <p style="margin:2px 0 0; color:#fff; font-weight:700;">${params.deliveryDays.min}–${params.deliveryDays.max} ngày sau khi hãng lấy hàng</p>`
+            : '';
+
+        const changedRow = params.changedFrom
+            ? `<p style="color:#e4e4e7;">${escapeHtml(params.changedFrom)} không nhận tuyến này nên đơn đi bằng ${carrierName}. Phí ship bạn đã trả không đổi.</p>`
+            : '';
 
         await transporter.sendMail({
             from,
             to: buyerEmail,
-            subject: '📦 Đơn hàng của bạn đã được gửi | CardVerseHub',
+            subject: `📦 Người bán đã tạo vận đơn #${shortOrderId(params.orderId)} | CardVerseHub`,
             html: buildTemplate(
-                '📦 Đơn hàng đã được gửi',
-                `<p style="color:#e4e4e7;">Người bán đã gửi thẻ <strong style="color:#f97316;">${cardName}</strong> cho bạn.</p>
+                '📦 Người bán đã tạo vận đơn',
+                `<p style="color:#e4e4e7;">Người bán đã đóng gói <strong style="color:#f97316;">${cardName}</strong> và tạo vận đơn với ${carrierName}. Hãng sẽ đến lấy hàng trong 1–2 ngày tới.</p>
+                ${changedRow}
                 <div style="background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.2); border-radius: 8px; padding: 16px; margin: 20px 0;">
+                    <p style="margin:0; color:#a1a1aa; font-size:13px;">Mã đơn hàng</p>
+                    <p style="margin:2px 0 12px; color:#fff; font-weight:700;">#${shortOrderId(params.orderId)}</p>
                     <p style="margin:0; color:#a1a1aa; font-size:13px;">Đơn vị vận chuyển</p>
                     <p style="margin:2px 0 12px; color:#fff; font-weight:700;">${carrierName}</p>
                     <p style="margin:0; color:#a1a1aa; font-size:13px;">Mã vận đơn</p>
                     ${trackingBlock}
+                    ${etaRow}
                 </div>
-                <p>Bạn có thể nhấn nút trên để theo dõi hành trình đơn hàng, hoặc xem chi tiết tại <a href="${appUrl}/orders" style="color:#f97316; text-decoration:none;">Đơn hàng của tôi</a>.</p>
-                <p style="color:#71717a; font-size:13px; margin-top:24px;">Khi nhận được thẻ, đừng quên bấm "Đã nhận hàng" để hoàn tất giao dịch nhé!</p>`
+                <p>Xem hành trình đơn tại <a href="${appUrl}/orders/${params.orderId}" style="color:#f97316; text-decoration:none;">Đơn hàng của tôi</a>.</p>
+                <p style="color:#71717a; font-size:13px; margin-top:24px;">Khi nhận được hàng, bấm "Đã nhận hàng" để tiền được chuyển cho người bán.</p>`,
             ),
         });
-        console.log(`[Mail] Order shipped notification sent to ${buyerEmail}`);
+        console.log(`[Mail] Order booked notification sent to ${buyerEmail}`);
     } catch (error) {
-        console.error('[Mail] Failed to send order shipped email:', error);
+        console.error('[Mail] Failed to send order booked email:', error);
     }
 }
 
@@ -282,7 +318,7 @@ export async function sendOrderDeliveredEmail(
                     <p style="margin:0 0 8px; color:#e4e4e7;">Bạn có <strong style="color:#fff;">72 giờ</strong> để kiểm tra thẻ.</p>
                     ${deadline ? `<p style="margin:0; color:#a1a1aa; font-size:13px;">Hạn kiểm tra: <strong style="color:#fff;">${deadline}</strong></p>` : ''}
                 </div>
-                <p>Thẻ đúng như mô tả? Bấm <strong>"Đã nhận hàng"</strong> để hoàn tất ngay và chuyển tiền cho người bán — không cần chờ hết 72 giờ.</p>
+                <p>Thẻ đúng như mô tả? Bấm <strong>"Đã nhận hàng"</strong> để hoàn tất ngay và chuyển tiền cho người bán, không cần chờ hết 72 giờ.</p>
                 <p>Thẻ có vấn đề? Bấm <strong>"Báo admin"</strong> trong thời gian này. Tiền vẫn được giữ trong lúc chúng tôi xem xét.</p>
                 <div style="text-align:center; margin:24px 0;">
                     <a href="${appUrl}/orders/${encodeURIComponent(orderId)}" style="display:inline-block; background:#f97316; color:#fff; padding:12px 32px; border-radius:8px; text-decoration:none; font-weight:600; font-size:14px;">Xem đơn hàng →</a>
@@ -466,7 +502,7 @@ export async function sendWithdrawalSubmittedToAdmin(input: {
             from,
             to: from,
             bcc: input.adminEmails,
-            subject: `💸 Yêu cầu rút tiền mới: ${formatVND(input.amountRequested)} · ${input.sellerName}`,
+            subject: `💸 Yêu cầu rút tiền mới: ${formatVND(input.amountRequested)}, ${input.sellerName}`,
             html: buildTemplate(
                 '💸 Yêu cầu rút tiền mới cần xử lý',
                 `<p style="color:#e4e4e7;">Seller vừa gửi một yêu cầu rút tiền đang chờ admin chuyển khoản:</p>
@@ -595,15 +631,15 @@ export async function sendOrderPlacedToBuyer(
                     <p style="margin:0; color:#a1a1aa; font-size:13px;">Mã đơn hàng</p>
                     <p style="margin:2px 0 12px; color:#fff; font-weight:700;">#${shortOrderId(params.orderId)}</p>
                     <p style="margin:0; color:#a1a1aa; font-size:13px;">Sản phẩm</p>
-                    <p style="margin:2px 0 12px; color:#fff; font-weight:700;">${params.cardName}</p>
+                    <p style="margin:2px 0 12px; color:#fff; font-weight:700;">${escapeHtml(params.cardName)}</p>
                     <table style="width:100%; border-collapse:collapse; font-size:14px;">
                         <tr><td style="color:#a1a1aa; padding:2px 0;">Giá thẻ</td><td align="right" style="color:#e4e4e7;">${formatVnd(params.amount)}</td></tr>
                         <tr><td style="color:#a1a1aa; padding:2px 0;">Phí vận chuyển</td><td align="right" style="color:#e4e4e7;">${formatVnd(params.shippingFee)}</td></tr>
                         <tr><td style="color:#fff; font-weight:700; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1);">Tổng thanh toán</td><td align="right" style="color:#f97316; font-weight:700; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1);">${formatVnd(params.totalPaid)}</td></tr>
                     </table>
                 </div>
-                ${params.carrierName ? `<p style="color:#a1a1aa; font-size:13px; margin:0;">Đơn vị vận chuyển: <strong style="color:#e4e4e7;">${params.carrierName}</strong></p>` : ''}
-                ${params.shippingAddress ? `<p style="color:#a1a1aa; font-size:13px; margin:4px 0 0;">Giao đến: <strong style="color:#e4e4e7;">${params.shippingAddress}</strong></p>` : ''}
+                ${params.carrierName ? `<p style="color:#a1a1aa; font-size:13px; margin:0;">Đơn vị vận chuyển: <strong style="color:#e4e4e7;">${escapeHtml(params.carrierName)}</strong></p>` : ''}
+                ${params.shippingAddress ? `<p style="color:#a1a1aa; font-size:13px; margin:4px 0 0;">Giao đến: <strong style="color:#e4e4e7;">${escapeHtml(params.shippingAddress)}</strong></p>` : ''}
                 <p style="margin-top:20px;">Chúng tôi sẽ báo bạn ngay khi người bán gửi hàng. Xem chi tiết tại <a href="${appUrl}/orders" style="color:#f97316; text-decoration:none;">Đơn hàng của tôi</a>.</p>
                 <p style="color:#71717a; font-size:13px; margin-top:24px;">Tiền của bạn được CardVerseHub giữ cho đến khi bạn xác nhận đã nhận thẻ.</p>`,
             ),
@@ -650,15 +686,15 @@ export async function sendOrderPlacedToSeller(
                     <p style="margin:0; color:#a1a1aa; font-size:13px;">Mã đơn hàng</p>
                     <p style="margin:2px 0 12px; color:#fff; font-weight:700;">#${shortOrderId(params.orderId)}</p>
                     <p style="margin:0; color:#a1a1aa; font-size:13px;">Sản phẩm</p>
-                    <p style="margin:2px 0 12px; color:#fff; font-weight:700;">${params.cardName}</p>
+                    <p style="margin:2px 0 12px; color:#fff; font-weight:700;">${escapeHtml(params.cardName)}</p>
                     <table style="width:100%; border-collapse:collapse; font-size:14px;">
                         <tr><td style="color:#a1a1aa; padding:2px 0;">Giá bán</td><td align="right" style="color:#e4e4e7;">${formatVnd(params.amount)}</td></tr>
                         ${netRow}
                     </table>
                 </div>
-                ${params.buyerName ? `<p style="color:#a1a1aa; font-size:13px; margin:0;">Người mua: <strong style="color:#e4e4e7;">${params.buyerName}</strong></p>` : ''}
-                ${params.shippingAddress ? `<p style="color:#a1a1aa; font-size:13px; margin:4px 0 0;">Giao đến: <strong style="color:#e4e4e7;">${params.shippingAddress}</strong></p>` : ''}
-                <p style="margin-top:20px;">Vào <a href="${appUrl}/orders?tab=seller" style="color:#f97316; text-decoration:none;">Đơn bán của tôi</a> để nhập mã vận đơn sau khi gửi.</p>
+                ${params.buyerName ? `<p style="color:#a1a1aa; font-size:13px; margin:0;">Người mua: <strong style="color:#e4e4e7;">${escapeHtml(params.buyerName)}</strong></p>` : ''}
+                ${params.shippingAddress ? `<p style="color:#a1a1aa; font-size:13px; margin:4px 0 0;">Giao đến: <strong style="color:#e4e4e7;">${escapeHtml(params.shippingAddress)}</strong></p>` : ''}
+                <p style="margin-top:20px;">Vào <a href="${appUrl}/orders?tab=seller" style="color:#f97316; text-decoration:none;">Đơn bán của tôi</a> để đóng gói và tạo vận đơn.</p>
                 <p style="color:#71717a; font-size:13px; margin-top:24px;">Tiền sẽ về ví của bạn sau khi người mua xác nhận đã nhận thẻ.</p>`,
             ),
         });

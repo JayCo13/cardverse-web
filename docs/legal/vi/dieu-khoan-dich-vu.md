@@ -103,7 +103,7 @@ Nguyên tắc xét: bên nào không chứng minh được điều mình khẳng
 
 Ví CardVerseHub ghi nhận số dư của bạn trên nền tảng. Ví dùng để thanh toán đơn hàng, nhận tiền bán thẻ và nhận tiền hoàn.
 
-Phí nền tảng là 8% và chỉ thu duy nhất một lần, tại thời điểm rút tiền. Đăng bán và bán thành công không mất phí.
+Phí nền tảng là 10% và chỉ thu duy nhất một lần, tại thời điểm rút tiền. Đăng bán và bán thành công không mất phí.
 
 Điều kiện rút tiền:
 
@@ -113,7 +113,7 @@ Phí nền tảng là 8% và chỉ thu duy nhất một lần, tại thời đi�
 
 Khi bạn gửi lệnh rút, số dư bị trừ ngay và lệnh chuyển sang trạng thái chờ xử lý. Đội ngũ CardVerseHub thực hiện chuyển khoản thủ công tới tài khoản ngân hàng đã xác minh. Nếu lệnh bị từ chối, toàn bộ số tiền được hoàn lại vào ví kèm lý do.
 
-Lưu ý phí 8% được tính trên toàn bộ số tiền của lệnh rút, bao gồm cả phần tiền bạn tự nạp vào ví trước đó.
+Lưu ý phí 10% được tính trên toàn bộ số tiền của lệnh rút, bao gồm cả phần tiền bạn tự nạp vào ví trước đó.
 
 ## 10. Gói quét AI và tín dụng quét
 

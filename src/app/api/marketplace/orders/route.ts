@@ -5,7 +5,6 @@ import { getRouteUser } from '@/lib/supabase/route-user';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { isEvidenceVideoUrl } from '@/lib/evidence-video';
 import { getCarrier, getTrackingUrl, getDeliveryDays } from '@/lib/shipping-carriers';
-import { sendOrderShippedEmail } from '@/lib/mail';
 import { expireUnshippedPaidOrders } from '@/lib/expire-orders';
 import type { Database } from '@/lib/supabase/database.types';
 

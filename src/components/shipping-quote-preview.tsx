@@ -51,7 +51,7 @@ const COPY = {
         missing: 'Still needed: {fields}', fWard: 'ward', fStreet: 'street address', fName: 'recipient name', fPhone: 'a valid phone number', fDeclared: 'declared value',
         ward: 'Destination ward', selectWard: 'Select ward',
         street: 'Street address', name: 'Recipient name', phone: 'Recipient phone',
-        declared: 'Declared value (đ)', declaredHint: 'Declared to the carrier and what it pays if the parcel is lost. Above a threshold the carrier charges for it — re-run the quote after changing this.',
+        declared: 'Declared value (đ)', declaredHint: 'Declared to the carrier and what it pays if the parcel is lost. Above a threshold the carrier charges for it. Re-run the quote after changing this.',
         book: 'Book shipment', confirmTitle: 'Book a real shipment?',
         confirmBody: 'This creates a real waybill with {carrier} ({fee}) and a courier will come to the sender address. You can still drop the parcel off using this code.',
         confirm: 'Book', cancel: 'Cancel', booked: 'Shipment created.', bookFailed: 'Could not create the shipment.',
@@ -61,7 +61,7 @@ const COPY = {
         noPickup: 'Save the pickup address above before checking rates.',
         none: 'No carrier serves this route.', failed: 'Could not fetch the rates.',
         success: 'delivered', days: '',
-        hint: 'Rates only — nothing is booked and no courier is called.',
+        hint: 'Rates only. Nothing is booked and no courier is called.',
         open: 'Open rate checker', close: 'Hide rate checker', recipient: 'Recipient details for booking',
     },
     'ja-JP': {
@@ -312,7 +312,7 @@ export function ShippingQuotePreview() {
                                 <p className="truncate font-medium">{r.carrierName}</p>
                                 <p className="truncate text-xs text-muted-foreground">
                                     {[r.service, r.expected, r.successPercent != null ? `${r.successPercent}% ${copy.success}` : null]
-                                        .filter(Boolean).join(' · ')}
+                                        .filter(Boolean).join(', ')}
                                 </p>
                             </div>
                             <div className="flex shrink-0 items-center gap-3">

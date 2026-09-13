@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { compensationFor, khaiGiaSurcharge } from '@/lib/khai-gia';
 import { AlertCircle, ArrowRight, Check, Loader2, MapPin, Package, PencilLine, Save, Truck } from 'lucide-react';
 import { useLocalization } from '@/context/localization-context';
+import { noDataLabel } from '@/lib/no-data-label';
 import { PackingVideoField } from '@/components/packing-video-field';
 import { GoshipRegionPicker, type GoshipRegion } from '@/components/goship-region-picker';
 import { carrierAddressOptions } from '@/lib/carrier-address-options';
@@ -54,13 +55,13 @@ const COPY = {
         editSender: 'Sửa địa chỉ lấy hàng', senderMissing: 'Bạn chưa lưu địa chỉ lấy hàng. Lưu ở trang Bán hàng trước khi tạo vận đơn.',
         fromOrder: 'Lấy từ địa chỉ người mua đã nhập',
         weight: 'Cân nặng (gram)', weightHint: 'Cả gói, gồm hộp và lớp chống sốc. Một thẻ đã ép cứng thường 150–250g.',
-        parcel: 'Loại hàng', parcelUpgrade: 'Gói hàng lớn hơn kích thước đã báo giá: +{fee} sẽ trừ vào tiền bạn nhận.', parcelSmaller: 'Gói hàng nhỏ hơn kích thước đã báo giá — bạn không bị trừ thêm phí.',
+        parcel: 'Loại hàng', parcelUpgrade: 'Gói hàng lớn hơn kích thước đã báo giá: +{fee} sẽ trừ vào tiền bạn nhận.', parcelSmaller: 'Gói hàng nhỏ hơn kích thước đã báo giá. Bạn không bị trừ thêm phí.',
         saveParcel: 'Lưu kích thước làm mặc định', savedParcel: 'Đã lưu kích thước mặc định cho loại hàng này.', resetParcel: 'Dùng kích thước ban đầu',
         declareToggle: 'Bảo hiểm hàng hóa (không bắt buộc)', declareOffHint: 'Bật nếu bạn muốn mua thêm quyền lợi bồi thường từ hãng khi kiện hàng bị mất hoặc hư hỏng. Phí phát sinh sẽ hiển thị rõ bên dưới và trừ vào tiền bạn nhận.',
-        declared: 'Giá trị khai (đ)', declareCost: 'Phí khai giá {carrier}: +{fee} · trừ vào tiền đơn', declarePolicy: 'Mức đền theo chính sách của hãng.',
+        declared: 'Giá trị khai (đ)', declareCost: 'Phí khai giá {carrier}: +{fee}, trừ vào tiền đơn', declarePolicy: 'Mức đền theo chính sách của hãng.',
         payoutIfLost: 'Nếu mất hàng, {carrier} đền:', proofInvoice: 'có hóa đơn VAT / hóa đơn bán hàng', proofTransaction: 'có ảnh đơn CardVerseHub + biên lai chuyển khoản', proofNone: 'không có chứng từ', proofUndeclared: 'không khai giá', notAccepted: 'không chấp nhận', policyChecked: 'Theo chính sách công bố của hãng, kiểm tra {date}.',
         buyerCarrier: 'Người mua đã chọn', lockedNote: 'Người mua đã trả đúng cước này. Không trừ gì thêm.',
-        carrierGone: '{carrier} hiện không nhận tuyến này. Chọn hãng khác bên dưới — người mua sẽ được thông báo, phí ship họ đã trả không đổi và phần lệch cước không trừ vào bạn.',
+        carrierGone: '{carrier} hiện không nhận tuyến này. Chọn hãng khác bên dưới. Người mua sẽ được thông báo, phí ship họ đã trả không đổi và phần lệch cước không trừ vào bạn.',
         payoutTitle: 'Bạn nhận được', payoutItem: 'Tiền hàng', payoutKhaiGia: 'Khai giá', payoutUpgrade: 'Gói to hơn', payoutListing: 'Cước vượt phí ship bạn đặt cho bài đăng', payoutNet: 'Thực nhận',
         pickRegion: 'Đơn này chưa có địa giới theo đơn vị vận chuyển. Chọn theo địa chỉ người nhận bên trên:',
         buyerPaid: 'Người mua đã trả', overBudget: 'trừ vào tiền đơn', inBudget: 'trong phí đã thu',
@@ -80,13 +81,13 @@ const COPY = {
         editSender: 'Edit pickup address', senderMissing: 'No pickup address saved yet. Save one on the Sell page before booking.',
         fromOrder: 'From the address the buyer entered',
         weight: 'Weight (grams)', weightHint: 'The whole parcel, box and padding included. One slabbed card is usually 150–250g.',
-        parcel: 'Item type', parcelUpgrade: 'This parcel is larger than quoted: +{fee} will be deducted from your payout.', parcelSmaller: 'This parcel is smaller than quoted — no extra charge is deducted.',
+        parcel: 'Item type', parcelUpgrade: 'This parcel is larger than quoted: +{fee} will be deducted from your payout.', parcelSmaller: 'This parcel is smaller than quoted. No extra charge is deducted.',
         saveParcel: 'Save as default size', savedParcel: 'Default size saved for this item type.', resetParcel: 'Use original size',
         declareToggle: 'Parcel insurance (optional)', declareOffHint: 'Turn this on if you want additional carrier compensation if the parcel is lost or damaged. The fee is shown below and deducted from your payout.',
-        declared: 'Declared value (đ)', declareCost: '{carrier} declaration fee: +{fee} · off your payout', declarePolicy: 'Payout per the carrier’s policy.',
+        declared: 'Declared value (đ)', declareCost: '{carrier} declaration fee: +{fee}, deducted from your payout', declarePolicy: 'Payout per the carrier’s policy.',
         payoutIfLost: 'If the parcel is lost, {carrier} pays:', proofInvoice: 'with a VAT / sales invoice', proofTransaction: 'with the CardVerseHub order + bank receipt', proofNone: 'with no proof', proofUndeclared: 'undeclared', notAccepted: 'not accepted', policyChecked: 'Per the carrier’s published policy, checked {date}.',
         buyerCarrier: 'Buyer’s pick', lockedNote: 'The buyer paid exactly this postage. Nothing more is deducted.',
-        carrierGone: '{carrier} no longer serves this route. Pick another below — the buyer is told, what they paid does not change, and the postage difference is not yours.',
+        carrierGone: '{carrier} no longer serves this route. Pick another below. The buyer is told, what they paid does not change, and the postage difference is not yours.',
         payoutTitle: 'You receive', payoutItem: 'Item price', payoutKhaiGia: 'Declared value', payoutUpgrade: 'Bigger parcel', payoutListing: 'Postage over the fee you set on the listing', payoutNet: 'Net payout',
         pickRegion: 'This order has no carrier divisions yet. Pick them from the recipient address above:',
         buyerPaid: 'Buyer paid', overBudget: 'deducted from your payout', inBudget: 'within the fee collected',
@@ -109,7 +110,7 @@ const COPY = {
         parcel: '商品の種類', parcelUpgrade: '見積り時より大きい荷物です。+{fee} が売上から差し引かれます。', parcelSmaller: '見積り時より小さい荷物です。追加の差し引きはありません。',
         saveParcel: '既定サイズとして保存', savedParcel: 'この商品種類の既定サイズを保存しました。', resetParcel: '元のサイズを使用',
         declareToggle: '荷物保険（任意）', declareOffHint: '紛失や破損の際に配送業者から追加補償を受けたい場合はオンにしてください。料金は下に表示され、売上から差し引かれます。',
-        declared: '申告価格（đ）', declareCost: '{carrier} 申告手数料: +{fee} · 売上から差引', declarePolicy: '業者の規定に従って補償。',
+        declared: '申告価格（đ）', declareCost: '{carrier} 申告手数料: +{fee}、売上から差引', declarePolicy: '業者の規定に従って補償。',
         payoutIfLost: '紛失時に {carrier} が支払う額:', proofInvoice: 'VAT／販売請求書あり', proofTransaction: 'CardVerseHub注文＋振込明細あり', proofNone: '証明なし', proofUndeclared: '申告なし', notAccepted: '不可', policyChecked: '業者の公開規定に基づく（{date}確認）。',
         buyerCarrier: '購入者の選択', lockedNote: '購入者はこの送料を支払済みです。追加の差引はありません。',
         carrierGone: '{carrier} はこの経路に対応していません。下から別の業者を選んでください。購入者に通知され、支払額は変わらず、差額はあなたの負担になりません。',
@@ -452,7 +453,7 @@ export function OrderShippingDesk({
                     <Truck className="h-5 w-5 text-orange-400" />{words.heading}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">{copy.lead}</p>
-                <p className="mt-2 text-sm">{words.carriers}: {carrierShortLabels(carriers) || '—'}</p>
+                <p className="mt-2 text-sm">{words.carriers}: {carrierShortLabels(carriers) || noDataLabel(locale)}</p>
                 {preparationError && <div role="alert" className="mt-2 text-sm text-destructive">{words.loadError} <Button variant="outline" onClick={() => setRefresh(v => v + 1)}>{words.retry}</Button></div>}
             </header>
 
@@ -588,8 +589,8 @@ export function OrderShippingDesk({
                                                     <ul className="mt-1 space-y-0.5">
                                                         <li className="flex justify-between gap-3"><span>{copy.proofInvoice}</span><span className="font-semibold text-foreground">{compensation.invoice === null ? copy.notAccepted : money(compensation.invoice)}</span></li>
                                                         <li className="flex justify-between gap-3"><span>{copy.proofTransaction}</span><span className="font-semibold text-foreground">{compensation.transaction === null ? copy.notAccepted : money(compensation.transaction)}</span></li>
-                                                        <li className="flex justify-between gap-3"><span>{copy.proofNone}</span><span className="font-semibold text-foreground">{compensation.noProof === null ? '—' : money(compensation.noProof)}</span></li>
-                                                        <li className="flex justify-between gap-3"><span>{copy.proofUndeclared}</span><span>{compensation.undeclared === null ? '—' : money(compensation.undeclared)}</span></li>
+                                                        <li className="flex justify-between gap-3"><span>{copy.proofNone}</span><span className="font-semibold text-foreground">{compensation.noProof === null ? noDataLabel(locale) : money(compensation.noProof)}</span></li>
+                                                        <li className="flex justify-between gap-3"><span>{copy.proofUndeclared}</span><span>{compensation.undeclared === null ? noDataLabel(locale) : money(compensation.undeclared)}</span></li>
                                                     </ul>
                                                     <p className="mt-1 text-[11px]">{copy.policyChecked.replace('{date}', '12/09/2026')}</p>
                                                 </div>
@@ -683,7 +684,7 @@ export function OrderShippingDesk({
                                                                 <span className="min-w-0 truncate text-xs text-muted-foreground">
                                                                     {[r.service, r.expected,
                                                                       r.successPercent != null ? `${r.successPercent}% ${copy.success}` : null]
-                                                                        .filter(Boolean).join(' · ')}
+                                                                        .filter(Boolean).join(', ')}
                                                                 </span>
                                                                 {/* Only what the seller chose is theirs: the declaration,
                                                                     a bigger parcel, or postage over a fee they set on the
@@ -717,7 +718,7 @@ export function OrderShippingDesk({
                         <div className="space-y-3 border-t border-border/60 px-5 py-4">
                             <p className="text-sm text-muted-foreground">
                                 {selected
-                                    ? <>{copy.chosen}: <span className="font-medium text-foreground">{selected.carrierName}</span> · <span className="font-semibold text-orange-400">{money(selected.totalFee)}</span></>
+                                    ? <>{copy.chosen}: <span className="font-medium text-foreground">{selected.carrierName}</span>, <span className="font-semibold text-orange-400">{money(selected.totalFee)}</span></>
                                     : copy.pickFirst}
                             </p>
                             {selected && selectedCharge && (

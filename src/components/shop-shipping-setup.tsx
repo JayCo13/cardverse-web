@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { CheckCircle2, Loader2, Pencil, RefreshCw, Save, Truck } from 'lucide-react';
 import { useLocalization } from '@/context/localization-context';
 import { useToast } from '@/hooks/use-toast';
-import { OFFERABLE_COURIERS } from '@/lib/shipping-carriers';
+import { OFFERABLE_COURIERS, minShopCarriers } from '@/lib/shipping-carriers';
 
 /**
  * The shop's shipping setup: couriers and parcel, no prices.
@@ -27,7 +27,7 @@ type Loaded = {
 
 type Props = {
     onSaved?: (data: Loaded) => void;
-    /** Refuse to save with no carrier — the listing wizard needs one. */
+    /** Refuse to save below the carrier minimum — the listing wizard needs it. */
     requireCarrier?: boolean;
     /** Show a compact saved-state row, like the sender-address form. */
     summaryMode?: boolean;
@@ -69,7 +69,11 @@ export function ShopShippingSetup({ onSaved, requireCarrier = false, summaryMode
         return () => { cancelled = true; };
     }, []);
 
-    const collects = (code: string) => !loaded?.coverage?.carriers?.length || loaded.coverage.carriers.includes(code);
+    const collects = (code: string) => !loaded?.coverage || loaded.coverage.carriers.includes(code);
+    // The API refuses fewer than this, so the button greys out at the same
+    // line rather than letting the seller click and read the error.
+    const minimum = minShopCarriers(loaded?.coverage?.carriers);
+    const tooFew = carriers.length < minimum;
 
     const toggleCarrier = (code: string) => {
         if (!collects(code)) return;
@@ -127,7 +131,7 @@ export function ShopShippingSetup({ onSaved, requireCarrier = false, summaryMode
 
     const checkedAt = loaded.coverage ? new Date(loaded.coverage.checked_at).toLocaleDateString(locale) : null;
 
-    if (summaryMode && carriers.length > 0 && !editing) {
+    if (summaryMode && carriers.length >= minimum && !editing) {
         const selected = OFFERABLE_COURIERS.filter(carrier => carriers.includes(carrier.code));
         return (
             <div className="flex flex-col gap-3 rounded-lg border border-green-500/20 bg-green-500/[0.04] p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -222,11 +226,15 @@ export function ShopShippingSetup({ onSaved, requireCarrier = false, summaryMode
                 </div>
             </div>
 
-            {carriers.length === 0 && (
+            {tooFew && (
                 <p className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-400">
-                    {requireCarrier
-                        ? tx('Chọn ít nhất một đơn vị vận chuyển để tiếp tục.', 'Pick at least one carrier to continue.', '続けるには配送業者を1社以上選んでください。')
-                        : tx('Chưa chọn hãng nào — người mua sẽ thấy tất cả các hãng lấy hàng tại khu vực của bạn.', 'No carrier picked — buyers see every carrier that collects here.', '業者が未選択です。買い手には集荷可能な全業者が表示されます。')}
+                    {minimum > 1
+                        ? tx(
+                            `Chọn ít nhất ${minimum} đơn vị vận chuyển để có hãng dự phòng khi hãng người mua chọn không giao được tuyến này.`,
+                            `Pick at least ${minimum} carriers so you have a backup when the buyer's choice cannot serve the route.`,
+                            `購入者が選んだ業者がその経路に対応できない場合に備え、配送業者を${minimum}社以上選んでください。`,
+                        )
+                        : tx('Chọn ít nhất một đơn vị vận chuyển để tiếp tục.', 'Pick at least one carrier to continue.', '続けるには配送業者を1社以上選んでください。')}
                 </p>
             )}
 
@@ -238,12 +246,12 @@ export function ShopShippingSetup({ onSaved, requireCarrier = false, summaryMode
                 )}
             </p>
 
-            <Button type="button" onClick={save} disabled={isSaving || (requireCarrier && carriers.length === 0)}>
+            <Button type="button" onClick={save} disabled={isSaving || tooFew}>
                 {isSaving ? null : <Save className="mr-2 h-4 w-4" />}
                 {tx('Lưu lựa chọn', 'Save choices', '選択を保存')}
             </Button>
-            {summaryMode && carriers.length > 0 && (
-                <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)}>
+            {summaryMode && loaded.carriers.length >= minimum && (
+                <Button type="button" variant="ghost" size="sm" onClick={() => { setCarriers(loaded.carriers); setEditing(false); }}>
                     {tx('Hủy', 'Cancel', 'キャンセル')}
                 </Button>
             )}

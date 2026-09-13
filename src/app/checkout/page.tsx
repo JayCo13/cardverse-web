@@ -112,7 +112,7 @@ export default function CheckoutPage() {
       itemPrice: "Giá thẻ",
       shippingAtCheckout: "Phí ship theo địa chỉ",
       combinedShipping: "Gộp chung lô",
-      parcelShipping: "Vận chuyển · 1 kiện hàng",
+      parcelShipping: "Vận chuyển, 1 kiện hàng",
       pickCarrier: "Chọn đơn vị vận chuyển",
       carrierExpected: "Dự kiến {expected}",
       carrierSuccess: "{percent}% giao thành công",
@@ -219,7 +219,7 @@ export default function CheckoutPage() {
         itemPrice: "Item price",
         shippingAtCheckout: "Address-based shipping",
         combinedShipping: "Combined shipment",
-        parcelShipping: "Shipping · 1 parcel",
+        parcelShipping: "Shipping, 1 parcel",
         pickCarrier: "Pick a carrier",
         carrierExpected: "Expected {expected}",
         carrierSuccess: "{percent}% delivered",
@@ -598,9 +598,15 @@ export default function CheckoutPage() {
       }
       toast({ title: copy.paymentSuccess });
       router.push("/orders");
+      // Deliberately still paying: the push (or the PayOS redirect above) does
+      // not wait for the next page, and this one stays on screen for as long
+      // as /orders takes to render. Releasing the button here lit it up again
+      // in that gap; a second press then went out with a fresh idempotency
+      // key, found the cart already emptied, and raised an error toast over
+      // an order that had just succeeded. The page unmounts when the
+      // navigation lands, so nothing needs to reset it. Only a failure does.
     } catch (error: any) {
       toast({ variant: "destructive", title: copy.payError, description: error.message });
-    } finally {
       setIsPaying(false);
     }
   };
@@ -755,7 +761,7 @@ export default function CheckoutPage() {
                                           {[
                                             option.expected ? copy.carrierExpected.replace('{expected}', option.expected) : null,
                                             typeof option.successPercent === 'number' ? copy.carrierSuccess.replace('{percent}', String(Math.round(option.successPercent))) : null,
-                                          ].filter(Boolean).join(' · ')}
+                                          ].filter(Boolean).join(', ')}
                                         </span>
                                       </span>
                                       <span className="font-semibold">{formatVND(option.fee)}</span>
@@ -826,9 +832,13 @@ export default function CheckoutPage() {
                     </p>
                   )}
                 </div>
+                {/* `loading` as well as the click promise: the spinner has to
+                    outlive handlePay's promise and keep turning until the
+                    navigation it started replaces this page. */}
                 <Button
                   className="mt-5 h-12 w-full bg-orange-500 font-bold text-white hover:bg-orange-600"
                   disabled={!canPay}
+                  loading={isPaying}
                   onClick={handlePay}
                 >
                   {paymentMethod === "direct_payos" ? copy.payWithPayos : copy.pay}

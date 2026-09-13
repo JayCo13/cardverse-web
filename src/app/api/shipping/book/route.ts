@@ -5,7 +5,8 @@ import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { isEvidenceVideoUrl } from '@/lib/evidence-video';
 import { isParcelPreset, parcelFor, parcelPresetOr, parseParcel, parseParcelOverrides, parcelCopy, type Parcel, type ParcelPreset } from '@/lib/parcel';
 import { getRequestLocale } from '@/lib/request-localization';
-import { booksWithCarrier, getCarrier } from '@/lib/shipping-carriers';
+import { booksWithCarrier, getCarrier, getDeliveryDays, getTrackingUrl } from '@/lib/shipping-carriers';
+import { sendOrderBookedEmail } from '@/lib/mail';
 import { shipmentCarriers } from '@/lib/shipment-carriers';
 import { khaiGiaSurcharge } from '@/lib/khai-gia';
 
@@ -129,6 +130,80 @@ async function notifyCarrierChanged(orderId: string, buyerId: string, fromCarrie
     if (error) console.error('[Book] carrier-change notification failed:', error.message);
 }
 
+/**
+ * Tell the buyer the courier is booked.
+ *
+ * The first thing they hear after paying. Before this, the order sat at
+ * `paid` with nothing said until the carrier scanned the parcel, which on a
+ * slow pickup was days — long enough to open a dispute over a parcel that was
+ * already on the desk. One bell and one mail, from the same facts the order
+ * was just stamped with. The tracking number may still be missing (GoShip
+ * issues it when the carrier accepts); the mail says so.
+ *
+ * Swallows its own failure, like the carrier-change bell: the courier is
+ * booked and the seller must be told that above all.
+ */
+async function notifyBuyerShipmentBooked(
+    order: { id: string; buyerId: string; cardId: string | null; cardName: string | null },
+    created: { tracking_number?: string; carrier_short_name?: string },
+    carrierCode: string | null,
+    changedFrom: string | null,
+) {
+    const service = createServiceSupabaseClient();
+    const code = carrierCode ?? (created.carrier_short_name ? goshipCarrierToApp(created.carrier_short_name) : null);
+    const carrier = code ? getCarrier(code) : undefined;
+    const carrierName = carrier?.name ?? code?.toUpperCase() ?? 'Đơn vị vận chuyển';
+    const trackingNumber = created.tracking_number || null;
+
+    // A recovered booking may be the second time through here; the bell is
+    // keyed like the PayOS one so it is not rung twice.
+    try {
+        const { data: existing } = await service
+            .from('notifications')
+            .select('id')
+            .eq('user_id', order.buyerId)
+            .eq('order_id', order.id)
+            .eq('type', 'order_shipped')
+            .limit(1);
+        if (!existing?.length) {
+            const { error } = await service.from('notifications').insert({
+                user_id: order.buyerId,
+                type: 'order_shipped',
+                title: 'Order shipped!',
+                message: `The seller booked ${carrierName} for your order${trackingNumber ? ` (tracking ${trackingNumber})` : ''}.`,
+                order_id: order.id,
+                card_id: order.cardId,
+            } as never);
+            if (error) console.error('[Book] shipped notification failed:', error.message);
+        } else {
+            return;
+        }
+    } catch (error) {
+        console.error('[Book] shipped notification failed:', error);
+    }
+
+    try {
+        const { data: buyer } = await service
+            .from('profiles')
+            .select('email')
+            .eq('id', order.buyerId)
+            .maybeSingle();
+        const email = (buyer as { email?: string | null } | null)?.email;
+        if (!email) return;
+        await sendOrderBookedEmail(email, {
+            orderId: order.id,
+            cardName: order.cardName || 'thẻ của bạn',
+            carrierName,
+            trackingNumber,
+            trackingUrl: code && trackingNumber ? getTrackingUrl(code, trackingNumber) : null,
+            deliveryDays: code ? getDeliveryDays(code) : null,
+            changedFrom: changedFrom ? (getCarrier(changedFrom)?.short ?? changedFrom.toUpperCase()) : null,
+        });
+    } catch (error) {
+        console.error('[Book] shipped mail failed:', error);
+    }
+}
+
 export async function POST(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -146,6 +221,7 @@ export async function POST(request: NextRequest) {
     const orderId = str(body?.orderId);
     let order: {
         id: string; goship_code: string | null; buyerId: string; shippingFee: number;
+        cardId: string | null; cardName: string | null;
         carrier: string | null; parcelPreset: ParcelPreset; listingOverride: boolean;
         /** Priced before 2026-09-12: no GoShip quote on the order, settles on the old rule. */
         legacy: boolean;
@@ -164,7 +240,7 @@ export async function POST(request: NextRequest) {
             .eq('id', orderId)
             .maybeSingle();
         const row = data as {
-            card?: { product_kind?: string };
+            card?: { id?: string; name?: string; product_kind?: string };
             id: string; seller_id: string; status: string; goship_code: string | null;
             to_goship: { city?: string; district?: string; ward?: string } | null;
             to_name: string | null; to_phone: string | null; to_address_detail: string | null;
@@ -214,6 +290,7 @@ export async function POST(request: NextRequest) {
         order = {
             id: row.id, goship_code: row.goship_code, buyerId: row.buyer_id,
             shippingFee: Number(row.shipping_fee) || 0,
+            cardId: row.card?.id ?? null, cardName: row.card?.name ?? null,
             carrier: row.shipping_carrier ?? row.metadata?.shipping_carrier ?? null,
             // The kind the buyer was quoted as; the listing's kind for orders
             // that predate the column (and for the old raw/slab/bundle names).
@@ -340,6 +417,7 @@ export async function POST(request: NextRequest) {
             const linked = await linkShipmentToOrder(order.id, existing.data, body, null, totalFee || null, charge);
             if (linked) return linked;
             if (charge?.changedFrom) await notifyCarrierChanged(order.id, order.buyerId, charge.changedFrom, charge.carrier);
+            await notifyBuyerShipmentBooked(order, existing.data, charge?.carrier ?? order.carrier, charge?.changedFrom ?? null);
             return NextResponse.json({ data: existing.data, gcode: existing.data.id, recovered: true, charge });
         }
     }
@@ -422,6 +500,7 @@ export async function POST(request: NextRequest) {
             { city: dest.city, district: dest.district, ward: dest.ward }, quotedFee, charge);
         if (linked) return linked;
         if (charge?.changedFrom) await notifyCarrierChanged(order.id, order.buyerId, charge.changedFrom, charge.carrier);
+        await notifyBuyerShipmentBooked(order, created, charge?.carrier ?? order.carrier, charge?.changedFrom ?? null);
     }
 
     return NextResponse.json({ data: result.data, gcode, charge });

@@ -18,7 +18,7 @@
 import assert from 'node:assert/strict';
 import { isValidListingShippingFee, roundUp1000 } from '../src/lib/shipping-fee.ts';
 import { khaiGiaSurcharge, compensationFor } from '../src/lib/khai-gia.ts';
-import { booksWithCarrier, OFFERABLE_COURIERS } from '../src/lib/shipping-carriers.ts';
+import { booksWithCarrier, minShopCarriers, OFFERABLE_COURIERS } from '../src/lib/shipping-carriers.ts';
 import { shipmentCarriers } from '../src/lib/shipment-carriers.ts';
 import { heaviestPreset, parcelFor, parcelPresetOr, parseParcelOverrides, PARCEL_PRESETS } from '../src/lib/parcel.ts';
 
@@ -44,13 +44,16 @@ const offerable = OFFERABLE_COURIERS.map((c) => c.code);
 check('GHN, SPX, J&T and BEST are offerable; VNPost and hand delivery are not', () => {
   assert.deepEqual([...offerable].sort(), ['best', 'ghn', 'jnt', 'shopee']);
 });
-check('no preference means every offerable courier', () => assert.deepEqual(shipmentCarriers([]).sort(), [...offerable].sort()));
+check('no selection means shipping is not configured', () => assert.deepEqual(shipmentCarriers([]), []));
 check('a retired tick is dropped', () => assert.deepEqual(shipmentCarriers(['ghn', 'vnp']), ['ghn']));
-check('only retired ticks means no preference', () => assert.equal(shipmentCarriers(['vnp']).length, offerable.length));
+check('only retired ticks means shipping is not configured', () => assert.deepEqual(shipmentCarriers(['vnp']), []));
 check('coverage trims what collects here', () => {
   assert.deepEqual(shipmentCarriers(['ghn', 'shopee', 'jnt'], { carriers: ['ghn', 'jnt'] }).sort(), ['ghn', 'jnt']);
 });
-check('coverage with no ticks is the collecting set', () => assert.deepEqual(shipmentCarriers([], { carriers: ['ghn'] }), ['ghn']));
+check('coverage never opts an unconfigured seller into a carrier', () => assert.deepEqual(shipmentCarriers([], { carriers: ['ghn'] }), []));
+check('a shop normally has to select two carriers', () => assert.equal(minShopCarriers(null), 2));
+check('the minimum drops to one where only one carrier collects', () => assert.equal(minShopCarriers(['ghn']), 1));
+check('an empty coverage result never enables every carrier', () => assert.deepEqual(shipmentCarriers(['ghn'], { carriers: [] }), []));
 check('hand delivery books nothing', () => assert.equal(booksWithCarrier('self'), false));
 
 console.log('\n— the parcel —');

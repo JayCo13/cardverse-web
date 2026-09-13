@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { ArrowLeft, Truck, MapPin, CreditCard, Clock, Package, User, CheckCircle, AlertTriangle, Video } from 'lucide-react';
 import { useLocalization } from '@/context/localization-context';
+import { noDataLabel } from '@/lib/no-data-label';
 import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { useToast } from '@/hooks/use-toast';
 import { optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
@@ -50,7 +51,7 @@ export default function OrderDetailsPage() {
   const tx = (vi: string, en: string, ja: string) => (locale === 'ja-JP' ? ja : locale === 'en-US' ? en : vi);
   const fmt = (n: number | null | undefined) =>
     new Intl.NumberFormat(locale, { style: 'currency', currency: 'VND' }).format(Number(n || 0));
-  const dt = (s: string | null | undefined) => (s ? new Date(s).toLocaleString(locale) : '-');
+  const dt = (s: string | null | undefined) => (s ? new Date(s).toLocaleString(locale) : noDataLabel(locale));
 
   const [order, setOrder] = useState<any | null>(null);
   const [role, setRole] = useState<'buyer' | 'seller'>('buyer');
@@ -244,7 +245,7 @@ export default function OrderDetailsPage() {
                 )}
                 <div className="min-w-0">
                   <p className="font-semibold">{order.card?.name}</p>
-                  <p className="text-xs text-muted-foreground">{isNonCard(order.card?.product_kind) ? `${productCopy(locale)[order.card!.product_kind as 'box']} · ` : ''}{order.card?.category}{order.card?.condition ? ` · ${productConditionLabel(order.card.condition, locale)}` : ''}</p>
+                  <p className="text-xs text-muted-foreground">{isNonCard(order.card?.product_kind) ? `${productCopy(locale)[order.card!.product_kind as 'box']}, ` : ''}{order.card?.category}{order.card?.condition ? `, ${productConditionLabel(order.card.condition, locale)}` : ''}</p>
                 </div>
               </div>
               {bundleSel.length > 0 && (
@@ -284,7 +285,7 @@ export default function OrderDetailsPage() {
               <div className="flex items-start gap-2 text-sm">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                 <div>
-                  <p className="font-medium">{order.to_name} · {order.to_phone}</p>
+                  <p className="font-medium">{order.to_name}, {order.to_phone}</p>
                   <p className="text-muted-foreground">{[order.to_address_detail, order.to_ward_name, order.to_district_name, order.to_province_name].filter(Boolean).join(', ')}</p>
                 </div>
               </div>
@@ -394,7 +395,7 @@ export default function OrderDetailsPage() {
                 </NewSellerFrame>
                 <div>
                   <p className="flex items-center gap-1 font-medium">
-                    <UserLink userId={counterpartyId} className="truncate">{counterparty?.display_name || counterparty?.email || '-'}</UserLink>
+                    <UserLink userId={counterpartyId} className="truncate">{counterparty?.display_name || counterparty?.email || noDataLabel(locale)}</UserLink>
                     {isBuyer && <VerifiedSellerBadge verified={counterparty?.seller_verified} />}
                   </p>
                   {/* Was a fourth hand-rolled copy of "% positive · N sold".
