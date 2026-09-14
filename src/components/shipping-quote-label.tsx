@@ -3,11 +3,15 @@
 import { useState, type MouseEvent } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Loader2, MapPin } from 'lucide-react';
-import { AddressBook } from '@/components/address-book';
+import dynamic from 'next/dynamic';
 import { useAuthModal } from '@/components/auth-modal';
 import { useBuyerShippingQuote } from '@/components/buyer-shipping-quotes';
 import { useLocalization } from '@/context/localization-context';
 import { isValidListingShippingFee } from '@/lib/shipping-fee';
+
+const AddressBook = dynamic(() => import('@/components/address-book').then((module) => module.AddressBook), {
+    loading: () => <div className="h-40 animate-pulse rounded-lg bg-muted" aria-busy="true" />,
+});
 
 /**
  * What a card costs to ship, wherever a card is shown before checkout.

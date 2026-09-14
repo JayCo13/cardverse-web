@@ -88,9 +88,10 @@ const getCategoryStyle = (category: string) => {
 };
 
 /** Format price directly in VND without conversion */
+const vndFormatter = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' });
 const formatVnd = (price: number | null | undefined, locale?: string): string => {
   if (price === null || price === undefined) return noDataLabel(locale);
-  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
+  return vndFormatter.format(price);
 };
 
 interface CardItemProps {

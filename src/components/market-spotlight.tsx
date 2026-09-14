@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { LazyMount } from '@/components/lazy-mount';
 import { TrendUp, Pulse, CurrencyDollar, SpinnerGap, ArrowsClockwise, MagnifyingGlass, Camera, Plus, Check, SoccerBall, Skull, UploadSimple, X, Medal, Lightning, Timer, Crown, CreditCard } from '@phosphor-icons/react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +24,10 @@ import { useScanLimit } from '@/hooks/useScanLimit';
 import { ScanLimitModal } from '@/components/scan-limit-modal';
 import { ocrCardNumber } from '@/lib/ocr-card';
 import dynamic from 'next/dynamic';
+const MarketPriceChart = dynamic(
+    () => import('@/components/market-price-chart').then((module) => module.MarketPriceChart),
+    { ssr: false, loading: () => <div className="h-full animate-pulse rounded-lg bg-white/5" aria-busy="true" /> },
+);
 // Lazy-load the camera scanner so its code (camera + per-frame analysis) is NOT
 // in the homepage bundle — it's fetched only when the user opens "Scan nhanh".
 const CameraScanner = dynamic(
@@ -1826,7 +1830,7 @@ export function MarketSpotlight() {
     }, []);
 
     // Use centralized currency formatting from context
-    const { formatPrice, convertPrice } = useCurrency();
+    const { formatPrice } = useCurrency();
     const { t, locale } = useLocalization();
 
     // Get display image - use TCG image or fallback
@@ -2551,52 +2555,11 @@ export function MarketSpotlight() {
                                     <SpinnerGap className="w-8 h-8 animate-spin text-orange-500" weight="bold" />
                                 </div>
                             ) : (
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <AreaChart data={chartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
-                                        <defs>
-                                            <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#F97316" stopOpacity={0.3} />
-                                                <stop offset="95%" stopColor="#F97316" stopOpacity={0} />
-                                            </linearGradient>
-                                        </defs>
-                                        <XAxis
-                                            dataKey="date"
-                                            stroke="#333"
-                                            tick={{ fill: '#666', fontSize: 12 }}
-                                            axisLine={false}
-                                            tickLine={false}
-                                            dy={10}
-                                        />
-                                        <YAxis
-                                            orientation="right"
-                                            domain={['auto', 'auto']}
-                                            stroke="#333"
-                                            tick={{ fill: '#666', fontSize: 12 }}
-                                            axisLine={false}
-                                            tickLine={false}
-                                            tickFormatter={(val) => {
-                                                const converted = convertPrice(val);
-                                                if (converted >= 1000000) return `${(converted / 1000000).toFixed(1)}M`;
-                                                if (converted >= 1000) return `${(converted / 1000).toFixed(0)}K`;
-                                                return formatPrice(val);
-                                            }}
-                                            dx={10}
-                                        />
-                                        <Tooltip
-                                            contentStyle={{ backgroundColor: '#111', borderColor: '#333', borderRadius: '8px', color: '#fff' }}
-                                            itemStyle={{ color: '#F97316' }}
-                                            formatter={(value: number) => [formatPrice(value), t('price_label')]}
-                                        />
-                                        <Area
-                                            type="monotone"
-                                            dataKey="price"
-                                            stroke="#F97316"
-                                            strokeWidth={2}
-                                            fillOpacity={1}
-                                            fill="url(#colorPrice)"
-                                        />
-                                    </AreaChart>
-                                </ResponsiveContainer>
+                                <LazyMount minHeight={316} fallback={<div className="h-[316px] animate-pulse rounded-lg bg-white/5" aria-busy="true" />}>
+                                    <div className="h-[316px]">
+                                        <MarketPriceChart chartData={chartData} />
+                                    </div>
+                                </LazyMount>
                             )}
                         </div>
 

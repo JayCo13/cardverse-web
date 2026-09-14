@@ -451,7 +451,7 @@ export function Header() {
                 className="px-3 py-1.5 rounded-lg text-yellow-400 hover:bg-yellow-500/10 transition-colors flex items-center gap-2 group"
               >
                 <div className="relative w-6 h-6 transition-transform group-hover:scale-110">
-                  <Image src="/assets/pok-logo.png" alt="Pokemon" fill className="object-contain" />
+                  <Image src="/assets/pok-logo.png" alt="Pokemon" fill sizes="24px" className="object-contain" />
                 </div>
                 <span className="block group-hover:hidden">{t('nav_pokemon')}</span>
                 <span className="hidden group-hover:block whitespace-nowrap">{t('nav_pokemon_price')}</span>
@@ -462,7 +462,7 @@ export function Header() {
                 className="px-3 py-1.5 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors flex items-center gap-2 group"
               >
                 <div className="relative w-6 h-6 transition-transform group-hover:scale-110">
-                  <Image src="/assets/one-logo.png" alt="One Piece" fill className="object-contain" />
+                  <Image src="/assets/one-logo.png" alt="One Piece" fill sizes="24px" className="object-contain" />
                 </div>
                 <span className="block group-hover:hidden">{t('nav_onepiece')}</span>
                 <span className="hidden group-hover:block whitespace-nowrap">{t('nav_onepiece_price')}</span>
@@ -473,7 +473,7 @@ export function Header() {
                 className="px-3 py-1.5 rounded-lg text-green-400 hover:bg-green-500/10 transition-colors flex items-center gap-2 group"
               >
                 <div className="relative w-6 h-6 transition-transform group-hover:scale-110">
-                  <Image src="/assets/soc-logo.png" alt="Soccer" fill className="object-contain" />
+                  <Image src="/assets/soc-logo.png" alt="Soccer" fill sizes="24px" className="object-contain" />
                 </div>
                 <span className="block group-hover:hidden">{t('nav_soccer')}</span>
                 <span className="hidden group-hover:block whitespace-nowrap">{t('nav_soccer_price')}</span>

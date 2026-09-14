@@ -27,6 +27,16 @@ const CURRENCY_CONFIG: Record<AppCurrency, { symbol: string; decimals: number; l
     VND: { symbol: '₫', decimals: 0, locale: 'vi-VN' },
 };
 
+// One formatter per supported currency, shared by all cards and price labels.
+const CURRENCY_FORMATTERS = Object.fromEntries(
+    Object.entries(CURRENCY_CONFIG).map(([currency, config]) => [currency, new Intl.NumberFormat(config.locale, {
+        style: 'currency',
+        currency,
+        minimumFractionDigits: config.decimals,
+        maximumFractionDigits: config.decimals,
+    })]),
+) as Record<AppCurrency, Intl.NumberFormat>;
+
 interface CurrencyContextType {
     currency: AppCurrency;
     language: AppLanguage;
@@ -295,13 +305,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
         const convertedPrice = convertPrice(usdPrice, category);
 
         try {
-            const formatter = new Intl.NumberFormat(config.locale, {
-                style: 'currency',
-                currency: currency,
-                minimumFractionDigits: config.decimals,
-                maximumFractionDigits: config.decimals,
-            });
-            return formatter.format(convertedPrice);
+            return CURRENCY_FORMATTERS[currency].format(convertedPrice);
         } catch {
             // Fallback formatting
             const rounded = config.decimals === 0 ? Math.round(convertedPrice) : convertedPrice.toFixed(config.decimals);

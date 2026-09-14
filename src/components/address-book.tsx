@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { GoshipRegionPicker, type GoshipRegion } from '@/components/goship-region-picker';
 import { useToast } from '@/hooks/use-toast';
 import { useLocalization } from '@/context/localization-context';
+import { pickDefaultAddress } from '@/lib/default-shipping-address';
 import {
     MapPin, Plus, Pencil, Trash2, Loader2, Check, Star, ArrowLeft,
 } from 'lucide-react';
@@ -41,8 +42,7 @@ export type SavedAddress = {
  * definitions of "default" would let that quote disagree with the one checkout
  * shows a moment later.
  */
-export const pickDefaultAddress = (list: SavedAddress[]): SavedAddress | null =>
-    list.find(address => address.is_default) ?? list[0] ?? null;
+export { pickDefaultAddress } from '@/lib/default-shipping-address';
 
 type AddressBookProps = {
     // Checkout mode: show a radio to pick the shipping address and report it up.
