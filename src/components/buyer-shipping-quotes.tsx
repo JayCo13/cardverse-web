@@ -2,7 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useUser } from '@/lib/supabase';
-import { pickDefaultAddress, type SavedAddress } from '@/components/address-book';
+import type { SavedAddress } from '@/components/address-book';
+import { pickDefaultAddress } from '@/lib/default-shipping-address';
 import { fetchShippingOptionsBatch, type GoshipTo, type ShippingOption } from '@/lib/shipping-options-client';
 
 /**
