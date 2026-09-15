@@ -521,7 +521,9 @@ export default function WalletPage() {
       });
       setWithdrawAmount('');
       withdrawIdempotencyKeyRef.current = null;
-      fetchWallet();
+      // Awaited so the button stays disabled until the balance on screen is
+      // the post-withdrawal one.
+      await fetchWallet();
     } catch (err: any) {
       toast({ variant: 'destructive', title: copy.error, description: err.message });
     } finally {

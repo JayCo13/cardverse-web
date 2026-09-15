@@ -326,6 +326,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
     if (!card || !selectedAddress || !canPurchase) return;
 
     setIsPurchasing(true);
+    let redirecting = false;
     try {
       const fingerprint = JSON.stringify({
         cardId: card.id,
@@ -379,12 +380,13 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
       if (!res.ok) {
         throw new Error(localizeFinancialApiError(t, data.code, copy.errorTitle));
       }
-      purchaseRequestRef.current = null;
 
       if (data.payment_method === 'direct_payos') {
         if (!data.checkoutUrl) {
           // PayOS didn't return a payment link — surface it instead of silently
           // "succeeding" and closing the dialog with an orphaned pending order.
+          // The idempotency key is kept so a retry replays this order rather
+          // than opening a second one.
           toast({
             variant: 'destructive',
             title: copy.errorTitle,
@@ -394,10 +396,15 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
         }
         // Same-tab redirect — window.open('_blank') after an await is blocked by
         // the popup blocker (not a direct user gesture).
+        // Deliberately still purchasing: the dialog stays open until the
+        // browser leaves, and releasing the button here let a second press go
+        // out as a fresh checkout that 409'd against the buyer's own reservation.
+        redirecting = true;
         toast({ title: copy.redirecting, description: copy.redirectingDesc });
         window.location.href = data.checkoutUrl;
         return;
       }
+      purchaseRequestRef.current = null;
 
       toast({
         title: copy.purchaseSuccess,
@@ -409,7 +416,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
     } catch (err: any) {
       toast({ variant: 'destructive', title: copy.errorTitle, description: err.message });
     } finally {
-      setIsPurchasing(false);
+      if (!redirecting) setIsPurchasing(false);
     }
   };
 
@@ -577,7 +584,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
         </div>
 
         <DialogFooter className="flex-col sm:flex-row gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>{copy.cancel}</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPurchasing}>{copy.cancel}</Button>
           <Button
             onClick={handlePurchase}
             disabled={isPurchasing || !canPurchase || (paymentMethod === 'wallet' && insufficientBalance)}

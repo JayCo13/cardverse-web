@@ -914,7 +914,9 @@ export default function CardDetailsPage() {
 
             delete offerActionKeys.current[fingerprint];
             window.dispatchEvent(new Event("cardverse:chat-updated"));
-            void fetchOffers();
+            // Awaited, like accept: the row's buttons stay disabled until the
+            // offer shows as rejected instead of lighting up again briefly.
+            await fetchOffers();
         } catch (error) {
             console.error("Error rejecting offer:", error);
             toast({

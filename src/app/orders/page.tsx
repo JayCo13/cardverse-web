@@ -557,7 +557,10 @@ export default function OrdersPage() {
 
       toast({ title: copy.success, description: copy.updated });
       delete actionKeys.current[fingerprint];
-      fetchOrders(activeTab);
+      // Awaited: the row's buttons stay disabled until the list shows the new
+      // status, otherwise they light up again for a moment and get re-pressed.
+      // The action already succeeded, so a reload failure is not its failure.
+      try { await fetchOrders(activeTab); } catch (e) { console.error('[Orders] reload after action failed', e); }
     } catch (err: any) {
       toast({ variant: 'destructive', title: copy.errorTitle, description: err.message });
     } finally {
