@@ -1,7 +1,5 @@
-import { accountRoute } from '@/lib/account-route';
+import { accountRoute, getAccountRouteContext } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { getRouteUser } from '@/lib/supabase/route-user';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { isEvidenceVideoUrl } from '@/lib/evidence-video';
 import { getCarrier, getTrackingUrl, getDeliveryDays } from '@/lib/shipping-carriers';
@@ -15,8 +13,7 @@ type OrderRow = Database['public']['Tables']['orders']['Row'];
 
 async function handleGET(request: NextRequest) {
     try {
-        const supabase = await createServerSupabaseClient();
-        const user = await getRouteUser(supabase);
+        const { supabase, user } = await getAccountRouteContext(request);
         if (!user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
@@ -38,6 +35,14 @@ async function handleGET(request: NextRequest) {
 
         const { searchParams } = new URL(request.url);
         const status = searchParams.get('status');
+        const paginated = searchParams.has('page');
+        const page = Number(searchParams.get('page') || 1);
+        const filter = searchParams.get('filter') || 'all';
+        const sort = searchParams.get('sort') || 'newest';
+        const buckets: Record<string, string[] | null> = { all: null, pending: ['pending_payment'], processing: ['paid'], shipping: ['shipping','delivered'], completed: ['completed'], cancelled: ['cancelled','refunded','disputed'] };
+        if (!Number.isSafeInteger(page) || page < 1 || page > 100000 || !(filter in buckets) || !['newest','amount-desc','amount-asc'].includes(sort)) {
+            return NextResponse.json({ error: 'Invalid pagination' }, { status: 400 });
+        }
 
         // Which side of the marketplace the caller is asking about.
         //
@@ -84,8 +89,9 @@ async function handleGET(request: NextRequest) {
                 card:cards(id, name, image_url, category, condition),
                 buyer:profiles!orders_buyer_id_fkey(id, display_name, email, profile_image_url),
                 seller:profiles!orders_seller_id_fkey(id, display_name, email, profile_image_url, seller_verified, reputation_score, reputation_incidents_90d, reputation_incidents_total, completed_transactions)
-            `)
-            .order('created_at', { ascending: false });
+            `, paginated ? { count: 'exact' } : undefined)
+            .order(sort === 'newest' ? 'created_at' : 'amount', { ascending: sort === 'amount-asc' })
+            .order('id', { ascending: false });
 
         if (role === 'buyer') {
             query = query.eq('buyer_id', user.id);
@@ -97,11 +103,23 @@ async function handleGET(request: NextRequest) {
             query = query.eq('status', status);
         }
 
-        const { data, error } = await query;
+        if (paginated && buckets[filter]) query = query.in('status', buckets[filter]!);
+        if (paginated) query = query.range((page - 1) * 10, page * 10 - 1);
+        const [{ data, error, count }, countResults] = await Promise.all([
+            query,
+            paginated ? Promise.all(Object.entries(buckets).map(async ([key, statuses]) => {
+                let countQuery = supabase.from('orders').select('id', { count: 'exact', head: true }).eq(role === 'buyer' ? 'buyer_id' : 'seller_id', user.id);
+                if (statuses) countQuery = countQuery.in('status', statuses);
+                const result = await countQuery;
+                if (result.error) throw result.error;
+                return [key, result.count ?? 0] as const;
+            })) : Promise.resolve([]),
+        ]);
+        const statusCounts = Object.fromEntries(countResults);
 
         if (error) throw error;
 
-        return NextResponse.json({ orders: data || [], role });
+        return NextResponse.json({ orders: data || [], role, ...(paginated ? { count: count ?? 0, total: statusCounts.all ?? 0, statusCounts, page } : {}) }, { headers: { 'Cache-Control': 'private, no-store' } });
     } catch (error: any) {
         console.error('Get orders error:', error);
         return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
@@ -111,8 +129,7 @@ async function handleGET(request: NextRequest) {
 // PATCH: Update order status
 async function handlePATCH(request: NextRequest) {
     try {
-        const supabase = await createServerSupabaseClient();
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        const { supabase, user, authError } = await getAccountRouteContext(request);
 
         if (authError || !user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

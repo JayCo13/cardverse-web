@@ -860,6 +860,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             const response = await fetch(`/api/chat/messages?conversationId=${conversationId}`, { cache: "no-store" });
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || copy.loadMessagesFailed);
+            if (selectedIdRef.current !== conversationId) return;
             setMessages(payload.messages || []);
             setHasMoreMessages(Boolean(payload.hasMore));
             await fetch("/api/chat/read", {
@@ -872,7 +873,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             const description = error instanceof Error ? error.message : copy.loadMessagesFailed;
             toast({ variant: "destructive", title: copy.chatError, description });
         } finally {
-            setIsLoadingMessages(false);
+            if (selectedIdRef.current === conversationId) setIsLoadingMessages(false);
         }
     }, [fetchConversations, toast]);
 
@@ -888,6 +889,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
             );
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || copy.loadMessagesFailed);
+            if (selectedIdRef.current !== conversationId) return;
             skipAutoScrollRef.current = true;
             setMessages(prev => {
                 const existing = new Set(prev.map(message => message.id));

@@ -491,6 +491,7 @@ export const vi = {
   coll_sign_in_desc: 'Đăng nhập để xem và quản lý bộ sưu tập thẻ của bạn.',
   coll_sign_in_btn: 'Đăng nhập để tiếp tục',
   coll_cards_label: 'thẻ',
+  coll_retry: 'Thử lại',
   // Collection Detail Page
   coll_back: 'Quay lại bộ sưu tập',
   coll_card_not_found: 'Không tìm thấy thẻ',

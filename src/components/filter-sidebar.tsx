@@ -20,6 +20,7 @@ interface FilterSidebarProps {
   showListingTypeFilter?: boolean;
   showAdvancedFilters?: boolean;
   availableCards?: Card[];
+  facets?: import('@/lib/marketplace-page').MarketplaceFacets;
 }
 
 const uniqueSorted = (values: Array<string | null | undefined>) =>
@@ -30,7 +31,7 @@ const formatPriceInput = (value?: string) => {
   return number > 0 ? new Intl.NumberFormat('vi-VN').format(number) : '';
 };
 
-export function FilterSidebar({ filters, onFiltersChange, showListingTypeFilter = true, showAdvancedFilters = false, availableCards = [] }: FilterSidebarProps) {
+export function FilterSidebar({ filters, onFiltersChange, showListingTypeFilter = true, showAdvancedFilters = false, availableCards = [], facets }: FilterSidebarProps) {
   const { t, locale } = useLocalization();
   const copy = locale === 'vi-VN'
     ? {
@@ -88,12 +89,12 @@ export function FilterSidebar({ filters, onFiltersChange, showListingTypeFilter 
   };
 
   const categories = getCategories(locale).filter(category => category.value !== 'Magic' && category.value !== 'Ma thuật');
-  const publishers = uniqueSorted(availableCards.map(card => card.publisher));
-  const sets = uniqueSorted(availableCards.map(card => card.setName));
-  const availableConditions = uniqueSorted(availableCards.map(card => card.condition));
+  const publishers = facets?.publishers ?? uniqueSorted(availableCards.map(card => card.publisher));
+  const sets = facets?.sets ?? uniqueSorted(availableCards.map(card => card.setName));
+  const availableConditions = facets?.conditions ?? uniqueSorted(availableCards.map(card => card.condition));
   const categoryCounts = new Map(categories.map(category => [
     category.value,
-    availableCards.filter(card => card.category === category.value || card.category === category.label).length,
+    facets ? (facets.categories[category.value] ?? 0) + (category.value === category.label ? 0 : facets.categories[category.label] ?? 0) : availableCards.filter(card => card.category === category.value || card.category === category.label).length,
   ]));
 
   const activeFilterCount = filters.categories.length

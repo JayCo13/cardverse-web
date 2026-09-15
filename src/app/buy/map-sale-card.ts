@@ -13,6 +13,7 @@ export function mapSaleCard(c: any): Card {
     return {
 
           id: c.id,
+          buyerOfferStatus: c.buyer_offer_status ?? null,
           productKind: c.product_kind || 'card', productTypeLabel: c.product_type_label, productDetails: c.product_details,
           name: c.name,
           imageUrl: c.image_url || '',

@@ -1,6 +1,5 @@
-import { accountRoute } from '@/lib/account-route';
+import { accountRoute, getAccountRouteContext } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { getPayOS } from '@/lib/payos';
 import { matchBundleSelection, type BundleSelection } from '@/lib/bundle';
@@ -64,8 +63,7 @@ async function attachGoshipDestination(
 
 async function handlePOST(request: NextRequest) {
     try {
-        const supabase = await createServerSupabaseClient();
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        const { supabase, user, authError } = await getAccountRouteContext(request);
 
         if (authError || !user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

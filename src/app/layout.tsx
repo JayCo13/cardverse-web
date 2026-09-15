@@ -82,7 +82,6 @@ export default function RootLayout({
       <body className={`${inter.variable} ${orbitron.variable} ${quantico.variable} font-body antialiased`}>
         <SupabaseAuthProvider>
 
-          <AuthReady>
             <AuthModalProvider>
               <CurrencyProvider>
                 <LocalizationProvider>
@@ -113,7 +112,7 @@ export default function RootLayout({
                           * bottom on short pages, whether the page hands back a
                           * flex column of its own or a bare fragment. */}
                         <div className="flex flex-1 flex-col">
-                          {children}
+                          <AuthReady>{children}</AuthReady>
                         </div>
                         <Footer />
                       </div>
@@ -126,7 +125,6 @@ export default function RootLayout({
                 </LocalizationProvider>
               </CurrencyProvider>
             </AuthModalProvider>
-          </AuthReady>
 
         </SupabaseAuthProvider>
         <Toaster />

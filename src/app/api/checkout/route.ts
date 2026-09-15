@@ -1,7 +1,6 @@
-import { accountRoute } from '@/lib/account-route';
+import { accountRoute, getAccountRouteContext } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { randomInt } from 'crypto';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { hashFinancialRequest, stableFinancialUuid } from '@/lib/financial-idempotency';
 import { getPayOS } from '@/lib/payos';
@@ -87,8 +86,7 @@ function orderShipping(address: CheckoutAddress) {
 
 async function handlePOST(request: NextRequest) {
   try {
-    const supabase = await createServerSupabaseClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const { supabase, user, authError } = await getAccountRouteContext(request);
 
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

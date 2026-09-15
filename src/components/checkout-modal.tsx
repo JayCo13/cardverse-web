@@ -199,7 +199,9 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
 
   useEffect(() => {
     if (open && userId) {
-      fetchWalletBalance();
+      const controller = new AbortController();
+      void fetchWalletBalance(controller.signal);
+      return () => controller.abort();
     }
   }, [open, userId]);
 
@@ -220,14 +222,15 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
     );
   }, [open, card?.id, preselectedBundle]);
 
-  const fetchWalletBalance = async () => {
+  const fetchWalletBalance = async (signal: AbortSignal) => {
     setIsLoadingWallet(true);
     try {
-      const res = await fetch('/api/wallet?view=balance', { cache: 'no-store' });
+      const res = await fetch('/api/wallet?view=balance', { cache: 'no-store', signal });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || copy.walletLoadError);
-      setWalletBalance(data.wallet?.available_balance || 0);
+      if (!signal.aborted) setWalletBalance(data.wallet?.available_balance || 0);
     } catch (err) {
+      if (signal.aborted) return;
       console.error('Failed to fetch wallet:', err);
       toast({
         variant: 'destructive',
@@ -235,7 +238,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
         description: err instanceof Error ? err.message : copy.walletLoadError,
       });
     } finally {
-      setIsLoadingWallet(false);
+      if (!signal.aborted) setIsLoadingWallet(false);
     }
   };
 
@@ -256,7 +259,7 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
     setShippingOptions([]);
     setFeeError('');
 
-    if (!address || !card) return;
+    if (!address || !card) { setLoadingFee(false); return; }
     // An address saved before the book moved to GoShip's geography cannot be
     // quoted; the book flags it and opens the form instead of selecting it.
     if (!address.goship) { setFeeError(copy.feeError); return; }
@@ -294,13 +297,13 @@ export function CheckoutModal({ open, onOpenChange, card, onSuccess, preselected
 
   const handleSelectAddress = useCallback((address: SavedAddress | null) => {
     setSelectedAddress(address);
-    void calculateFee(address);
-  }, [calculateFee]);
+  }, []);
 
   // Recalculate whenever the buyer's address / card changes.
   useEffect(() => {
     if (!open || !selectedAddress) return;
     void calculateFee(selectedAddress);
+    return () => { feeRequestRef.current++; };
   }, [open, selectedAddress, card?.id, calculateFee]);
 
   const formatVND = (amount: number) => new Intl.NumberFormat(locale).format(amount) + '₫';

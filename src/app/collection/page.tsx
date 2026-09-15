@@ -61,6 +61,12 @@ export default function CollectionPage() {
     const { user, isLoading: isUserLoading } = useUser();
     const { setOpen } = useAuthModal();
 
+    const paginated = process.env.NEXT_PUBLIC_MARKETPLACE_PAGINATION_READY === 'true';
+    const [page, setPage] = useState(1);
+    const [resultCount, setResultCount] = useState(0);
+    const [refreshVersion, setRefreshVersion] = useState(0);
+    const [serverStats, setServerStats] = useState<{ totalCards: number; totalValue: number; mostValuable: CollectionCard | null; categories: string[] } | null>(null);
+    const [pageError, setPageError] = useState(false);
     const [cards, setCards] = useState<CollectionCard[]>([]);
     const [albums, setAlbums] = useState<Album[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -121,6 +127,7 @@ export default function CollectionPage() {
             }
 
             setCards(prev => prev.filter(c => c.id !== cardToDelete));
+            setRefreshVersion(v => v + 1);
             setDeleteModalOpen(false);
             setCardToDelete(null);
         } catch (err) {
@@ -130,16 +137,18 @@ export default function CollectionPage() {
 
     // Calculate collection stats
     const stats = useMemo(() => {
+        if (paginated && serverStats) return serverStats;
         const totalCards = cards.length;
         const totalValue = cards.reduce((sum, card) => sum + (card.market_price || 0), 0);
         const mostValuable = cards.reduce((max, card) =>
             (card.market_price || 0) > (max?.market_price || 0) ? card : max, cards[0]);
         const categories = [...new Set(cards.map(c => c.category).filter(Boolean))];
         return { totalCards, totalValue, mostValuable, categories };
-    }, [cards]);
+    }, [cards, paginated, serverStats]);
 
     // Filter cards
     const filteredCards = useMemo(() => {
+        if (paginated) return cards;
         let filtered = cards;
 
         // Filter by album
@@ -167,10 +176,33 @@ export default function CollectionPage() {
         }
 
         return filtered;
-    }, [cards, searchTerm, selectedAlbum, activeTab]);
+    }, [cards, searchTerm, selectedAlbum, activeTab, paginated]);
+
+    useEffect(() => { setPage(1); }, [searchTerm, selectedAlbum, activeTab]);
+    useEffect(() => {
+        if (!paginated || !user) return;
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => {
+            setIsLoading(true);
+            setPageError(false);
+            void supabase.rpc('collection_page' as never, {
+                p_search: searchTerm.trim(), p_album: selectedAlbum,
+                p_category: ({ pokemon: 'Pokemon', onepiece: 'One Piece', soccer: 'Soccer' } as Record<string,string>)[activeTab] ?? null,
+                p_page: page,
+            } as never).abortSignal(controller.signal).then(({ data, error }) => {
+                if (controller.signal.aborted) return;
+                if (error || !data) { setPageError(true); setIsLoading(false); return; }
+                const result = data as unknown as { cards: CollectionCard[]; albums: Album[]; count: number; page: number; stats: NonNullable<typeof serverStats> };
+                setCards(result.cards); setAlbums(result.albums); setResultCount(result.count);
+                setServerStats(result.stats); setIsLoading(false);
+            });
+        }, 250);
+        return () => { clearTimeout(timer); controller.abort(); };
+    }, [paginated, user, supabase, searchTerm, selectedAlbum, activeTab, page, refreshVersion]);
 
     // Fetch collection data
     useEffect(() => {
+        if (paginated) return;
         if (!user) {
             setIsLoading(false);
             return;
@@ -216,7 +248,7 @@ export default function CollectionPage() {
         };
 
         fetchData();
-    }, [user, supabase]);
+    }, [user, supabase, paginated]);
 
     // Show login prompt if not logged in
     if (!isUserLoading && !user) {
@@ -341,7 +373,7 @@ export default function CollectionPage() {
                             >
                                 <Grid3X3 className="h-8 w-8 text-primary" />
                                 <span className="text-sm font-medium">{t('coll_all_cards')}</span>
-                                <span className="text-xs text-muted-foreground">{cards.length} {t('coll_cards_label')}</span>
+                                <span className="text-xs text-muted-foreground">{stats.totalCards} {t('coll_cards_label')}</span>
                             </button>
 
                             {/* Album Cards */}
@@ -422,6 +454,12 @@ export default function CollectionPage() {
                 </div>
 
                 {/* Cards Grid */}
+                {paginated && <div className="mb-4 flex items-center justify-between gap-3">
+                    <Button variant="outline" disabled={page<=1 || isLoading} onClick={() => setPage(p => p-1)}>‹</Button>
+                    <span>{page} / {Math.max(1, Math.ceil(resultCount / 24))}</span>
+                    <Button variant="outline" disabled={page>=Math.ceil(resultCount/24) || isLoading} onClick={() => setPage(p => p+1)}>›</Button>
+                </div>}
+                {pageError && <Button variant="outline" onClick={() => setRefreshVersion(v => v+1)}>{t('coll_retry')}</Button>}
                 {filteredCards.length > 0 ? (
                     <div className={viewMode === "grid"
                         ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4"

@@ -1,7 +1,5 @@
-import { accountRoute } from '@/lib/account-route';
-import { NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { getRouteUser } from '@/lib/supabase/route-user';
+import { accountRoute, getAccountRouteContext } from '@/lib/account-route';
+import { NextResponse, type NextRequest } from 'next/server';
 
 /**
  * Everything the persistent chrome needs about the signed-in account, in one
@@ -22,9 +20,8 @@ import { getRouteUser } from '@/lib/supabase/route-user';
  * The individual endpoints stay: they are still the right shape for the pages
  * that need the full cart or the full offer inbox.
  */
-async function handleGET() {
-    const supabase = await createServerSupabaseClient();
-    const user = await getRouteUser(supabase);
+async function handleGET(request: NextRequest) {
+    const { supabase, user } = await getAccountRouteContext(request);
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const [cart, received, sent] = await Promise.all([

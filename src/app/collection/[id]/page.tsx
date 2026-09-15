@@ -14,9 +14,8 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import {
-    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart
-} from "recharts";
+import dynamic from 'next/dynamic';
+const CollectionHistoryChart = dynamic(() => import('@/components/CollectionHistoryChart'), { ssr: false });
 import { useCurrency } from "@/contexts/currency-context";
 import { useLocalization } from "@/context/localization-context";
 import { PSAGradedPrices } from "@/components/psa-graded-prices";
@@ -322,48 +321,7 @@ export default function CardDetailsPage() {
                             </CardHeader>
                             <CardContent>
                                 <div className="h-64">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <AreaChart data={priceHistory}>
-                                            <defs>
-                                                <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
-                                                    <stop offset="5%" stopColor={priceChange >= 0 ? "#22c55e" : "#ef4444"} stopOpacity={0.3} />
-                                                    <stop offset="95%" stopColor={priceChange >= 0 ? "#22c55e" : "#ef4444"} stopOpacity={0} />
-                                                </linearGradient>
-                                            </defs>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
-                                            <XAxis
-                                                dataKey="date"
-                                                axisLine={false}
-                                                tickLine={false}
-                                                tick={{ fill: '#888', fontSize: 12 }}
-                                                tickMargin={10}
-                                            />
-                                            <YAxis
-                                                axisLine={false}
-                                                tickLine={false}
-                                                tick={{ fill: '#888', fontSize: 12 }}
-                                                tickFormatter={(value) => `$${value}`}
-                                                width={60}
-                                            />
-                                            <Tooltip
-                                                contentStyle={{
-                                                    backgroundColor: '#1a1a1a',
-                                                    border: '1px solid #333',
-                                                    borderRadius: '8px',
-                                                    padding: '8px 12px'
-                                                }}
-                                                labelStyle={{ color: '#888' }}
-                                                formatter={(value: number) => [`$${value.toFixed(2)}`, 'Price']}
-                                            />
-                                            <Area
-                                                type="monotone"
-                                                dataKey="price"
-                                                stroke={priceChange >= 0 ? "#22c55e" : "#ef4444"}
-                                                strokeWidth={2}
-                                                fill="url(#priceGradient)"
-                                            />
-                                        </AreaChart>
-                                    </ResponsiveContainer>
+                                    <CollectionHistoryChart priceHistory={priceHistory} priceChange={priceChange} />
                                 </div>
                             </CardContent>
                         </Card>

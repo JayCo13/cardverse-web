@@ -470,6 +470,7 @@ export const ja = {
   coll_sign_in_desc: 'ログインしてカードコレクションを表示・管理しましょう。',
   coll_sign_in_btn: 'ログインして続行',
   coll_cards_label: '枚',
+  coll_retry: '再試行',
   // Collection Detail Page
   coll_back: 'コレクションに戻る',
   coll_card_not_found: 'カードが見つかりません',

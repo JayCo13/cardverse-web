@@ -227,6 +227,7 @@ export default function SoccerPage() {
                 }
             }
 
+            if (controller.signal.aborted) return;
             const normalizedTerm = normalizeSearch(effectiveTerm);
 
             // Step 1: Search local database first (faster & more reliable)
@@ -236,8 +237,9 @@ export default function SoccerPage() {
                 .ilike('category', '%soccer%')
                 .ilike('name', `%${normalizedTerm}%`)
                 .order('price', { ascending: false })
-                .limit(60);
+                .limit(60).abortSignal(controller.signal);
 
+            if (controller.signal.aborted) return;
             if (!error && localResults && localResults.length > 0) {
                 setCards(localResults);
                 setEbayResults([]);
@@ -252,7 +254,8 @@ export default function SoccerPage() {
             let validItems: EbayItem[] = [];
             let searchWords = effectiveTerm.split(" ").filter(w => w.trim() !== "");
 
-            while (searchWords.length > 0) {
+            let attempts = 0;
+            while (searchWords.length > 0 && attempts++ < 2) {
                 const currentQuery = searchWords.join(" ");
                 console.log("Fetching from eBay with matching fewer words logic:", currentQuery);
 
@@ -280,6 +283,7 @@ export default function SoccerPage() {
                 await new Promise(resolve => setTimeout(resolve, 300));
             }
 
+            if (controller.signal.aborted) return;
             setEbayResults(validItems);
             setCards([]);
 

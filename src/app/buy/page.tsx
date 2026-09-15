@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import type { MarketplacePage } from '@/lib/marketplace-page';
 import type { Card } from '@/lib/types';
 import BuyClient from './buy-client';
 import { mapSaleCard } from './map-sale-card';
@@ -22,9 +23,17 @@ export const dynamic = 'force-dynamic';
 export default async function BuyPage() {
     let initialCards: Card[] = [];
     let initialLoadSucceeded = false;
+    let initialPage: MarketplacePage | undefined;
 
     try {
         const supabase = await createServerSupabaseClient();
+        if (process.env.MARKETPLACE_PAGINATION_READY === 'true') {
+            const { data, error } = await supabase.rpc('marketplace_catalog_page' as never);
+            if (error) throw error;
+            const result = data as unknown as Omit<MarketplacePage, 'cards'> & { rows: unknown[] };
+            initialPage = { ...result, cards: result.rows.map(mapSaleCard) };
+            return <BuyClient initialCards={initialPage.cards} initialLoadSucceeded initialPage={initialPage} />;
+        }
         const { data, error } = await supabase
             .from('cards')
             .select('*, profiles:seller_id(display_name, profile_image_url, seller_verified, seller_review_count, shipping_carriers, shipping_fees, reputation_score, reputation_incidents_90d, reputation_incidents_total, completed_transactions)')

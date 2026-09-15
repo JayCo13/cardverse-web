@@ -602,7 +602,8 @@ export default function SellPage() {
   const fetchOfferSummary = async (options?: { force?: boolean }) => {
     if (!user) return;
     try {
-      const summary = await getAccountSummary(options);
+      const summary = await getAccountSummary(user.id, options);
+      if (!summary) return;
       setPendingOffersTotal(summary.receivedPending);
       setPendingOfferCounts(summary.cardPendingCounts);
     } catch (err) {

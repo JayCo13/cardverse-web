@@ -1,6 +1,5 @@
-import { accountRoute } from '@/lib/account-route';
+import { accountRoute, getAccountRouteContext } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { getRequestLocale } from '@/lib/request-localization';
 import { getOfferEmailRecipient } from '@/lib/offer-email-recipient';
@@ -61,8 +60,7 @@ const mapOffer = (offer: OfferRow) => ({
 });
 
 async function getUserAndCard(request: NextRequest) {
-    const supabase = await createServerSupabaseClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const { supabase, user, authError } = await getAccountRouteContext(request);
 
     if (authError || !user) {
         return { supabase, user: null, card: null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
@@ -155,8 +153,7 @@ async function handleGET(request: NextRequest) {
 }
 
 async function handlePOST(request: NextRequest) {
-    const supabase = await createServerSupabaseClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const { supabase, user, authError } = await getAccountRouteContext(request);
 
     if (authError || !user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

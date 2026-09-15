@@ -342,6 +342,8 @@ export default function WalletPage() {
   const [historyPage, setHistoryPage] = useState(1);
   const [expandedWithdrawalId, setExpandedWithdrawalId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const walletRequest = useRef<AbortController | null>(null);
   const [walletLoadError, setWalletLoadError] = useState('');
   const [depositAmount, setDepositAmount] = useState<number>(100000);
   const [customAmount, setCustomAmount] = useState('');
@@ -358,25 +360,40 @@ export default function WalletPage() {
   const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
 
   const fetchWallet = useCallback(async () => {
+    walletRequest.current?.abort();
+    const controller = new AbortController();
+    walletRequest.current = controller;
     setIsLoading(true);
+    setHistoryLoading(true);
     setWalletLoadError('');
-    try {
-      const res = await fetch('/api/wallet');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || copy.loadError);
-      if (data.wallet) {
-        setWallet(data.wallet);
-        setTransactions(data.transactions || []);
-        setWithdrawals(data.withdrawals || []);
-        setFundBalances(data.fund_statement?.balances || null);
-      }
-    } catch (err: unknown) {
-      console.error('Failed to fetch wallet:', err);
-      setWalletLoadError(err instanceof Error ? err.message : copy.loadError);
-    } finally {
-      setIsLoading(false);
+    const read = async (url: string) => {
+      const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || copy.loadError);
+      return data;
+    };
+    let fullLoaded = false;
+    const balance = read('/api/wallet?view=balance').then(data => {
+      if (!controller.signal.aborted && !fullLoaded && data.wallet) { setWallet(data.wallet); setIsLoading(false); }
+    });
+    const history = read('/api/wallet').then(data => {
+      if (controller.signal.aborted) return;
+      fullLoaded = true;
+      setWallet(data.wallet);
+      setTransactions(data.transactions || []);
+      setWithdrawals(data.withdrawals || []);
+      setFundBalances(data.fund_statement?.balances || null);
+    });
+    const results = await Promise.allSettled([balance, history]);
+    if (controller.signal.aborted) return;
+    if (results[1].status === 'rejected') {
+      setFundBalances(null);
+      setWalletLoadError(results[1].reason instanceof Error ? results[1].reason.message : copy.loadError);
     }
+    setIsLoading(false);
+    setHistoryLoading(false);
   }, [copy.loadError]);
+  useEffect(() => () => walletRequest.current?.abort(), [user?.id]);
 
   const fetchSellerStatus = useCallback(async () => {
     try {
@@ -464,7 +481,7 @@ export default function WalletPage() {
   };
 
   const available = wallet?.available_balance || 0;
-  const verifiedAvailable = fundBalances?.verified_available ?? 0;
+  const verifiedAvailable = historyLoading ? 0 : fundBalances?.verified_available ?? 0;
   const withdrawNum = parseInt(withdrawAmount.replace(/[^\d]/g, ''), 10) || 0;
   const withdrawFee = Math.round(withdrawNum * WITHDRAW_FEE_RATE);
   const withdrawNet = withdrawNum - withdrawFee;
@@ -667,7 +684,7 @@ export default function WalletPage() {
     );
   }
 
-  if (walletLoadError) {
+  if (walletLoadError && !wallet) {
     return (
       <div className="flex flex-1 flex-col">
         <main className="flex-1 container mx-auto px-4 py-8 flex flex-col items-center justify-center text-center">
@@ -918,6 +935,8 @@ export default function WalletPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {historyLoading && <Skeleton className="mb-4 h-24 w-full" />}
+              {walletLoadError && <div role="alert" className="mb-4 text-sm text-red-400">{walletLoadError}<Button variant="outline" onClick={fetchWallet}>{copy.retry}</Button></div>}
               <div className="mb-5 flex flex-wrap gap-2" role="tablist" aria-label={copy.historyTitle}>
                 {historyTabs.map((tab) => (
                   <Button

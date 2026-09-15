@@ -1,9 +1,10 @@
 
 'use client';
 
+import type { MarketplacePage } from '@/lib/marketplace-page';
 import { mapSaleCard } from './map-sale-card';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { CardItem } from '@/components/card-item';
 import type { Card, CardCategory, CardCondition } from '@/lib/types';
@@ -33,18 +34,21 @@ import { useAuth } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
 import dynamic from 'next/dynamic';
+import { ActionModalLoading } from '@/components/action-modal-loading';
+const warmCheckout = () => { void import('@/components/checkout-modal'); };
+const warmOffer = () => { void import('@/components/offer-modal'); };
 
 // Checkout (and its heavy GHN address picker) is only needed after the user
 // clicks "Buy", so keep it out of the initial /buy bundle.
 const CheckoutModal = dynamic(
   () => import('@/components/checkout-modal').then((m) => m.CheckoutModal),
-  { ssr: false }
+  { ssr: false, loading: ActionModalLoading }
 );
 
 // Make-offer flow is only needed once a buyer taps "Trả giá".
 const OfferModal = dynamic(
   () => import('@/components/offer-modal').then((m) => m.OfferModal),
-  { ssr: false }
+  { ssr: false, loading: ActionModalLoading }
 );
 
 export type Filters = {
@@ -63,7 +67,7 @@ export type Filters = {
 
 type SortOption = 'newest' | 'price-asc' | 'price-desc';
 
-export default function BuyClient({ initialCards, initialLoadSucceeded }: { initialCards: Card[]; initialLoadSucceeded: boolean }) {
+export default function BuyClient({ initialCards, initialLoadSucceeded, initialPage }: { initialCards: Card[]; initialLoadSucceeded: boolean; initialPage?: MarketplacePage }) {
   const { t, locale } = useLocalization();
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -121,7 +125,29 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
   const [offerOpen, setOfferOpen] = useState(false);
 
   const userId = user?.id;
+  const [pageData, setPageData] = useState(initialPage);
+  const seed = useRef(Boolean(initialPage));
+  const queryFilters = JSON.stringify({ ...filters, search: debouncedSearch.trim(), productKind: productFilter });
   useEffect(() => {
+    if (!initialPage) return;
+    if (seed.current) { seed.current = false; return; }
+    const controller = new AbortController();
+    setIsLoading(true);
+    const params = new URLSearchParams({ filters: queryFilters, page: String(page), sort });
+    void fetch(`/api/marketplace/catalog?${params}`, { cache: 'no-store', signal: controller.signal })
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error);
+        if (controller.signal.aborted) return;
+        setPageData(data);
+        setSaleCards(data.cards);
+      }).catch(error => {
+        if (!controller.signal.aborted) toast({ variant: 'destructive', title: t('error'), description: String(error.message) });
+      }).finally(() => { if (!controller.signal.aborted) setIsLoading(false); });
+    return () => controller.abort();
+  }, [initialPage, queryFilters, page, sort, userId, toast, t]);
+  useEffect(() => {
+    if (initialPage) return;
     const controller = new AbortController();
     const queryCards = () => supabase
       .from('cards')
@@ -166,10 +192,11 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
     };
     void fetchCards();
     return () => controller.abort();
-  }, [supabase, userId, initialLoadSucceeded]);
+  }, [supabase, userId, initialLoadSucceeded, initialPage]);
 
   const filteredAndSortedCards = useMemo(() => {
     if (!saleCards) return [];
+    if (initialPage) return saleCards;
 
     let filtered = saleCards.filter((card) => {
       if (productFilter !== 'all' && (card.productKind || 'card') !== productFilter) return false;
@@ -233,17 +260,18 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
           return 0;
       }
     });
-  }, [filters, debouncedSearch, locale, sort, saleCards, productFilter]);
+  }, [filters, debouncedSearch, locale, sort, saleCards, productFilter, initialPage]);
 
-  const pageCount = Math.max(1, Math.ceil(filteredAndSortedCards.length / PAGE_SIZE));
+  const resultCount = pageData?.count ?? filteredAndSortedCards.length;
+  const pageCount = Math.max(1, Math.ceil(resultCount / PAGE_SIZE));
   // Clamped rather than trusted: narrowing a filter can shrink the result set
   // below the page the reader is standing on, which would otherwise render an
   // empty list under a "12 results" heading.
   const currentPage = Math.min(page, pageCount);
 
   const visibleCards = useMemo(
-    () => filteredAndSortedCards.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
-    [filteredAndSortedCards, currentPage],
+    () => initialPage ? saleCards : filteredAndSortedCards.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [filteredAndSortedCards, currentPage, initialPage, saleCards],
   );
 
   // Any change to what is being listed sends the reader back to the first page.
@@ -421,17 +449,17 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
         )}
         <div className="flex gap-8">
           <div className="hidden md:block w-1/4">
-            <FilterSidebar filters={filters} onFiltersChange={setFilters} showListingTypeFilter={false} showAdvancedFilters availableCards={saleCards} />
+            <FilterSidebar filters={filters} onFiltersChange={setFilters} showListingTypeFilter={false} showAdvancedFilters availableCards={saleCards} facets={pageData?.facets} />
           </div>
           <div className="w-full md:w-3/4">
             <div className="flex justify-between items-center mb-6">
               <p className="text-sm text-muted-foreground">
                 {t('showing_cards_for_sale')
-                  .replace('{count}', filteredAndSortedCards.length.toString())
-                  .replace('{total}', (saleCards || []).length.toString())}
+                  .replace('{count}', resultCount.toString())
+                  .replace('{total}', (pageData?.total ?? saleCards.length).toString())}
                 {pageCount > 1 && (
                   <span className="ml-1 tabular-nums">
-                    , {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filteredAndSortedCards.length)}
+                    , {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, resultCount)}
                   </span>
                 )}
               </p>
@@ -444,7 +472,7 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
                       </Button>
                     </SheetTrigger>
                     <SheetContent side="left" className="w-3/4">
-                      <FilterSidebar filters={filters} onFiltersChange={setFilters} showListingTypeFilter={false} showAdvancedFilters availableCards={saleCards} />
+                      <FilterSidebar filters={filters} onFiltersChange={setFilters} showListingTypeFilter={false} showAdvancedFilters availableCards={saleCards} facets={pageData?.facets} />
                     </SheetContent>
                   </Sheet>
                 </div>
@@ -460,7 +488,7 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
                 </Select>
               </div>
             </div>
-            {renderCardList()}
+            <div onPointerOver={warmCheckout} onFocus={warmCheckout} onTouchStart={() => { warmCheckout(); warmOffer(); }} onPointerDown={warmOffer}>{renderCardList()}</div>
             {!isLoading && renderPagination()}
           </div>
         </div>
