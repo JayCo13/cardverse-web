@@ -33,8 +33,11 @@ const EMPTY: AccountSummary = {
  *  count never looks stale to someone watching it. */
 const FRESH_FOR_MS = 5_000;
 
-let inFlight: Promise<AccountSummary> | null = null;
+let inFlight: Promise<AccountSummary | null> | null = null;
 let cached: { at: number; value: AccountSummary } | null = null;
+
+let accountId: string | null = null;
+let generation = 0;
 
 function readNumber(value: unknown) {
     return typeof value === 'number' && Number.isFinite(value) ? value : 0;
@@ -42,7 +45,7 @@ function readNumber(value: unknown) {
 
 async function request(): Promise<AccountSummary> {
     const response = await fetch('/api/account/summary', { cache: 'no-store' });
-    if (!response.ok) return EMPTY;
+    if (!response.ok) throw new Error('Account summary unavailable');
     const payload = await response.json();
     return {
         cartCount: readNumber(payload.cartCount),
@@ -53,36 +56,40 @@ async function request(): Promise<AccountSummary> {
     };
 }
 
-export async function getAccountSummary(options?: { force?: boolean }): Promise<AccountSummary> {
-    if (!options?.force) {
-        if (cached && Date.now() - cached.at < FRESH_FOR_MS) return cached.value;
-        if (inFlight) return inFlight;
+export async function getAccountSummary(userId: string, options?: { force?: boolean }): Promise<AccountSummary | null> {
+    if (accountId !== userId) {
+        resetAccountSummary();
+        accountId = userId;
     }
+    if (options?.force) invalidateAccountSummary();
+    if (cached && Date.now() - cached.at < FRESH_FOR_MS) return cached.value;
+    if (inFlight) return inFlight;
 
+    const version = generation;
     const pending = request()
         .then(value => {
+            if (version !== generation || accountId !== userId) return null;
             cached = { at: Date.now(), value };
             return value;
         })
-        .catch(() => EMPTY)
+        .catch(() => null)
         .finally(() => {
             if (inFlight === pending) inFlight = null;
         });
-
     inFlight = pending;
     return pending;
 }
 
-/** Drop the shared result so the next read goes to the server. Call after
- *  anything that moves a cart or offer count. */
+/** Invalidate both completed and outstanding reads after a mutation. */
 export function invalidateAccountSummary() {
-    cached = null;
-}
-
-/** Signed out: nothing to show, and nothing worth keeping from the last user. */
-export function resetAccountSummary() {
+    generation++;
     cached = null;
     inFlight = null;
+}
+
+export function resetAccountSummary() {
+    invalidateAccountSummary();
+    accountId = null;
 }
 
 export const EMPTY_ACCOUNT_SUMMARY = EMPTY;

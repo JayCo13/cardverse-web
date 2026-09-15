@@ -722,12 +722,15 @@ export default function CardDetailsPage() {
                 // to take the page down, so it asks on its own and settles for
                 // nothing when the answer is an error.
                 if (sellerRow?.id) {
-                    const { data: standing } = await supabase
+                    void supabase
                         .from("profiles")
                         .select("reputation_score, reputation_incidents_90d, reputation_incidents_total, completed_transactions")
                         .eq("id", sellerRow.id)
-                        .maybeSingle();
-                    if (standing) setSeller({ ...sellerRow, ...(standing as object) });
+                        .maybeSingle()
+                        .then(({ data: standing }) => {
+                            if (standing) setSeller(current => current && current.id === sellerRow.id
+                                ? { ...current, ...(standing as object) } : current);
+                        });
                 }
             } else {
                 setCard(null);

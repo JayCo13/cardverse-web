@@ -83,15 +83,6 @@ type OrderViewState = {
 
 const PAGE_SIZE = 10;
 
-const STATUS_FILTERS: Record<OrderFilter, string[] | null> = {
-  all: null,
-  pending: ['pending_payment'],
-  processing: ['paid'],
-  shipping: ['shipping', 'delivered'],
-  completed: ['completed'],
-  cancelled: ['cancelled', 'refunded', 'disputed'],
-};
-
 // Icons/colors are locale-independent; the labels live in the per-locale
 // `copy.statusLabels` object inside the component (previously they were
 // hardcoded Vietnamese for every locale).
@@ -391,7 +382,14 @@ export default function OrdersPage() {
     buyer: { filter: 'all', sort: 'newest', page: 1 },
     seller: { filter: 'all', sort: 'newest', page: 1 },
   });
+  const viewStateTab: OrderTab = activeTab ?? 'buyer';
+  const activeViewState = viewStateByTab[viewStateTab];
   const [orders, setOrders] = useState<Order[]>([]);
+  const [orderCount, setOrderCount] = useState(0);
+  const [allOrderCount, setAllOrderCount] = useState(0);
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  const orderRequest = useRef<AbortController | null>(null);
+  const viewKey = JSON.stringify(activeViewState);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -425,19 +423,29 @@ export default function OrdersPage() {
   // chooses the side and names it in the response, which is what settles the
   // tab. Every later call passes the tab explicitly.
   const fetchOrders = useCallback(async (role: OrderTab | null) => {
+    orderRequest.current?.abort();
+    const controller = new AbortController();
+    orderRequest.current = controller;
     setIsLoading(true);
     setLoadError('');
     const settle = (tab: OrderTab) => {
-      loadedKeyRef.current = `${user?.id ?? ''}:${tab}`;
+      loadedKeyRef.current = `${user?.id ?? ''}:${tab}:${viewKey}`;
       if (!role) setActiveTab(tab);
     };
     try {
-      const res = await fetch(`/api/marketplace/orders${role ? `?role=${role}` : ''}`);
+      const params = new URLSearchParams({ ...JSON.parse(viewKey), page: String(JSON.parse(viewKey).page) });
+      if (role) params.set('role', role);
+      const res = await fetch(`/api/marketplace/orders?${params}`, { signal: controller.signal, cache: 'no-store' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || copy.loadError);
+      if (controller.signal.aborted) return;
       setOrders(data.orders || []);
+      setOrderCount(data.count ?? 0);
+      setAllOrderCount(data.total ?? 0);
+      setStatusCounts(data.statusCounts ?? {});
       settle(role ?? (data.role === 'seller' ? 'seller' : 'buyer'));
     } catch (err: unknown) {
+      if (controller.signal.aborted) return;
       console.error('Failed to fetch orders:', err);
       setLoadError(err instanceof Error ? err.message : copy.loadError);
       // A failed resolve must not leave the tab undecided, or the page keeps a
@@ -445,9 +453,9 @@ export default function OrdersPage() {
       // purchases so the retry button has something to act on.
       if (!role) settle('buyer');
     } finally {
-      setIsLoading(false);
+      if (!controller.signal.aborted) setIsLoading(false);
     }
-  }, [copy.loadError, user?.id]);
+  }, [copy.loadError, user?.id, viewKey]);
 
   useEffect(() => {
     if (!user) return;
@@ -457,35 +465,24 @@ export default function OrdersPage() {
       void fetchOrders(null);
       return;
     }
-    if (loadedKeyRef.current === `${user.id}:${activeTab}`) return;
+    if (loadedKeyRef.current === `${user.id}:${activeTab}:${viewKey}`) return;
     void fetchOrders(activeTab);
-  }, [user, activeTab, fetchOrders]);
+  }, [user, activeTab, fetchOrders, viewKey]);
+
+  useEffect(() => () => orderRequest.current?.abort(), [user?.id]);
 
   const formatVND = (amount: number) =>
     new Intl.NumberFormat(locale, { style: 'currency', currency: 'VND' }).format(amount);
 
   // Filter and sort state is per tab. Before the tab is resolved nothing is on
   // screen to filter, so the buyer slot stands in as a harmless key.
-  const viewStateTab: OrderTab = activeTab ?? 'buyer';
-  const activeViewState = viewStateByTab[viewStateTab];
-  const filteredOrders = useMemo(() => {
-    const matchedStatuses = STATUS_FILTERS[activeViewState.filter];
-    const filtered = matchedStatuses
-      ? orders.filter(order => matchedStatuses.includes(order.status))
-      : orders;
-
-    return [...filtered].sort((left, right) => {
-      if (activeViewState.sort === 'amount-desc') return right.amount - left.amount;
-      if (activeViewState.sort === 'amount-asc') return left.amount - right.amount;
-      return new Date(right.created_at).getTime() - new Date(left.created_at).getTime();
-    });
-  }, [activeViewState.filter, activeViewState.sort, orders]);
-  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
+  const filteredOrders = orders;
+  const totalPages = Math.max(1, Math.ceil(orderCount / PAGE_SIZE));
   const currentPage = Math.min(activeViewState.page, totalPages);
   const pageStart = (currentPage - 1) * PAGE_SIZE;
-  const paginatedOrders = filteredOrders.slice(pageStart, pageStart + PAGE_SIZE);
+  const paginatedOrders = filteredOrders;
   const visibleFrom = filteredOrders.length === 0 ? 0 : pageStart + 1;
-  const visibleTo = Math.min(pageStart + PAGE_SIZE, filteredOrders.length);
+  const visibleTo = Math.min(pageStart + PAGE_SIZE, orderCount);
   const filterOptions: Array<{ value: OrderFilter; label: string }> = [
     { value: 'all', label: copy.allStatuses },
     { value: 'pending', label: copy.pendingOrders },
@@ -494,6 +491,11 @@ export default function OrdersPage() {
     { value: 'completed', label: copy.completedOrders },
     { value: 'cancelled', label: copy.cancelledOrders },
   ];
+  useEffect(() => {
+    if (!isLoading && activeViewState.page > totalPages) {
+      setViewStateByTab(previous => ({ ...previous, [viewStateTab]: { ...previous[viewStateTab], page: totalPages } }));
+    }
+  }, [isLoading, activeViewState.page, totalPages, viewStateTab]);
   const paginationPages = [1, currentPage - 1, currentPage, currentPage + 1, totalPages]
     .filter(page => page >= 1 && page <= totalPages)
     .filter((page, index, pages) => pages.indexOf(page) === index)
@@ -501,7 +503,7 @@ export default function OrdersPage() {
   const showingSummary = copy.showingOrders
     .replace('{from}', String(visibleFrom))
     .replace('{to}', String(visibleTo))
-    .replace('{total}', String(filteredOrders.length));
+    .replace('{total}', String(orderCount));
 
   const updateActiveViewState = (next: Partial<OrderViewState>, resetPage = false) => {
     setViewStateByTab(previous => ({
@@ -913,7 +915,7 @@ export default function OrdersPage() {
                     {copy.retry}
                   </Button>
                 </div>
-              ) : orders.length === 0 ? (
+              ) : allOrderCount === 0 ? (
                 <div className="text-center py-16">
                   <Package className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
                   <p className="text-xl font-semibold">{copy.emptyTitle}</p>
@@ -928,8 +930,7 @@ export default function OrdersPage() {
                       end of the last one instead of claiming a fourth. */}
                   <div className="flex flex-wrap items-center gap-1.5 rounded-xl border bg-card/60 p-3 sm:gap-2">
                     {filterOptions.map(option => {
-                        const statuses = STATUS_FILTERS[option.value];
-                        const count = statuses ? orders.filter(order => statuses.includes(order.status)).length : orders.length;
+                        const count = statusCounts[option.value] ?? 0;
                         const isActive = activeViewState.filter === option.value;
 
                         return (

@@ -49,30 +49,11 @@ export function AuthReady({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
 
     if (isLoading && !isPublicRoute(pathname)) {
-        // Minimal dark screen — matches site background, no hydration issues
-        return (
-            <div
-                style={{
-                    minHeight: '100vh',
-                    background: '#050505',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                }}
-            >
-                <div
-                    style={{
-                        width: 32,
-                        height: 32,
-                        border: '3px solid rgba(249,115,22,0.15)',
-                        borderTopColor: '#f97316',
-                        borderRadius: '50%',
-                        animation: 'spin 0.7s linear infinite',
-                    }}
-                />
-                <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-            </div>
-        );
+        return <div className="w-full flex-1 space-y-5 p-6" aria-busy="true">
+            <div className="h-9 w-48 animate-pulse rounded bg-white/10" />
+            <div className="h-20 animate-pulse rounded-xl bg-white/5" />
+            <div className="h-64 animate-pulse rounded-xl bg-white/5" />
+        </div>;
     }
 
     return <>{children}</>;

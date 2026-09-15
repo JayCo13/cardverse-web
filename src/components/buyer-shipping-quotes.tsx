@@ -47,6 +47,11 @@ const BuyerShippingContext = createContext<Context | null>(null);
 export const askKey = (ask: ParcelAsk) => `${ask.sellerId}|${[...ask.cardIds].sort().join(',')}`;
 
 export function BuyerShippingQuotesProvider({ children }: { children: ReactNode }) {
+    const { user } = useUser();
+    return <AccountShippingQuotes key={user?.id ?? 'signed-out'}>{children}</AccountShippingQuotes>;
+}
+
+function AccountShippingQuotes({ children }: { children: ReactNode }) {
     const { user, isLoading } = useUser();
     const [address, setAddress] = useState<SavedAddress | null | 'loading'>('loading');
     // Quotes are only meaningful for the address they were priced to, so they
@@ -55,18 +60,29 @@ export function BuyerShippingQuotesProvider({ children }: { children: ReactNode 
     const pending = useRef(new Map<string, ParcelAsk>());
     const frame = useRef<number | null>(null);
 
+    const addressRequest = useRef<AbortController | null>(null);
+    const quoteGeneration = useRef(0);
+
     const loadAddress = useCallback(async () => {
         if (!user) return;
+        addressRequest.current?.abort();
+        const controller = new AbortController();
+        addressRequest.current = controller;
+        quoteGeneration.current++;
+        setAddress('loading');
         try {
-            const res = await fetch('/api/shipping-addresses', { cache: 'no-store' });
+            const res = await fetch('/api/shipping-addresses', { cache: 'no-store', signal: controller.signal });
             const body = await res.json().catch(() => null);
             const list: SavedAddress[] = res.ok ? (body?.addresses ?? []) : [];
             const chosen = pickDefaultAddress(Array.isArray(list) ? list : []);
             // A row from before addresses moved to GoShip's geography cannot
             // be quoted; treat it as no address so the buyer is asked to fix it.
-            setAddress(chosen?.goship ? chosen : null);
+            if (!controller.signal.aborted) {
+                setStore({ toKey: '', map: {} });
+                setAddress(chosen?.goship ? chosen : null);
+            }
         } catch {
-            setAddress(null);
+            if (!controller.signal.aborted) setAddress(null);
         }
     }, [user]);
 
@@ -74,7 +90,14 @@ export function BuyerShippingQuotesProvider({ children }: { children: ReactNode 
         if (isLoading || !user) return;
         // Deferred a tick so the fetch does not start inside the render commit.
         const timer = window.setTimeout(() => void loadAddress(), 0);
-        return () => window.clearTimeout(timer);
+        return () => {
+            window.clearTimeout(timer);
+            addressRequest.current?.abort();
+            quoteGeneration.current++;
+            if (frame.current !== null) window.cancelAnimationFrame(frame.current);
+            frame.current = null;
+            pending.current.clear();
+        };
     }, [isLoading, user, loadAddress]);
 
     useEffect(() => {
@@ -95,6 +118,7 @@ export function BuyerShippingQuotesProvider({ children }: { children: ReactNode 
     }, []);
 
     const flush = useCallback(async (destination: GoshipTo) => {
+        const version = quoteGeneration.current;
         const key = `${destination.city}|${destination.district}`;
         const asks = [...pending.current.entries()];
         pending.current.clear();
@@ -102,6 +126,7 @@ export function BuyerShippingQuotesProvider({ children }: { children: ReactNode 
         file(key, Object.fromEntries(asks.map(([id]) => [id, { status: 'loading' } as Entry])));
         try {
             const batch = await fetchShippingOptionsBatch({ to: destination, sellers: asks.map(([id, ask]) => ({ ...ask, key: id })) });
+            if (version !== quoteGeneration.current) return;
             file(key, Object.fromEntries(asks.map(([id]): [string, Entry] => {
                 const failed = batch.errors[id];
                 const options = batch.data[id] ?? [];
@@ -110,6 +135,7 @@ export function BuyerShippingQuotesProvider({ children }: { children: ReactNode 
                     : options.length ? { status: 'ready', options } : { status: 'error', code: 'seller_does_not_ship_here' }];
             })));
         } catch (error) {
+            if (version !== quoteGeneration.current) return;
             const code = (error as { code?: string })?.code || 'shipping_quote_failed';
             file(key, Object.fromEntries(asks.map(([id]) => [id, { status: 'error', code } as Entry])));
         }

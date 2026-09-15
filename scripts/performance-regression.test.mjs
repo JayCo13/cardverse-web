@@ -20,6 +20,20 @@ function loadTs(path, mocks = {}) {
   runInNewContext(outputText, {
     module: compiledModule, exports: compiledModule.exports, console, process: { env: {} },
     require(name) {
+      if (name === '@/lib/account-route') return loadTs('src/lib/account-route.ts', {
+        '@/lib/supabase/server': mocks['@/lib/supabase/server'],
+        '@/lib/account-restriction': loadTs('src/lib/account-restriction.ts', { 'next/server': nextServer }),
+        '@/lib/supabase/route-user': routeUserShim,
+      });
+      if (name === '@/lib/supabase/server' && mocks[name]) return {
+        createServerSupabaseClient: async () => {
+          const client = await mocks[name].createServerSupabaseClient();
+          return { ...client, from: table => table === 'account_restrictions'
+            ? query({ data: { is_banned: false }, error: null }, [], table)
+            : client.from(table) };
+        },
+      };
+      if (name === '@/lib/order-placed-mail') return { sendOrderPlacedMails: async () => {} };
       if (Object.hasOwn(mocks, name)) return mocks[name];
       if (name === 'crypto') return require('node:crypto');
       throw new Error(`Unmocked dependency: ${name}`);
@@ -43,6 +57,15 @@ function query(result, calls, table) {
   return chain;
 }
 const routeUser = loadTs('src/lib/supabase/route-user.ts');
+// Harness clients mock auth.getUser only; real clients answer getClaims. Route
+// identity is the same either way, so the shim takes whichever the client has.
+const routeUserShim = {
+  getRouteUser: async supabase => {
+    if (typeof supabase.auth?.getClaims === 'function') return routeUser.getRouteUser(supabase);
+    const { data: { user }, error } = await supabase.auth.getUser();
+    return error || !user ? null : { id: user.id, email: user.email ?? null };
+  },
+};
 
 // Routes resolve their caller through getRouteUser, which reads the verified
 // JWT claims rather than asking the auth server for the whole user record.
@@ -178,7 +201,6 @@ function checkoutHarness({ authenticated = true, missingCart = false, cardOverri
   };
   const route = loadTs('src/app/api/checkout/route.ts', {
     'next/server': nextServer,
-    '@/lib/account-route': { accountRoute: handler => handler },
     '@/lib/checkout-address': loadTs('src/lib/checkout-address.ts', {
       'server-only': {},
       '@/lib/supabase/service': { createServiceSupabaseClient: () => service },
@@ -381,7 +403,7 @@ test('balance-only wallet read skips history and maintenance but preserves auth 
   assert.ok(calls.every(call => call.table === 'wallets'));
   assert.ok(calls.some(call => call.method === 'eq' && call.args[0] === 'user_id' && call.args[1] === 'buyer'));
   authenticated = false;
-  assert.equal((await route.GET(request)).status, 401);
+  assert.equal((await route.GET({ ...request })).status, 401);
 });
 
 test('cart badge reads an owner-scoped count without downloading card rows', async () => {
@@ -426,7 +448,7 @@ test('account summary answers both badges from one auth check and three independ
     '@/lib/supabase/route-user': routeUser,
   });
 
-  const response = await route.GET();
+  const response = await route.GET({});
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('cache-control'), 'private, no-store');
   assert.deepEqual(await response.json(), {
@@ -454,5 +476,5 @@ test('account summary answers both badges from one auth check and three independ
   assert.ok(calls.some(call => call.table === 'offers' && call.method === 'eq' && call.args[0] === 'buyer_id' && call.args[1] === 'buyer'));
 
   authenticated = false;
-  assert.equal((await route.GET()).status, 401);
+  assert.equal((await route.GET({})).status, 401);
 });

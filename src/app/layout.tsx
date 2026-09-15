@@ -31,7 +31,9 @@ const orbitron = Orbitron({
   variable: '--font-orbitron',
   display: 'swap',
   preload: true,
-  weight: ['400', '500', '600', '700', '800', '900'],
+  // 900 is loaded by nothing (no font-black on any Orbitron element); the
+  // rest are: 500 font-medium, 600 CardTitle, 700 font-bold, 800 the hero h1.
+  weight: ['400', '500', '600', '700', '800'],
 });
 
 const quantico = Quantico({
@@ -82,7 +84,6 @@ export default function RootLayout({
       <body className={`${inter.variable} ${orbitron.variable} ${quantico.variable} font-body antialiased`}>
         <SupabaseAuthProvider>
 
-          <AuthReady>
             <AuthModalProvider>
               <CurrencyProvider>
                 <LocalizationProvider>
@@ -113,7 +114,7 @@ export default function RootLayout({
                           * bottom on short pages, whether the page hands back a
                           * flex column of its own or a bare fragment. */}
                         <div className="flex flex-1 flex-col">
-                          {children}
+                          <AuthReady>{children}</AuthReady>
                         </div>
                         <Footer />
                       </div>
@@ -126,7 +127,6 @@ export default function RootLayout({
                 </LocalizationProvider>
               </CurrencyProvider>
             </AuthModalProvider>
-          </AuthReady>
 
         </SupabaseAuthProvider>
         <Toaster />

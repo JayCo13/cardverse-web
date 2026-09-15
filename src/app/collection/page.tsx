@@ -178,23 +178,27 @@ export default function CollectionPage() {
 
         const fetchData = async () => {
             try {
-                // Fetch user's cards
-                const { data: cardsData, error: cardsError } = await supabase
-                    .from('user_collections')
-                    .select('*')
-                    .eq('user_id', user.id)
-                    .order('created_at', { ascending: false });
+                // Cards and albums are independent reads; the album stats
+                // below only need both to have arrived, so ask for them together.
+                const [
+                    { data: cardsData, error: cardsError },
+                    { data: albumsData, error: albumsError },
+                ] = await Promise.all([
+                    supabase
+                        .from('user_collections')
+                        .select('*')
+                        .eq('user_id', user.id)
+                        .order('created_at', { ascending: false }),
+                    supabase
+                        .from('albums')
+                        .select('*')
+                        .eq('user_id', user.id)
+                        .order('created_at', { ascending: false }),
+                ]);
 
                 if (cardsData && !cardsError) {
                     setCards(cardsData);
                 }
-
-                // Fetch user's albums
-                const { data: albumsData, error: albumsError } = await supabase
-                    .from('albums')
-                    .select('*')
-                    .eq('user_id', user.id)
-                    .order('created_at', { ascending: false });
 
                 if (albumsData && !albumsError) {
                     // Calculate card counts and values for each album

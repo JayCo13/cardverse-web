@@ -1,7 +1,5 @@
-import { accountRoute } from '@/lib/account-route';
+import { accountRoute, getAccountRouteContext } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { getRouteUser } from '@/lib/supabase/route-user';
 
 type CartCard = {
   id: string;
@@ -11,8 +9,7 @@ type CartCard = {
 };
 
 async function handleGET(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const user = await getRouteUser(supabase);
+  const { supabase, user } = await getAccountRouteContext(request);
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -56,8 +53,7 @@ async function handleGET(request: NextRequest) {
 }
 
 async function handlePOST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  const { supabase, user, authError } = await getAccountRouteContext(request);
 
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -118,8 +114,7 @@ async function handlePOST(request: NextRequest) {
  * removed ids come back so the client can reconcile without refetching.
  */
 async function handleDELETE(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  const { supabase, user, authError } = await getAccountRouteContext(request);
 
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

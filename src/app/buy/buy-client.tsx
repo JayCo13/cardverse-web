@@ -33,18 +33,21 @@ import { useAuth } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
 import dynamic from 'next/dynamic';
+import { ActionModalLoading } from '@/components/action-modal-loading';
+const warmCheckout = () => { void import('@/components/checkout-modal'); };
+const warmOffer = () => { void import('@/components/offer-modal'); };
 
 // Checkout (and its heavy GHN address picker) is only needed after the user
 // clicks "Buy", so keep it out of the initial /buy bundle.
 const CheckoutModal = dynamic(
   () => import('@/components/checkout-modal').then((m) => m.CheckoutModal),
-  { ssr: false }
+  { ssr: false, loading: ActionModalLoading }
 );
 
 // Make-offer flow is only needed once a buyer taps "Trả giá".
 const OfferModal = dynamic(
   () => import('@/components/offer-modal').then((m) => m.OfferModal),
-  { ssr: false }
+  { ssr: false, loading: ActionModalLoading }
 );
 
 export type Filters = {
@@ -460,7 +463,7 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
                 </Select>
               </div>
             </div>
-            {renderCardList()}
+            <div onPointerOver={warmCheckout} onFocus={warmCheckout} onTouchStart={() => { warmCheckout(); warmOffer(); }} onPointerDown={warmOffer}>{renderCardList()}</div>
             {!isLoading && renderPagination()}
           </div>
         </div>

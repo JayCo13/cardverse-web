@@ -1,15 +1,12 @@
-import { accountRoute } from '@/lib/account-route';
+import { accountRoute, getAccountRouteContext } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { getRouteUser } from '@/lib/supabase/route-user';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import type { Tables } from '@/lib/supabase/database.types';
 
 // GET: Get wallet balance
 async function handleGET(request: NextRequest) {
     try {
-        const supabase = await createServerSupabaseClient();
-        const user = await getRouteUser(supabase);
+        const { supabase, user } = await getAccountRouteContext(request);
         if (!user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }

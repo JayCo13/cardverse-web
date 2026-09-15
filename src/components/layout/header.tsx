@@ -98,7 +98,8 @@ export function Header() {
       setOfferActionCount(0);
       return;
     }
-    const summary = await getAccountSummary(options);
+    const summary = await getAccountSummary(user.id, options);
+      if (!summary) return;
     setCartCount(summary.cartCount);
     setOfferActionCount(summary.actionCount);
   }, [user]);
