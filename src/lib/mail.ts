@@ -9,6 +9,10 @@ function getAppUrl() {
     return process.env.NEXT_PUBLIC_APP_URL || 'https://cardversehub.com';
 }
 
+// Admin links must never point at localhost in a delivered email; override
+// with NEXT_PUBLIC_ADMIN_URL for local dev.
+const ADMIN_URL_FALLBACK = 'https://cardverse-mangement-team-global.netlify.app';
+
 function escapeHtml(value: string) {
     return value
         .replaceAll('&', '&amp;')
@@ -341,9 +345,8 @@ export async function sendKYCSubmittedToAdmin(fullName: string, userEmail: strin
 
         await transporter.sendMail({
             from,
-            to: from,
-            bcc: adminEmails,
-            subject: `🔔 KYC mới cần duyệt: ${fullName}`,
+            to: adminEmails,
+            subject: `KYC mới cần duyệt: ${fullName}`,
             html: buildTemplate(
                 '🔔 Hồ sơ KYC mới cần duyệt',
                 `<p style="color: #e4e4e7;">Có một hồ sơ xác minh người bán mới cần được duyệt:</p>
@@ -353,7 +356,7 @@ export async function sendKYCSubmittedToAdmin(fullName: string, userEmail: strin
                 </div>
                 <p>Vào trang <strong style="color: #f97316;">Admin Dashboard → KYC Sellers</strong> để xem chi tiết và duyệt hồ sơ.</p>
                 <div style="text-align: center; margin: 24px 0;">
-                    <a href="${process.env.NEXT_PUBLIC_ADMIN_URL || 'http://localhost:3001'}/kyc" style="display: inline-block; background: #f97316; color: #fff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">Duyệt hồ sơ →</a>
+                    <a href="${process.env.NEXT_PUBLIC_ADMIN_URL || ADMIN_URL_FALLBACK}/kyc" style="display: inline-block; background: #f97316; color: #fff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">Duyệt hồ sơ →</a>
                 </div>`
             ),
         });
@@ -402,9 +405,8 @@ export async function sendKycManualReviewToAdmin(input: {
 
         await transporter.sendMail({
             from,
-            to: from,
-            bcc: input.adminEmails,
-            subject: `⏳ KYC chờ duyệt thủ công: ${input.fullName || input.providerSessionId}`,
+            to: input.adminEmails,
+            subject: `KYC chờ duyệt thủ công: ${input.fullName || input.providerSessionId}`,
             html: buildTemplate(
                 '⏳ Hồ sơ KYC cần người duyệt tay',
                 `<p style="color: #e4e4e7;">Didit đã chuyển một phiên xác minh sang trạng thái <strong>In Review</strong>. Hệ thống tự động không kết luận được, cần người vào xem và quyết định.</p>
@@ -496,13 +498,12 @@ export async function sendWithdrawalSubmittedToAdmin(input: {
         const transporter = createMailTransporter();
         const from = getFromAddress();
         const formatVND = (amount: number) => `${new Intl.NumberFormat('vi-VN').format(amount)}đ`;
-        const adminUrl = process.env.NEXT_PUBLIC_ADMIN_URL || 'http://localhost:3001';
+        const adminUrl = process.env.NEXT_PUBLIC_ADMIN_URL || ADMIN_URL_FALLBACK;
 
         await transporter.sendMail({
             from,
-            to: from,
-            bcc: input.adminEmails,
-            subject: `💸 Yêu cầu rút tiền mới: ${formatVND(input.amountRequested)}, ${input.sellerName}`,
+            to: input.adminEmails,
+            subject: `Yêu cầu rút tiền mới: ${formatVND(input.amountRequested)} – ${input.sellerName}`,
             html: buildTemplate(
                 '💸 Yêu cầu rút tiền mới cần xử lý',
                 `<p style="color:#e4e4e7;">Seller vừa gửi một yêu cầu rút tiền đang chờ admin chuyển khoản:</p>
@@ -774,8 +775,8 @@ export async function sendContactSubmittedToAdmin(contact: ContactRequestEmail, 
 
         await transporter.sendMail({
             from,
-            bcc: recipients,
-            subject: `✉️ Liên hệ mới: ${contact.subject}`,
+            to: recipients,
+            subject: `Liên hệ mới: ${contact.subject}`,
             html: buildTemplate(
                 '✉️ Có yêu cầu liên hệ mới',
                 `<p style="color:#e4e4e7;">Một người dùng vừa gửi liên hệ từ website.</p>

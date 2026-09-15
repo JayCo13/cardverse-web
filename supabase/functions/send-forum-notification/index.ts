@@ -1,15 +1,16 @@
-// Forum Notification Email Sender using Gmail SMTP
-// Sends professional email notifications for forum interactions
+// Forum Notification Email Sender
+// Sends professional email notifications for forum interactions through
+// Resend from the verified cardversehub.com domain (RESEND_API_KEY secret).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
-import nodemailer from "npm:nodemailer@8.0.4";
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-// Gmail SMTP config
-const MAIL_SENDER_EMAIL = 'cardversehubsupport@gmail.com';
+// Sender must be an address on the domain verified in Resend
+const MAIL_SENDER_EMAIL = Deno.env.get('MAIL_FROM_EMAIL')?.trim() || 'support@cardversehub.com';
+const RESEND_TIMEOUT_MS = 10_000;
 
 interface Notification {
     id: string;
@@ -141,33 +142,38 @@ function generateEmailHtml(
 </html>`;
 }
 
-// Send email via Gmail SMTP
+// Send email via Resend
 async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
     try {
-        // Accept existing Edge Function secret names while migrating to SMTP_*.
-        const user = (Deno.env.get('SMTP_USER') || Deno.env.get('GMAIL_USER'))?.trim().toLowerCase();
-        const password = Deno.env.get('SMTP_PASSWORD') || Deno.env.get('GMAIL_APP_PASSWORD');
-        if (user !== MAIL_SENDER_EMAIL || !password?.trim()) {
-            throw new Error('Configure the CardVerseHub Gmail account and its app password for forum email.');
+        const resendApiKey = Deno.env.get('RESEND_API_KEY')?.trim();
+        if (!resendApiKey) throw new Error('Configure the RESEND_API_KEY secret for forum email.');
+        const replyTo = Deno.env.get('MAIL_REPLY_TO')?.trim();
+        // Notifications are processed one after another and only marked sent
+        // afterwards, so a stalled request must not eat the whole invocation.
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), RESEND_TIMEOUT_MS);
+        try {
+            const response = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${resendApiKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    from: `CardVerseHub <${MAIL_SENDER_EMAIL}>`,
+                    to: [to],
+                    ...(replyTo ? { reply_to: replyTo } : {}),
+                    subject,
+                    text: 'Please view this email in an HTML-compatible client.',
+                    html,
+                }),
+                signal: controller.signal,
+            });
+            if (!response.ok) {
+                const body = await response.text().catch(() => '');
+                throw new Error(`Resend ${response.status}: ${body}`);
+            }
+            return true;
+        } finally {
+            clearTimeout(timer);
         }
-        const client = nodemailer.createTransport({
-            host: 'smtp.gmail.com',
-            port: 465,
-            secure: true,
-            auth: { user: MAIL_SENDER_EMAIL, pass: password },
-            connectionTimeout: 5_000,
-            greetingTimeout: 5_000,
-            socketTimeout: 8_000,
-        });
-        // Nodemailer separates the named From header from the SMTP envelope.
-        await client.sendMail({
-            from: `CardVerseHub <${MAIL_SENDER_EMAIL}>`,
-            to,
-            subject,
-            text: 'Please view this email in an HTML-compatible client.',
-            html,
-        });
-        return true;
     } catch (error) {
         console.error('Email send error:', error);
         return false;
