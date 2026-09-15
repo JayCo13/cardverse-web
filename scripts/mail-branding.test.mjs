@@ -6,20 +6,25 @@ import test from 'node:test';
 import ts from 'typescript';
 
 const root = new URL('../', import.meta.url);
-const sender = 'CardVerseHub <cardversehubsupport@gmail.com>';
+const resendSender = 'CardVerseHub <support@cardversehub.com>';
+const replyTo = 'cardversehub.vn@gmail.com';
 const logo = 'https://cardversehub.com/assets/logo-verse.png';
 
-// Execute real mail builders and transport without secrets or network access.
+// Execute real mail builders and transport without secrets or network access:
+// the transport posts to the Resend API, captured by the fetch mock.
 function harness(overrides = {}) {
-  const env = { SMTP_USER: 'cardversehubsupport@gmail.com', SMTP_PASSWORD: 'test-password',
-    RESEND_API_KEY: 'stale-key', RESEND_FROM_EMAIL: 'CardVerse <noreply@cardversehub.com>',
-    SMTP_FROM_EMAIL: 'CardVerse <broken@gmail.com@gmail.com>', NEXT_PUBLIC_APP_URL: 'http://localhost:3000', ...overrides };
+  const env = { RESEND_API_KEY: 're_test_key', MAIL_REPLY_TO: replyTo,
+    RESEND_FROM_EMAIL: 'CardVerse <noreply@cardversehub.com>', NEXT_PUBLIC_APP_URL: 'http://localhost:3000', ...overrides };
   const sent = [];
-  const configs = [];
-  const nodemailer = { createTransport(config) {
-    configs.push(config);
-    return { async sendMail(message) { sent.push(message); return { messageId: 'test' }; } };
-  } };
+  const requests = [];
+  let resendResponse = () => ({ ok: true, status: 200, json: async () => ({ id: 'resend-id' }) });
+  const fetch = async (url, init) => {
+    const message = JSON.parse(init.body);
+    requests.push({ url, headers: init.headers, message });
+    const response = resendResponse(message);
+    if (response.ok) sent.push(message);
+    return response;
+  };
   const cache = new Map();
   function load(path, mocks = {}) {
     const url = new URL(path, root);
@@ -30,11 +35,11 @@ function harness(overrides = {}) {
     });
     const mod = { exports: {} };
     runInNewContext(outputText, { module: mod, exports: mod.exports, process: { env },
-      console, Response, Date, setTimeout: (fn) => fn(),
+      // Short delays (rate-limit pauses) run immediately; the transport's 10s abort timer is never fired.
+      console, Response, Date, fetch, AbortController, setTimeout: (fn, ms) => (ms < 10_000 && fn(), 0), clearTimeout: () => {},
       Deno: { env: { get: (key) => env[key] }, serve: (handler) => { cache.set('handler', handler); } },
       require(name) {
         if (name in mocks) return mocks[name];
-        if (name === 'nodemailer' || name.startsWith('npm:nodemailer@')) return nodemailer;
         if (name.startsWith('.')) return load(new URL(name.endsWith('.ts') ? name : `${name}.ts`, url).href);
         throw new Error(`Unexpected dependency: ${name}`);
       },
@@ -42,60 +47,85 @@ function harness(overrides = {}) {
     cache.set(filename, mod.exports);
     return mod.exports;
   }
-  return { env, sent, configs, load, cache };
+  return { env, sent, requests, load, cache, failResend(response) { resendResponse = () => response; } };
 }
 
 const transportPath = 'src/lib/mail-transport.ts';
 
-test('legacy Resend/from settings and caller From cannot override Gmail identity; BCC stays private', async () => {
+test('Resend delivers from the verified domain, overrides caller From, replies to Gmail and adds plain text', async () => {
   const h = harness();
   const mail = h.load(transportPath);
-  assert.equal(mail.getFromAddress(), sender);
+  assert.equal(mail.getFromAddress(), resendSender);
+  assert.equal(mail.getSenderEmail(), 'support@cardversehub.com');
   const transport = mail.createMailTransporter();
-  await transport.sendMail({ from: 'CardVerse <noreply@cardversehub.com>', bcc: ['one@example.test', 'two@example.test'], subject: 'Reminder', html: 'test' });
-  assert.equal(h.sent[0].from, sender);
-  assert.equal(h.sent[0].to, undefined);
-  assert.deepEqual(h.sent[0].bcc, ['one@example.test', 'two@example.test']);
-  assert.equal(h.configs[0].host, 'smtp.gmail.com');
-  assert.equal(h.configs[0].auth.user, 'cardversehubsupport@gmail.com');
-  assert.equal(h.configs[0].requireTLS, true);
-  assert.equal(await transport.sendMail({ from: sender, to: ' ', subject: 'Empty', html: '' }), null);
+  const result = await transport.sendMail({ from: 'CardVerse <noreply@cardversehub.com>', to: 'buyer@example.test', subject: 'Reminder', html: '<p>Hello &amp; <a href="https://cardversehub.com">welcome</a></p>' });
+  assert.equal(result.id, 'resend-id');
+  assert.equal(h.requests[0].url, 'https://api.resend.com/emails');
+  assert.equal(h.requests[0].headers.Authorization, 'Bearer re_test_key');
+  const message = h.sent[0];
+  assert.equal(message.from, resendSender);
+  assert.deepEqual(message.to, ['buyer@example.test']);
+  assert.equal(message.bcc, undefined);
+  assert.equal(message.reply_to, replyTo);
+  assert.equal(message.text, 'Hello & welcome (https://cardversehub.com)');
+  assert.equal(await transport.sendMail({ from: resendSender, to: ' ', subject: 'Empty', html: '' }), null);
   assert.equal(h.sent.length, 1);
 });
 
-test('configured web Gmail account controls both SMTP login and From', async () => {
-  const h = harness({ SMTP_USER: ' CardVerseHub.vn@gmail.com ' });
+test('Resend bcc-only fan-out addresses the sender and keeps recipients private; MAIL_* env overrides apply', async () => {
+  const h = harness({ MAIL_FROM_EMAIL: 'Hello@CardVerseHub.com', MAIL_REPLY_TO: 'team@example.test' });
+  const transport = h.load(transportPath).createMailTransporter();
+  await transport.sendMail({ from: 'CardVerse <old@gmail.com>', bcc: 'one@example.test, two@example.test', subject: 'News', html: 'test' });
+  assert.equal(h.sent[0].from, 'CardVerseHub <hello@cardversehub.com>');
+  assert.deepEqual(h.sent[0].to, ['CardVerseHub <hello@cardversehub.com>']);
+  assert.deepEqual(h.sent[0].bcc, ['one@example.test', 'two@example.test']);
+  assert.equal(h.sent[0].reply_to, 'team@example.test');
+});
+
+test('Resend rejects senders outside cardversehub.com and surfaces API failures with the subject', async () => {
+  const wrongDomain = harness({ MAIL_FROM_EMAIL: 'noreply@gmail.com' }).load(transportPath);
+  assert.throws(() => wrongDomain.getFromAddress(), /MAIL_FROM_EMAIL/);
+  await assert.rejects(wrongDomain.createMailTransporter().sendMail({ from: '', to: 'a@example.test', subject: 'x', html: 'x' }), /MAIL_FROM_EMAIL/);
+  const h = harness();
+  h.failResend({ ok: false, status: 403, json: async () => ({ statusCode: 403, name: 'validation_error', message: 'domain is not verified' }) });
+  await assert.rejects(
+    h.load(transportPath).createMailTransporter().sendMail({ from: resendSender, to: 'buyer@example.test', subject: 'Reminder', html: 'test' }),
+    /Resend send failed to="buyer@example.test" bcc=0 subject="Reminder" :: 403 validation_error domain is not verified/,
+  );
+  assert.equal(h.sent.length, 0);
+});
+
+test('Resend recipient cap: 49 bcc fits with the sender slot, 50 bcc is refused before any request', async () => {
+  const h = harness();
   const mail = h.load(transportPath);
+  assert.equal(mail.MAX_BCC_PER_MESSAGE, 49);
   const transport = mail.createMailTransporter();
-  assert.equal(mail.getFromAddress(), 'CardVerseHub <cardversehub.vn@gmail.com>');
-  await transport.sendMail({ from: sender, to: 'buyer@example.test', subject: 'Offer', html: 'test' });
-  assert.equal(h.configs[0].auth.user, 'cardversehub.vn@gmail.com');
-  assert.equal(h.sent[0].from, 'CardVerseHub <cardversehub.vn@gmail.com>');
+  const many = (n) => Array.from({ length: n }, (_, i) => `sub${i}@example.test`);
+  await transport.sendMail({ from: resendSender, bcc: many(49), subject: 'News', html: 'x' });
+  assert.equal(h.sent[0].to.length + h.sent[0].bcc.length, 50);
+  await assert.rejects(transport.sendMail({ from: resendSender, bcc: many(50), subject: 'News', html: 'x' }), /51 recipients exceeds the 50 per-message cap/);
+  await assert.rejects(transport.sendMail({ from: resendSender, to: many(2), bcc: many(49), subject: 'News', html: 'x' }), /exceeds/);
+  assert.equal(h.requests.length, 1);
 });
 
-test('missing credentials, malformed account and non-Gmail SMTP fail without provider fallback', () => {
-  for (const overrides of [
-    { SMTP_USER: undefined }, { SMTP_USER: ' ' }, { SMTP_USER: 'noreply@cardversehub.com' },
-    { SMTP_USER: 'cardversehubsupport@gmail.com@gmail.com' }, { SMTP_PASSWORD: '' }, { SMTP_PASSWORD: ' ' },
-    { SMTP_HOST: 'other.example.test' }, { SMTP_PORT: '587garbage' },
-  ]) {
-    const h = harness(overrides);
-    assert.throws(() => h.load(transportPath).createMailTransporter(), /Configure|requires/);
-    assert.equal(h.configs.length, 0);
+test('missing RESEND_API_KEY fails before any send', async () => {
+  for (const key of [undefined, '', '  ']) {
+    const h = harness({ RESEND_API_KEY: key });
+    assert.throws(() => h.load(transportPath).createMailTransporter(), /RESEND_API_KEY/);
+    assert.equal(h.requests.length, 0);
   }
-  const h = harness({ SMTP_PORT: '465' });
-  h.load(transportPath).createMailTransporter();
-  assert.equal(h.configs[0].secure, true);
 });
 
-function assertBranded(message, expectedSender = sender) {
+function assertBranded(message, expectedSender = resendSender) {
   assert.equal(message.from, expectedSender);
+  assert.ok(message.text.length > 0);
   assert.ok(message.html.includes(`src="${logo}"`));
   assert.ok(message.html.includes('alt="CardVerseHub"'));
+  assert.doesNotMatch(message.html, /localhost:3001/);
 }
 
 test('all 15 web email builders use the branded identity and public logo, including all offer locales', async () => {
-  const h = harness({ SMTP_USER: 'cardversehub.vn@gmail.com' });
+  const h = harness();
   const mail = h.load('src/lib/mail.ts');
   const email = 'buyer@example.test';
   const admins = ['admin@example.test'];
@@ -121,15 +151,24 @@ test('all 15 web email builders use the branded identity and public logo, includ
     ]),
   ];
   assert.equal(new Set(cases.map(([name]) => name)).size, 15);
+  const adminFanOuts = new Set(['sendKYCSubmittedToAdmin', 'sendKycManualReviewToAdmin', 'sendWithdrawalSubmittedToAdmin', 'sendContactSubmittedToAdmin']);
   for (const [name, args] of cases) {
     const before = h.sent.length;
     await mail[name](...args);
     assert.equal(h.sent.length, before + 1, name);
-    assertBranded(h.sent.at(-1), 'CardVerseHub <cardversehub.vn@gmail.com>');
+    const message = h.sent.at(-1);
+    assertBranded(message);
+    assert.equal(message.reply_to, replyTo, name);
+    if (adminFanOuts.has(name)) {
+      // Admin alerts address the team directly: "to self + bcc" reads as spam.
+      assert.deepEqual(message.to, admins, name);
+      assert.equal(message.bcc, undefined, name);
+      assert.doesNotMatch(message.subject, /^[^\p{L}\p{N}]/u, name);
+    }
   }
 });
 
-test('Forum handler sends each event through the same Gmail identity and branded template', async () => {
+test('Forum handler sends each event through Resend with the branded template', async () => {
   const h = harness();
   const updates = [];
   const notifications = ['post_like', 'comment', 'comment_reply'].map((type, id) => ({ id, type, user_id: 'buyer', actor_id: 'actor', post_id: 'post' }));

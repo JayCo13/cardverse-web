@@ -88,7 +88,7 @@ async function handlePOST(request: NextRequest) {
 
         // The withdrawal table itself drives realtime admin badges. Email is
         // awaited as best-effort so a serverless response cannot terminate the
-        // SMTP delivery early.
+        // mail delivery early.
         if (result.withdrawal_id && !result.replayed) {
             const service = createServiceSupabaseClient();
             const [{ data: profileData }, { data: withdrawalData }, adminEmails] = await Promise.all([

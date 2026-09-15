@@ -21,7 +21,7 @@ There is no test runner configured. Standalone `.ts` scripts (crawlers, `test-eb
 
 ## Environment
 
-All secrets live in `.env` (gitignored). Required keys span several integrations — Supabase (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`), Cloudinary, Firebase (`NEXT_PUBLIC_FIREBASE_*`), eBay (`EBAY_*`), Groq (`GROQ_API_KEY`), Google GenAI (`GOOGLE_API_KEY`), PayOS (`PAYOS_*`), SMTP (`SMTP_*`), and parcel tracking (`SEVENTEENTRACK_API_KEY` for the API, `SEVENTEENTRACK_WEBHOOK_TOKEN` — a secret we choose ourselves, since 17TRACK does not sign its pushes). Many clients are lazy-initialized (e.g. `src/lib/payos.ts`) specifically so a missing key doesn't crash `next build`.
+All secrets live in `.env` (gitignored). Required keys span several integrations — Supabase (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`), Cloudinary, Firebase (`NEXT_PUBLIC_FIREBASE_*`), eBay (`EBAY_*`), Groq (`GROQ_API_KEY`), Google GenAI (`GOOGLE_API_KEY`), PayOS (`PAYOS_*`), mail (Resend only: `RESEND_API_KEY`, `MAIL_FROM_EMAIL`, `MAIL_REPLY_TO` — see `src/lib/mail-transport.ts`; `NEXT_PUBLIC_ADMIN_URL` for admin links in alert mail), and parcel tracking (`SEVENTEENTRACK_API_KEY` for the API, `SEVENTEENTRACK_WEBHOOK_TOKEN` — a secret we choose ourselves, since 17TRACK does not sign its pushes). Many clients are lazy-initialized (e.g. `src/lib/payos.ts`) specifically so a missing key doesn't crash `next build`.
 
 ## Architecture
 

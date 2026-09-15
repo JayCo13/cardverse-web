@@ -373,7 +373,7 @@ async function handleGET(request: NextRequest) {
                         }
                         if (updated.status === 'Approved') {
                             // Budgeted: the handoff sends mail, and a stalled
-                            // SMTP connection must not cost the user the status
+                            // mail request must not cost the user the status
                             // they are polling for. The claim is idempotent, so
                             // an abandoned send is simply retried next poll.
                             await withBudget(notifyKycIdentityApproved({

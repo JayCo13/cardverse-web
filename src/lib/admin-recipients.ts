@@ -3,7 +3,7 @@ import { createServiceSupabaseClient } from '@/lib/supabase/service';
 /** Auth roles that should receive operational review mail. */
 const NOTIFIED_ROLES = new Set(['admin', 'moderator']);
 
-// Resolve the real admin audience from Supabase Auth. The SMTP account is a
+// Resolve the real admin audience from Supabase Auth. MAIL_REPLY_TO is a
 // safe local fallback for the environment-backed moderator when
 // MODERATOR_EMAIL has not also been copied to the web deployment.
 export async function getAdminNotificationEmails(): Promise<string[]> {
@@ -33,11 +33,10 @@ export async function getAdminNotificationEmails(): Promise<string[]> {
             ...(process.env.ADMIN_NOTIFICATION_EMAILS || '').split(','),
         ];
 
-        // In local setups SMTP_USER and MODERATOR_EMAIL are commonly the same
-        // mailbox. This fallback prevents silent mail loss when only the admin
-        // app has MODERATOR_EMAIL configured.
-        if (!process.env.MODERATOR_EMAIL && process.env.SMTP_USER) {
-            configuredRecipients.push(process.env.SMTP_USER);
+        // Without MODERATOR_EMAIL, fall back to the reply-to mailbox the team
+        // already reads so admin alerts are not silently dropped.
+        if (!process.env.MODERATOR_EMAIL && process.env.MAIL_REPLY_TO) {
+            configuredRecipients.push(process.env.MAIL_REPLY_TO);
         }
 
         for (const configuredEmail of configuredRecipients) {

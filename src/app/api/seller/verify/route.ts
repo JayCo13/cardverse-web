@@ -330,7 +330,7 @@ async function handlePOST(request: NextRequest) {
 
         if (autoApproved) {
             // Awaited: on serverless the function freezes once the response is
-            // returned, which would cut an in-flight SMTP send.
+            // returned, which would cut an in-flight mail send.
             if (userEmail) await sendKYCApproved(userEmail, full_name, locale);
 
             return NextResponse.json({
