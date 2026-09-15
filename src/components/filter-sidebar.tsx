@@ -1,6 +1,8 @@
 
 'use client';
 
+import { useId } from 'react';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -8,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import type { Card, CardCategory, ListingType, CardCondition } from '@/lib/types';
 import { useLocalization } from '@/context/localization-context';
-import { PRODUCT_CONDITIONS, productConditionLabel, productCopy } from '@/lib/product-listing';
+import { PRODUCT_CONDITIONS, PRODUCT_KINDS, productConditionLabel, productCopy, type ProductKind } from '@/lib/product-listing';
 import type { Filters as BaseFilters } from '@/app/buy/buy-client';
 import { getCategories } from '@/lib/card-catalog';
 
@@ -20,6 +22,8 @@ interface FilterSidebarProps {
   showListingTypeFilter?: boolean;
   showAdvancedFilters?: boolean;
   availableCards?: Card[];
+  productFilter?: ProductKind | 'all';
+  onProductFilterChange?: (value: ProductKind | 'all') => void;
 }
 
 const uniqueSorted = (values: Array<string | null | undefined>) =>
@@ -30,8 +34,9 @@ const formatPriceInput = (value?: string) => {
   return number > 0 ? new Intl.NumberFormat('vi-VN').format(number) : '';
 };
 
-export function FilterSidebar({ filters, onFiltersChange, showListingTypeFilter = true, showAdvancedFilters = false, availableCards = [] }: FilterSidebarProps) {
+export function FilterSidebar({ filters, onFiltersChange, showListingTypeFilter = true, showAdvancedFilters = false, availableCards = [], productFilter = 'all', onProductFilterChange }: FilterSidebarProps) {
   const { t, locale } = useLocalization();
+  const productFilterId = useId();
   const copy = locale === 'vi-VN'
     ? {
         active: 'đang áp dụng', search: 'Tên, số thẻ, set hoặc người bán...', price: 'Khoảng giá', min: 'Từ', max: 'Đến', publisher: 'Nhà phát hành',
@@ -85,6 +90,7 @@ export function FilterSidebar({ filters, onFiltersChange, showListingTypeFilter 
       baseFilters.listingTypes = [];
     }
     onFiltersChange(baseFilters);
+    onProductFilterChange?.('all');
   };
 
   const categories = getCategories(locale).filter(category => category.value !== 'Magic' && category.value !== 'Ma thuật');
@@ -96,7 +102,8 @@ export function FilterSidebar({ filters, onFiltersChange, showListingTypeFilter 
     availableCards.filter(card => card.category === category.value || card.category === category.label).length,
   ]));
 
-  const activeFilterCount = filters.categories.length
+  const activeFilterCount = (onProductFilterChange && productFilter !== 'all' ? 1 : 0)
+    + filters.categories.length
     + filters.conditions.length
     + (filters.publishers?.length || 0)
     + (filters.sets?.length || 0)
@@ -158,6 +165,23 @@ export function FilterSidebar({ filters, onFiltersChange, showListingTypeFilter 
         <AccordionItem value="category">
           <AccordionTrigger>{t('category_label')}</AccordionTrigger>
           <AccordionContent className="space-y-2">
+            {onProductFilterChange && (
+              <div className="mb-3 space-y-2 border-b pb-3">
+                <p id={`${productFilterId}-label`} className="text-xs font-medium text-muted-foreground">{productCopy(locale).type}</p>
+                <RadioGroup
+                  aria-labelledby={`${productFilterId}-label`}
+                  value={productFilter}
+                  onValueChange={value => onProductFilterChange(value as ProductKind | 'all')}
+                >
+                  {(['all', ...PRODUCT_KINDS] as const).map(kind => (
+                    <div key={kind} className="flex items-center space-x-2">
+                      <RadioGroupItem id={`${productFilterId}-${kind}`} value={kind} />
+                      <Label htmlFor={`${productFilterId}-${kind}`}>{productCopy(locale)[kind]}</Label>
+                    </div>
+                  ))}
+                </RadioGroup>
+              </div>
+            )}
             {categories.map((category) => (
               <div key={category.value} className="flex items-center space-x-2">
                 <Checkbox

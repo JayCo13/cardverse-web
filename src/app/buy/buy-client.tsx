@@ -9,7 +9,7 @@ import { CardItem } from '@/components/card-item';
 import type { Card, CardCategory, CardCondition } from '@/lib/types';
 import { useLocalization } from '@/context/localization-context';
 import { FilterSidebar } from '@/components/filter-sidebar';
-import { PRODUCT_KINDS, productCopy, flexibleProductsEnabled, type ProductKind } from '@/lib/product-listing';
+import { flexibleProductsEnabled, type ProductKind } from '@/lib/product-listing';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -408,23 +408,9 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
           {/* The subtitle sat flush against a 4xl heading with no gap at all. */}
           <p className="mt-2 text-muted-foreground md:mt-3">{t('buy_description')}</p>
         </div>
-        {flexibleProductsEnabled && (
-          <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center">
-            <span className="text-sm font-medium text-muted-foreground">{productCopy(locale).choose}</span>
-            <Select value={productFilter} onValueChange={value => setProductFilter(value as ProductKind | 'all')}>
-              <SelectTrigger aria-label={productCopy(locale).choose} className="h-11 w-full sm:w-64">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{productCopy(locale).all}</SelectItem>
-                {PRODUCT_KINDS.map(kind => <SelectItem key={kind} value={kind}>{productCopy(locale)[kind]}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
         <div className="flex gap-8">
           <div className="hidden md:block w-1/4">
-            <FilterSidebar filters={filters} onFiltersChange={setFilters} showListingTypeFilter={false} showAdvancedFilters availableCards={saleCards} />
+            <FilterSidebar filters={filters} onFiltersChange={setFilters} showListingTypeFilter={false} showAdvancedFilters availableCards={saleCards} productFilter={productFilter} onProductFilterChange={flexibleProductsEnabled ? setProductFilter : undefined} />
           </div>
           <div className="w-full md:w-3/4">
             <div className="flex justify-between items-center mb-6">
@@ -447,7 +433,7 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
                       </Button>
                     </SheetTrigger>
                     <SheetContent side="left" className="w-3/4">
-                      <FilterSidebar filters={filters} onFiltersChange={setFilters} showListingTypeFilter={false} showAdvancedFilters availableCards={saleCards} />
+                      <FilterSidebar filters={filters} onFiltersChange={setFilters} showListingTypeFilter={false} showAdvancedFilters availableCards={saleCards} productFilter={productFilter} onProductFilterChange={flexibleProductsEnabled ? setProductFilter : undefined} />
                     </SheetContent>
                   </Sheet>
                 </div>
