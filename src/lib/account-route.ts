@@ -1,12 +1,16 @@
 import type { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { guardAccount } from '@/lib/account-restriction';
+import { getRouteUser } from '@/lib/supabase/route-user';
 
+// Identity comes from the JWT via getRouteUser(): verified locally once the
+// project signs tokens with an asymmetric key, and identical to getUser()
+// (one auth round trip) until then. Routes only ever read `id` and `email`.
 async function resolveAccount(request: NextRequest) {
   void request;
   const supabase = await createServerSupabaseClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  return { supabase, user: authError ? null : user, authError };
+  const user = await getRouteUser(supabase);
+  return { supabase, user, authError: user ? null : new Error('Unauthorized') };
 }
 
 // Identity is shared only within this request, never between users or requests.

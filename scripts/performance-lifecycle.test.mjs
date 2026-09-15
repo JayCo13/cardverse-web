@@ -57,7 +57,8 @@ for (const mode of ['allowed', 'banned', 'unavailable', 'anonymous']) {
     } };
     const client = { auth: { async getUser() { auth++; return { data: { user: mode === 'anonymous' ? null : { id: 'a' } }, error: null }; } }, from: () => restrictions };
     const guard = load('src/lib/account-restriction.ts', { 'next/server': { NextResponse: { json: (body, init) => ({ body, ...init }) } } });
-    const route = load('src/lib/account-route.ts', { '@/lib/supabase/server': { createServerSupabaseClient: async () => client }, '@/lib/account-restriction': guard });
+    const routeUser = { getRouteUser: async supabase => { const { data: { user } } = await supabase.auth.getUser(); return user ? { id: user.id, email: null } : null; } };
+    const route = load('src/lib/account-route.ts', { '@/lib/supabase/server': { createServerSupabaseClient: async () => client }, '@/lib/account-restriction': guard, '@/lib/supabase/route-user': routeUser });
     const handler = route.accountRoute(async request => { handled++; const context = await route.getAccountRouteContext(request); return { status: context.user ? 200 : 401 }; });
     const first = await handler({});
     assert.equal(auth, 1);

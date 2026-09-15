@@ -23,6 +23,7 @@ function loadTs(path, mocks = {}) {
       if (name === '@/lib/account-route') return loadTs('src/lib/account-route.ts', {
         '@/lib/supabase/server': mocks['@/lib/supabase/server'],
         '@/lib/account-restriction': loadTs('src/lib/account-restriction.ts', { 'next/server': nextServer }),
+        '@/lib/supabase/route-user': routeUserShim,
       });
       if (name === '@/lib/supabase/server' && mocks[name]) return {
         createServerSupabaseClient: async () => {
@@ -56,6 +57,15 @@ function query(result, calls, table) {
   return chain;
 }
 const routeUser = loadTs('src/lib/supabase/route-user.ts');
+// Harness clients mock auth.getUser only; real clients answer getClaims. Route
+// identity is the same either way, so the shim takes whichever the client has.
+const routeUserShim = {
+  getRouteUser: async supabase => {
+    if (typeof supabase.auth?.getClaims === 'function') return routeUser.getRouteUser(supabase);
+    const { data: { user }, error } = await supabase.auth.getUser();
+    return error || !user ? null : { id: user.id, email: user.email ?? null };
+  },
+};
 
 // Routes resolve their caller through getRouteUser, which reads the verified
 // JWT claims rather than asking the auth server for the whole user record.
