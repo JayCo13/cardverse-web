@@ -1175,7 +1175,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
         <Sheet open={open} onOpenChange={onOpenChange}>
             <SheetContent
                 side="right"
-                className="flex h-[100dvh] w-full flex-col gap-0 p-0 [&>button]:flex [&>button]:h-11 [&>button]:w-11 [&>button]:items-center [&>button]:justify-center md:h-full md:[&>button]:h-auto md:[&>button]:w-auto sm:max-w-5xl"
+                className="flex h-[100dvh] w-full max-w-full flex-col gap-0 overflow-hidden p-0 [&>button]:flex [&>button]:h-11 [&>button]:w-11 [&>button]:items-center [&>button]:justify-center md:h-full md:[&>button]:h-auto md:[&>button]:w-auto sm:max-w-5xl"
             >
                     <SheetHeader className={`${selectedConversation ? "hidden md:flex" : "flex"} border-b px-5 py-4`}>
                         <SheetTitle className="flex items-center gap-2">
@@ -1190,8 +1190,8 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                         {copy.loginRequired}
                     </div>
                 ) : (
-                    <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[340px_1fr]">
-                        <aside className={`min-h-0 border-r ${selectedConversation ? "hidden md:block" : "block"}`}>
+                    <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)] lg:grid-cols-[320px_minmax(0,1fr)]">
+                        <aside className={`min-h-0 min-w-0 border-r ${selectedConversation ? "hidden md:block" : "block"}`}>
                             <div className="border-b p-4">
                                 <p className="text-sm font-semibold">{copy.inboxTitle}</p>
                                 <p className="text-xs text-muted-foreground">{copy.inboxSubtitle}</p>
@@ -1317,7 +1317,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                             </ScrollArea>
                         </aside>
 
-                        <section className={`${selectedConversation ? "flex" : "hidden md:flex"} min-h-0 flex-col`}>
+                        <section className={`${selectedConversation ? "flex" : "hidden md:flex"} min-h-0 min-w-0 flex-col`}>
                             {!selectedConversation ? (
                                 <div className="flex flex-1 items-center justify-center p-8 text-center text-muted-foreground">
                                     {copy.selectConversation}
@@ -1348,7 +1348,7 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                                 ) : null}
                                             </div>
                                             <div className="min-w-0 flex-1">
-                                                <p className="truncate font-semibold">{selectedConversation.card?.name || copy.marketplaceChat}</p>
+                                                <p className="line-clamp-2 break-words font-semibold [overflow-wrap:anywhere]" title={selectedConversation.card?.name || copy.marketplaceChat}>{selectedConversation.card?.name || copy.marketplaceChat}</p>
                                                 <p className="flex min-w-0 items-center gap-1 text-sm text-muted-foreground">
                                                     <span className="truncate">
                                                         {copy.withUser}{" "}
@@ -1518,7 +1518,8 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                                         </div>
                                     )}
 
-                                    <ScrollArea className="min-h-0 flex-1 p-4">
+                                    {/* Keep Radix's content wrapper within the column so long messages wrap. */}
+                                    <ScrollArea className="min-h-0 min-w-0 flex-1 p-4 [overflow-wrap:anywhere] [&>[data-radix-scroll-area-viewport]>div]:!block">
                                         {isLoadingMessages ? (
                                             <div className="flex items-center justify-center p-6 text-muted-foreground">
                                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
