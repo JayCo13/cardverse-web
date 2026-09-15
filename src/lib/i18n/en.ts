@@ -491,7 +491,6 @@ export const en = {
   coll_sign_in_desc: 'Sign in to view and manage your card collection, track values, and share with friends.',
   coll_sign_in_btn: 'Sign In to Continue',
   coll_cards_label: 'cards',
-  coll_retry: 'Retry',
   // Collection Detail Page
   coll_back: 'Back to Collection',
   coll_card_not_found: 'Card Not Found',
