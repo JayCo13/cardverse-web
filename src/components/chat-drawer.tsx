@@ -503,6 +503,9 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     // per row: one AlertDialog lives at the end of the tree and reads whichever
     // is set.
     const [pendingRecallId, setPendingRecallId] = useState<string | null>(null);
+    // The confirm dialogs stay open while their request runs (see below), so
+    // their buttons need an explicit lock or the request goes out twice.
+    const [confirmBusy, setConfirmBusy] = useState(false);
     const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
     const copiedResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [showEmoji, setShowEmoji] = useState(false);
@@ -1062,6 +1065,8 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
     };
 
     const recallMessage = async (messageId: string) => {
+        if (confirmBusy) return;
+        setConfirmBusy(true);
         try {
             const response = await fetch("/api/chat/messages", {
                 method: "PATCH",
@@ -1084,10 +1089,14 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
         } catch (error) {
             const description = error instanceof Error ? error.message : copy.recallFailed;
             toast({ variant: "destructive", title: copy.recallFailed, description });
+        } finally {
+            setConfirmBusy(false);
         }
     };
 
     const deleteConversation = async (conversationId: string) => {
+        if (confirmBusy) return;
+        setConfirmBusy(true);
         try {
             const response = await fetch("/api/chat/conversations", {
                 method: "DELETE",
@@ -1108,6 +1117,8 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
         } catch (error) {
             const description = error instanceof Error ? error.message : copy.deleteConversationFailed;
             toast({ variant: "destructive", title: copy.deleteConversationFailed, description });
+        } finally {
+            setConfirmBusy(false);
         }
     };
 
@@ -1988,9 +1999,10 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                     <AlertDialogDescription>{copy.confirmRecallBody}</AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                    <AlertDialogCancel>{copy.cancel}</AlertDialogCancel>
+                    <AlertDialogCancel disabled={confirmBusy}>{copy.cancel}</AlertDialogCancel>
                     <AlertDialogAction
                         className="bg-red-500 text-white hover:bg-red-600"
+                        disabled={confirmBusy}
                         onClick={event => {
                             // Keep the dialog up while the request is in flight,
                             // the way the cart's remove confirmation does.
@@ -2011,9 +2023,10 @@ export function ChatDrawer({ open, onOpenChange, initialConversationId }: ChatDr
                     <AlertDialogDescription>{copy.confirmDeleteConvBody}</AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                    <AlertDialogCancel>{copy.cancel}</AlertDialogCancel>
+                    <AlertDialogCancel disabled={confirmBusy}>{copy.cancel}</AlertDialogCancel>
                     <AlertDialogAction
                         className="bg-red-500 text-white hover:bg-red-600"
+                        disabled={confirmBusy}
                         onClick={event => {
                             event.preventDefault();
                             if (pendingDeleteId) void deleteConversation(pendingDeleteId);

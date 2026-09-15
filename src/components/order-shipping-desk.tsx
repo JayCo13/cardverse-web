@@ -172,7 +172,8 @@ export function OrderShippingDesk({
     listingOverride?: boolean;
     recipient: { name: string; phone: string; address: string };
     itemName: string;
-    onBooked: (gcode: string) => void;
+    /** Awaited: the desk stays locked until the parent has reloaded the order. */
+    onBooked: (gcode: string) => void | Promise<void>;
 }) {
     const { locale } = useLocalization();
     const copy = COPY[locale as keyof typeof COPY] ?? COPY['vi-VN'];
@@ -241,6 +242,10 @@ export function OrderShippingDesk({
     const [chosen, setChosen] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [booking, setBooking] = useState(false);
+    // Once GoShip has accepted the parcel this never resets: the parent swaps
+    // this desk out after it reloads the order, and until then a second click
+    // must not be possible.
+    const [booked, setBooked] = useState(false);
     const [confirming, setConfirming] = useState(false);
     const [error, setError] = useState<string | null>(null);
     // Evidence: dispute_evidence_verdict reads it as the seller's side.
@@ -430,8 +435,13 @@ export function OrderShippingDesk({
                 setError(body.error || copy.failed);
                 return;
             }
+            setBooked(true);
+            // Keep the confirm dialog (and its spinner) up until the order is
+            // reloaded, otherwise the desk re-enables for a moment and gets
+            // clicked again. The waybill exists by now, so a reload failure
+            // must not be reported as a booking failure.
+            try { await onBooked(body.gcode); } catch (e) { console.error('[Shipping desk] reload after booking failed', e); }
             setConfirming(false);
-            onBooked(body.gcode);
         } catch {
             setError(copy.failed);
         } finally {
@@ -732,9 +742,9 @@ export function OrderShippingDesk({
                                     <div className="flex justify-between border-t border-border/60 pt-1.5 font-semibold"><span>{copy.payoutNet}</span><span className="text-orange-400">{money(netPayout)}</span></div>
                                 </div>
                             )}
-                            <Button disabled={!selected} onClick={() => setConfirming(true)} className="w-full bg-orange-500 hover:bg-orange-600">
-                                <Truck className="mr-2 h-4 w-4" />{copy.book}
-                                <ArrowRight className="ml-2 h-4 w-4" />
+                            <Button disabled={!selected || booked} loading={booked} onClick={() => setConfirming(true)} className="w-full bg-orange-500 hover:bg-orange-600">
+                                {booked ? null : <Truck className="mr-2 h-4 w-4" />}{booked ? copy.booking : copy.book}
+                                {booked ? null : <ArrowRight className="ml-2 h-4 w-4" />}
                             </Button>
                         </div>
                     </div>
@@ -753,8 +763,8 @@ export function OrderShippingDesk({
                     </DialogHeader>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setConfirming(false)} disabled={booking}>{copy.cancel}</Button>
-                        <Button onClick={book} loading={booking} className="bg-orange-500 hover:bg-orange-600">
-                            {copy.confirm}
+                        <Button onClick={book} loading={booking} disabled={booked} className="bg-orange-500 hover:bg-orange-600">
+                            {booking ? copy.booking : copy.confirm}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

@@ -534,8 +534,10 @@ export default function SellPage() {
         // up — otherwise an already-registered seller wrongly sees the signup
         // form again instead of their pending/approved status.
         if (attempt < 4) {
-          setTimeout(() => fetchVerification(attempt + 1), 600);
-          return;
+          // Awaited (not fire-and-forget) so a caller waiting on this promise
+          // is covered for the whole retry chain, not just the first attempt.
+          await new Promise(resolve => setTimeout(resolve, 600));
+          return fetchVerification(attempt + 1);
         }
         setIsLoadingVerification(false);
         return;
@@ -558,8 +560,8 @@ export default function SellPage() {
     } catch (err) {
       console.error('Failed to fetch verification:', err);
       if (attempt < 4) {
-        setTimeout(() => fetchVerification(attempt + 1), 600);
-        return;
+        await new Promise(resolve => setTimeout(resolve, 600));
+        return fetchVerification(attempt + 1);
       }
       setIsLoadingVerification(false);
     }
@@ -813,6 +815,7 @@ export default function SellPage() {
     setIsStartingKyc(true);
     setKycError(null);
     setKycPollingTimedOut(false);
+    let redirecting = false;
     try {
       const res = await fetch('/api/seller/kyc/session', {
         method: 'POST',
@@ -842,11 +845,15 @@ export default function SellPage() {
 
       setKycSession(data.session as KycSession);
       // Same tab: the provider redirects back to /sell/kyc/callback when done.
+      // Deliberately still starting: the navigation is not instant, and
+      // releasing the button here let a second press open another session.
+      // Only a failure resets it.
+      redirecting = true;
       window.location.href = data.url as string;
     } catch (err: any) {
       setKycError(err?.message || tx('Lỗi kết nối. Vui lòng thử lại.', 'Connection error. Please try again.', '接続エラーです。もう一度お試しください。'));
     } finally {
-      setIsStartingKyc(false);
+      if (!redirecting) setIsStartingKyc(false);
     }
   };
 
@@ -960,7 +967,10 @@ export default function SellPage() {
           description: t('seller_kyc_submitted_description'),
         });
       }
-      fetchVerification();
+      // Awaited: the submit button stays disabled until the verification
+      // state replaces the form, otherwise it lights up again for a moment.
+      // The submission already succeeded, so a reload failure is not its failure.
+      try { await fetchVerification(); } catch (e) { console.error('[Sell] reload after KYC submit failed', e); }
     } catch (err: any) {
       toast({ variant: 'destructive', title: tx('Lỗi', 'Error', 'エラー'), description: err.message });
     } finally {
