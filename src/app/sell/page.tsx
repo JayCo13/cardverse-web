@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -199,7 +199,7 @@ export default function SellPage() {
   const desktop = useMediaQuery('(min-width: 768px)');
   const router = useRouter();
   const { t, locale } = useLocalization();
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, profile, isLoading: authLoading } = useAuth();
   const { setOpen } = useAuthModal();
   const { toast } = useToast();
   const supabase = useSupabase();
@@ -544,10 +544,15 @@ export default function SellPage() {
       setVerification(data.verification ?? null);
 
       if (data.verification?.status === 'approved') {
-        fetchSellerOrders();
-        fetchMyListings();
-        fetchOfferSummary();
-        fetchPickupAddress();
+        // Usually already in flight from the profile hint below; only redo
+        // the parts that failed (e.g. a 401 while the cookie was syncing).
+        const warm = dashboardWarm.current;
+        dashboardWarm.current = null;
+        if (warm) {
+          void warm.then(results => { if (results.some(ok => !ok)) void loadDashboard(); });
+        } else {
+          void loadDashboard();
+        }
       }
       setIsLoadingVerification(false);
     } catch (err) {
@@ -566,15 +571,17 @@ export default function SellPage() {
       const res = await fetch('/api/marketplace/orders?role=seller');
       const data = await res.json();
       setSellerOrders(data.orders || []);
+      return res.ok;
     } catch (err) {
       console.error('Failed to fetch seller orders:', err);
+      return false;
     } finally {
       setIsLoadingOrders(false);
     }
   };
 
   const fetchMyListings = async () => {
-    if (!user) return;
+    if (!user) return false;
     setIsLoadingListings(true);
     try {
       const { data, error } = await supabase
@@ -584,9 +591,12 @@ export default function SellPage() {
         .order('created_at', { ascending: false });
       if (!error && data) {
         setMyListings(data as MyListing[]);
+        return true;
       }
+      return false;
     } catch (err) {
       console.error('Failed to fetch seller listings:', err);
+      return false;
     } finally {
       setIsLoadingListings(false);
     }
@@ -600,14 +610,16 @@ export default function SellPage() {
    * one number. They now share whatever is already in flight.
    */
   const fetchOfferSummary = async (options?: { force?: boolean }) => {
-    if (!user) return;
+    if (!user) return false;
     try {
       const summary = await getAccountSummary(user.id, options);
-      if (!summary) return;
+      if (!summary) return false;
       setPendingOffersTotal(summary.receivedPending);
       setPendingOfferCounts(summary.cardPendingCounts);
+      return true;
     } catch (err) {
       console.error('Failed to fetch offer summary:', err);
+      return false;
     }
   };
 
@@ -623,13 +635,14 @@ export default function SellPage() {
   }, [user]);
 
   const fetchPickupAddress = async () => {
-    if (!user) return;
+    if (!user) return false;
     setIsLoadingAddress(true);
     try {
       // Own profile, and it reads address_detail — a street address, which the
       // table is not going to keep handing out. The definer function makes the
       // owner check itself.
-      const { data } = await supabase.rpc('get_my_profile' as never);
+      const { data, error } = await supabase.rpc('get_my_profile' as never);
+      if (error) throw error;
       const p = data as Record<string, any> | null;
       // Province + ward is what a complete address is now; the district
       // column is null on anything saved since the tier was abolished.
@@ -642,12 +655,33 @@ export default function SellPage() {
       } else {
         setPickupAddress(null);
       }
+      return true;
     } catch (err) {
       console.error('Failed to fetch pickup address:', err);
+      return false;
     } finally {
       setIsLoadingAddress(false);
     }
   };
+
+  /**
+   * Everything the approved-seller dashboard shows, in one parallel batch.
+   *
+   * The dashboard used to wait for /api/seller/verify before asking for any
+   * of it. The auth profile already carries `seller_verified`, so when that
+   * says yes the batch starts alongside the verify call; the verify result
+   * still decides what is rendered, and re-runs the batch if any part failed.
+   */
+  const loadDashboard = () =>
+    Promise.all([fetchSellerOrders(), fetchMyListings(), fetchOfferSummary(), fetchPickupAddress()]);
+  const dashboardWarm = useRef<Promise<boolean[]> | null>(null);
+
+  useEffect(() => {
+    if (authLoading || !user || !profile?.seller_verified || dashboardWarm.current) return;
+    if (!isLoadingVerification) return; // verify already answered; nothing to get ahead of
+    dashboardWarm.current = loadDashboard();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user, profile?.seller_verified]);
 
   // Format a raw money string with thousand separators, e.g. "15000" → "15.000".
   const formatVndInput = (v: string) => {
