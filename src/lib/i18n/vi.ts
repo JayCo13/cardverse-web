@@ -259,6 +259,7 @@ export const vi = {
   auth_password_min: 'Mật khẩu phải có ít nhất 6 ký tự',
   auth_password_min_8: 'Mật khẩu phải có ít nhất 8 ký tự',
   auth_username_min: 'Tên người dùng phải có ít nhất 2 ký tự',
+  auth_username_reserved: 'Tên này được dành riêng cho tài khoản chính thức của CardVerseHub',
   auth_confirm_password: 'Vui lòng xác nhận mật khẩu',
   auth_passwords_no_match: 'Mật khẩu không khớp',
   auth_otp_sent: 'Chúng tôi đã gửi mã 8 số đến email của bạn',

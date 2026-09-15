@@ -17,6 +17,7 @@ import { useAuthModal } from "@/components/auth-modal";
 import { AddressBook } from "@/components/address-book";
 import { useLocalization } from "@/context/localization-context";
 import { useToast } from "@/hooks/use-toast";
+import { isReservedDisplayName } from "@/lib/reserved-names";
 
 export default function EditProfilePage() {
     const router = useRouter();
@@ -33,6 +34,7 @@ export default function EditProfilePage() {
             imageTooLarge: "Ảnh phải nhỏ hơn 5MB",
             invalidImage: "Vui lòng chọn file hình ảnh",
             uploadFailed: "Không thể tải ảnh lên",
+            nameReserved: "Tên này được dành riêng cho tài khoản chính thức của CardVerseHub",
             unexpectedError: "Đã xảy ra lỗi không mong muốn",
             loginTitle: "Đăng nhập để xem cài đặt",
             loginDescription: "Bạn cần đăng nhập để quản lý hồ sơ, thẻ thành viên, và thông tin địa chỉ.",
@@ -97,6 +99,7 @@ export default function EditProfilePage() {
                 imageTooLarge: "画像は5MB未満にしてください",
                 invalidImage: "画像ファイルを選択してください",
                 uploadFailed: "画像をアップロードできませんでした",
+                nameReserved: "この名前はCardVerseHub公式アカウント専用です",
                 unexpectedError: "予期しないエラーが発生しました",
                 loginTitle: "設定を表示するにはログインしてください",
                 loginDescription: "プロフィール、会員プラン、住所情報を管理するにはログインが必要です。",
@@ -160,6 +163,7 @@ export default function EditProfilePage() {
                 imageTooLarge: "Image must be smaller than 5MB",
                 invalidImage: "Please select an image file",
                 uploadFailed: "Unable to upload image",
+                nameReserved: "This name is reserved for the official CardVerseHub account",
                 unexpectedError: "An unexpected error occurred",
                 loginTitle: "Log in to view settings",
                 loginDescription: "You need to log in to manage your profile, membership plan, and address information.",
@@ -354,6 +358,13 @@ export default function EditProfilePage() {
         e.preventDefault();
         if (!user || saveLockRef.current) return;
 
+        // The database refuses this too (display_name_reserved); checking
+        // here just saves the round trip and gives a readable message.
+        if (isReservedDisplayName(displayName) && !profile?.email?.toLowerCase().endsWith("@cardversehub.com")) {
+            setError(copy.nameReserved);
+            return;
+        }
+
         saveLockRef.current = true;
         setError(null);
         setSuccess(false);
@@ -388,7 +399,7 @@ export default function EditProfilePage() {
                 .eq("id", user.id);
 
             if (updateError) {
-                setError(updateError.message);
+                setError(updateError.message.includes("display_name_reserved") ? copy.nameReserved : updateError.message);
             } else {
                 setSuccess(true);
                 setProfileImageUrl(newImageUrl);

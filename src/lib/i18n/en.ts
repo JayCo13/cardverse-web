@@ -248,6 +248,7 @@ export const en = {
   auth_password_min: 'Password must be at least 6 characters',
   auth_password_min_8: 'Password must be at least 8 characters',
   auth_username_min: 'Username must be at least 2 characters',
+  auth_username_reserved: 'This name is reserved for the official CardVerseHub account',
   auth_confirm_password: 'Please confirm your password',
   auth_passwords_no_match: "Passwords don't match",
   auth_otp_sent: "We've sent an 8-digit code to your email",
