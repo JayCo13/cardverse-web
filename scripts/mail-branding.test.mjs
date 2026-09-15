@@ -63,10 +63,20 @@ test('legacy Resend/from settings and caller From cannot override Gmail identity
   assert.equal(h.sent.length, 1);
 });
 
-test('missing credentials, malformed/wrong account and non-Gmail SMTP fail without provider fallback', () => {
+test('configured web Gmail account controls both SMTP login and From', async () => {
+  const h = harness({ SMTP_USER: ' CardVerseHub.vn@gmail.com ' });
+  const mail = h.load(transportPath);
+  const transport = mail.createMailTransporter();
+  assert.equal(mail.getFromAddress(), 'CardVerseHub <cardversehub.vn@gmail.com>');
+  await transport.sendMail({ from: sender, to: 'buyer@example.test', subject: 'Offer', html: 'test' });
+  assert.equal(h.configs[0].auth.user, 'cardversehub.vn@gmail.com');
+  assert.equal(h.sent[0].from, 'CardVerseHub <cardversehub.vn@gmail.com>');
+});
+
+test('missing credentials, malformed account and non-Gmail SMTP fail without provider fallback', () => {
   for (const overrides of [
-    { SMTP_USER: undefined }, { SMTP_USER: 'noreply@cardversehub.com' },
-    { SMTP_USER: 'cardversehubsupport@gmail.com@gmail.com' }, { SMTP_PASSWORD: '' },
+    { SMTP_USER: undefined }, { SMTP_USER: ' ' }, { SMTP_USER: 'noreply@cardversehub.com' },
+    { SMTP_USER: 'cardversehubsupport@gmail.com@gmail.com' }, { SMTP_PASSWORD: '' }, { SMTP_PASSWORD: ' ' },
     { SMTP_HOST: 'other.example.test' }, { SMTP_PORT: '587garbage' },
   ]) {
     const h = harness(overrides);
@@ -78,14 +88,14 @@ test('missing credentials, malformed/wrong account and non-Gmail SMTP fail witho
   assert.equal(h.configs[0].secure, true);
 });
 
-function assertBranded(message) {
-  assert.equal(message.from, sender);
+function assertBranded(message, expectedSender = sender) {
+  assert.equal(message.from, expectedSender);
   assert.ok(message.html.includes(`src="${logo}"`));
   assert.ok(message.html.includes('alt="CardVerseHub"'));
 }
 
 test('all 15 web email builders use the branded identity and public logo, including all offer locales', async () => {
-  const h = harness();
+  const h = harness({ SMTP_USER: 'cardversehub.vn@gmail.com' });
   const mail = h.load('src/lib/mail.ts');
   const email = 'buyer@example.test';
   const admins = ['admin@example.test'];
@@ -95,7 +105,7 @@ test('all 15 web email builders use the branded identity and public logo, includ
   const cases = [
     ['sendKYCIdentityApproved', [email, 'Buyer', 'vi-VN']],
     ['sendKYCSubmittedToUser', [email, 'Buyer']],
-    ['sendOrderShippedEmail', [email, { cardName: order.cardName, carrierName: 'GHN', trackingNumber: 'TRACK', trackingUrl: null }]],
+    ['sendOrderBookedEmail', [email, { orderId: order.orderId, cardName: order.cardName, carrierName: 'GHN', trackingNumber: 'TRACK', trackingUrl: null }]],
     ['sendKYCSubmittedToAdmin', ['Buyer', email, admins]],
     ['sendKycManualReviewToAdmin', [{ fullName: 'Buyer', userEmail: email, providerSessionId: 'session', warnings: [], adminEmails: admins }]],
     ['sendOfferPaymentReminder', [{ to: email, cardName: order.cardName, offerId: 'offer-id', price: order.amount, deadline: null }]],
@@ -115,7 +125,7 @@ test('all 15 web email builders use the branded identity and public logo, includ
     const before = h.sent.length;
     await mail[name](...args);
     assert.equal(h.sent.length, before + 1, name);
-    assertBranded(h.sent.at(-1));
+    assertBranded(h.sent.at(-1), 'CardVerseHub <cardversehub.vn@gmail.com>');
   }
 });
 

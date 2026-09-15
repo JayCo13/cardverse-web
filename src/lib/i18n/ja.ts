@@ -277,6 +277,7 @@ export const ja = {
   auth_password_min: 'パスワードは6文字以上',
   auth_password_min_8: 'パスワードは8文字以上',
   auth_username_min: 'ユーザー名は2文字以上',
+  auth_username_reserved: 'この名前はCardVerseHub公式アカウント専用です',
   auth_confirm_password: 'パスワードを確認してください',
   auth_passwords_no_match: 'パスワードが一致しません',
   auth_otp_sent: '8桁のコードをメールで送信しました',

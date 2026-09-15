@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useLocalization } from '@/context/localization-context';
 import { useAuth } from '@/lib/supabase';
+import { isReservedDisplayName } from '@/lib/reserved-names';
 
 export function AuthModalContent() {
   const { t, locale } = useLocalization();
@@ -39,7 +40,8 @@ export function AuthModalContent() {
   });
 
   const signupSchema = z.object({
-    username: z.string().min(2, t('auth_username_min')),
+    username: z.string().min(2, t('auth_username_min'))
+      .refine((name) => !isReservedDisplayName(name), t('auth_username_reserved')),
     email: z.string().email(t('auth_invalid_email')),
     password: z.string().min(8, t('auth_password_min_8')),
     confirmPassword: z.string().min(8, t('auth_confirm_password')),
