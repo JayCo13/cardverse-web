@@ -29,3 +29,9 @@ export function carrierStatusLabel(status: string | null | undefined, locale: st
   if (!entry) return null;
   return entry[locale === 'ja-JP' ? 'ja' : locale === 'en-US' ? 'en' : 'vi'];
 }
+
+export function carrierStatusColorClass(status: string | null | undefined): string {
+  if (status === 'Delivered') return 'text-green-400';
+  if (status === 'DeliveryFailure' || status === 'Exception') return 'text-red-400';
+  return 'text-blue-400';
+}

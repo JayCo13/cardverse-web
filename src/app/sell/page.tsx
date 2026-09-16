@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { memo, useState, useEffect, useRef, useCallback } from 'react';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -14,8 +14,10 @@ import { type PickupAddress } from '@/components/pickup-address-picker';
 import { ShippingQuotePreview } from '@/components/shipping-quote-preview';
 import { ShopShippingSetup } from '@/components/shop-shipping-setup';
 import { noDataLabel } from '@/lib/no-data-label';
+import { carrierStatusColorClass, carrierStatusLabel } from '@/lib/carrier-status-labels';
+import { ORDER_STATUS_CONFIG, orderStatusLabel } from '@/lib/order-status';
 import { getAccountSummary, invalidateAccountSummary } from '@/lib/account-summary';
-import { useAuth, useSupabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/supabase';
 import { useAuthModal } from '@/components/auth-modal';
 import { useToast } from '@/hooks/use-toast';
 import { useLocalization } from '@/context/localization-context';
@@ -43,6 +45,8 @@ type Verification = {
 type SellerOrder = {
   id: string;
   status: string;
+  carrier_status: string | null;
+  carrier_status_at: string | null;
   amount: number;
   platform_fee: number;
   created_at: string;
@@ -61,16 +65,30 @@ type MyListing = {
   created_at: string;
 };
 
-function KpiCard({ label, value, tone }: { label: string; value: string | number; tone: string }) {
+type OrderSummary = { total: number; waitingShip: number; shipping: number; completed: number; totalEarnings: number };
+type ListingSummary = { active: number; sold: number; draft: number; total: number };
+type ListingFilter = 'all' | 'active' | 'sold' | 'draft';
+type ListingPageState = { items: MyListing[]; nextCursor: string | null; loaded: boolean; loading: boolean; error: boolean };
+
+const EMPTY_ORDER_SUMMARY: OrderSummary = { total: 0, waitingShip: 0, shipping: 0, completed: 0, totalEarnings: 0 };
+const EMPTY_LISTING_SUMMARY: ListingSummary = { active: 0, sold: 0, draft: 0, total: 0 };
+const emptyListingPages = (): Record<ListingFilter, ListingPageState> => ({
+  all: { items: [], nextCursor: null, loaded: false, loading: false, error: false },
+  active: { items: [], nextCursor: null, loaded: false, loading: false, error: false },
+  sold: { items: [], nextCursor: null, loaded: false, loading: false, error: false },
+  draft: { items: [], nextCursor: null, loaded: false, loading: false, error: false },
+});
+
+const KpiCard = memo(function KpiCard({ label, value, tone }: { label: string; value: string | number; tone: string }) {
   return (
     <div className={`min-w-0 rounded-lg border p-3 ${tone}`}>
       <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className="mt-1 truncate text-lg font-bold md:text-xl">{value}</p>
     </div>
   );
-}
+});
 
-function ListingRow({ listing, statusLabel, price, pendingOffers, offerLabel }: { listing: MyListing; statusLabel: string; price: string; pendingOffers: number; offerLabel: string }) {
+const ListingRow = memo(function ListingRow({ listing, statusLabel, price, pendingOffers, offerLabel }: { listing: MyListing; statusLabel: string; price: string; pendingOffers: number; offerLabel: string }) {
   return (
     <div className="flex items-center gap-2 border-b py-2 last:border-b-0">
       <Link href={`/cards/${listing.id}`} className="flex min-w-0 flex-1 items-center gap-3">
@@ -96,12 +114,14 @@ function ListingRow({ listing, statusLabel, price, pendingOffers, offerLabel }: 
       )}
     </div>
   );
-}
+});
 
-function OrderRow({ order, statusLabel, statusClass, unknownCard, date, price }: {
+const OrderRow = memo(function OrderRow({ order, statusLabel, statusClass, carrierLabel, carrierClass, unknownCard, date, price }: {
   order: SellerOrder;
   statusLabel: string;
   statusClass: string;
+  carrierLabel: string | null;
+  carrierClass: string;
   unknownCard: string;
   date: string;
   price: string;
@@ -125,10 +145,11 @@ function OrderRow({ order, statusLabel, statusClass, unknownCard, date, price }:
       <div className="shrink-0 text-right">
         <p className="text-sm font-semibold">{price}</p>
         <Badge variant="outline" className={`mt-0.5 text-[10px] ${statusClass}`}>{statusLabel}</Badge>
+        {carrierLabel && <p className={`mt-1 text-[10px] font-medium ${carrierClass}`}>{carrierLabel}</p>}
       </div>
     </Link>
   );
-}
+});
 
 /**
  * Identity session handled by the external provider (Didit). The browser only
@@ -202,35 +223,29 @@ export default function SellPage() {
   const { user, profile, isLoading: authLoading } = useAuth();
   const { setOpen } = useAuthModal();
   const { toast } = useToast();
-  const supabase = useSupabase();
-
   const [verification, setVerification] = useState<Verification | null>(null);
   const [isLoadingVerification, setIsLoadingVerification] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [sellerOrders, setSellerOrders] = useState<SellerOrder[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
-  const [myListings, setMyListings] = useState<MyListing[]>([]);
-  const [isLoadingListings, setIsLoadingListings] = useState(false);
+  const [orderSummary, setOrderSummary] = useState<OrderSummary>(EMPTY_ORDER_SUMMARY);
+  const [listingSummary, setListingSummary] = useState<ListingSummary>(EMPTY_LISTING_SUMMARY);
+  const sellerOrdersRequest = useRef<Promise<boolean> | null>(null);
+  const sellerOrdersLastStartedAt = useRef(0);
+  const [listingTab, setListingTab] = useState<Exclude<ListingFilter, 'all'>>('active');
+  const [listingPages, setListingPages] = useState<Record<ListingFilter, ListingPageState>>(emptyListingPages);
+  const listingPagesRef = useRef(listingPages);
+  const listingRequests = useRef<Partial<Record<ListingFilter, Promise<boolean>>>>({});
   const [pendingOfferCounts, setPendingOfferCounts] = useState<Record<string, number>>({});
   const [pendingOffersTotal, setPendingOffersTotal] = useState(0);
-  const [pickupAddress, setPickupAddress] = useState<{ line: string } | null>(null);
-  const [isLoadingAddress, setIsLoadingAddress] = useState(false);
-  // The carrier's own address, kept apart from pickupAddress above: that one is
-  // the 2025 structure, this one is GoShip's pre-2025 ids. Draft is null until
-  // every field is valid, which is what disables the save button.
+  const [isLoadingAddress, setIsLoadingAddress] = useState(true);
+  // The one carrier-owned sender address. Null after loading means the seller
+  // has not configured one yet; the form then opens for the first setup.
   const [goshipPickup, setGoshipPickup] = useState<PickupAddress | null>(null);
   // Shop-level shipping options: selected carriers + per-carrier tiered fees
   // (formatted strings like "15.000") keyed by carrier code.
   const [shippingConfigOpen, setShippingConfigOpen] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/shipping/pickup-address')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((body) => { if (!cancelled && body?.data) setGoshipPickup(body.data); })
-      .catch(() => { /* optional section; a failed read just leaves it empty */ });
-    return () => { cancelled = true; };
-  }, []);
   const [shippingSectionOpen, setShippingSectionOpen] = useState(false);
 
   /**
@@ -241,8 +256,6 @@ export default function SellPage() {
    * more than a glance away no matter how long the listing grid runs.
    */
   const [showFloatingListing, setShowFloatingListing] = useState(false);
-  const [showAllListings, setShowAllListings] = useState<Record<string, boolean>>({});
-
   // Wizard step
   const [currentStep, setCurrentStep] = useState(1);
 
@@ -567,42 +580,116 @@ export default function SellPage() {
     }
   };
 
-  const fetchSellerOrders = async () => {
-    setIsLoadingOrders(true);
-    try {
-      const res = await fetch('/api/marketplace/orders?role=seller');
-      const data = await res.json();
-      setSellerOrders(data.orders || []);
-      return res.ok;
-    } catch (err) {
-      console.error('Failed to fetch seller orders:', err);
-      return false;
-    } finally {
-      setIsLoadingOrders(false);
+  const fetchSellerOrders = useCallback((options?: { background?: boolean }) => {
+    // A tab restore commonly emits visibilitychange, focus and pageshow as one
+    // burst. Share the active request, then ignore the tail of that burst so
+    // this endpoint (which also performs order lifecycle maintenance) is not
+    // called two or three times for the same user action.
+    if (sellerOrdersRequest.current) return sellerOrdersRequest.current;
+    const now = Date.now();
+    if (options?.background && now - sellerOrdersLastStartedAt.current < 1_000) {
+      return Promise.resolve(true);
     }
-  };
+    sellerOrdersLastStartedAt.current = now;
+    if (!options?.background) setIsLoadingOrders(true);
 
-  const fetchMyListings = async () => {
-    if (!user) return false;
-    setIsLoadingListings(true);
-    try {
-      const { data, error } = await supabase
-        .from('cards')
-        .select('id, name, image_url, price, status, listing_type, category, condition, created_at')
-        .eq('seller_id', user.id)
-        .order('created_at', { ascending: false });
-      if (!error && data) {
-        setMyListings(data as MyListing[]);
+    const request = (async () => {
+      try {
+        const res = await fetch('/api/seller/dashboard', { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        setSellerOrders(data.recentOrders || []);
+        setOrderSummary(data.summary?.orders || EMPTY_ORDER_SUMMARY);
+        setListingSummary(data.summary?.listings || EMPTY_LISTING_SUMMARY);
         return true;
+      } catch (err) {
+        console.error('Failed to fetch seller orders:', err);
+        return false;
+      } finally {
+        if (!options?.background) setIsLoadingOrders(false);
       }
-      return false;
-    } catch (err) {
-      console.error('Failed to fetch seller listings:', err);
-      return false;
-    } finally {
-      setIsLoadingListings(false);
+    })();
+
+    sellerOrdersRequest.current = request;
+    void request.finally(() => {
+      if (sellerOrdersRequest.current === request) sellerOrdersRequest.current = null;
+    });
+    return request;
+  }, []);
+
+  useEffect(() => {
+    if (!user || verification?.status !== 'approved') return;
+
+    const refreshOrders = () => void fetchSellerOrders({ background: true });
+    const refreshVisibleOrders = () => {
+      if (document.visibilityState === 'visible') refreshOrders();
+    };
+
+    window.addEventListener('focus', refreshOrders);
+    window.addEventListener('pageshow', refreshOrders);
+    document.addEventListener('visibilitychange', refreshVisibleOrders);
+    return () => {
+      window.removeEventListener('focus', refreshOrders);
+      window.removeEventListener('pageshow', refreshOrders);
+      document.removeEventListener('visibilitychange', refreshVisibleOrders);
+    };
+  }, [fetchSellerOrders, user, verification?.status]);
+
+  const fetchSellerListings = useCallback((filter: ListingFilter, append = false) => {
+    const activeRequest = listingRequests.current[filter];
+    if (activeRequest) return activeRequest;
+
+    const current = listingPagesRef.current[filter];
+    if (append && !current.nextCursor) return Promise.resolve(true);
+
+    const loadingState = { ...current, loading: true, error: false };
+    listingPagesRef.current = { ...listingPagesRef.current, [filter]: loadingState };
+    setListingPages(listingPagesRef.current);
+
+    const request = (async () => {
+      try {
+        const params = new URLSearchParams({
+          status: filter,
+          limit: String(filter === 'all' ? 8 : 5),
+        });
+        if (append && current.nextCursor) params.set('cursor', current.nextCursor);
+        const res = await fetch(`/api/seller/listings?${params}`, { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+        const next: ListingPageState = {
+          items: append ? [...current.items, ...(data.items || [])] : (data.items || []),
+          nextCursor: data.nextCursor || null,
+          loaded: true,
+          loading: false,
+          error: false,
+        };
+        listingPagesRef.current = { ...listingPagesRef.current, [filter]: next };
+        setListingPages(listingPagesRef.current);
+        return true;
+      } catch (err) {
+        console.error('Failed to fetch seller listings:', err);
+        const failed = { ...listingPagesRef.current[filter], loaded: true, loading: false, error: true };
+        listingPagesRef.current = { ...listingPagesRef.current, [filter]: failed };
+        setListingPages(listingPagesRef.current);
+        return false;
+      } finally {
+        delete listingRequests.current[filter];
+      }
+    })();
+
+    listingRequests.current[filter] = request;
+    return request;
+  }, []);
+
+  const activeListingFilter: ListingFilter = desktop ? 'all' : listingTab;
+
+  useEffect(() => {
+    if (!user || verification?.status !== 'approved') return;
+    if (!listingPagesRef.current[activeListingFilter].loaded) {
+      void fetchSellerListings(activeListingFilter);
     }
-  };
+  }, [activeListingFilter, fetchSellerListings, user, verification?.status]);
 
   /**
    * The same counts the header badge reads, from the same request.
@@ -640,23 +727,10 @@ export default function SellPage() {
     if (!user) return false;
     setIsLoadingAddress(true);
     try {
-      // Own profile, and it reads address_detail — a street address, which the
-      // table is not going to keep handing out. The definer function makes the
-      // owner check itself.
-      const { data, error } = await supabase.rpc('get_my_profile' as never);
-      if (error) throw error;
-      const p = data as Record<string, any> | null;
-      // Province + ward is what a complete address is now; the district
-      // column is null on anything saved since the tier was abolished.
-      if (p?.address_province_id && p?.address_ward_code) {
-        setPickupAddress({
-          line: [p.address_detail, p.address_ward_name, p.address_district_name, p.address_province_name]
-            .filter(Boolean)
-            .join(', '),
-        });
-      } else {
-        setPickupAddress(null);
-      }
+      const response = await fetch('/api/shipping/pickup-address', { cache: 'no-store' });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error || `HTTP ${response.status}`);
+      setGoshipPickup((body?.data || null) as PickupAddress | null);
       return true;
     } catch (err) {
       console.error('Failed to fetch pickup address:', err);
@@ -675,7 +749,7 @@ export default function SellPage() {
    * still decides what is rendered, and re-runs the batch if any part failed.
    */
   const loadDashboard = () =>
-    Promise.all([fetchSellerOrders(), fetchMyListings(), fetchOfferSummary(), fetchPickupAddress()]);
+    Promise.all([fetchSellerOrders(), fetchSellerListings(desktop ? 'all' : 'active'), fetchOfferSummary(), fetchPickupAddress()]);
   const dashboardWarm = useRef<Promise<boolean[]> | null>(null);
 
   useEffect(() => {
@@ -980,34 +1054,36 @@ export default function SellPage() {
 
   const formatVND = (amount: number) => new Intl.NumberFormat('vi-VN').format(amount) + 'đ';
 
-  const STATUS_MAP: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-    paid: { label: copy.waitingShip, icon: <Package className="h-4 w-4" />, color: 'text-blue-400' },
-    shipping: { label: copy.shipping, icon: <Package className="h-4 w-4" />, color: 'text-yellow-400' },
-    completed: { label: copy.completed, icon: <CheckCircle className="h-4 w-4" />, color: 'text-green-400' },
-    disputed: { label: tx('Khiếu nại', 'Disputed', '紛争中'), icon: <XCircle className="h-4 w-4" />, color: 'text-red-400' },
-    cancelled: { label: tx('Đã hủy', 'Cancelled', 'キャンセル済み'), icon: <XCircle className="h-4 w-4" />, color: 'text-muted-foreground' },
-  };
-
   // Shipping readiness is what gates listing, so both the collapsed summary
   // card and the save button read it from one place, through the same predicate
   // the checkout routes use. The form keeps fees as formatted strings; parse
   // them back, keeping a typed 0 (free shipping) distinct from a blank box.
 
-  const renderListingTab = (key: string, listings: MyListing[], statusLabel: string) => {
-    const visibleListings = showAllListings[key] ? listings : listings.slice(0, 5);
-
+  const renderListingTab = (key: Exclude<ListingFilter, 'all'>, statusLabel: string) => {
+    const page = listingPages[key];
     return (
       <TabsContent value={key}>
-        {listings.length === 0 ? (
+        {page.error ? (
+          <div className="py-6 text-center">
+            <p className="text-sm text-muted-foreground">{tx('Không tải được bài đăng.', 'Could not load listings.', '出品を読み込めませんでした。')}</p>
+            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void fetchSellerListings(key)}>
+              {tx('Thử lại', 'Retry', '再試行')}
+            </Button>
+          </div>
+        ) : !page.loaded && page.loading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full rounded-lg" />)}
+          </div>
+        ) : page.items.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">{copy.noListings}</p>
         ) : (
           <>
-            <div>{visibleListings.map(listing => (
+            <div>{page.items.map(listing => (
               <ListingRow key={listing.id} listing={listing} statusLabel={listing.status === 'sold' ? copy.sold : statusLabel} price={listing.price ? formatVND(listing.price) : noDataLabel(locale)} pendingOffers={pendingOfferCounts[listing.id] || 0} offerLabel={tx('offer đang chờ', 'pending offers', '件の保留中オファー')} />
             ))}</div>
-            {listings.length > 5 && !showAllListings[key] && (
-              <button type="button" onClick={() => setShowAllListings(prev => ({ ...prev, [key]: true }))} className="mt-3 w-full text-sm font-medium text-primary">
-                {copy.viewAll} ({listings.length}) ›
+            {page.nextCursor && (
+              <button type="button" disabled={page.loading} onClick={() => void fetchSellerListings(key, true)} className="mt-3 w-full text-sm font-medium text-primary disabled:opacity-50">
+                {page.loading ? tx('Đang tải…', 'Loading…', '読み込み中…') : `${copy.viewAll} ›`}
               </button>
             )}
           </>
@@ -1089,13 +1165,9 @@ export default function SellPage() {
 
   // ── KYC APPROVED — SELLER DASHBOARD ──
   if (verification?.status === 'approved') {
-    const pendingOrders = sellerOrders.filter(o => o.status === 'paid');
-    const shippingOrders = sellerOrders.filter(o => o.status === 'shipping');
-    const completedOrders = sellerOrders.filter(o => o.status === 'completed');
-    const totalEarnings = completedOrders.reduce((sum, o) => sum + (o.amount - o.platform_fee), 0);
-    const activeListings = myListings.filter(listing => listing.status === 'active' || listing.status === 'in_transaction');
-    const soldListings = myListings.filter(listing => listing.status === 'sold');
-    const draftListings = myListings.filter(listing => !activeListings.includes(listing) && !soldListings.includes(listing));
+    const listingPage = listingPages[activeListingFilter];
+    const myListings = listingPage.items;
+    const isLoadingListings = isLoadingOrders || !listingPage.loaded || (listingPage.loading && myListings.length === 0);
     const shippingSummary = tx(
       'Chọn hãng đến lấy hàng. GoShip tự tính phí theo địa chỉ người mua.',
       'Choose pickup carriers. GoShip calculates the fee for each buyer’s address.',
@@ -1137,10 +1209,10 @@ export default function SellPage() {
 
             {/* Stats */}
             <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-4">
-              <KpiCard label={copy.waitingShip} value={pendingOrders.length} tone="border-blue-500/20 bg-blue-500/5 text-blue-400" />
-              <KpiCard label={copy.shipping} value={shippingOrders.length} tone="border-yellow-500/20 bg-yellow-500/5 text-yellow-400" />
-              <KpiCard label={copy.completed} value={completedOrders.length} tone="border-green-500/20 bg-green-500/5 text-green-400" />
-              <KpiCard label={copy.totalEarnings} value={formatVND(totalEarnings)} tone="border-orange-500/20 bg-orange-500/5 text-orange-400" />
+              <KpiCard label={copy.waitingShip} value={orderSummary.waitingShip} tone="border-blue-500/20 bg-blue-500/5 text-blue-400" />
+              <KpiCard label={copy.shipping} value={orderSummary.shipping} tone="border-yellow-500/20 bg-yellow-500/5 text-yellow-400" />
+              <KpiCard label={copy.completed} value={orderSummary.completed} tone="border-green-500/20 bg-green-500/5 text-green-400" />
+              <KpiCard label={copy.totalEarnings} value={formatVND(orderSummary.totalEarnings)} tone="border-orange-500/20 bg-orange-500/5 text-orange-400" />
             </div>
 
 
@@ -1165,7 +1237,7 @@ export default function SellPage() {
                 it CLEARED the orange warning below. A seller could finish setup,
                 see no warning, and learn their listings were unbuyable only when
                 a stranger's checkout failed. */}
-            <Card id="pickup-address" className={!pickupAddress && !isLoadingAddress ? 'border-orange-500/40 bg-orange-500/5' : ''}>
+            <Card id="pickup-address" className={!goshipPickup && !isLoadingAddress ? 'border-orange-500/40 bg-orange-500/5' : ''}>
               <CardHeader>
                 <CardTitle>
                   <span className="flex items-center gap-2">
@@ -1176,19 +1248,18 @@ export default function SellPage() {
                 <CardDescription>{copy.pickupAddressDesc}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
-                {!pickupAddress && !isLoadingAddress && (
+                {!goshipPickup && !isLoadingAddress && (
                   <div className="flex items-start gap-2 rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-sm text-orange-300">
                     <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                     <span>{copy.pickupNotice}</span>
                   </div>
                 )}
 
-                <SenderAddressForm
-                  onSaved={(address) => {
-                    setGoshipPickup(address);
-                    void fetchPickupAddress();
-                  }}
-                />
+                {isLoadingAddress ? (
+                  <Skeleton className="h-16 w-full rounded-lg" />
+                ) : (
+                  <SenderAddressForm initialAddress={goshipPickup} onSaved={setGoshipPickup} />
+                )}
 
                 {/* Only once an origin exists: the quote is measured from it,
                     and offering the form first invites the one error it cannot
@@ -1245,15 +1316,15 @@ export default function SellPage() {
                     <CardTitle className="flex min-w-0 items-center gap-2 text-lg font-semibold md:text-2xl">
                       <Package className="h-5 w-5 shrink-0 text-orange-400" />
                       <span className="truncate">{copy.myListings}</span>
-                      {!isLoadingListings && myListings.length > 0 && (
+                      {!isLoadingListings && listingSummary.total > 0 && (
                         <span className="hidden shrink-0 text-sm font-normal text-muted-foreground md:inline">
-                          ({copy.activeListings.replace('{count}', String(myListings.filter(listing => listing.status === 'active').length))})
+                          ({copy.activeListings.replace('{count}', String(listingSummary.active))})
                         </span>
                       )}
                     </CardTitle>
                     {!isLoadingListings && (
                       <p className="mt-1 text-xs text-muted-foreground md:hidden">
-                        {copy.activeListings.replace('{count}', formatCompactCount(myListings.filter(listing => listing.status === 'active').length, locale))}
+                        {copy.activeListings.replace('{count}', formatCompactCount(listingSummary.active, locale))}
                       </p>
                     )}
                   </div>
@@ -1276,7 +1347,14 @@ export default function SellPage() {
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
                     {[1, 2, 3, 4].map(i => <Skeleton key={i} className="aspect-[3/4] w-full rounded-lg" />)}
                   </div>
-                ) : myListings.length === 0 ? (
+                ) : listingPage.error ? (
+                  <div className="py-8 text-center">
+                    <p className="text-sm text-muted-foreground">{tx('Không tải được bài đăng.', 'Could not load listings.', '出品を読み込めませんでした。')}</p>
+                    <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void fetchSellerListings(activeListingFilter)}>
+                      {tx('Thử lại', 'Retry', '再試行')}
+                    </Button>
+                  </div>
+                ) : listingSummary.total === 0 && myListings.length === 0 ? (
                   <div className="text-center py-8">
                     <p className="text-muted-foreground mb-4">{copy.noListings}</p>
                     <Button asChild className="bg-orange-500 hover:bg-orange-600">
@@ -1288,57 +1366,65 @@ export default function SellPage() {
                   </div>
                 ) : (
                   <>
-                    {!desktop && <Tabs defaultValue="active" className="md:hidden">
+                    {!desktop && <Tabs value={listingTab} onValueChange={(value) => setListingTab(value as Exclude<ListingFilter, 'all'>)} className="md:hidden">
                       <TabsList className="grid h-auto w-full grid-cols-3">
-                        <TabsTrigger value="active" className="min-w-0 flex-1 truncate px-2 text-xs">{copy.active} ({formatCompactCount(activeListings.length, locale)})</TabsTrigger>
-                        <TabsTrigger value="sold" className="min-w-0 flex-1 truncate px-2 text-xs">{copy.sold} ({formatCompactCount(soldListings.length, locale)})</TabsTrigger>
-                        <TabsTrigger value="draft" className="min-w-0 flex-1 truncate px-2 text-xs">{tx('Nháp', 'Drafts', '下書き')} ({formatCompactCount(draftListings.length, locale)})</TabsTrigger>
+                        <TabsTrigger value="active" className="min-w-0 flex-1 truncate px-2 text-xs">{copy.active} ({formatCompactCount(listingSummary.active, locale)})</TabsTrigger>
+                        <TabsTrigger value="sold" className="min-w-0 flex-1 truncate px-2 text-xs">{copy.sold} ({formatCompactCount(listingSummary.sold, locale)})</TabsTrigger>
+                        <TabsTrigger value="draft" className="min-w-0 flex-1 truncate px-2 text-xs">{tx('Nháp', 'Drafts', '下書き')} ({formatCompactCount(listingSummary.draft, locale)})</TabsTrigger>
                       </TabsList>
-                      {renderListingTab('active', activeListings, copy.active)}
-                      {renderListingTab('sold', soldListings, copy.sold)}
-                      {renderListingTab('draft', draftListings, tx('Nháp', 'Drafts', '下書き'))}
+                      {renderListingTab('active', copy.active)}
+                      {renderListingTab('sold', copy.sold)}
+                      {renderListingTab('draft', tx('Nháp', 'Drafts', '下書き'))}
                     </Tabs>}
 
-                    {desktop && <div className="hidden grid-cols-2 gap-3 sm:grid-cols-3 md:grid md:grid-cols-4">
-                      {myListings.map((listing) => {
-                        const isSold = listing.status === 'sold';
-                        return (
-                          <div
-                            key={listing.id}
-                            className="group relative flex flex-col overflow-hidden rounded-xl border bg-card transition-all hover:border-orange-500/40 hover:shadow-md"
-                          >
-                            <Link href={`/cards/${listing.id}`} className="absolute inset-0 z-[1]" aria-label={listing.name} />
-                            <div className="relative aspect-[3/4] w-full overflow-hidden bg-muted">
-                              {listing.image_url ? (
-                                <Image
-                                  src={optimizeCloudinaryUrl(listing.image_url, 300)}
-                                  alt={listing.name}
-                                  fill
-                                  sizes="(max-width: 768px) 50vw, 25vw"
-                                  className={`object-cover transition-transform duration-300 group-hover:scale-105 ${isSold ? 'grayscale' : ''}`}
-                                />
-                              ) : (
-                                <div className="flex h-full items-center justify-center">
-                                  <Package className="h-8 w-8 text-muted-foreground/40" />
-                                </div>
-                              )}
-                              <span className={`absolute left-2 top-2 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isSold ? 'bg-muted text-muted-foreground' : 'bg-green-500/90 text-white'}`}>
-                                {isSold ? copy.sold : copy.active}
-                              </span>
-                              {(pendingOfferCounts[listing.id] || 0) > 0 && (
-                                <Link href={`/offers?view=received&cardId=${listing.id}`} className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-md bg-orange-500 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-orange-600" aria-label={`${pendingOfferCounts[listing.id]} ${tx('offer đang chờ', 'pending offers', '件の保留中オファー')}`}>
-                                  <HandCoins className="h-3 w-3" />{pendingOfferCounts[listing.id]}
-                                </Link>
-                              )}
+                    {desktop && <>
+                      <div className="hidden grid-cols-2 gap-3 sm:grid-cols-3 md:grid md:grid-cols-4">
+                        {myListings.map((listing) => {
+                          const isSold = listing.status === 'sold';
+                          return (
+                            <div
+                              key={listing.id}
+                              className="group relative flex flex-col overflow-hidden rounded-xl border bg-card transition-all hover:border-orange-500/40 hover:shadow-md"
+                            >
+                              <Link href={`/cards/${listing.id}`} className="absolute inset-0 z-[1]" aria-label={listing.name} />
+                              <div className="relative aspect-[3/4] w-full overflow-hidden bg-muted">
+                                {listing.image_url ? (
+                                  <Image
+                                    src={optimizeCloudinaryUrl(listing.image_url, 300)}
+                                    alt={listing.name}
+                                    fill
+                                    sizes="(max-width: 768px) 50vw, 25vw"
+                                    className={`object-cover transition-transform duration-300 group-hover:scale-105 ${isSold ? 'grayscale' : ''}`}
+                                  />
+                                ) : (
+                                  <div className="flex h-full items-center justify-center">
+                                    <Package className="h-8 w-8 text-muted-foreground/40" />
+                                  </div>
+                                )}
+                                <span className={`absolute left-2 top-2 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isSold ? 'bg-muted text-muted-foreground' : 'bg-green-500/90 text-white'}`}>
+                                  {isSold ? copy.sold : copy.active}
+                                </span>
+                                {(pendingOfferCounts[listing.id] || 0) > 0 && (
+                                  <Link href={`/offers?view=received&cardId=${listing.id}`} className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-md bg-orange-500 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-orange-600" aria-label={`${pendingOfferCounts[listing.id]} ${tx('offer đang chờ', 'pending offers', '件の保留中オファー')}`}>
+                                    <HandCoins className="h-3 w-3" />{pendingOfferCounts[listing.id]}
+                                  </Link>
+                                )}
+                              </div>
+                              <div className="flex flex-1 flex-col p-2.5">
+                                <p className="line-clamp-1 text-sm font-medium">{listing.name}</p>
+                                <p className="mt-1 text-sm font-bold text-orange-400">{listing.price ? formatVND(listing.price) : noDataLabel(locale)}</p>
+                              </div>
                             </div>
-                            <div className="flex flex-1 flex-col p-2.5">
-                              <p className="line-clamp-1 text-sm font-medium">{listing.name}</p>
-                              <p className="mt-1 text-sm font-bold text-orange-400">{listing.price ? formatVND(listing.price) : noDataLabel(locale)}</p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>}
+                          );
+                        })}
+                      </div>
+                      {listingPage.nextCursor && (
+                        <Button type="button" variant="outline" className="mx-auto mt-4 flex" disabled={listingPage.loading} onClick={() => void fetchSellerListings('all', true)}>
+                          {listingPage.loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                          {listingPage.loading ? tx('Đang tải…', 'Loading…', '読み込み中…') : tx('Xem thêm bài đăng', 'Load more listings', 'さらに表示')}
+                        </Button>
+                      )}
+                    </>}
                   </>
                 )}
               </CardContent>
@@ -1352,7 +1438,7 @@ export default function SellPage() {
                     <CardTitle className="truncate text-lg font-semibold md:text-2xl">{copy.recentOrders}</CardTitle>
                     {!isLoadingOrders && (
                       <p className="mt-1 text-xs text-muted-foreground md:hidden">
-                        {formatCompactCount(sellerOrders.length, locale)} {tx('đơn hàng', 'orders', '件の注文')}
+                        {formatCompactCount(orderSummary.total, locale)} {tx('đơn hàng', 'orders', '件の注文')}
                       </p>
                     )}
                   </div>
@@ -1373,19 +1459,21 @@ export default function SellPage() {
                   <p className="text-center text-muted-foreground py-8">{copy.noOrders}</p>
                 ) : (
                   <>
-                    <div className="md:hidden">
+                    {!desktop ? <div className="md:hidden">
                       {sellerOrders.slice(0, 3).map(order => {
-                        const statusInfo = STATUS_MAP[order.status] || { label: order.status, color: '' };
-                        return <OrderRow key={order.id} order={order} statusLabel={statusInfo.label} statusClass={statusInfo.color} unknownCard={copy.unknownCard} date={new Date(order.created_at).toLocaleDateString(locale)} price={formatVND(order.amount - order.platform_fee)} />;
+                        const statusInfo = ORDER_STATUS_CONFIG[order.status] || { color: '' };
+                        const carrierLabel = carrierStatusLabel(order.carrier_status, locale);
+                        return <OrderRow key={order.id} order={order} statusLabel={orderStatusLabel(order.status, locale)} statusClass={statusInfo.color} carrierLabel={carrierLabel} carrierClass={carrierStatusColorClass(order.carrier_status)} unknownCard={copy.unknownCard} date={new Date(order.created_at).toLocaleDateString(locale)} price={formatVND(order.amount - order.platform_fee)} />;
                       })}
                       {sellerOrders.length > 3 && (
                         <Link href="/orders?tab=seller" className="mt-3 block text-center text-sm font-medium text-primary">{copy.viewAll} ›</Link>
                       )}
-                    </div>
+                    </div> : null}
 
-                    <div className="hidden space-y-3 md:block">
+                    {desktop ? <div className="hidden space-y-3 md:block">
                       {sellerOrders.slice(0, 5).map((order) => {
-                        const statusInfo = STATUS_MAP[order.status] || { label: order.status, icon: null, color: '' };
+                        const statusInfo = ORDER_STATUS_CONFIG[order.status] || { icon: null, color: '' };
+                        const carrierLabel = carrierStatusLabel(order.carrier_status, locale);
                         return (
                           <Link
                             key={order.id}
@@ -1400,7 +1488,8 @@ export default function SellPage() {
                               )}
                               <div>
                                 <p className="line-clamp-1 text-sm font-medium">{order.card?.name || copy.unknownCard}</p>
-                                <p className={`flex items-center gap-1 text-xs ${statusInfo.color}`}>{statusInfo.icon} {statusInfo.label}</p>
+                                <p className={`flex items-center gap-1 text-xs ${statusInfo.color}`}>{statusInfo.icon} {orderStatusLabel(order.status, locale)}</p>
+                                {carrierLabel && <p className={`mt-0.5 text-xs font-medium ${carrierStatusColorClass(order.carrier_status)}`}>{carrierLabel}</p>}
                               </div>
                             </div>
                             <div className="text-right">
@@ -1410,7 +1499,7 @@ export default function SellPage() {
                           </Link>
                         );
                       })}
-                    </div>
+                    </div> : null}
                   </>
                 )}
               </CardContent>
@@ -1454,7 +1543,7 @@ export default function SellPage() {
               </DrawerDescription>
             </DrawerHeader>
             <div className="max-h-[80vh] overflow-y-auto px-4 pb-6">
-              <ShopShippingSetup summaryMode />
+              {shippingConfigOpen && <ShopShippingSetup summaryMode />}
             </div>
           </DrawerContent>
         </Drawer>
