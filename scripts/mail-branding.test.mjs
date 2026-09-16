@@ -124,7 +124,7 @@ function assertBranded(message, expectedSender = resendSender) {
   assert.doesNotMatch(message.html, /localhost:3001/);
 }
 
-test('all 15 web email builders use the branded identity and public logo, including all offer locales', async () => {
+test('all 17 web email builders use the branded identity and public logo, including delivery and offer locales', async () => {
   const h = harness();
   const mail = h.load('src/lib/mail.ts');
   const email = 'buyer@example.test';
@@ -136,6 +136,8 @@ test('all 15 web email builders use the branded identity and public logo, includ
     ['sendKYCIdentityApproved', [email, 'Buyer', 'vi-VN']],
     ['sendKYCSubmittedToUser', [email, 'Buyer']],
     ['sendOrderBookedEmail', [email, { orderId: order.orderId, cardName: order.cardName, carrierName: 'GHN', trackingNumber: 'TRACK', trackingUrl: null }]],
+    ['sendOrderDeliveredEmail', [email, { orderId: order.orderId, cardName: order.cardName, autoCompleteAt: '2026-09-19T10:00:00.000Z' }]],
+    ['sendOrderDeliveredToSellerEmail', [email, { orderId: order.orderId, cardName: order.cardName, autoCompleteAt: '2026-09-19T10:00:00.000Z' }]],
     ['sendKYCSubmittedToAdmin', ['Buyer', email, admins]],
     ['sendKycManualReviewToAdmin', [{ fullName: 'Buyer', userEmail: email, providerSessionId: 'session', warnings: [], adminEmails: admins }]],
     ['sendOfferPaymentReminder', [{ to: email, cardName: order.cardName, offerId: 'offer-id', price: order.amount, deadline: null }]],
@@ -150,7 +152,7 @@ test('all 15 web email builders use the branded identity and public logo, includ
       ['sendOfferReceivedEmail', [email, offer, locale]], ['sendOfferAcceptedEmail', [email, offer, locale]],
     ]),
   ];
-  assert.equal(new Set(cases.map(([name]) => name)).size, 15);
+  assert.equal(new Set(cases.map(([name]) => name)).size, 17);
   const adminFanOuts = new Set(['sendKYCSubmittedToAdmin', 'sendKycManualReviewToAdmin', 'sendWithdrawalSubmittedToAdmin', 'sendContactSubmittedToAdmin']);
   for (const [name, args] of cases) {
     const before = h.sent.length;

@@ -1,6 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getCarrier, getTrackingUrl } from '@/lib/shipping-carriers';
-import { sendOrderInTransitEmail, sendOrderDeliveredEmail } from '@/lib/mail';
+import {
+    sendOrderDeliveredEmail,
+    sendOrderDeliveredToSellerEmail,
+    sendOrderInTransitEmail,
+} from '@/lib/mail';
 
 /**
  * Statuses that mean the parcel is physically moving.
@@ -19,7 +23,7 @@ export type CarrierEventResult = {
 } | null;
 
 /**
- * Tell the buyer their parcel moved, for whichever path noticed.
+ * Tell the affected parties that their parcel moved, for whichever path noticed.
  *
  * Kept apart from the route that receives the event so the decision travels
  * with the event rather than with whichever path noticed it. That mattered when
@@ -32,9 +36,9 @@ export type CarrierEventResult = {
  * RPC's early returns (order_not_found, terminal_order, replayed, out_of_order)
  * carry no order_id, so they cannot be mistaken for a transition.
  *
- * Swallows its own failures. Every caller has already committed the status
- * change by the time this runs, and none of them should fail because a mail
- * server was slow.
+ * Moving mail remains buyer-only; confirmed delivery informs both buyer and
+ * seller. Failures are swallowed because the caller has already committed the
+ * status change and a slow mail server must not turn that into a webhook retry.
  */
 export async function notifyCarrierStatusChange(
     service: SupabaseClient,
@@ -52,38 +56,53 @@ export async function notifyCarrierStatusChange(
     try {
         const { data: order } = await service
             .from('orders')
-            .select('buyer_id, card_id, shipping_provider, tracking_number, auto_complete_at')
+            .select('buyer_id, seller_id, card_id, shipping_provider, tracking_number, auto_complete_at')
             .eq('id', orderId)
             .single();
         if (!order) return;
 
         const row = order as {
             buyer_id: string;
+            seller_id: string;
             card_id: string | null;
             shipping_provider: string | null;
             tracking_number: string | null;
             auto_complete_at: string | null;
         };
 
-        const [{ data: buyer }, { data: card }] = await Promise.all([
+        const [{ data: buyer }, { data: seller }, { data: card }] = await Promise.all([
             service.from('profiles').select('email').eq('id', row.buyer_id).single(),
+            service.from('profiles').select('email').eq('id', row.seller_id).single(),
             row.card_id
                 ? service.from('cards').select('name').eq('id', row.card_id).single()
                 : Promise.resolve({ data: null }),
         ]);
 
         const buyerEmail = (buyer as { email?: string } | null)?.email;
-        if (!buyerEmail) return;
+        const sellerEmail = (seller as { email?: string } | null)?.email;
         const cardName = (card as { name?: string } | null)?.name || 'thẻ của bạn';
 
         if (delivered) {
-            await sendOrderDeliveredEmail(buyerEmail, {
-                cardName,
-                orderId,
-                autoCompleteAt: row.auto_complete_at,
-            });
+            await Promise.all([
+                buyerEmail
+                    ? sendOrderDeliveredEmail(buyerEmail, {
+                        cardName,
+                        orderId,
+                        autoCompleteAt: row.auto_complete_at,
+                    })
+                    : Promise.resolve(),
+                sellerEmail
+                    ? sendOrderDeliveredToSellerEmail(sellerEmail, {
+                        cardName,
+                        orderId,
+                        autoCompleteAt: row.auto_complete_at,
+                    })
+                    : Promise.resolve(),
+            ]);
             return;
         }
+
+        if (!buyerEmail) return;
 
         const carrierCode = row.shipping_provider;
         const trackingNo = row.tracking_number;
