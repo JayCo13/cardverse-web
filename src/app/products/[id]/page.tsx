@@ -22,6 +22,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { Lock, Crown } from "lucide-react";
 import { AdBanner } from "@/components/ad-banner";
 import { ShopeeAffiliate } from "@/components/shopee-affiliate";
+import { catalogCollectionCategory, catalogLanguage } from "@/lib/collection-card";
 
 interface ProductCard {
     product_id: number;
@@ -33,6 +34,7 @@ interface ProductCard {
     high_price: number | null;
     rarity: string | null;
     category: string | null;
+    set_name: string | null;
     category_id?: number | null;
     number: string | null;
 }
@@ -82,8 +84,12 @@ export default function ProductDetailsPage() {
                     low_price: card.low_price,
                     high_price: card.high_price,
                     mid_price: card.mid_price,
-                    category: card.category_id === 68 ? 'One Piece' : 'Pokemon',
+                    category: catalogCollectionCategory(card.category_id),
                     rarity: card.rarity,
+                    catalog_product_id: card.product_id,
+                    set_name: card.set_name || card.category,
+                    card_number: card.number,
+                    language: catalogLanguage(card.category_id),
                 } as never);
 
             if (error) {
@@ -151,6 +157,7 @@ export default function ProductDetailsPage() {
                     high_price: data.high_price,
                     rarity: data.rarity,
                     category: data.set_name,
+                    set_name: data.set_name,
                     category_id: data.category_id,
                     number: data.number,
                 });

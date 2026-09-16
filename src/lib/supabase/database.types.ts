@@ -1781,24 +1781,42 @@ export interface Database {
                     id: string
                     user_id: string
                     title: string
+                    price: string | null
                     image_url: string | null
-                    market_price: number
+                    ebay_link: string | null
+                    market_price: number | null
                     low_price: number | null
+                    mid_price: number | null
                     high_price: number | null
-                    category: string
+                    category: string | null
                     rarity: string | null
+                    album_id: string | null
+                    catalog_product_id: number | null
+                    catalog_soccer_id: number | null
+                    set_name: string | null
+                    card_number: string | null
+                    language: 'en' | 'jp' | null
                     created_at: string
                 }
                 Insert: {
                     id?: string
                     user_id: string
                     title: string
+                    price?: string | null
                     image_url?: string | null
-                    market_price: number
+                    ebay_link?: string | null
+                    market_price?: number | null
                     low_price?: number | null
+                    mid_price?: number | null
                     high_price?: number | null
-                    category: string
+                    category?: string | null
                     rarity?: string | null
+                    album_id?: string | null
+                    catalog_product_id?: number | null
+                    catalog_soccer_id?: number | null
+                    set_name?: string | null
+                    card_number?: string | null
+                    language?: 'en' | 'jp' | null
                     created_at?: string
                 }
                 Update: Partial<Database['public']['Tables']['user_collections']['Insert']>

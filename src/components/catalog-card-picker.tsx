@@ -2,18 +2,21 @@
 
 import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Search, SearchCheck } from 'lucide-react';
+import { Loader2, Search, SearchCheck, X } from 'lucide-react';
 import Image from 'next/image';
 import { useLocalization } from '@/context/localization-context';
+import { useMediaQuery } from '@/hooks/use-media-query';
 
 // Picker over the REAL catalogs (tcgcsv_products + soccer_cards) so a listing
 // carries a canonical card identity (product_id / soccer_id + number +
 // language). This is different from CardPickerDialog, which picks from the
-// seller's own collection and has no catalog key.
+// seller's own collection; collection rows now retain the same key when the
+// source card is known and safely resolve legacy rows on selection.
 
 export type CatalogPick = {
     kind: 'tcgcsv' | 'soccer';
@@ -52,6 +55,9 @@ export function CatalogCardPicker({ onSelect }: CatalogCardPickerProps) {
     const [search, setSearch] = useState('');
     const [results, setResults] = useState<CatalogPick[]>([]);
     const [loading, setLoading] = useState(false);
+    // Same split as CardPickerDialog: a centered fixed Dialog fights the iOS
+    // keyboard, so phones get a vaul bottom sheet instead.
+    const desktop = useMediaQuery('(min-width: 768px)');
     const copy = locale === 'ja-JP'
         ? {
             button: 'カタログからカードを選ぶ',
@@ -109,77 +115,108 @@ export function CatalogCardPicker({ onSelect }: CatalogCardPickerProps) {
         setResults([]);
     };
 
+    const trigger = (
+        <Button type="button" variant="outline" className="gap-2 border-dashed border-orange-500/40 hover:border-orange-500 text-orange-500">
+            <SearchCheck className="h-4 w-4" />
+            {copy.button}
+        </Button>
+    );
+
+    const body = (
+        <>
+            <Tabs value={tab} onValueChange={(v) => { setTab(v as CatalogTabId); setResults([]); }}>
+                <TabsList className="grid w-full grid-cols-4">
+                    {TABS.map(t => (
+                        <TabsTrigger key={t.id} value={t.id} className="text-xs">{t.label}</TabsTrigger>
+                    ))}
+                </TabsList>
+            </Tabs>
+
+            <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder={tab === 'soccer' ? copy.soccerPlaceholder : copy.cardPlaceholder}
+                    className="pl-9"
+                    autoFocus={desktop}
+                    enterKeyHint="search"
+                    onKeyDown={(e) => {
+                        // Search is debounced on every keystroke; Enter just
+                        // dismisses the soft keyboard so results are visible.
+                        if (e.key === 'Enter') e.currentTarget.blur();
+                    }}
+                />
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-2 pr-1">
+                {loading ? (
+                    <div className="flex items-center justify-center p-8 text-muted-foreground">
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {copy.searching}
+                    </div>
+                ) : results.length === 0 ? (
+                    <p className="p-8 text-center text-sm text-muted-foreground">
+                        {search.trim().length < 2
+                            ? copy.minChars
+                            : copy.notFound}
+                    </p>
+                ) : (
+                    results.map(result => (
+                        <button
+                            key={`${result.kind}-${result.productId ?? result.soccerId}`}
+                            type="button"
+                            onClick={() => handlePick(result)}
+                            className="flex w-full items-center gap-3 rounded-lg border p-3 text-left transition hover:border-orange-500/60 hover:bg-orange-500/5"
+                        >
+                            <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded bg-muted">
+                                {result.imageUrl ? (
+                                    <Image src={result.imageUrl} alt="" fill className="object-contain" sizes="48px" />
+                                ) : (
+                                    <div className="flex h-full w-full items-center justify-center text-lg">⚽️</div>
+                                )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-semibold">{result.name}</p>
+                                <p className="truncate text-xs text-muted-foreground">{result.setName}</p>
+                                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                    {result.number && <Badge variant="outline" className="text-[10px]">#{result.number}</Badge>}
+                                    {result.language && <Badge variant="outline" className="text-[10px] uppercase">{result.language}</Badge>}
+                                    {result.rarity && <Badge variant="outline" className="text-[10px]">{result.rarity}</Badge>}
+                                </div>
+                            </div>
+                        </button>
+                    ))
+                )}
+            </div>
+        </>
+    );
+
+    if (!desktop) {
+        return (
+            <Drawer open={open} onOpenChange={setOpen}>
+                <DrawerTrigger asChild>{trigger}</DrawerTrigger>
+                <DrawerContent className="h-[88dvh] gap-4 px-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
+                    <DrawerHeader className="relative px-0 pt-2 pb-0 text-left">
+                        <DrawerTitle className="pr-8">{copy.title}</DrawerTitle>
+                        <DrawerClose className="absolute right-0 top-2 rounded-sm p-1 opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring">
+                            <X className="h-5 w-5" />
+                            <span className="sr-only">Close</span>
+                        </DrawerClose>
+                    </DrawerHeader>
+                    {body}
+                </DrawerContent>
+            </Drawer>
+        );
+    }
+
     return (
         <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-                <Button type="button" variant="outline" className="gap-2 border-dashed border-orange-500/40 hover:border-orange-500 text-orange-500">
-                    <SearchCheck className="h-4 w-4" />
-                    {copy.button}
-                </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
+            <DialogTrigger asChild>{trigger}</DialogTrigger>
+            <DialogContent className="sm:max-w-2xl max-h-[85dvh] flex flex-col">
                 <DialogHeader>
                     <DialogTitle>{copy.title}</DialogTitle>
                 </DialogHeader>
-
-                <Tabs value={tab} onValueChange={(v) => { setTab(v as CatalogTabId); setResults([]); }}>
-                    <TabsList className="grid w-full grid-cols-4">
-                        {TABS.map(t => (
-                            <TabsTrigger key={t.id} value={t.id} className="text-xs">{t.label}</TabsTrigger>
-                        ))}
-                    </TabsList>
-                </Tabs>
-
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder={tab === 'soccer' ? copy.soccerPlaceholder : copy.cardPlaceholder}
-                        className="pl-9"
-                        autoFocus
-                    />
-                </div>
-
-                <div className="min-h-0 flex-1 overflow-y-auto space-y-2 pr-1">
-                    {loading ? (
-                        <div className="flex items-center justify-center p-8 text-muted-foreground">
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {copy.searching}
-                        </div>
-                    ) : results.length === 0 ? (
-                        <p className="p-8 text-center text-sm text-muted-foreground">
-                            {search.trim().length < 2
-                                ? copy.minChars
-                                : copy.notFound}
-                        </p>
-                    ) : (
-                        results.map(result => (
-                            <button
-                                key={`${result.kind}-${result.productId ?? result.soccerId}`}
-                                type="button"
-                                onClick={() => handlePick(result)}
-                                className="flex w-full items-center gap-3 rounded-lg border p-3 text-left transition hover:border-orange-500/60 hover:bg-orange-500/5"
-                            >
-                                <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded bg-muted">
-                                    {result.imageUrl ? (
-                                        <Image src={result.imageUrl} alt="" fill className="object-contain" sizes="48px" />
-                                    ) : (
-                                        <div className="flex h-full w-full items-center justify-center text-lg">⚽️</div>
-                                    )}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                    <p className="truncate text-sm font-semibold">{result.name}</p>
-                                    <p className="truncate text-xs text-muted-foreground">{result.setName}</p>
-                                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                                        {result.number && <Badge variant="outline" className="text-[10px]">#{result.number}</Badge>}
-                                        {result.language && <Badge variant="outline" className="text-[10px] uppercase">{result.language}</Badge>}
-                                        {result.rarity && <Badge variant="outline" className="text-[10px]">{result.rarity}</Badge>}
-                                    </div>
-                                </div>
-                            </button>
-                        ))
-                    )}
-                </div>
+                {body}
             </DialogContent>
         </Dialog>
     );

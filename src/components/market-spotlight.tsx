@@ -38,6 +38,7 @@ import { useCardCache } from '@/contexts/card-cache-context';
 import { PSAGradedPrices } from '@/components/psa-graded-prices';
 import { VnMarketPrice } from '@/components/vn-market-price';
 import { noDataLabel } from '@/lib/no-data-label';
+import { catalogCollectionCategory, catalogLanguage } from '@/lib/collection-card';
 
 // Fallback mock data for when no real data exists
 const MOCK_DATA = [
@@ -235,6 +236,9 @@ export function MarketSpotlight() {
 
         setIsAddingToCollection(true);
         try {
+            const catalogProductId = product.product_id > 0 && [CATEGORY_POKEMON_ENGLISH, CATEGORY_POKEMON_JAPANESE, CATEGORY_ONEPIECE].includes(product.category_id ?? -1)
+                ? product.product_id
+                : null;
             const { error } = await supabase
                 .from('user_collections')
                 .insert({
@@ -244,8 +248,12 @@ export function MarketSpotlight() {
                     market_price: product.market_price,
                     low_price: product.low_price,
                     high_price: product.high_price,
-                    category: product.category_id === CATEGORY_SOCCER ? 'Soccer' : (product.category_id === CATEGORY_ONEPIECE ? 'One Piece' : 'Pokemon'),
+                    category: product.category_id === CATEGORY_SOCCER ? 'Bóng đá' : catalogCollectionCategory(product.category_id),
                     rarity: product.rarity,
+                    catalog_product_id: catalogProductId,
+                    set_name: product.set_name,
+                    card_number: product.number,
+                    language: catalogProductId ? catalogLanguage(product.category_id) : null,
                 } as never);
 
             if (error) {
