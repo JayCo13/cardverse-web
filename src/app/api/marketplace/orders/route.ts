@@ -177,8 +177,9 @@ async function handlePATCH(request: NextRequest) {
             // arrives, and moves the order to shipping when the carrier
             // actually collects. See /api/shipping/book.
             case 'confirm_received': {
-                // Only the buyer can confirm receipt. If the buyer stays silent,
-                // the order escalates to admin review (never auto-pays the seller).
+                // Only the buyer can confirm receipt. This releases escrow
+                // immediately; otherwise a carrier-confirmed delivery releases
+                // automatically after the 72h inspection window.
                 if (order.buyer_id !== user.id) {
                     return NextResponse.json({ error: 'Only buyer can confirm' }, { status: 403 });
                 }

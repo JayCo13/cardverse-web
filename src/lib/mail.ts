@@ -336,6 +336,45 @@ export async function sendOrderDeliveredEmail(
     }
 }
 
+/** Tell the seller that delivery was confirmed and the 72h buyer window began. */
+export async function sendOrderDeliveredToSellerEmail(
+    sellerEmail: string,
+    params: { cardName: string; orderId: string; autoCompleteAt: string | null },
+) {
+    try {
+        if (!sellerEmail) return;
+        const transporter = createMailTransporter();
+        const from = getFromAddress();
+        const appUrl = getAppUrl();
+        const { cardName, orderId, autoCompleteAt } = params;
+
+        const deadline = autoCompleteAt
+            ? new Date(autoCompleteAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })
+            : null;
+
+        await transporter.sendMail({
+            from,
+            to: sellerEmail,
+            subject: '✅ Đơn hàng đã giao tới người mua | CardVerseHub',
+            html: buildTemplate(
+                '✅ Đơn hàng đã giao thành công',
+                `<p style="color:#e4e4e7;">Đơn vị vận chuyển xác nhận đã giao thẻ <strong style="color:#f97316;">${escapeHtml(cardName)}</strong> tới người mua.</p>
+                <div style="background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.2); border-radius: 8px; padding: 16px; margin: 20px 0;">
+                    <p style="margin:0 0 8px; color:#e4e4e7;">Người mua có <strong style="color:#fff;">72 giờ</strong> để kiểm tra hàng và báo cáo nếu có vấn đề.</p>
+                    ${deadline ? `<p style="margin:0; color:#a1a1aa; font-size:13px;">Hạn xác nhận: <strong style="color:#fff;">${deadline}</strong></p>` : ''}
+                </div>
+                <p>Nếu người mua xác nhận đã nhận hàng, đơn sẽ hoàn tất ngay. Nếu không có báo cáo, hệ thống sẽ tự hoàn tất đơn sau thời hạn và chuyển tiền bán hàng vào ví của bạn.</p>
+                <div style="text-align:center; margin:24px 0;">
+                    <a href="${appUrl}/orders/${encodeURIComponent(orderId)}" style="display:inline-block; background:#f97316; color:#fff; padding:12px 32px; border-radius:8px; text-decoration:none; font-weight:600; font-size:14px;">Xem đơn hàng →</a>
+                </div>`,
+            ),
+        });
+        console.log(`[Mail] Order delivered notification sent to seller ${sellerEmail}`);
+    } catch (error) {
+        console.error('[Mail] Failed to send seller order-delivered email:', error);
+    }
+}
+
 export async function sendKYCSubmittedToAdmin(fullName: string, userEmail: string, adminEmails: string[]) {
     try {
         if (!adminEmails || adminEmails.length === 0) return;

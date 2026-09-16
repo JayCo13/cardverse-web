@@ -105,9 +105,15 @@ export default function OrderDetailsPage() {
 
   // Shipping timing (from carrier pickup → delivery estimate).
   const estDays = order ? getDeliveryDays(order.shipping_provider || quotedCarrier) : null;
-  // The order escalates to admin review at auto_complete_at if the buyer never
-  // confirms (money is held, not paid to the seller). Nudge the buyer as that
-  // deadline approaches (within the last 2 days).
+  // Match complete_delivered_orders(): legacy manual shipments can be
+  // `shipping` with an auto_complete_at even though no carrier confirmed
+  // delivery. Those must go to admin review rather than promise a payout.
+  const deliveryConfirmed = order?.status === 'delivered'
+    || order?.carrier_status === 'Delivered'
+    || order?.ghn_status === 'delivered';
+  // A carrier-confirmed delivery auto-releases at auto_complete_at if the buyer
+  // neither confirms nor reports a problem. Nudge the buyer within the final
+  // two days so they can inspect the parcel before that deadline.
   const escalateAt = order?.auto_complete_at ? new Date(order.auto_complete_at).getTime() : null;
   const confirmReminderAt = escalateAt != null ? escalateAt - 2 * 24 * 60 * 60 * 1000 : null;
 
@@ -417,16 +423,22 @@ export default function OrderDetailsPage() {
               <div className="flex justify-between"><span className="text-muted-foreground">{tx('Cập nhật', 'Updated', '更新')}</span><span>{dt(order.updated_at)}</span></div>
             </div>
 
-            {/* Buyer reminder (part 5): overdue to confirm receipt */}
+            {/* Buyer reminder during the final two days of the inspection window. */}
             {isBuyer && (order.status === 'shipping' || order.status === 'delivered') && confirmReminderAt != null && (
               <LiveClock until={confirmReminderAt}>{now => now >= confirmReminderAt && (
               <div className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{tx(
-                  'Đã quá thời gian giao dự kiến. Nếu đã nhận, hãy bấm "Đã nhận hàng". Nếu chưa nhận hoặc có vấn đề, hãy "Báo cáo admin". Nếu bạn không cập nhật, đơn sẽ tự động chuyển cho quản trị viên kiểm tra (tiền vẫn được giữ an toàn).',
-                  'Past the estimated delivery time. If it arrived, tap "Received". If not, "Report to admin". If you do nothing, the order is automatically escalated to an admin for review (your money stays safe).',
-                  '配達予定を過ぎています。届いた場合は「受け取り済み」、問題がある場合は「管理者に報告」を押してください。未対応の場合は自動的に管理者の確認に回されます（代金は安全に保持されます）。',
-                )}</span>
+                <span>{deliveryConfirmed
+                  ? tx(
+                    'Đơn vị vận chuyển đã xác nhận giao hàng. Nếu hàng đúng, hãy bấm "Đã nhận hàng". Nếu chưa nhận hoặc có vấn đề, hãy "Báo cáo admin" trước hạn; nếu không có báo cáo, đơn sẽ tự hoàn tất và tiền được chuyển cho người bán.',
+                    'The carrier confirmed delivery. If everything is correct, tap "Item received". If it has not arrived or there is a problem, report it before the deadline; otherwise the order completes automatically and the seller is paid.',
+                    '配送業者が配達完了を確認しました。問題がなければ「受取済み」を押してください。未着または問題がある場合は期限前に管理者へ報告してください。報告がなければ注文は自動完了し、販売者に支払われます。',
+                  )
+                  : tx(
+                    'Chưa có xác nhận giao hàng từ đơn vị vận chuyển. Nếu đã nhận, hãy bấm "Đã nhận hàng". Nếu chưa nhận hoặc có vấn đề, hãy "Báo cáo admin"; nếu bạn không cập nhật, đơn sẽ được chuyển cho quản trị viên kiểm tra và tiền vẫn được giữ an toàn.',
+                    'The carrier has not confirmed delivery. If it arrived, tap "Item received". If it has not arrived or there is a problem, report it; otherwise the order will be sent to an administrator for review and the funds will remain protected.',
+                    '配送業者による配達確認がまだありません。届いた場合は「受取済み」を押してください。未着または問題がある場合は管理者へ報告してください。更新がなければ管理者の確認に回され、代金は安全に保持されます。',
+                  )}</span>
               </div>
               )}</LiveClock>
             )}
@@ -547,11 +559,10 @@ export default function OrderDetailsPage() {
               // Booking lives in its own panel at the top of the page, not
               // among the buttons: it is the whole job on a paid order, and a
               // row of equal-weight buttons said otherwise.
-              // Follow the parcel — both sides. Delivery is what starts the
-              // seller's 72h payout clock, and an unconfirmed parcel goes to an
-              // administrator instead of paying out, so the seller has as much
-              // reason to look as the buyer. The tracking endpoint has always
-              // authorised either party on the order.
+              // Follow the parcel — both sides. Confirmed delivery starts the
+              // seller's 72h payout clock, so the seller has as much reason to
+              // look as the buyer. The tracking endpoint has always authorised
+              // either party on the order.
               if (order.status === 'shipping' || order.status === 'delivered') {
                 btns.push(
                   <Button key="track" variant="outline" className="flex-1" onClick={() => setTrackOpen(true)}>
@@ -559,13 +570,22 @@ export default function OrderDetailsPage() {
                   </Button>,
                 );
               }
-              // Reporting a problem stays buyer-only.
-              //
-              // There is no "confirm receipt" button any more: escrow releases
-              // on its own 72h after a carrier confirms delivery, so pressing
-              // something added nothing.
+              // Receipt confirmation and problem reporting stay buyer-only.
+              // Confirmation releases escrow immediately; otherwise a
+              // carrier-confirmed delivery auto-releases after 72 hours.
               if (isBuyer && (order.status === 'shipping' || order.status === 'delivered')) {
                 btns.push(
+                  <Button key="received" className="flex-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => setConfirm({
+                    action: 'confirm_received',
+                    title: tx('Xác nhận đã nhận hàng?', 'Confirm receipt?', '受取を確認しますか？'),
+                    message: tx(
+                      'Chỉ xác nhận khi bạn đã nhận và kiểm tra hàng. Đơn sẽ hoàn tất ngay và tiền được chuyển cho người bán.',
+                      'Confirm only after you have received and checked the item. The order will complete and the seller will be paid immediately.',
+                      '商品を受け取り確認した後にのみ確定してください。注文が完了し、販売者へ直ちに支払われます。',
+                    ),
+                  })}>
+                    <CheckCircle className="mr-2 h-4 w-4" />{tx('Đã nhận hàng', 'Item received', '受取済み')}
+                  </Button>,
                   <Button key="report" variant="outline" className="flex-1 border-red-500/40 text-red-300 hover:bg-red-500/10" onClick={() => setConfirm({
                     action: 'dispute',
                     title: tx('Báo cáo cho quản trị viên?', 'Report to admin?', '管理者に報告しますか？'),
