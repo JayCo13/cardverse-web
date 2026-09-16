@@ -52,6 +52,7 @@ export function Header() {
   const { isVipPro, isDayPass, hasCredits, subscription } = useSubscription();
   const [cartCount, setCartCount] = useState(0);
   const [offerActionCount, setOfferActionCount] = useState(0);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const copy = locale === "vi-VN"
     ? {
       account: "Tài khoản",
@@ -150,20 +151,27 @@ export function Header() {
     label: string,
     badgeKey: 'beta' | 'soon',
     className: string,
+    onSelect?: () => void,
   ) => {
     const badge = (
       <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t(badgeKey)}</Badge>
     );
     if (isTester) {
       return (
-        <Link href={href} className={className}>
+        <Link href={href} className={className} onClick={onSelect}>
           {label}
           {badge}
         </Link>
       );
     }
     return (
-      <span onClick={handleComingSoon} className={`cursor-pointer ${className}`}>
+      <span
+        onClick={() => {
+          onSelect?.();
+          handleComingSoon();
+        }}
+        className={`cursor-pointer ${className}`}
+      >
         {label}
         {badge}
       </span>
@@ -351,7 +359,7 @@ export function Header() {
       <div className="border-t">
         <div className="container mx-auto px-4 flex h-16 items-center">
           <div className="lg:hidden w-full flex items-center justify-between">
-            <Sheet>
+            <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
               <SheetTrigger asChild>
                 <Button
                   variant="outline"
@@ -366,46 +374,53 @@ export function Header() {
                 <nav className="grid gap-6 text-lg font-medium">
                   <Link
                     href="/"
+                    onClick={() => setIsMobileMenuOpen(false)}
                     className="flex items-center gap-2 text-2xl font-semibold"
                   >
                     <Image src="/assets/logo-verse.png" width={140} height={35} alt="CardVerseHub logo" />
                   </Link>
                   <div className="relative group">
-                    {renderBetaNavItem('/buy', t('nav_buy'), 'beta', 'text-muted-foreground hover:text-foreground flex items-center gap-1')}
+                    {renderBetaNavItem('/buy', t('nav_buy'), 'beta', 'text-muted-foreground hover:text-foreground flex items-center gap-1', () => setIsMobileMenuOpen(false))}
                   </div>
                   <div className="relative group">
-                    {renderBetaNavItem('/sell', t('nav_sell'), 'beta', 'text-muted-foreground hover:text-foreground flex items-center gap-1')}
+                    {renderBetaNavItem('/sell', t('nav_sell'), 'beta', 'text-muted-foreground hover:text-foreground flex items-center gap-1', () => setIsMobileMenuOpen(false))}
                   </div>
                   {isTester && (
                     <>
                       <div className="relative group">
-                        <Link href="/wallet" className="text-muted-foreground hover:text-foreground flex items-center gap-1">
+                        <Link href="/wallet" onClick={() => setIsMobileMenuOpen(false)} className="text-muted-foreground hover:text-foreground flex items-center gap-1">
                           {copy.wallet}
                         </Link>
                       </div>
                       <div className="relative group">
-                        <Link href="/orders" className="text-muted-foreground hover:text-foreground flex items-center gap-1">
+                        <Link href="/orders" onClick={() => setIsMobileMenuOpen(false)} className="text-muted-foreground hover:text-foreground flex items-center gap-1">
                           {copy.orders}
                         </Link>
                       </div>
                     </>
                   )}
-                  {renderBetaNavItem('/bid', t('nav_bid'), 'beta', 'text-muted-foreground hover:text-foreground flex items-center gap-1')}
-                  {renderBetaNavItem('/razz', t('nav_razz'), 'soon', 'text-muted-foreground hover:text-foreground flex items-center gap-1')}
-                  <span onClick={handleComingSoon} className="cursor-pointer text-muted-foreground hover:text-foreground flex items-center gap-1">
+                  {renderBetaNavItem('/bid', t('nav_bid'), 'beta', 'text-muted-foreground hover:text-foreground flex items-center gap-1', () => setIsMobileMenuOpen(false))}
+                  {renderBetaNavItem('/razz', t('nav_razz'), 'soon', 'text-muted-foreground hover:text-foreground flex items-center gap-1', () => setIsMobileMenuOpen(false))}
+                  <span
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      handleComingSoon();
+                    }}
+                    className="cursor-pointer text-muted-foreground hover:text-foreground flex items-center gap-1"
+                  >
                     {t('nav_forum')}
                     <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-500 text-orange-500">{t('soon')}</Badge>
                   </span>
                   <div className="border-t my-2 pt-2 grid gap-4">
-                    <Link href="/pokemon" className="text-muted-foreground hover:text-foreground flex items-center gap-2">
+                    <Link href="/pokemon" onClick={() => setIsMobileMenuOpen(false)} className="text-muted-foreground hover:text-foreground flex items-center gap-2">
                       <Image src="/assets/pok-logo.png" width={24} height={24} alt="Pokemon" className="object-contain" />
                       {t('nav_pokemon')}
                     </Link>
-                    <Link href="/onepiece" className="text-muted-foreground hover:text-foreground flex items-center gap-2">
+                    <Link href="/onepiece" onClick={() => setIsMobileMenuOpen(false)} className="text-muted-foreground hover:text-foreground flex items-center gap-2">
                       <Image src="/assets/one-logo.png" width={24} height={24} alt="One Piece" className="object-contain" />
                       {t('nav_onepiece')}
                     </Link>
-                    <Link href="/soccer" className="text-muted-foreground hover:text-foreground flex items-center gap-2">
+                    <Link href="/soccer" onClick={() => setIsMobileMenuOpen(false)} className="text-muted-foreground hover:text-foreground flex items-center gap-2">
                       <Image src="/assets/soc-logo.png" width={24} height={24} alt="Soccer" className="object-contain" />
                       {t('nav_soccer')}
                     </Link>

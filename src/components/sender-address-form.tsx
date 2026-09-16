@@ -33,9 +33,12 @@ function samePickupAddress(left: PickupAddress, right: PickupAddress) {
 export function SenderAddressForm({
     onSaved,
     submitLabel,
+    initialAddress,
 }: {
     onSaved?: (address: PickupAddress) => void;
     submitLabel?: string;
+    /** A parent that already loaded the address can prevent a duplicate read. */
+    initialAddress?: PickupAddress | null;
 }) {
     const { locale } = useLocalization();
     const { toast } = useToast();
@@ -53,6 +56,12 @@ export function SenderAddressForm({
     const [loaded, setLoaded] = useState(false);
 
     useEffect(() => {
+        if (initialAddress !== undefined) {
+            setSaved(initialAddress);
+            setEditing(!initialAddress);
+            setLoaded(true);
+            return;
+        }
         let cancelled = false;
         fetch('/api/shipping/pickup-address')
             .then((r) => (r.ok ? r.json() : null))
@@ -64,7 +73,7 @@ export function SenderAddressForm({
             .catch(() => { if (!cancelled) setEditing(true); /* an empty form is the right fallback for a failed read */ })
             .finally(() => { if (!cancelled) setLoaded(true); });
         return () => { cancelled = true; };
-    }, []);
+    }, [initialAddress]);
 
     const changeDraft = (address: PickupAddress | null) => {
         // Loading the saved values into the picker must not make the Save

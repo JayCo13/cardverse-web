@@ -109,11 +109,13 @@ export function ShippingQuotePreview() {
 
     // Through the shared client cache: the sender form above has usually
     // fetched the same city list a moment ago, and there is no reason to
-    // reach GoShip for it twice on one page.
+    // reach GoShip for it twice on one page. Do not even ask for the list until
+    // the seller opens this optional tool.
     useEffect(() => {
+        if (!open || cities.length > 0) return;
         carrierAddressOptions('/api/shipping/address/cities')
             .then(setCities).catch(() => {});
-    }, []);
+    }, [cities.length, open]);
 
     useEffect(() => {
         setDistrict('');

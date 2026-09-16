@@ -20,7 +20,8 @@ import { localizeFinancialApiError } from '@/lib/financial-api-errors';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { SHIPPING_CARRIERS, getTrackingUrl, getCarrier, sellerSuppliesTracking } from '@/lib/shipping-carriers';
-import { carrierStatusLabel } from '@/lib/carrier-status-labels';
+import { carrierStatusColorClass, carrierStatusLabel } from '@/lib/carrier-status-labels';
+import { ORDER_STATUS_CONFIG, orderStatusLabel } from '@/lib/order-status';
 import { ShipmentTrackingDialog } from '@/components/shipment-tracking-dialog';
 import Link from 'next/link';
 import { PackingVideoField } from '@/components/packing-video-field';
@@ -82,20 +83,6 @@ type OrderViewState = {
 };
 
 const PAGE_SIZE = 10;
-
-// Icons/colors are locale-independent; the labels live in the per-locale
-// `copy.statusLabels` object inside the component (previously they were
-// hardcoded Vietnamese for every locale).
-const STATUS_CONFIG: Record<string, { icon: React.ReactNode; color: string; bgColor: string }> = {
-  pending_payment: { icon: <Clock className="h-4 w-4" />, color: 'text-gray-400', bgColor: 'bg-gray-500/10' },
-  paid: { icon: <CheckCircle className="h-4 w-4" />, color: 'text-blue-400', bgColor: 'bg-blue-500/10' },
-  shipping: { icon: <Truck className="h-4 w-4" />, color: 'text-yellow-400', bgColor: 'bg-yellow-500/10' },
-  delivered: { icon: <Package className="h-4 w-4" />, color: 'text-cyan-400', bgColor: 'bg-cyan-500/10' },
-  completed: { icon: <CheckCircle className="h-4 w-4" />, color: 'text-green-400', bgColor: 'bg-green-500/10' },
-  disputed: { icon: <AlertTriangle className="h-4 w-4" />, color: 'text-red-400', bgColor: 'bg-red-500/10' },
-  refunded: { icon: <XCircle className="h-4 w-4" />, color: 'text-purple-400', bgColor: 'bg-purple-500/10' },
-  cancelled: { icon: <XCircle className="h-4 w-4" />, color: 'text-muted-foreground', bgColor: 'bg-muted/50' },
-};
 
 const TRACKING_STEP_KEYS = ['created', 'picked', 'transporting', 'delivering', 'delivered'] as const;
 
@@ -172,16 +159,6 @@ export default function OrdersPage() {
         showingOrders: '表示 {from}-{to} / {total} 件',
         previousPage: '前へ',
         nextPage: '次へ',
-        statusLabels: {
-          pending_payment: '支払い待ち',
-          paid: '支払い済み',
-          shipping: '配送中',
-          delivered: '配達済み',
-          completed: '完了',
-          disputed: '紛争中',
-          refunded: '返金済み',
-          cancelled: 'キャンセル済み',
-        } as Record<string, string>,
         ghnStatusLabels: {
           ready_to_pick: '集荷待ち',
           picking: '集荷中',
@@ -253,16 +230,6 @@ export default function OrdersPage() {
           showingOrders: 'Hiển thị {from}-{to} của {total} đơn hàng',
           previousPage: 'Trước',
           nextPage: 'Sau',
-          statusLabels: {
-            pending_payment: 'Chờ thanh toán',
-            paid: 'Đã thanh toán',
-            shipping: 'Đang vận chuyển',
-            delivered: 'Đã giao',
-            completed: 'Hoàn tất',
-            disputed: 'Khiếu nại',
-            refunded: 'Đã hoàn tiền',
-            cancelled: 'Đã hủy',
-          } as Record<string, string>,
           ghnStatusLabels: {
             ready_to_pick: 'Chờ lấy hàng',
             picking: 'Đang lấy hàng',
@@ -333,16 +300,6 @@ export default function OrdersPage() {
           showingOrders: 'Showing {from}-{to} of {total} orders',
           previousPage: 'Previous',
           nextPage: 'Next',
-          statusLabels: {
-            pending_payment: 'Awaiting payment',
-            paid: 'Paid',
-            shipping: 'Shipping',
-            delivered: 'Delivered',
-            completed: 'Completed',
-            disputed: 'Disputed',
-            refunded: 'Refunded',
-            cancelled: 'Cancelled',
-          } as Record<string, string>,
           ghnStatusLabels: {
             ready_to_pick: 'Awaiting pickup',
             picking: 'Picking up',
@@ -606,8 +563,8 @@ export default function OrdersPage() {
   };
 
   const renderOrderCard = (order: Order) => {
-    const statusInfo = STATUS_CONFIG[order.status] || { icon: null, color: '', bgColor: '' };
-    const statusLabel = copy.statusLabels[order.status] || order.status;
+    const statusInfo = ORDER_STATUS_CONFIG[order.status] || { icon: null, color: '', bgColor: '' };
+    const statusLabel = orderStatusLabel(order.status, locale);
     const isBuyer = activeTab === 'buyer';
 
     return (
@@ -656,9 +613,7 @@ export default function OrdersPage() {
                     blank for a status we have no name for — printing a raw enum
                     at a buyer is worse than printing nothing. */}
                 {carrierStatusLabel(order.carrier_status, locale) && (
-                  <span className={`text-xs font-medium ${order.carrier_status === 'Delivered' ? 'text-green-400'
-                    : order.carrier_status === 'DeliveryFailure' || order.carrier_status === 'Exception' ? 'text-red-400'
-                      : 'text-blue-400'}`}>
+                  <span className={`text-xs font-medium ${carrierStatusColorClass(order.carrier_status)}`}>
                     {carrierStatusLabel(order.carrier_status, locale)}
                   </span>
                 )}
