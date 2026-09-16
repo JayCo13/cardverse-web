@@ -431,7 +431,7 @@ export default function CardDetailsPage() {
                         </Card>
 
                         {/* PSA Graded Prices - Pokemon only */}
-                        {card.category === 'Pokemon' && productId && (
+                        {(card.category === 'Pokemon' || card.category === 'Pokémon') && productId && (
                             <PSAGradedPrices
                                 productId={productId}
                                 productName={card.title}

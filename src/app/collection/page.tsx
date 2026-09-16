@@ -159,11 +159,11 @@ export default function CollectionPage() {
 
         // Filter by tab
         if (activeTab === "pokemon") {
-            filtered = filtered.filter(c => c.category === 'Pokemon');
+            filtered = filtered.filter(c => c.category === 'Pokemon' || c.category === 'Pokémon');
         } else if (activeTab === "onepiece") {
             filtered = filtered.filter(c => c.category === 'One Piece');
         } else if (activeTab === "soccer") {
-            filtered = filtered.filter(c => c.category === 'Soccer');
+            filtered = filtered.filter(c => c.category === 'Soccer' || c.category === 'Bóng đá');
         }
 
         return filtered;

@@ -89,8 +89,9 @@ export default function SoccerCardDetailsPage() {
                     title: card.name,
                     image_url: card.image_url,
                     market_price: priceInUSD,
-                    category: 'Soccer',
+                    category: 'Bóng đá',
                     rarity: card.grader && card.grade ? `${card.grader} ${card.grade}` : null,
+                    set_name: card.set_name,
                 } as never);
 
             if (error) {

@@ -44,7 +44,7 @@ import {
   type SetConfig,
   type GroupedSets,
 } from '@/lib/card-catalog';
-import { type SelectedCatalogCard } from '@/components/card-picker-dialog';
+import { type SelectedCollectionCard } from '@/components/card-picker-dialog';
 import { CatalogCardPicker, catalogTabToCategory, type CatalogPick, type CatalogTabId } from '@/components/catalog-card-picker';
 import { VnMarketPrice } from '@/components/vn-market-price';
 import { SearchableSetPicker } from '@/components/searchable-set-picker';
@@ -1189,47 +1189,15 @@ export default function CreateListingPage() {
     }
   };
 
-  /** Handle card picked from the collection dialog — auto-fill form fields */
-  const handleCardPicked = (card: SelectedCatalogCard) => {
-    // Set category (this triggers the useEffect to fetch sets)
-    form.setValue('category', card.category);
-    prevCategoryRef.current = card.category;
-
-    // Set publisher
-    form.setValue('publisher', card.publisher);
-
-    // Set name
-    form.setValue('name', card.name);
-
-    // Set the set name (with slight delay to let category effect settle)
-    setTimeout(() => {
-      form.setValue('setName', card.setName);
-    }, 100);
-
-    // Fetch DB sets for the selected category
-    if (isDbSets(card.category)) {
-      setLoadingDbSets(true);
-      fetchDbSetsGrouped(card.category).then(grouped => {
-        setDbGroupedSets(grouped);
-        setLoadingDbSets(false);
-        // Set the setName after data is loaded
-        form.setValue('setName', card.setName);
-      });
-    }
-
-    toast({
-      title: '✅ Đã điền thông tin',
-      description: `${card.name}, ${card.setName}`,
-    });
-  };
-
   // Catalog pick state — the canonical card identity behind this listing.
   const [catalogPick, setCatalogPick] = useState<CatalogPick | null>(null);
+  const [collectionPick, setCollectionPick] = useState<SelectedCollectionCard | null>(null);
   const showCatalogIdentity = !nonCard && shouldShowCatalogIdentity(selectedCategory, isBundle);
 
   /** Seller picked the EXACT card from the real catalog — lock in its identity. */
   const handleCatalogPicked = (pick: CatalogPick, tab: CatalogTabId) => {
     setCatalogPick(pick);
+    setCollectionPick(null);
 
     const category = catalogTabToCategory(tab);
     form.setValue('category', category);
@@ -1241,6 +1209,8 @@ export default function CreateListingPage() {
     const pubs = getPublishers(category);
     if (pubs.length === 1) {
       form.setValue('publisher', pubs[0]);
+    } else {
+      form.setValue('publisher', undefined);
     }
 
     form.setValue('name', pick.name);
@@ -1248,6 +1218,7 @@ export default function CreateListingPage() {
     form.setValue('catalogSoccerId', pick.soccerId);
     form.setValue('cardNumber', pick.number || '');
     form.setValue('language', pick.language || undefined);
+    form.setValue('setName', pick.setName || undefined);
     form.clearErrors(['cardNumber', 'language', 'name', 'category', 'publisher']);
 
     // Mirror handleCardPicked's set-name handling: let the category effect
@@ -1270,8 +1241,53 @@ export default function CreateListingPage() {
     });
   };
 
+  /** Collection cards with a canonical identity use the exact same form path
+   * as the catalog picker. Other card categories still populate every common
+   * field the collection owns without inheriting Pokémon validation. */
+  const handleCardPicked = (card: SelectedCollectionCard) => {
+    if (card.catalogPick) {
+      const tab: CatalogTabId = card.catalogPick.kind === 'soccer'
+        ? 'soccer'
+        : card.category === 'One Piece' ? 'onepiece'
+          : card.catalogPick.language === 'jp' ? 'pokemon-jp' : 'pokemon-en';
+      handleCatalogPicked(card.catalogPick, tab);
+      setCollectionPick(card);
+      return;
+    }
+
+    setCatalogPick(null);
+    setCollectionPick(card);
+    form.setValue('catalogProductId', undefined);
+    form.setValue('catalogSoccerId', undefined);
+    form.setValue('cardNumber', '');
+    form.setValue('language', undefined);
+    form.setValue('category', card.category);
+    prevCategoryRef.current = card.category;
+    form.setValue('publisher', card.publisher || undefined);
+    form.setValue('name', card.name);
+    form.setValue('setName', card.setName || undefined);
+    form.setValue('season', undefined);
+    if (!isDbSets(card.category)) setDbGroupedSets({ en: [], jp: [], other: [] });
+    form.clearErrors(['name', 'category']);
+
+    if (card.resolution === 'unresolved') {
+      toast({
+        variant: 'destructive',
+        title: locale === 'vi-VN' ? 'Thẻ chưa liên kết catalog' : locale === 'ja-JP' ? 'カタログ未連携のカード' : 'Card is not linked to the catalog',
+        description: locale === 'vi-VN' ? 'Hãy chọn đúng thẻ trong catalog để điền số thẻ và ngôn ngữ.' : locale === 'ja-JP' ? 'カタログから正しいカードを選び、番号と言語を設定してください。' : 'Choose the exact catalog card to fill its number and language.',
+      });
+      return;
+    }
+
+    toast({
+      title: locale === 'vi-VN' ? '✅ Đã điền thông tin' : locale === 'ja-JP' ? '✅ 情報を入力しました' : '✅ Card details filled',
+      description: `${card.name}${card.setName ? `, ${card.setName}` : ''}`,
+    });
+  };
+
   const clearCatalogPick = () => {
     setCatalogPick(null);
+    setCollectionPick(null);
     form.setValue('catalogProductId', undefined);
     form.setValue('catalogSoccerId', undefined);
   };
@@ -1301,15 +1317,31 @@ export default function CreateListingPage() {
   };
 
   useEffect(() => {
-    if (showCatalogIdentity) return;
+    if (showCatalogIdentity) {
+      form.setValue('catalogSoccerId', undefined);
+      if (catalogPick?.kind === 'soccer') {
+        setCatalogPick(null);
+        setCollectionPick(null);
+        form.setValue('cardNumber', '');
+        form.setValue('language', undefined);
+      }
+      return;
+    }
+
+    if (!nonCard && !isBundle && selectedCategory === 'Bóng đá') {
+      form.setValue('catalogProductId', undefined);
+      form.setValue('language', undefined);
+      if (catalogPick?.kind === 'soccer') return;
+    }
+
     setCatalogPick(null);
+    setCollectionPick(null);
     form.setValue('catalogProductId', undefined);
     form.setValue('catalogSoccerId', undefined);
     form.setValue('cardNumber', '');
     form.setValue('language', undefined);
     form.clearErrors(['cardNumber', 'language']);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showCatalogIdentity]);
+  }, [showCatalogIdentity, selectedCategory, nonCard, isBundle, catalogPick?.kind, form]);
 
   const removeImage = (index: number) => {
     const currentFiles = form.getValues('images') || [];
@@ -1695,6 +1727,12 @@ export default function CreateListingPage() {
           </AlertDialog>
           {nonCard && <><p className="text-sm text-muted-foreground">{pc.whole}</p><ProductFields locale={locale} condition={form.watch('condition') || ''} onCondition={v => form.setValue('condition', v)} details={productDetails} onDetails={setProductDetails} typeLabel={productTypeLabel} onTypeLabel={setProductTypeLabel} other={productKind === 'other'} disabled={isSubmitting} /></>}
 
+          {!nonCard && !isBundle && !showCatalogIdentity && (
+            <div className="flex justify-end">
+              <CardPickerDialog onSelect={handleCardPicked} />
+            </div>
+          )}
+
           {showCatalogIdentity && (
             <div className="space-y-3 p-4 rounded-xl border border-dashed border-orange-500/30 bg-orange-500/5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -1812,6 +1850,25 @@ export default function CreateListingPage() {
                   )}
                 />
               </div>
+            </div>
+          )}
+
+          {collectionPick && (!catalogPick || catalogPick.kind === 'soccer') && (
+            <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
+              {collectionPick.imageUrl && (
+                <div className="relative h-14 w-10 shrink-0 overflow-hidden rounded">
+                  <Image src={collectionPick.imageUrl} alt="" fill className="object-contain" sizes="40px" />
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">{collectionPick.name}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {collectionPick.category}{collectionPick.setName ? ` · ${collectionPick.setName}` : ''}
+                </p>
+              </div>
+              <Button type="button" variant="ghost" size="sm" onClick={clearCatalogPick} aria-label={copy.clearSelection}>
+                <X className="h-4 w-4" />
+              </Button>
             </div>
           )}
 
