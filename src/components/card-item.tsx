@@ -136,6 +136,10 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
 
   const handleActionClick = () => {
     if (!isOwner && onBuyClick && card.listingType === 'sale' && card.status !== 'sold') {
+      if (!user) {
+        setOpen(true);
+        return;
+      }
       onBuyClick(card);
     } else {
       router.push(`/cards/${card.id}`);

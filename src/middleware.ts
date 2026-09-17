@@ -123,8 +123,10 @@ export async function middleware(request: NextRequest) {
         }
     )
 
-    // Beta marketplace features: only admin-created tester accounts may enter.
-    // Normal users (and signed-out visitors) are redirected to the "Coming Soon" toast.
+    // Beta features still behind the curtain: only admin-created tester accounts
+    // may enter. Normal users (and signed-out visitors) are redirected to the
+    // "Coming Soon" toast. Buying and selling left the beta on 2026-09-17; those
+    // pages ask for a sign-in themselves when an action needs one.
     //
     // This gate used to cost two sequential round trips on EVERY request to these
     // paths — getUser() over the network plus a profiles read — and Next fires it
@@ -137,7 +139,7 @@ export async function middleware(request: NextRequest) {
     // beta curtain over the UI, not the security boundary. Row-level security still
     // governs every byte of data, and route handlers that need a verified identity
     // call getUser() themselves.
-    const testerOnlyPaths = ['/buy', '/sell', '/bid', '/razz', '/orders', '/wallet'];
+    const testerOnlyPaths = ['/bid', '/razz'];
     if (matchesAny(testerOnlyPaths)) {
         const { data: { session } } = await supabase.auth.getSession();
         const user = session?.user;

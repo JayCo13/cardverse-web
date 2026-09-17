@@ -83,7 +83,7 @@ export function Header() {
         toggleMenu: "Toggle navigation menu",
       };
 
-  // Admin-created tester accounts get full access to gated marketplace features.
+  // Admin-created tester accounts get into the features still in beta (bid, razz).
   const isTester = !!profile?.is_tester;
   const isVndOnlyMarketplace = VND_ONLY_MARKETPLACE_PATHS.some(
     path => pathname === path || pathname.startsWith(`${path}/`),
@@ -249,14 +249,12 @@ export function Header() {
                 {copy.collection}
               </Link>
             </DropdownMenuItem>
-            {isTester && (
-              <DropdownMenuItem asChild>
-                <Link href="/orders" className="flex items-center gap-2">
-                  <Package className="h-4 w-4" />
-                  {copy.orders}
-                </Link>
-              </DropdownMenuItem>
-            )}
+            <DropdownMenuItem asChild>
+              <Link href="/orders" className="flex items-center gap-2">
+                <Package className="h-4 w-4" />
+                {copy.orders}
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link href="/offers" className="flex items-center gap-2">
                 <HandCoins className="h-4 w-4" />
@@ -268,14 +266,12 @@ export function Header() {
                 )}
               </Link>
             </DropdownMenuItem>
-            {isTester && (
-                <DropdownMenuItem asChild>
-                  <Link href="/wallet" className="flex items-center gap-2">
-                    <Wallet className="h-4 w-4" />
-                    {copy.wallet}
-                  </Link>
-                </DropdownMenuItem>
-            )}
+            <DropdownMenuItem asChild>
+              <Link href="/wallet" className="flex items-center gap-2">
+                <Wallet className="h-4 w-4" />
+                {copy.wallet}
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link href="/pricing" className="text-orange-500 font-medium flex items-center gap-2">
@@ -380,12 +376,16 @@ export function Header() {
                     <Image src="/assets/logo-verse.png" width={140} height={35} alt="CardVerseHub logo" />
                   </Link>
                   <div className="relative group">
-                    {renderBetaNavItem('/buy', t('nav_buy'), 'beta', 'text-muted-foreground hover:text-foreground flex items-center gap-1', () => setIsMobileMenuOpen(false))}
+                    <Link href="/buy" onClick={() => setIsMobileMenuOpen(false)} className="text-muted-foreground hover:text-foreground flex items-center gap-1">
+                      {t('nav_buy')}
+                    </Link>
                   </div>
                   <div className="relative group">
-                    {renderBetaNavItem('/sell', t('nav_sell'), 'beta', 'text-muted-foreground hover:text-foreground flex items-center gap-1', () => setIsMobileMenuOpen(false))}
+                    <Link href="/sell" onClick={() => setIsMobileMenuOpen(false)} className="text-muted-foreground hover:text-foreground flex items-center gap-1">
+                      {t('nav_sell')}
+                    </Link>
                   </div>
-                  {isTester && (
+                  {user && (
                     <>
                       <div className="relative group">
                         <Link href="/wallet" onClick={() => setIsMobileMenuOpen(false)} className="text-muted-foreground hover:text-foreground flex items-center gap-1">
@@ -442,10 +442,14 @@ export function Header() {
           <div className="flex-1 flex items-center justify-center">
             <nav className="hidden lg:flex flex-row items-center gap-8 whitespace-nowrap text-sm font-medium">
               <div className="relative">
-                {renderBetaNavItem('/buy', t('nav_buy'), 'beta', 'text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors')}
+                <Link href="/buy" className="text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors">
+                  {t('nav_buy')}
+                </Link>
               </div>
               <div className="relative">
-                {renderBetaNavItem('/sell', t('nav_sell'), 'beta', 'text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors')}
+                <Link href="/sell" className="text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors">
+                  {t('nav_sell')}
+                </Link>
               </div>
               {renderBetaNavItem('/bid', t('nav_bid'), 'beta', 'text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors')}
               {renderBetaNavItem('/razz', t('nav_razz'), 'soon', 'text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors')}
