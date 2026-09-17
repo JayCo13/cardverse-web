@@ -7,9 +7,6 @@ import { Loader2 } from 'lucide-react';
 import type { GroupedSets } from '@/lib/card-catalog';
 import { useLocalization } from '@/context/localization-context';
 
-/** Names shown per section before the seller types anything. */
-const PREVIEW_LIMIT = 30;
-
 interface SearchableSetPickerProps {
   /** Current selected value */
   value: string | undefined;
@@ -51,7 +48,6 @@ export function SearchableSetPicker({
         sets: 'Sets',
         notFound: `セット "${search}" が見つかりません`,
         empty: 'セットがありません',
-        more: (n: number) => `入力して残り ${n} セットを検索`,
       }
     : locale === 'vi-VN'
       ? {
@@ -62,7 +58,6 @@ export function SearchableSetPicker({
           sets: 'Sets',
           notFound: `Không tìm thấy set "${search}"`,
           empty: 'Không có set nào',
-          more: (n: number) => `Gõ để tìm trong ${n} set còn lại`,
         }
       : {
           placeholder: 'Search and select a set...',
@@ -72,7 +67,6 @@ export function SearchableSetPicker({
           sets: 'Sets',
           notFound: `No set found for "${search}"`,
           empty: 'No sets available',
-          more: (n: number) => `Type to search the other ${n} sets`,
         };
 
   // Close dropdown when clicking outside
@@ -92,29 +86,21 @@ export function SearchableSetPicker({
     return items.filter(name => name.toLowerCase().includes(q));
   };
 
-  // Build sections. With no search text a section shows only its first
-  // PREVIEW_LIMIT names: the lists run to several hundred (Topps soccer,
-  // Yu-Gi-Oh) and a seller finds a set by typing part of its name, not by
-  // scrolling, so the rest is one hint row until they do. `hidden` is how
-  // many that row stands for.
-  let sections: { label: string; items: string[]; hidden: number }[] = [];
-  const preview = (items: string[]) =>
-    search.trim()
-      ? { items, hidden: 0 }
-      : { items: items.slice(0, PREVIEW_LIMIT), hidden: Math.max(0, items.length - PREVIEW_LIMIT) };
+  // Build sections
+  let sections: { label: string; items: string[] }[] = [];
 
   if (groupedSets) {
     const hasEn = groupedSets.en.length > 0;
     const hasJp = groupedSets.jp.length > 0;
     const hasOther = groupedSets.other.length > 0;
 
-    if (hasEn) sections.push({ label: `🇺🇸 ${copy.enSets}`, ...preview(filterBySearch(groupedSets.en)) });
-    if (hasJp) sections.push({ label: `🇯🇵 ${copy.jpSets}`, ...preview(filterBySearch(groupedSets.jp)) });
-    if (hasOther) sections.push({ label: copy.sets, ...preview(filterBySearch(groupedSets.other)) });
+    if (hasEn) sections.push({ label: `🇺🇸 ${copy.enSets}`, items: filterBySearch(groupedSets.en) });
+    if (hasJp) sections.push({ label: `🇯🇵 ${copy.jpSets}`, items: filterBySearch(groupedSets.jp) });
+    if (hasOther) sections.push({ label: copy.sets, items: filterBySearch(groupedSets.other) });
   } else if (flatSets) {
     sections.push({
       label: copy.sets,
-      ...preview(filterBySearch(flatSets.map(s => s.name).filter(Boolean))),
+      items: filterBySearch(flatSets.map(s => s.name).filter(Boolean)),
     });
   }
 
@@ -173,7 +159,7 @@ export function SearchableSetPicker({
           {/* Backdrop to close */}
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
 
-          <div className="absolute z-50 w-full mt-1 max-h-[50vh] sm:max-h-[320px] overflow-y-auto rounded-lg border border-border bg-popover shadow-xl">
+          <div className="absolute z-50 w-full mt-1 max-h-[320px] overflow-y-auto rounded-lg border border-border bg-popover shadow-xl">
                 {totalResults === 0 ? (
               <div className="px-4 py-6 text-center text-sm text-muted-foreground">
                 {search ? copy.notFound : copy.empty}
@@ -184,7 +170,7 @@ export function SearchableSetPicker({
                   {/* Section header */}
                   {sections.length > 1 && section.items.length > 0 && (
                     <div className="sticky top-0 z-10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/80 backdrop-blur-sm border-b border-border/50">
-                      {section.label} ({section.items.length + section.hidden})
+                      {section.label} ({section.items.length})
                     </div>
                   )}
                   {/* Items */}
@@ -200,11 +186,6 @@ export function SearchableSetPicker({
                       {name}
                     </button>
                   ))}
-                  {section.hidden > 0 && (
-                    <div className="px-3 py-2 text-xs text-muted-foreground border-t border-border/50">
-                      {copy.more(section.hidden)}
-                    </div>
-                  )}
                 </div>
               ))
             )}
