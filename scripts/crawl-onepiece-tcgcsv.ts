@@ -27,9 +27,9 @@ const TCGCSV_BASE = 'https://tcgcsv.com/tcgplayer';
 // Initialize Supabase client
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// tcgcsv.com (Cloudflare) returns 401 to the default node/undici User-Agent;
-// a browser UA is accepted. Required from every host (it was never an IP block).
-const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+// tcgcsv.com returns 401 unless the User-Agent names the application as
+// "Name/X.Y.Z" — since 2026-09 a browser UA is refused too. Not an IP block.
+const UA = 'CardVerse/1.0 (+https://cardversehub.com)';
 const TCG_FETCH_OPTS = { headers: { 'User-Agent': UA } };
 
 interface TcgGroup {

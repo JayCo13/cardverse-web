@@ -12,12 +12,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
 const TCGCSV_BASE_URL = 'https://tcgcsv.com/tcgplayer';
 
-// tcgcsv.com (Cloudflare) returns 401 to the default fetch User-Agent; a
-// browser UA is accepted. This is why the edge-function sync started failing
-// (HTTP 401) — it was never an IP block.
+// tcgcsv.com returns 401 unless the User-Agent names the application as
+// "Name/X.Y.Z" — since 2026-09 a browser UA is refused too. This is why the
+// edge-function sync started failing (HTTP 401) — it was never an IP block.
 const TCG_FETCH_OPTS = {
     headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        'User-Agent': 'CardVerse/1.0 (+https://cardversehub.com)',
     },
 };
 

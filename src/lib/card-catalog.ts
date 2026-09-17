@@ -1,9 +1,9 @@
 /**
  * Card Catalog — Category configuration & DB-driven set fetching
  *
- * Sets for Pokemon and One Piece are fetched from the existing `tcgcsv_products`
- * table / materialized views in Supabase.
- * For other categories (Soccer, Basketball, etc.), we use curated static lists.
+ * Sets for Pokemon, One Piece and Yu-Gi-Oh come from `tcgcsv_groups` in
+ * Supabase (one row per TCGplayer set, kept current by the TCGCSV crawlers).
+ * For other categories (Soccer, Basketball, F1), we use curated static lists.
  */
 
 import { getSupabaseClient } from '@/lib/supabase/client';
@@ -36,12 +36,11 @@ export interface CategoryConfig {
   dbSets?: boolean;
   /** DB source config for fetching sets dynamically */
   dbSetSource?: {
-    /** Table or view name to query */
-    view?: string;
-    /** Additional view for JP sets (Pokemon) */
-    viewJp?: string;
-    /** category_id to filter tcgcsv_products */
-    categoryId?: number;
+    /**
+     * TCGplayer category ids whose `tcgcsv_groups` rows are this category's
+     * sets, keyed by the picker heading they appear under.
+     */
+    groups: { en?: number; jp?: number; other?: number };
   };
 }
 
@@ -61,67 +60,353 @@ export interface SetConfig {
 // Soccer / Bóng đá — Static sets
 // ────────────────────────────────────────────
 
+/**
+ * One entry per product line × licence, with no year: the season field carries
+ * that. Sub-lines sold as their own product (Chrome Sapphire, Merlin Chrome,
+ * Adrenalyn XL per league…) get their own entry because that is the name on
+ * the box a seller is reading from.
+ *
+ * Compiled 2026-09 from release archives (collectosk, Checklist Insider,
+ * BreakNinja) and the Leaf / Futera catalogues. Topps and Panini entries drop
+ * the maker's name; Leaf and Futera keep it, as their products are sold that
+ * way. Names already used by live listings must stay spelled as they are.
+ */
 const SOCCER_PANINI_SETS: SetConfig[] = [
-  { name: 'Prizm Premier League' },
+  // Prizm / Select / Mosaic
   { name: 'Prizm FIFA World Cup' },
-  { name: 'Prizm UEFA Euro' },
-  { name: 'Prizm La Liga' },
-  { name: 'Prizm Serie A' },
-  { name: 'Prizm Bundesliga' },
-  { name: 'Prizm Ligue 1' },
+  { name: 'Prizm FIFA' },
+  { name: 'Prizm FIFA Club World Cup' },
+  { name: 'Prizm CONMEBOL Copa América' },
+  { name: 'Prizm Premier League' },
+  { name: 'Prizm K League' },
+  { name: 'Prizm Monopoly FIFA World Cup' },
+  { name: 'Prizm Sticker FIFA World Cup' },
+  { name: 'Select FIFA' },
+  { name: 'Select Road to FIFA World Cup' },
+  { name: 'Select UEFA Euro' },
   { name: 'Select Premier League' },
-  { name: 'Select FIFA World Cup' },
-  { name: 'Donruss Soccer' },
-  { name: 'Donruss Elite' },
+  { name: 'Select La Liga' },
+  { name: 'Select Serie A' },
+  { name: 'Select Ligue 1' },
   { name: 'Mosaic FIFA World Cup' },
+  { name: 'Mosaic Road to FIFA World Cup' },
+  { name: 'Mosaic UEFA Euro' },
   { name: 'Mosaic Premier League' },
+  { name: 'Mosaic La Liga' },
+  { name: 'Mosaic Serie A' },
+  // Donruss / Score / Chronicles
+  { name: 'Donruss Soccer' },
+  { name: 'Donruss FIFA' },
+  { name: 'Donruss Road to FIFA World Cup' },
+  { name: 'Donruss Elite FIFA' },
+  { name: 'Donruss Elite Premier League' },
+  { name: 'Donruss Elite La Liga' },
+  { name: 'Donruss Elite Serie A' },
+  { name: "Donruss FIFA Women's World Cup" },
+  { name: 'Donruss NWSL' },
+  { name: 'Donruss Optic NWSL' },
+  { name: 'Score FIFA' },
+  { name: 'Score Premier League' },
+  { name: 'Score La Liga' },
+  { name: 'Score Serie A' },
+  { name: 'Score Ligue 1' },
+  { name: 'Chronicles Soccer' },
+  // Premium / hobby
   { name: 'Immaculate Soccer' },
   { name: 'National Treasures Soccer' },
+  { name: 'National Treasures Road to FIFA World Cup' },
+  { name: 'Flawless Soccer' },
+  { name: 'Flawless FIFA World Cup' },
+  { name: 'Eminence FIFA World Cup' },
+  { name: 'Noir Soccer' },
+  { name: 'Noir Road to FIFA World Cup' },
   { name: 'Obsidian Soccer' },
+  { name: 'Obsidian K League' },
+  { name: 'Impeccable Premier League' },
+  { name: 'Revolution Premier League' },
+  { name: 'Revolution K League' },
+  { name: 'Absolute K League' },
+  { name: 'Gold Standard Soccer' },
+  { name: 'Nobility Soccer' },
+  { name: 'Aficionado Soccer' },
+  { name: 'Treble Soccer' },
+  { name: 'Pitch Kings La Liga' },
+  { name: 'Prestige EFL' },
+  { name: "Panini's Football EFL" },
+  { name: 'Eternity EFL' },
+  { name: "Eternity Women's Super League" },
+  { name: 'Eternity Bleus' },
+  { name: 'Eternity Lionesses' },
+  { name: 'Eternity Olympiens' },
+  { name: 'Luminance England' },
+  { name: 'Luminance France' },
+  { name: 'Luminance Germany' },
+  { name: 'INTL England' },
+  { name: 'INTL France' },
+  { name: 'INTL Germany' },
+  { name: 'INTL Mexico' },
+  { name: 'Podium FC Barcelona' },
+  { name: 'Podium Real Madrid' },
+  { name: 'Tributo Real Madrid' },
+  { name: 'Crown Royale NWSL' },
+  { name: 'Frauen Bundesliga' },
+  { name: 'DFB Team Set' },
+  { name: 'The Best of England' },
+  { name: 'US Soccer Box Set' },
+  { name: 'Instant' },
+  { name: 'Player of the Day' },
+  // Sticker / Adrenalyn XL / Top Class
   { name: 'Sticker Album FIFA World Cup' },
   { name: 'Sticker Album UEFA Euro' },
-  { name: 'Adrenalyn XL' },
+  { name: 'Sticker Album Road to FIFA World Cup' },
+  { name: 'Sticker Album Premier League' },
+  { name: 'Sticker Album La Liga' },
+  { name: 'Sticker Album Calciatori Serie A' },
+  { name: 'Sticker Album UEFA Champions League' },
+  { name: 'Sticker Album Copa América' },
+  { name: 'Sticker Album FIFA 365' },
+  { name: 'Adrenalyn XL UEFA Champions League' },
+  { name: 'Adrenalyn XL Premier League' },
+  { name: 'Adrenalyn XL La Liga' },
+  { name: 'Adrenalyn XL Serie A' },
+  { name: 'Adrenalyn XL Ligue 1' },
+  { name: 'Adrenalyn XL Bundesliga' },
+  { name: 'Adrenalyn XL FIFA World Cup' },
+  { name: 'Adrenalyn XL UEFA Euro' },
+  { name: 'Adrenalyn XL Copa América' },
+  { name: 'Adrenalyn XL FIFA 365' },
+  { name: 'Megacracks La Liga' },
+  { name: 'FIFA Top Class' },
+  { name: 'Premier League Top Class' },
+  { name: 'Top Class' },
   { name: 'Khác' },
 ];
 
 const SOCCER_TOPPS_SETS: SetConfig[] = [
+  // UEFA Club Competitions (2023-24 onwards)
+  { name: 'UEFA Club Competitions' },
   { name: 'Chrome UEFA Club Competitions' },
-  { name: 'Chrome Bundesliga' },
-  { name: 'Chrome MLS' },
-  { name: "Chrome UEFA Women's Champions League" },
+  { name: 'Chrome Sapphire UEFA Club Competitions' },
+  { name: 'Chrome Logofractor UEFA Club Competitions' },
   { name: 'Finest UEFA Club Competitions' },
-  { name: 'Finest Bundesliga' },
-  { name: 'Match Attax UEFA Champions League' },
-  { name: 'Match Attax Premier League' },
-  { name: 'Match Attax Bundesliga' },
+  { name: 'Finest Flashbacks UEFA Club Competitions' },
+  { name: 'Museum Collection UEFA Club Competitions' },
+  { name: 'Merlin Chrome UEFA Club Competitions' },
   { name: 'Merlin Heritage UEFA' },
-  { name: 'Stadium Club Chrome' },
-  { name: 'Inception UEFA' },
-  { name: 'UEFA Living Set' },
+  { name: 'Stadium Club Chrome UEFA Club Competitions' },
+  { name: 'Inception UEFA Club Competitions' },
+  { name: 'Deco UEFA Club Competitions' },
+  { name: 'Gold UEFA Club Competitions' },
+  { name: 'Simplicidad UEFA Club Competitions' },
+  { name: 'Superstars UEFA Club Competitions' },
+  { name: 'Definitive Collection UEFA Club Competitions' },
+  { name: 'Reverence UEFA Club Competitions' },
+  { name: 'Impact UEFA Club Competitions' },
+  { name: 'Jade Edition UEFA Club Competitions' },
+  { name: 'Japan Edition UEFA Club Competitions' },
+  { name: 'Jogaço UEFA Club Competitions' },
+  { name: 'Carnaval UEFA Club Competitions' },
+  { name: 'Decades 1990s Edition UEFA Club Competitions' },
+  { name: '1st Edition UEFA Club Competitions' },
+  { name: 'Knockout UEFA Club Competitions' },
+  { name: 'Summer Signings UEFA Club Competitions' },
+  { name: 'Living Set UEFA Club Competitions' },
+  { name: 'Platinum Curated Set UEFA Club Competitions' },
+  { name: 'Match Attax UEFA Club Competitions' },
+  { name: 'UEFA Club Competitions Stickers' },
+  // UEFA Champions League (up to 2022-23)
+  { name: 'UEFA Champions League' },
+  { name: 'Chrome UEFA Champions League' },
+  { name: 'Chrome Sapphire UEFA Champions League' },
+  { name: 'Finest UEFA Champions League' },
+  { name: 'Finest Flashbacks UEFA Champions League' },
+  { name: 'Museum Collection UEFA Champions League' },
+  { name: 'Merlin Chrome UEFA Champions League' },
+  { name: 'Stadium Club Chrome UEFA Champions League' },
+  { name: 'Inception UEFA Champions League' },
+  { name: 'Deco UEFA Champions League' },
+  { name: 'Gold UEFA Champions League' },
+  { name: 'Simplicidad UEFA Champions League' },
+  { name: 'Dynasty UEFA Champions League' },
+  { name: 'Pearl UEFA Champions League' },
+  { name: 'Crystal Premium UEFA Champions League' },
+  { name: 'Knockout UEFA Champions League' },
+  { name: 'Match Attax UEFA Champions League' },
+  { name: 'Match Attax Chrome UEFA Champions League' },
+  { name: 'Match Attax Fire UEFA Champions League' },
+  { name: 'Best of the Best UEFA Champions League' },
+  { name: 'O Jogo Bonito UEFA Champions League' },
+  { name: 'Football Festival by Steve Aoki UEFA Champions League' },
+  { name: 'The Lost Rookies UEFA Champions League' },
+  { name: 'Summer Signings UEFA Champions League' },
+  { name: 'Curated Set UEFA Champions League' },
+  { name: 'UEFA Champions League 30 Seasons Celebration' },
+  { name: 'UEFA Champions League Final' },
+  { name: 'UEFA Champions League Stickers' },
   { name: 'Now UEFA Champions League' },
+  { name: 'Now UEFA Europa League' },
+  // UEFA Women's / Euro / national teams
+  { name: "Chrome UEFA Women's Champions League" },
+  { name: "Chrome Sapphire UEFA Women's Champions League" },
+  { name: "Knockout UEFA Women's Champions League" },
+  { name: "Now UEFA Women's Champions League" },
+  { name: "Merlin UEFA Women's Euro" },
+  { name: 'Chrome UEFA Euro' },
+  { name: 'Chrome Sapphire UEFA Euro' },
+  { name: 'Finest Road to UEFA Euro' },
+  { name: 'Pristine Road to UEFA Euro' },
+  { name: 'Match Attax UEFA Euro' },
+  { name: 'UEFA Euro Stickers' },
+  { name: 'Chrome Road to UEFA Nations League Finals' },
+  { name: 'Bowman Chrome Road to UEFA Under-21 Championship' },
+  { name: 'Argentina Official Team Set' },
+  { name: 'Argentina World Champions' },
+  { name: 'Argentina Fileteado' },
+  { name: 'Lineage Argentina' },
+  { name: 'Focus Argentina' },
+  { name: 'Polska Official Fan Set' },
+  // Premier League
+  { name: 'Premier League' },
+  { name: 'Chrome Premier League' },
+  { name: 'Chrome Sapphire Premier League' },
+  { name: 'Chrome Logofractor Premier League' },
+  { name: 'Finest Premier League' },
+  { name: 'Merlin Premier League' },
+  { name: 'Pristine Premier League' },
+  { name: 'Gold Premier League' },
+  { name: 'Royalty Premier League' },
+  { name: 'Decades 1990s Edition Premier League' },
+  { name: 'Match Attax Premier League' },
+  { name: 'Match Attax Extra Premier League' },
+  { name: 'Merlin Premier League Stickers' },
+  { name: 'Premier Gold' },
+  { name: 'Premier Club' },
+  { name: 'Premier League Platinum' },
+  // Bundesliga
+  { name: 'Bundesliga' },
+  { name: 'Chrome Bundesliga' },
+  { name: 'Chrome Sapphire Bundesliga' },
+  { name: 'Finest Bundesliga' },
+  { name: 'Inception Bundesliga' },
+  { name: 'Stadium Club Chrome Bundesliga' },
+  { name: 'Gold Bundesliga' },
+  { name: 'Midnight Bundesliga' },
+  { name: 'Tier One Bundesliga' },
+  { name: 'Jade Edition Bundesliga' },
+  { name: 'Match Attax Bundesliga' },
+  { name: 'Match Attax Chrome Bundesliga' },
+  { name: 'Match Attax Heroes Bundesliga' },
+  { name: 'Bundesliga Stars of the Season' },
+  { name: 'Bundesliga International Stars' },
+  { name: 'Bundesliga Summer Signings' },
+  { name: 'Bundesliga 60 Years Celebration' },
+  { name: 'Bundesliga Japan Edition' },
+  { name: 'Bundesliga Stickers' },
+  { name: 'Now Bundesliga' },
+  { name: 'Platinum Curated Set Bundesliga' },
+  // MLS
+  { name: 'MLS' },
+  { name: 'Chrome MLS' },
+  { name: 'Chrome Sapphire MLS' },
+  { name: 'Finest MLS' },
+  { name: 'Inception MLS' },
+  { name: 'Superstars MLS' },
+  { name: 'MLS 30th Anniversary Collection' },
+  // Club releases
+  { name: 'Official Team Set' },
+  { name: 'Official Fan Set' },
+  { name: 'Chrome FC Barcelona' },
+  { name: 'Chrome FC Bayern München' },
+  { name: 'Chrome Borussia Dortmund' },
+  { name: 'Chrome Liverpool FC' },
+  { name: 'Chrome Juventus' },
+  { name: 'Chrome Arsenal' },
+  { name: 'Chrome Atlético de Madrid' },
+  { name: 'Chrome RB Leipzig' },
+  { name: 'Chrome FC Red Bull Salzburg' },
+  { name: 'Chrome Deluxe Edition Manchester United' },
+  { name: 'Palatial Liverpool FC' },
+  { name: 'Palatial Manchester United' },
+  { name: 'Palatial Real Madrid CF' },
+  { name: 'Lineage FC Bayern München' },
+  { name: 'Lineage Chelsea FC' },
+  { name: 'Focus FC Barcelona' },
+  { name: 'Focus Borussia Dortmund' },
+  { name: 'Focus Liverpool FC' },
+  { name: 'Forever FC Barcelona' },
+  { name: 'Forever FC Bayern München' },
+  { name: 'Forever Arsenal' },
+  { name: 'Forever Manchester City' },
+  { name: 'Winners Collection Arsenal' },
+  { name: 'Winners Collection Paris Saint-Germain' },
+  { name: 'Exhibition Paris Saint-Germain' },
+  { name: 'Premium Paris Saint-Germain' },
+  { name: 'Premium Borussia Dortmund' },
+  { name: 'Vernissage Borussia Dortmund' },
+  { name: 'Los Blancos Real Madrid CF' },
+  { name: 'Blue Moon Manchester City' },
+  { name: 'Triplete FC Barcelona' },
+  { name: 'FC Barcelona 125 Years Anniversary' },
+  { name: 'FC Bayern München 125 Years Anniversary' },
+  { name: 'AFC Ajax 125th Anniversary' },
+  { name: 'AC Milan 125 Anniversario' },
+  { name: "Paris Saint-Germain Champions d'Europe" },
+  { name: 'Project 22' },
   { name: 'Khác' },
 ];
 
-/**
- * Two more brands that the catalogue already carries.
- *
- * The crawled `soccer_cards` table has 30 Leaf cards (2017-2025) and 15 Futera
- * (2018-2025), neither of which a seller could pick — so those listings had to
- * be filed under a publisher they do not belong to. The crawl records no set
- * names for either, so these are the brands' own flagship lines.
- */
 const SOCCER_LEAF_SETS: SetConfig[] = [
-  { name: 'Leaf Metal' },
+  { name: 'Leaf Metal Soccer' },
+  { name: 'Leaf Metal Soccer Stars' },
   { name: 'Leaf Ultimate' },
   { name: 'Leaf Trinity' },
+  { name: 'Leaf Vivid Soccer' },
+  { name: 'Leaf Signature Series Soccer' },
+  { name: 'Leaf Continuum Soccer' },
+  { name: 'Leaf Goal Soccer' },
+  { name: 'Leaf Glory of the Game Soccer' },
+  { name: 'Leaf Electrum Soccer' },
+  { name: 'Leaf Immortal Collection Soccer' },
+  { name: 'Leaf Autographed Soccer Jersey Edition' },
+  { name: 'Leaf Soccer Blaster' },
   { name: 'Leaf Best of Soccer' },
+  { name: 'Pro Set Soccer' },
+  { name: 'Pro Set Metal Soccer' },
   { name: 'Khác' },
 ];
 
 const SOCCER_FUTERA_SETS: SetConfig[] = [
+  // Modern (2005 onwards)
   { name: 'Futera Unique' },
-  { name: 'Futera Ultimates' },
-  { name: 'Futera World Football' },
+  { name: 'Futera Unique Live' },
+  { name: 'Futera Unique FC Barcelona' },
+  { name: 'Futera Unique Liverpool FC' },
+  { name: 'Futera Unique Arsenal' },
+  { name: 'Futera Unique Manchester City' },
+  { name: 'Futera Unique Paris Saint-Germain' },
+  { name: 'Futera Unique Olympique de Marseille' },
+  { name: 'Futera Unique Borussia Mönchengladbach' },
+  { name: 'Futera Unique Wolverhampton Wanderers' },
+  { name: 'Futera World Football FX' },
+  { name: 'Futera FX Club Edition' },
+  { name: 'Futera World Football Platinum' },
+  { name: 'Futera Platinum Club Edition' },
+  { name: 'Futera Fans Selection World Football' },
+  { name: 'Futera Fans Selection Club Edition' },
+  { name: 'Futera Club Live' },
+  { name: 'Futera Incredible' },
+  { name: 'Futera Headliners' },
+  { name: 'Futera Goal' },
+  { name: 'Futera Season Review' },
+  { name: 'Futera Prominent Sets' },
+  { name: 'Futera World Football Online' },
+  { name: 'Futera World Stars Foil Pack' },
+  // Vintage (1994-2001)
+  { name: 'Futera Platinum' },
+  { name: 'Futera Fans Selection' },
+  { name: 'Futera Manchester United' },
+  { name: 'Futera World Cup Greats Platinum' },
+  { name: 'Futera NSL Soccer' },
   { name: 'Khác' },
 ];
 
@@ -219,19 +504,91 @@ function soccerSeasons(): string[] {
 // ────────────────────────────────────────────
 
 const BASKETBALL_PANINI_SETS: SetConfig[] = [
+  // Prizm / Select / Mosaic / Donruss
   { name: 'Prizm NBA' },
+  { name: 'Prizm Draft Picks' },
+  { name: 'Prizm Black' },
+  { name: 'Prizm Deca' },
+  { name: 'Prizm Monopoly' },
+  { name: 'Prizm Premium Factory Set' },
   { name: 'Select NBA' },
+  { name: 'Select Draft Picks' },
   { name: 'Mosaic NBA' },
   { name: 'Donruss NBA' },
+  { name: 'Donruss Optic' },
+  { name: 'Donruss Elite' },
+  // Hoops / Court Kings / Contenders / Chronicles
   { name: 'Hoops NBA' },
-  { name: 'Immaculate NBA' },
-  { name: 'National Treasures NBA' },
+  { name: 'Hoops Premium Stock' },
   { name: 'Court Kings NBA' },
   { name: 'Contenders NBA' },
+  { name: 'Contenders Optic' },
+  { name: 'Crown Royale' },
+  { name: 'Chronicles NBA' },
+  { name: 'Chronicles Draft Picks' },
   { name: 'Revolution NBA' },
   { name: 'Obsidian NBA' },
   { name: 'Origins NBA' },
   { name: 'Spectra NBA' },
+  { name: 'Phoenix' },
+  { name: 'Photogenic' },
+  { name: 'Recon' },
+  { name: 'Illusions' },
+  { name: 'Absolute' },
+  { name: 'Certified' },
+  { name: 'Status' },
+  { name: 'Threads' },
+  { name: 'Encased' },
+  { name: 'Totally Certified' },
+  { name: 'Silhouette' },
+  { name: 'Signature Series' },
+  { name: 'One and One' },
+  { name: 'Black' },
+  { name: 'Haunted Hoops' },
+  // Premium
+  { name: 'Noir' },
+  { name: 'Eminence' },
+  { name: 'Impeccable' },
+  { name: 'Immaculate NBA' },
+  { name: 'National Treasures NBA' },
+  { name: 'Flawless' },
+  // Stickers / on-demand
+  { name: 'NBA Sticker & Card Collection' },
+  { name: 'NBA Top Class' },
+  { name: 'Instant' },
+  { name: 'Khác' },
+];
+
+const BASKETBALL_TOPPS_SETS: SetConfig[] = [
+  // NBA (Topps holds the licence from 2025-26)
+  { name: 'Basketball' },
+  { name: 'Chrome Basketball' },
+  { name: 'Chrome Black Basketball' },
+  { name: 'Chrome Sapphire Basketball' },
+  { name: 'Chrome Update Series Basketball' },
+  { name: 'Chrome Update Sapphire Basketball' },
+  { name: 'Cosmic Chrome Basketball' },
+  { name: 'Finest Basketball' },
+  { name: 'Inception Basketball' },
+  { name: 'Midnight Basketball' },
+  { name: 'Motif Basketball' },
+  { name: 'Pristine Basketball' },
+  { name: 'Royalty Basketball' },
+  { name: 'Definitive Collection Basketball' },
+  { name: 'Signature Class Basketball' },
+  { name: 'Holiday Basketball' },
+  { name: 'Topps 3 Basketball' },
+  { name: 'Chrome Cactus Jack Basketball' },
+  { name: 'Now Basketball' },
+  // Other leagues / draft
+  { name: 'Chrome OTE Basketball' },
+  { name: 'Chrome NBL Basketball' },
+  { name: 'NBL Basketball' },
+  { name: 'G League Basketball' },
+  { name: "Chrome McDonald's All American" },
+  { name: 'Bowman Basketball' },
+  { name: 'Bowman Sapphire Basketball' },
+  { name: 'Bowman University Chrome' },
   { name: 'Khác' },
 ];
 
@@ -244,41 +601,24 @@ function basketballSeasons(): string[] {
 }
 
 // ────────────────────────────────────────────
-// Yu-Gi-Oh — Static sets (popular ones)
-// ────────────────────────────────────────────
-
-const YUGIOH_SETS: SetConfig[] = [
-  { name: 'The Infinite Forbidden', code: 'INFO' },
-  { name: 'Rage of the Abyss', code: 'ROTA' },
-  { name: 'Legacy of Destruction', code: 'LEDE' },
-  { name: 'Phantom Nightmare', code: 'PHNI' },
-  { name: 'Age of Overlord', code: 'AGOV' },
-  { name: 'Duelist Nexus', code: 'DUNE' },
-  { name: 'Cyberstorm Access', code: 'CYAC' },
-  { name: 'Darkwing Blast', code: 'DABL' },
-  { name: 'Power of the Elements', code: 'POTE' },
-  { name: 'Dimension Force', code: 'DIFO' },
-  { name: '25th Anniversary Rarity Collection', code: 'RA02' },
-  { name: 'Maximum Gold: El Dorado', code: 'MGED' },
-  { name: 'Ghosts From the Past', code: 'GFTP' },
-  { name: 'Legendary Duelists Collections' },
-  { name: 'Structure Deck' },
-  { name: 'Legend of Blue-Eyes White Dragon', code: 'LOB' },
-  { name: 'Metal Raiders', code: 'MRD' },
-  { name: 'Khác', code: 'OTHER' },
-];
-
-// ────────────────────────────────────────────
 // F1 — Static sets
 // ────────────────────────────────────────────
 
 const F1_TOPPS_SETS: SetConfig[] = [
+  { name: 'Formula 1' },
   { name: 'Chrome Formula 1' },
-  { name: 'Finest Formula 1' },
-  { name: 'Turbo Attax Formula 1' },
-  { name: 'Dynasty Formula 1' },
   { name: 'Chrome Sapphire Formula 1' },
+  { name: 'Chrome Logofractor Formula 1' },
+  { name: 'Finest Formula 1' },
+  { name: 'Dynasty Formula 1' },
+  { name: 'Eccellenza Formula 1' },
+  { name: 'Lights Out Formula 1' },
+  { name: 'Paddock Pass Formula 1' },
+  { name: 'Turbo Attax Formula 1' },
+  { name: 'Turbo Attax Fire Formula 1' },
   { name: 'Now Formula 1' },
+  { name: 'Formula 1 Stickers' },
+  { name: 'Fanatics Fest Formula 1' },
   { name: 'Khác' },
 ];
 
@@ -306,7 +646,7 @@ export const CARD_CATALOG: CategoryConfig[] = [
     value: 'Pokémon',
     hasSeasons: false,
     dbSets: true,
-    dbSetSource: { view: 'pokemon_sets_en', viewJp: 'pokemon_sets_jp' },
+    dbSetSource: { groups: { en: 3, jp: 85 } },
     publishers: [
       { name: 'The Pokémon Company', sets: [] }, // sets loaded from DB
     ],
@@ -333,6 +673,7 @@ export const CARD_CATALOG: CategoryConfig[] = [
     seasons: basketballSeasons,
     publishers: [
       { name: 'Panini', sets: BASKETBALL_PANINI_SETS },
+      { name: 'Topps', sets: BASKETBALL_TOPPS_SETS },
     ],
   },
   {
@@ -341,7 +682,7 @@ export const CARD_CATALOG: CategoryConfig[] = [
     value: 'One Piece',
     hasSeasons: false,
     dbSets: true,
-    dbSetSource: { categoryId: 68 },
+    dbSetSource: { groups: { other: 68 } },
     publishers: [
       { name: 'Bandai', sets: [] }, // sets loaded from DB
     ],
@@ -351,8 +692,10 @@ export const CARD_CATALOG: CategoryConfig[] = [
     labelEn: 'Yu-Gi-Oh',
     value: 'Yu-Gi-Oh',
     hasSeasons: false,
+    dbSets: true,
+    dbSetSource: { groups: { other: 2 } },
     publishers: [
-      { name: 'Konami', sets: YUGIOH_SETS },
+      { name: 'Konami', sets: [] }, // sets loaded from DB
     ],
   },
   {
@@ -419,7 +762,7 @@ export function getStaticSets(categoryValue: string, publisherName?: string): Se
 }
 
 /**
- * Fetch sets from the database for DB-driven categories (Pokemon, One Piece).
+ * Fetch sets from the database for DB-driven categories (Pokemon, One Piece, Yu-Gi-Oh).
  * Returns a deduplicated, sorted array of non-empty set names.
  */
 export async function fetchDbSets(categoryValue: string): Promise<string[]> {
@@ -438,8 +781,17 @@ export interface GroupedSets {
 
 /**
  * Fetch sets grouped by language (EN/JP) for categories that have both.
- * For Pokemon: EN = pokemon_sets_en, JP = pokemon_sets_jp
- * For others: all sets go into "other"
+ * For Pokemon: EN = tcgcsv_groups category 3, JP = tcgcsv_groups category 85
+ * For One Piece (68) and Yu-Gi-Oh (2): all sets go into "other"
+ *
+ * Reads the group (set) table rather than deriving sets from the products
+ * (the `pokemon_sets_*` views, or a distinct on `tcgcsv_products.set_name`):
+ * a set only gets into those once its cards are synced, and the Pokemon views
+ * further require a collector number, so a set whose cards have none on
+ * TCGplayer (most pre-2010 JP sets, and any set listed before its cards are)
+ * never appeared, and a seller holding one of those cards had nothing to
+ * pick. Group names are what `set_name` holds on the products, so existing
+ * listings still match.
  */
 export async function fetchDbSetsGrouped(categoryValue: string): Promise<GroupedSets> {
   const config = getCategoryConfig(categoryValue);
@@ -448,46 +800,25 @@ export async function fetchDbSetsGrouped(categoryValue: string): Promise<Grouped
   const supabase = getSupabaseClient();
   const result: GroupedSets = { en: [], jp: [], other: [] };
 
-  const extractNames = (data: any[]): string[] => {
-    return data
-      .map((d: any) => d.set_name)
+  const fetchGroupNames = async (categoryId: number): Promise<string[]> => {
+    const { data, error } = await supabase
+      .from('tcgcsv_groups')
+      .select('name')
+      .eq('category_id', categoryId)
+      .limit(2000);
+    if (error || !data) return [];
+    const names = data
+      .map((d: any) => d.name)
       .filter((name: any) => name && typeof name === 'string' && name.trim())
       .map((name: string) => name.trim());
+    return Array.from(new Set(names)).sort();
   };
 
   try {
-    // Fetch from primary view (e.g. pokemon_sets_en)
-    if (config.dbSetSource.view) {
-      const { data, error } = await supabase
-        .from(config.dbSetSource.view)
-        .select('set_name');
-      if (!error && data) {
-        result.en = Array.from(new Set(extractNames(data))).sort();
-      }
-    }
-
-    // Fetch from JP view if exists (e.g. pokemon_sets_jp)
-    if (config.dbSetSource.viewJp) {
-      const { data, error } = await supabase
-        .from(config.dbSetSource.viewJp)
-        .select('set_name');
-      if (!error && data) {
-        result.jp = Array.from(new Set(extractNames(data))).sort();
-      }
-    }
-
-    // Fetch from tcgcsv_products by category_id (One Piece, etc.)
-    if (config.dbSetSource.categoryId) {
-      const { data, error } = await supabase
-        .from('tcgcsv_products')
-        .select('set_name')
-        .eq('category_id', config.dbSetSource.categoryId)
-        .not('set_name', 'is', null)
-        .limit(2000);
-      if (!error && data) {
-        result.other = Array.from(new Set(extractNames(data))).sort();
-      }
-    }
+    const { en, jp, other } = config.dbSetSource.groups;
+    if (en) result.en = await fetchGroupNames(en);
+    if (jp) result.jp = await fetchGroupNames(jp);
+    if (other) result.other = await fetchGroupNames(other);
   } catch (err) {
     console.error('Failed to fetch DB sets for', categoryValue, err);
   }
