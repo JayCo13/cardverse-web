@@ -11,10 +11,12 @@
  * the Pokémon materialized views stay consistent, and records a price-
  * history point ONLY when a product's market price changed.
  *
- * Categories: 3 = Pokémon EN, 85 = Pokémon JP.
+ * Categories: 3 = Pokémon EN, 85 = Pokémon JP (2 = Yu-Gi-Oh, 68 = One Piece
+ * for --groups-only, which the sell form's set picker reads and needs no cards).
  * Usage:
  *   npx tsx scripts/crawl-pokemon-tcgcsv.ts            # both EN + JP
  *   npx tsx scripts/crawl-pokemon-tcgcsv.ts --category 3
+ *   npx tsx scripts/crawl-pokemon-tcgcsv.ts --category 2 --groups-only   # sets only, no products
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -29,7 +31,7 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 }
 
 const TCGCSV_BASE = 'https://tcgcsv.com/tcgplayer';
-const CATEGORIES: Record<number, string> = { 3: 'Pokémon EN', 85: 'Pokémon JP' };
+const CATEGORIES: Record<number, string> = { 3: 'Pokémon EN', 85: 'Pokémon JP', 2: 'Yu-Gi-Oh', 68: 'One Piece' };
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -39,10 +41,10 @@ interface TcgPrice { productId: number; lowPrice: number | null; midPrice: numbe
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-// tcgcsv.com (Cloudflare) returns 401 to the default node/undici User-Agent.
-// A browser UA is accepted — this is what makes the fetch work from ANY host
-// (local, Supabase edge, GitHub Actions); it was never an IP block.
-const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+// tcgcsv.com returns 401 unless the User-Agent names the application as
+// "Name/X.Y.Z" — since 2026-09 a browser UA is refused too ("Your User-Agent
+// has been blocked. Please identify your application"). It is not an IP block.
+const UA = 'CardVerse/1.0 (+https://cardversehub.com)';
 
 async function fetchJson(url: string): Promise<any> {
     const res = await fetch(url, { headers: { 'User-Agent': UA } });
@@ -160,7 +162,7 @@ async function processGroup(categoryId: number, group: TcgGroup): Promise<{ prod
     return { products: dbProducts.length, history: historyCount };
 }
 
-async function syncCategory(categoryId: number): Promise<void> {
+async function syncCategory(categoryId: number, groupsOnly: boolean): Promise<void> {
     const label = CATEGORIES[categoryId] || `category ${categoryId}`;
     console.log(`\n📦 ${label} — fetching groups...`);
     const groups: TcgGroup[] = (await fetchJson(`${TCGCSV_BASE}/${categoryId}/groups`)).results || [];
@@ -177,6 +179,7 @@ async function syncCategory(categoryId: number): Promise<void> {
     }));
     const { error: gErr } = await supabase.from('tcgcsv_groups').upsert(dbGroups, { onConflict: 'group_id' });
     if (gErr) console.error(`   ❌ groups: ${gErr.message}`);
+    if (groupsOnly) { console.log(`📊 ${label} done: groups only`); return; }
 
     // Process every group (newest first), gentle rate limit to stay unblocked.
     const sorted = groups.sort((a, b) =>
@@ -194,10 +197,12 @@ async function syncCategory(categoryId: number): Promise<void> {
 async function main() {
     const argIdx = process.argv.indexOf('--category');
     const cats = argIdx !== -1 ? [parseInt(process.argv[argIdx + 1], 10)] : [3, 85];
+    const groupsOnly = process.argv.includes('--groups-only');
 
-    console.log(`⚡ Pokémon TCGCSV crawler (local) — categories: ${cats.join(', ')}`);
+    console.log(`⚡ Pokémon TCGCSV crawler (local) — categories: ${cats.join(', ')}${groupsOnly ? ' (groups only)' : ''}`);
     try {
-        for (const c of cats) await syncCategory(c);
+        for (const c of cats) await syncCategory(c, groupsOnly);
+        if (groupsOnly) { console.log('\n🎉 Groups crawl complete.'); return; }
 
         // Refresh the Pokémon materialized views (DB-side RPC, not IP-blocked).
         console.log('\n🔄 Refreshing Pokémon materialized views...');
