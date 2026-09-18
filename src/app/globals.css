@@ -139,6 +139,16 @@ body {
   opacity: 0;
 }
 
+/* Hero badges bob gently around the illustration */
+@keyframes hero-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.animate-hero-float {
+  animation: hero-float 4s ease-in-out infinite;
+}
+
 /* Image shimmer loading effect */
 @keyframes shimmer {
   0% { background-position: -200% 0; }

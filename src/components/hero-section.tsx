@@ -1,179 +1,167 @@
-"use client";
+'use client';
 
-import React from 'react';
-import { useVisibleCycle } from '@/hooks/use-visible-cycle';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { ArrowRight, Storefront, Handshake, ShieldCheck } from '@phosphor-icons/react';
+import useEmblaCarousel from 'embla-carousel-react';
+import Autoplay from 'embla-carousel-autoplay';
+import { Storefront, Handshake, ShieldCheck, Truck } from '@phosphor-icons/react';
 import { useLocalization } from '@/context/localization-context';
-import { PlaceHolderImages } from '@/lib/placeholder-images';
+import { homeAnnouncements, type HomeAnnouncement } from '@/lib/home-announcements';
+import { AnnouncementActions } from '@/components/announcements/announcement-actions';
 
-// Tiny 8x8 blur placeholders generated for each hero image
+const slides = homeAnnouncements.filter(item => item.enabled).sort((a, b) => a.order - b.order);
+
+// Tiny 8x8 blur placeholder shown while the card images stream in.
 const BLUR_PLACEHOLDER = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAMklEQVQI12NwdHZh+P+fgYGBwdHZhcHR2YXh/38GBgZGBkcnZwZHJ2eG//8ZGBgYHZ1dAFP8Dq94hkmuAAAAAElFTkSuQmCC';
+
+// Only keyboard focus pauses the slideshow; a mouse click on a control should not stall it.
+// Older Safari throws on the unknown pseudo-class, in which case any focus counts.
+function keyboardFocus(target: Element) {
+  try { return target.matches(':focus-visible'); } catch { return true; }
+}
+
+const badgeIcons = { storefront: Storefront, shield: ShieldCheck, truck: Truck, handshake: Handshake };
+// Offsets sit just past the laptop's edges, like sticky notes pinned around it.
+// On phones the box is narrow, so badges hug the corners and overlap the laptop's edge like the reference mockup.
+const badgePositions = {
+  tl: 'left-0 top-0 sm:top-[6%]', tr: 'right-0 top-[10%] sm:top-[2%] [animation-delay:1.3s]',
+  bl: 'left-0 bottom-[6%] sm:left-[2%] sm:bottom-[18%] [animation-delay:2.6s]', br: 'right-0 bottom-[2%] sm:right-[4%] sm:bottom-[10%] [animation-delay:0.7s]',
+};
+
+function HeroBadge({ label, icon, position }: NonNullable<HomeAnnouncement['badges']>[number]) {
+  const { t } = useLocalization();
+  const Icon = badgeIcons[icon];
+  return <div className={`absolute z-20 flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-[0_8px_30px_rgba(0,0,0,0.45)] backdrop-blur-md motion-safe:animate-hero-float sm:gap-2 sm:rounded-2xl sm:px-4 sm:py-2.5 sm:text-sm ${badgePositions[position]}`}>
+    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-orange-300 sm:h-7 sm:w-7"><Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" weight="fill" /></span>
+    <span className="whitespace-nowrap">{t(label)}</span>
+  </div>;
+}
 
 export function HeroSection() {
   const { t } = useLocalization();
-  const [activeIndex, setActiveIndex] = React.useState(1);
+  const root = useRef<HTMLElement>(null);
+  const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const focusNextSlide = useRef(false);
+  const [selected, setSelected] = useState(0);
+  const [focused, setFocused] = useState(false);
+  const [visible, setVisible] = useState(false);
+  const [hidden, setHidden] = useState(true);
+  const [reduced, setReduced] = useState(true);
+  const autoplay = useMemo(() => Autoplay({ delay: 5000, playOnInit: false, stopOnInteraction: true, stopOnFocusIn: false }), []);
+  const [viewport, api] = useEmblaCarousel({ loop: slides.length > 1, duration: reduced ? 0 : 25, watchFocus: false }, [autoplay]);
 
-  const images = [
-    { ...PlaceHolderImages.find(p => p.id === 'hero-3'), id: 'hero-3' }, // Left
-    { ...PlaceHolderImages.find(p => p.id === 'hero-2'), id: 'hero-2' }, // Center
-    { ...PlaceHolderImages.find(p => p.id === 'hero-1'), id: 'hero-1' }, // Right
-  ].filter(Boolean); // Ensure strictly defined images
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const motion = () => setReduced(media.matches);
+    const visibility = () => setHidden(document.hidden);
+    motion();
+    visibility();
+    media.addEventListener('change', motion);
+    document.addEventListener('visibilitychange', visibility);
+    const observer = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting), { threshold: 0.1 });
+    if (root.current) observer.observe(root.current);
+    return () => {
+      media.removeEventListener('change', motion);
+      document.removeEventListener('visibilitychange', visibility);
+      observer.disconnect();
+    };
+  }, []);
 
-  const getCardStyle = (index: number) => {
-    // Calculate relative position: 0 (active), 1 (right), -1 (left)
-    // For 3 items: 
-    // If active is 0: 0->0, 1->1 (right), 2->-1 (left)
-    // If active is 1: 0->-1 (left), 1->0, 2->1 (right)
-    // If active is 2: 0->1 (right), 1->-1 (left), 2->0
+  useEffect(() => {
+    if (!api) return;
+    const select = () => setSelected(api.selectedScrollSnap());
+    select();
+    api.on('select', select).on('reInit', select);
+    return () => { api.off('select', select).off('reInit', select); };
+  }, [api]);
 
-    let diff = (index - activeIndex);
-    // Adjust for circular wraparound
-    if (diff > 1) diff -= 3;
-    if (diff < -1) diff += 3;
+  // After a keyboard navigation the old slide turns inert, which would drop focus to <body>.
+  // Move focus onto the new slide before the browser's focus fixup runs so it stays inside the region.
+  useLayoutEffect(() => {
+    if (!focusNextSlide.current) return;
+    focusNextSlide.current = false;
+    slideRefs.current[selected]?.focus({ preventScroll: true });
+  }, [selected]);
 
-    // The fan's spread, scale and tilt come from CSS variables the container
-    // sets per breakpoint. On a 320px screen the desktop values (60% offset,
-    // 15deg tilt) push the side cards past the viewport edge and they get
-    // clipped by the section's overflow-hidden — hence the tighter mobile set.
-    if (diff === 0) {
-      // Center (Active)
-      return {
-        zIndex: 30,
-        transform: 'translateX(0) scale(var(--fan-center-scale))',
-        opacity: 1,
-        filter: 'brightness(1.1)'
-      };
-    } else if (diff === -1) {
-      // Left
-      return {
-        zIndex: 20,
-        transform: 'translateX(calc(-1 * var(--fan-x))) scale(var(--fan-scale)) rotate(calc(-1 * var(--fan-rot)))',
-        opacity: 0.9,
-        filter: 'brightness(0.7)'
-      };
-    } else {
-      // Right (diff === 1)
-      return {
-        zIndex: 20,
-        transform: 'translateX(var(--fan-x)) scale(var(--fan-scale)) rotate(var(--fan-rot))',
-        opacity: 0.9,
-        filter: 'brightness(0.7)'
-      };
-    }
-  };
+  const running = slides.length > 1 && !reduced;
+  useEffect(() => {
+    if (!api || slides.length < 2) return;
+    const sync = () => {
+      const plugin = api.plugins().autoplay;
+      if (running && visible && !hidden && !focused) plugin?.play();
+      else plugin?.stop();
+    };
+    sync();
+    // Restart the five-second interval after dragging, subject to visibility/focus guards.
+    api.on('reInit', sync).on('pointerUp', sync);
+    return () => { api.off('reInit', sync).off('pointerUp', sync); api.plugins().autoplay?.stop(); };
+  }, [api, running, visible, hidden, focused]);
 
-  // Auto-cycle images
-  const cycleRef = useVisibleCycle<HTMLDivElement>(() => setActiveIndex(prev => (prev + 1) % 3), 4000);
+  function navigate(index: number, viaKeyboard = false) {
+    if (viaKeyboard && root.current?.contains(document.activeElement)) focusNextSlide.current = true;
+    api?.scrollTo(index, reduced);
+    api?.plugins().autoplay?.reset();
+  }
 
-  return (
-    <div ref={cycleRef} className="relative w-full py-14 md:py-0 md:h-[80vh] md:min-h-[600px] background-grid-scan flex flex-col justify-center overflow-hidden">
-      {/* Background Gradient - adjusted to be more transparent at top/center to show grid */}
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/60 to-background z-10 pointer-events-none" />
-
-      {/* Radial gradient to highlight the center */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-orange-500/10 via-transparent to-transparent z-10 pointer-events-none" />
-
-      <div className="relative container mx-auto px-4 flex items-center z-20">
-        <div className="grid md:grid-cols-2 gap-10 md:gap-8 items-center w-full">
-          <div className="max-w-2xl animate-fade-in-up space-y-5 md:space-y-6 text-left will-change-transform">
-            <h1
-              className="text-3xl sm:text-4xl md:text-6xl font-extrabold !leading-tight tracking-tighter uppercase glitch-text"
-              style={{ fontFamily: "'Orbitron', sans-serif" }}
-              data-text="CardVerseHub"
-            >
-              CardVerseHub
-            </h1>
-            <div className="space-y-2 text-sm sm:text-base md:text-lg text-white/80 uppercase tracking-wide sm:tracking-widest">
-              <p>{t('hero_subtitle_1')}</p>
-              <p className="flex items-center gap-2">
-                <Storefront className="h-5 w-5 shrink-0 text-highlight" />
-                <span className="text-highlight">{t('hero_subtitle_2')}</span>
-              </p>
-              <p className="flex items-center gap-2">
-                <Handshake className="h-5 w-5 shrink-0 text-highlight" />
-                <span className="text-highlight">{t('hero_subtitle_3')}</span>
-              </p>
-              <p className="flex items-center gap-2">
-                <ShieldCheck className="h-5 w-5 shrink-0 text-highlight" weight="fill" />
-                <span className="text-highlight">{t('hero_subtitle_4')}</span>
-              </p>
-              <p>{t('hero_subtitle_5')}</p>
-            </div>
-            {/* The marketplace is the primary action now; the collection keeps
-                a place beside it because that page works for every visitor,
-                where /buy is still behind the beta curtain in middleware. */}
-            <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:gap-4">
-              <Link href="/buy" className="w-full sm:w-auto">
-                <Button
-                  size="lg"
-                  className="w-full bg-orange-500 hover:bg-orange-600 text-white border-none font-bold text-base sm:text-lg px-6 sm:px-8 py-5 sm:py-6 h-auto shadow-[0_0_15px_rgba(249,115,22,0.5)] hover:shadow-[0_0_25px_rgba(249,115,22,0.7)] transition-all duration-300 transform hover:scale-105 rounded-full sm:w-auto"
-                >
-                  {t('explore_community')}
-                  <div className="ml-2 bg-white/20 text-white rounded-full p-1">
-                    <ArrowRight className="h-4 w-4" />
-                  </div>
-                </Button>
-              </Link>
-              <Link href="/collection" className="w-full sm:w-auto">
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="w-full border-white/25 bg-white/5 text-white font-semibold text-base sm:text-lg px-6 sm:px-8 py-5 sm:py-6 h-auto rounded-full transition-all duration-300 hover:bg-white/10 hover:text-white sm:w-auto"
-                >
-                  {t('hero_secondary_cta')}
-                </Button>
-              </Link>
-            </div>
-          </div>
-
-          {/* Interactive Card Fan */}
-          <div
-            className="relative h-[240px] sm:h-[300px] md:h-[500px] w-full flex items-center justify-center animate-fade-in-up will-change-transform [--fan-x:44%] [--fan-scale:0.82] [--fan-rot:12deg] [--fan-center-scale:1.05] sm:[--fan-x:52%] sm:[--fan-scale:0.86] sm:[--fan-rot:14deg] md:[--fan-x:60%] md:[--fan-scale:0.9] md:[--fan-rot:15deg] md:[--fan-center-scale:1.1]"
-            style={{ animationDelay: '200ms' }}
-          >
-            {images.map((img, index) => {
-              if (!img) return null;
-              const style = getCardStyle(index);
-              const isActive = index === activeIndex;
-
-              return (
-                <div
-                  key={img.id}
-                  onClick={() => setActiveIndex(index)}
-                  className={`absolute w-[136px] h-[190px] sm:w-[160px] sm:h-[224px] md:w-[260px] md:h-[364px] rounded-2xl overflow-hidden shadow-2xl transition-all duration-500 ease-out cursor-pointer will-change-transform ${isActive ? 'hover:scale-115' : 'hover:scale-95'}`}
-                  style={{
-                    ...style,
-                    zIndex: style.zIndex // Explicitly set zIndex
-                  }}
-                >
-                  <Image
-                    src={img.id === 'hero-3' ? "/assets/imgmain3.jpg" : img.id === 'hero-2' ? "/assets/imgmain2.webp" : "/assets/imgmain.webp"}
-                    alt={img.description || "Hero Card"}
-                    data-ai-hint={img.imageHint}
-                    fill
-                    priority
-                    sizes="(max-width: 639px) 136px, (max-width: 767px) 160px, 260px"
-                    placeholder="blur"
-                    blurDataURL={BLUR_PLACEHOLDER}
-                    className={`object-cover rounded-2xl transition-all duration-500 ${isActive ? 'border-[4px] border-white/20' : 'border-[2px] border-white/10 grayscale-[0.3]'}`}
-                  />
-                  {/* Highlight overlay for inactive cards */}
-                  {!isActive && (
-                    <div className="absolute inset-0 bg-black/20 hover:bg-transparent transition-colors duration-300" />
-                  )}
-                  {/* Shine effect for active card */}
-                  {isActive && (
-                    <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 opacity-0 hover:opacity-100 transition-opacity duration-500" />
-                  )}
+  if (!slides.length) return null;
+  return <section ref={root} role="region" aria-roledescription="carousel" aria-label={t('hero_carousel')}
+    onFocusCapture={event => setFocused(keyboardFocus(event.target))}
+    onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}
+    onKeyDown={event => {
+      if (slides.length < 2 || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+      event.preventDefault();
+      navigate(selected + (event.key === 'ArrowLeft' ? -1 : 1), true);
+    }}
+    className="relative overflow-hidden bg-[#050505] background-grid-scan before:pointer-events-none after:pointer-events-none motion-reduce:before:animate-none motion-reduce:after:animate-none">
+    <div className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-b from-transparent via-background/60 to-background" />
+    <div className="pointer-events-none absolute inset-0 z-[1] bg-[radial-gradient(circle_at_center,rgba(249,115,22,0.1),transparent)]" />
+    <div ref={viewport} className="relative z-10 overflow-hidden touch-pan-y">
+      <div className="flex items-stretch">
+        {slides.map((slide, index) => {
+          // A single <h1> per page: the first slide owns it, the rest are section headings.
+          const Heading = index === 0 ? 'h1' : 'h2';
+          return <div key={slide.id} ref={el => { slideRefs.current[index] = el; }} role="group" aria-roledescription="slide" tabIndex={-1}
+            aria-label={`${t('hero_slide')} ${index + 1} / ${slides.length}`} aria-hidden={selected !== index} inert={selected !== index}
+            className="relative min-w-0 flex-[0_0_100%] outline-none">
+            <div className="container mx-auto grid h-full items-center gap-5 px-4 pb-4 pt-10 lg:min-h-[600px] lg:grid-cols-2 lg:gap-10 lg:py-12">
+              <div className="min-w-0 space-y-5">
+                <Heading className="text-[26px] min-[375px]:text-3xl sm:text-4xl lg:text-[42px] xl:text-6xl font-extrabold !leading-tight tracking-tighter uppercase glitch-text motion-reduce:animate-none motion-reduce:before:animate-none motion-reduce:after:animate-none"
+                  style={{ fontFamily: "'Orbitron', sans-serif" }} data-text="CardVerseHub">
+                  CardVerseHub
+                </Heading>
+                {slide.banner && <p className="text-base font-semibold uppercase tracking-wide text-highlight sm:text-lg lg:text-xl">{t('launch_marketplace')} {t('launch_status')}</p>}
+                <div className="space-y-2 text-sm text-white/80 uppercase tracking-wide sm:text-base sm:tracking-widest lg:text-lg">
+                  {slide.description.map((key, i) => {
+                    const Icon = slide.title === 'CardVerseHub' ? [null, Storefront, Handshake, ShieldCheck][i] : null;
+                    return <p key={key} className={Icon ? 'flex items-center gap-2 text-highlight' : undefined}>
+                      {Icon && <Icon className="h-5 w-5 shrink-0" weight={i === 3 ? 'fill' : 'regular'} />}
+                      <span>{t(key)}</span>
+                    </p>;
+                  })}
                 </div>
-              );
-            })}
-          </div>
-        </div>
+                <AnnouncementActions announcement={slide} hero />
+              </div>
+              <div className={`relative flex w-full items-center justify-center ${slide.illustration ? 'h-[300px] sm:h-[340px] lg:mx-6 lg:h-[500px] xl:h-[560px]' : 'h-[230px] sm:h-[290px] lg:h-[440px]'}`} aria-hidden="true">
+                {slide.illustration ? <>
+                  {/* Soft orange glow so the mockup sits on the dark grid instead of floating over it. */}
+                  <div className="pointer-events-none absolute inset-[10%] rounded-full bg-[radial-gradient(circle_at_center,rgba(249,115,22,0.28),transparent_65%)] blur-2xl" />
+                  <Image src={slide.illustration} alt="" fill priority={index === 0}
+                    sizes="(min-width: 1280px) 560px, (min-width: 1024px) 50vw, 100vw" className="object-contain drop-shadow-[0_24px_48px_rgba(0,0,0,0.6)]" />
+                  {slide.badges?.map(badge => <HeroBadge key={badge.label} {...badge} />)}
+                </> : slide.images.map((src, imageIndex) => <div key={src}
+                  className="absolute h-[168px] w-[120px] overflow-hidden rounded-xl border-2 border-white/20 shadow-2xl sm:h-[224px] sm:w-[160px] lg:h-[336px] lg:w-[240px]"
+                  style={{ transform: `translateX(${(imageIndex - 1) * 48}%) rotate(${(imageIndex - 1) * 13}deg) scale(${imageIndex === 1 ? 1.08 : 0.9})`, zIndex: imageIndex === 1 ? 2 : 1 }}>
+                  {/* Off-screen slides are clipped by the viewport, so native lazy-load would only start
+                    * once they scroll in; fetch eagerly and blur so the first autoplay tick is not blank. */}
+                  <Image src={src} alt="" fill priority={index === 0} loading={index === 0 ? undefined : 'eager'}
+                    placeholder="blur" blurDataURL={BLUR_PLACEHOLDER}
+                    sizes="(min-width: 1024px) 240px, (min-width: 640px) 160px, 120px" className="object-cover" />
+                </div>)}
+              </div>
+            </div>
+          </div>;
+        })}
       </div>
     </div>
-  );
+  </section>;
 }

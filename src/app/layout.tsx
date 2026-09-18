@@ -13,6 +13,7 @@ import { CardCacheProvider } from '@/contexts/card-cache-context';
 import { BuyerShippingQuotesProvider } from '@/components/buyer-shipping-quotes';
 import { AuthReady } from '@/components/auth-ready';
 import { Header } from '@/components/layout/header';
+import { LaunchBanner } from '@/components/announcements/launch-banner';
 import { Footer } from '@/components/layout/footer';
 import { SubscriptionProvider } from '@/hooks/useSubscription';
 
@@ -110,6 +111,7 @@ export default function RootLayout({
                         */}
                       <div className="flex min-h-screen flex-col">
                         <Header />
+                        <LaunchBanner />
                         {/* Grows to fill the viewport so the footer sits at the
                           * bottom on short pages, whether the page hands back a
                           * flex column of its own or a bare fragment. */}
