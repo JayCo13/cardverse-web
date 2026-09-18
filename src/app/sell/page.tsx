@@ -1,6 +1,7 @@
 
 'use client';
 
+import { namesMatch } from '@/lib/person-name';
 import { memo, useState, useEffect, useRef, useCallback } from 'react';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useRouter } from 'next/navigation';
@@ -469,14 +470,6 @@ export default function SellPage() {
   const [blockedAxis, setBlockedAxis] = useState<'document' | 'bank' | 'both' | null>(null);
   const [retryFlags, setRetryFlags] = useState<string[]>([]);
 
-  const normalizeVietnameseName = (value: string) => value
-    .toUpperCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^A-Z\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
   const isKycApproved = kycSession?.status === 'Approved' && !kycSession.consumed;
   const isKycInFlight = kycSession?.status === 'In Progress'
     || kycSession?.status === 'Not Started'
@@ -492,17 +485,10 @@ export default function SellPage() {
   // The name the provider actually read off the document. The server re-checks
   // every condition below before approving; this only keeps the user from
   // walking into a submission that is certain to bounce.
-  // Word order is not stable across a CCCD, a bank record and an MRZ, so
-  // compare the words as a set. Mirrors namesMatch() on the server, which is
-  // what actually decides.
-  const nameKey = (value: string) => {
-    const words = normalizeVietnameseName(value).split(' ').filter(Boolean);
-    return words.length ? words.sort().join(' ') : '';
-  };
+  // Use the same comparison as the server, which makes the final decision.
   const verifiedName = kycSession?.verified_full_name || '';
-  const isSubmittedNameMatch = !!nameKey(verifiedName)
-    && nameKey(fullName) === nameKey(verifiedName)
-    && nameKey(editableBankAccountName) === nameKey(verifiedName);
+  const isSubmittedNameMatch = namesMatch(fullName, verifiedName)
+    && namesMatch(editableBankAccountName, verifiedName);
 
   useEffect(() => {
     if (!authLoading && !user) setOpen(true);
