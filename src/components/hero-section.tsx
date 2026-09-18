@@ -6,7 +6,7 @@ import useEmblaCarousel from 'embla-carousel-react';
 import Autoplay from 'embla-carousel-autoplay';
 import { Storefront, Handshake, ShieldCheck, Truck } from '@phosphor-icons/react';
 import { useLocalization } from '@/context/localization-context';
-import { homeAnnouncements, type HomeAnnouncement } from '@/lib/home-announcements';
+import { announcementIllustration, homeAnnouncements, type HomeAnnouncement } from '@/lib/home-announcements';
 import { AnnouncementActions } from '@/components/announcements/announcement-actions';
 
 const slides = homeAnnouncements.filter(item => item.enabled).sort((a, b) => a.order - b.order);
@@ -21,24 +21,29 @@ function keyboardFocus(target: Element) {
 }
 
 const badgeIcons = { storefront: Storefront, shield: ShieldCheck, truck: Truck, handshake: Handshake };
-// Offsets sit just past the laptop's edges, like sticky notes pinned around it.
-// On phones the box is narrow, so badges hug the corners and overlap the laptop's edge like the reference mockup.
+// Desktop only: offsets sit just past the laptop's edges, like sticky notes pinned around it.
+// Below lg the badges are a static chip row under the mockup (see the slide markup) — percentage
+// offsets can't track the laptop across phone and tablet widths.
 const badgePositions = {
-  tl: 'left-0 top-0 sm:top-[6%]', tr: 'right-0 top-[10%] sm:top-[2%] [animation-delay:1.3s]',
-  bl: 'left-0 bottom-[6%] sm:left-[2%] sm:bottom-[18%] [animation-delay:2.6s]', br: 'right-0 bottom-[2%] sm:right-[4%] sm:bottom-[10%] [animation-delay:0.7s]',
+  tl: 'left-0 top-[6%]', tr: 'right-0 top-[2%] [animation-delay:1.3s]',
+  bl: 'left-[2%] bottom-[18%] [animation-delay:2.6s]', br: 'right-[4%] bottom-[10%] [animation-delay:0.7s]',
 };
 
-function HeroBadge({ label, icon, position }: NonNullable<HomeAnnouncement['badges']>[number]) {
+const badgeChip = 'items-center gap-2 rounded-2xl border border-white/15 bg-white/10 text-sm font-semibold text-white shadow-[0_8px_30px_rgba(0,0,0,0.45)] backdrop-blur-md';
+
+function HeroBadge({ label, icon, position, floating }: NonNullable<HomeAnnouncement['badges']>[number] & { floating: boolean }) {
   const { t } = useLocalization();
   const Icon = badgeIcons[icon];
-  return <div className={`absolute z-20 flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-[0_8px_30px_rgba(0,0,0,0.45)] backdrop-blur-md motion-safe:animate-hero-float sm:gap-2 sm:rounded-2xl sm:px-4 sm:py-2.5 sm:text-sm ${badgePositions[position]}`}>
+  return <div className={floating
+    ? `absolute z-20 hidden px-4 py-2.5 motion-safe:animate-hero-float lg:flex ${badgeChip} ${badgePositions[position]}`
+    : `inline-flex px-3 py-2 text-xs sm:text-sm ${badgeChip}`}>
     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-orange-300 sm:h-7 sm:w-7"><Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" weight="fill" /></span>
     <span className="whitespace-nowrap">{t(label)}</span>
   </div>;
 }
 
 export function HeroSection() {
-  const { t } = useLocalization();
+  const { t, locale } = useLocalization();
   const root = useRef<HTMLElement>(null);
   const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
   const focusNextSlide = useRef(false);
@@ -120,6 +125,7 @@ export function HeroSection() {
         {slides.map((slide, index) => {
           // A single <h1> per page: the first slide owns it, the rest are section headings.
           const Heading = index === 0 ? 'h1' : 'h2';
+          const illustration = announcementIllustration(slide, locale);
           return <div key={slide.id} ref={el => { slideRefs.current[index] = el; }} role="group" aria-roledescription="slide" tabIndex={-1}
             aria-label={`${t('hero_slide')} ${index + 1} / ${slides.length}`} aria-hidden={selected !== index} inert={selected !== index}
             className="relative min-w-0 flex-[0_0_100%] outline-none">
@@ -141,13 +147,16 @@ export function HeroSection() {
                 </div>
                 <AnnouncementActions announcement={slide} hero />
               </div>
-              <div className={`relative flex w-full items-center justify-center ${slide.illustration ? 'h-[300px] sm:h-[340px] lg:mx-6 lg:h-[500px] xl:h-[560px]' : 'h-[230px] sm:h-[290px] lg:h-[440px]'}`} aria-hidden="true">
-                {slide.illustration ? <>
+              <div className={illustration ? 'flex flex-col items-center gap-4 lg:block' : undefined} aria-hidden="true">
+              {/* The launch mockup is 4:3 (1448×1086) with its badges baked in: below lg it keeps that ratio at up to
+                * 560px wide so the laptop fills the width of a phone and sits centred on a tablet. */}
+              <div className={`relative flex w-full items-center justify-center ${illustration ? 'mx-auto aspect-[4/3] max-w-[560px] lg:mx-6 lg:aspect-auto lg:h-[500px] lg:max-w-none xl:h-[560px]' : 'h-[230px] sm:h-[290px] lg:h-[440px]'}`}>
+                {illustration ? <>
                   {/* Soft orange glow so the mockup sits on the dark grid instead of floating over it. */}
                   <div className="pointer-events-none absolute inset-[10%] rounded-full bg-[radial-gradient(circle_at_center,rgba(249,115,22,0.28),transparent_65%)] blur-2xl" />
-                  <Image src={slide.illustration} alt="" fill priority={index === 0}
-                    sizes="(min-width: 1280px) 560px, (min-width: 1024px) 50vw, 100vw" className="object-contain drop-shadow-[0_24px_48px_rgba(0,0,0,0.6)]" />
-                  {slide.badges?.map(badge => <HeroBadge key={badge.label} {...badge} />)}
+                  <Image key={illustration} src={illustration} alt="" fill priority={index === 0}
+                    sizes="(min-width: 1280px) 747px, (min-width: 1024px) 50vw, 560px" className="object-contain drop-shadow-[0_24px_48px_rgba(0,0,0,0.6)]" />
+                  {slide.badges?.map(badge => <HeroBadge key={badge.label} {...badge} floating />)}
                 </> : slide.images.map((src, imageIndex) => <div key={src}
                   className="absolute h-[168px] w-[120px] overflow-hidden rounded-xl border-2 border-white/20 shadow-2xl sm:h-[224px] sm:w-[160px] lg:h-[336px] lg:w-[240px]"
                   style={{ transform: `translateX(${(imageIndex - 1) * 48}%) rotate(${(imageIndex - 1) * 13}deg) scale(${imageIndex === 1 ? 1.08 : 0.9})`, zIndex: imageIndex === 1 ? 2 : 1 }}>
@@ -157,6 +166,11 @@ export function HeroSection() {
                     placeholder="blur" blurDataURL={BLUR_PLACEHOLDER}
                     sizes="(min-width: 1024px) 240px, (min-width: 640px) 160px, 120px" className="object-cover" />
                 </div>)}
+              </div>
+              {/* Phone / tablet: the same badges as a static row under the mockup. */}
+              {illustration && slide.badges && <div className="flex flex-wrap justify-center gap-2 lg:hidden">
+                {slide.badges.map(badge => <HeroBadge key={badge.label} {...badge} floating={false} />)}
+              </div>}
               </div>
             </div>
           </div>;
