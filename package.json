@@ -11,6 +11,7 @@
         "docs:legal": "node --experimental-strip-types --no-warnings scripts/export-legal-docs.mjs",
         "data:address": "node --no-warnings scripts/refresh-vn-address.mjs",
         "verify:khaigia": "node --experimental-strip-types --no-warnings scripts/verify-khai-gia.mts",
+        "verify:person-name": "node --experimental-strip-types --no-warnings --import ./scripts/alias-loader.mjs scripts/verify-person-name.mts",
         "verify:shipping": "node --experimental-strip-types --no-warnings --import ./scripts/alias-loader.mjs scripts/verify-shipping-math.mts"
     },
     "dependencies": {
