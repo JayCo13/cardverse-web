@@ -1990,7 +1990,7 @@ export default function CreateListingPage() {
                       is absent for categories without seasons — Pokémon and One
                       Piece — and a fixed three-column grid then left the last
                       third of the row empty. */}
-                  <div className={`grid grid-cols-1 gap-4 ${showSeasonPool ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+                  <div className={`grid grid-cols-1 gap-4 ${showSeasonPool ? 'md:grid-cols-2 lg:grid-cols-3' : 'md:grid-cols-2'}`}>
                     {/* Publisher pool */}
                     <div className="space-y-1.5">
                       <FormLabel>{copy.publisher}</FormLabel>
@@ -2030,7 +2030,7 @@ export default function CreateListingPage() {
                 </div>
               ) : freeTextMode ? (
                 /* ─── Free Text Mode (for "Khác" category) ─── */
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   <FormField
                     control={form.control}
                     name="freePublisher"
@@ -2071,7 +2071,7 @@ export default function CreateListingPage() {
                 </div>
               ) : (
                 /* ─── Structured Dropdowns ─── */
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {/* Publisher */}
                   <FormField
                     control={form.control}

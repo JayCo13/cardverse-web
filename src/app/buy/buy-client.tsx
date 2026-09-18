@@ -409,10 +409,10 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
           <p className="mt-2 text-muted-foreground md:mt-3">{t('buy_description')}</p>
         </div>
         <div className="flex gap-8">
-          <div className="hidden md:block w-1/4">
+          <div className="hidden xl:block xl:w-1/4">
             <FilterSidebar filters={filters} onFiltersChange={setFilters} showListingTypeFilter={false} showAdvancedFilters availableCards={saleCards} productFilter={productFilter} onProductFilterChange={flexibleProductsEnabled ? setProductFilter : undefined} />
           </div>
-          <div className="w-full md:w-3/4">
+          <div className="w-full xl:w-3/4">
             <div className="flex justify-between items-center mb-6">
               <p className="text-sm text-muted-foreground">
                 {t('showing_cards_for_sale')
@@ -425,7 +425,7 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
                 )}
               </p>
               <div className='flex items-center gap-4'>
-                <div className="md:hidden">
+                <div className="xl:hidden">
                   <Sheet open={isSidebarOpen} onOpenChange={setSidebarOpen}>
                     <SheetTrigger asChild>
                       <Button variant="outline" size="icon">

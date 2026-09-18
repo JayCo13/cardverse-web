@@ -440,7 +440,7 @@ export function Header() {
             </div>
           </div>
           <div className="flex-1 flex items-center justify-center">
-            <nav className="hidden lg:flex flex-row items-center gap-8 whitespace-nowrap text-sm font-medium">
+            <nav className="hidden lg:flex flex-row items-center gap-5 xl:gap-8 whitespace-nowrap text-sm font-medium">
               <div className="relative">
                 <Link href="/buy" className="text-foreground/80 hover:text-foreground flex items-center gap-1 transition-colors">
                   {t('nav_buy')}
@@ -468,38 +468,47 @@ export function Header() {
               <Link
                 href="/pokemon"
                 prefetch={false}
-                className="px-3 py-1.5 rounded-lg text-yellow-400 hover:bg-yellow-500/10 transition-colors flex items-center gap-2 group"
+                title={t('nav_pokemon')}
+                aria-label={t('nav_pokemon')}
+                className="px-2 xl:px-3 py-1.5 rounded-lg text-yellow-400 hover:bg-yellow-500/10 transition-colors flex items-center gap-2 group"
               >
                 <div className="relative w-6 h-6 transition-transform group-hover:scale-110">
                   <Image src="/assets/pok-logo.png" alt="Pokemon" fill sizes="24px" className="object-contain" />
                 </div>
-                <span className="block group-hover:hidden">{t('nav_pokemon')}</span>
-                <span className="hidden group-hover:block whitespace-nowrap">{t('nav_pokemon_price')}</span>
+                {/* 1024–1279 has no room for labels: icon only, name in the tooltip. */}
+                <span className="hidden xl:block xl:group-hover:hidden">{t('nav_pokemon')}</span>
+                <span className="hidden xl:group-hover:block whitespace-nowrap">{t('nav_pokemon_price')}</span>
               </Link>
               <Link
                 href="/onepiece"
                 prefetch={false}
-                className="px-3 py-1.5 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors flex items-center gap-2 group"
+                title={t('nav_onepiece')}
+                aria-label={t('nav_onepiece')}
+                className="px-2 xl:px-3 py-1.5 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors flex items-center gap-2 group"
               >
                 <div className="relative w-6 h-6 transition-transform group-hover:scale-110">
                   <Image src="/assets/one-logo.png" alt="One Piece" fill sizes="24px" className="object-contain" />
                 </div>
-                <span className="block group-hover:hidden">{t('nav_onepiece')}</span>
-                <span className="hidden group-hover:block whitespace-nowrap">{t('nav_onepiece_price')}</span>
+                {/* 1024–1279 has no room for labels: icon only, name in the tooltip. */}
+                <span className="hidden xl:block xl:group-hover:hidden">{t('nav_onepiece')}</span>
+                <span className="hidden xl:group-hover:block whitespace-nowrap">{t('nav_onepiece_price')}</span>
               </Link>
               <Link
                 href="/soccer"
                 prefetch={false}
-                className="px-3 py-1.5 rounded-lg text-green-400 hover:bg-green-500/10 transition-colors flex items-center gap-2 group"
+                title={t('nav_soccer')}
+                aria-label={t('nav_soccer')}
+                className="px-2 xl:px-3 py-1.5 rounded-lg text-green-400 hover:bg-green-500/10 transition-colors flex items-center gap-2 group"
               >
                 <div className="relative w-6 h-6 transition-transform group-hover:scale-110">
                   <Image src="/assets/soc-logo.png" alt="Soccer" fill sizes="24px" className="object-contain" />
                 </div>
-                <span className="block group-hover:hidden">{t('nav_soccer')}</span>
-                <span className="hidden group-hover:block whitespace-nowrap">{t('nav_soccer_price')}</span>
+                {/* 1024–1279 has no room for labels: icon only, name in the tooltip. */}
+                <span className="hidden xl:block xl:group-hover:hidden">{t('nav_soccer')}</span>
+                <span className="hidden xl:group-hover:block whitespace-nowrap">{t('nav_soccer_price')}</span>
               </Link>
             </nav>
-            <Button onClick={handleScanClick} className="bg-orange-500 hover:bg-orange-600 text-white font-bold whitespace-nowrap px-6">
+            <Button onClick={handleScanClick} className="bg-orange-500 hover:bg-orange-600 text-white font-bold whitespace-nowrap px-4 xl:px-6">
               {t('scan_pokemon_card')}
             </Button>
           </div>
