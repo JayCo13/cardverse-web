@@ -125,7 +125,7 @@ export function CatalogCardPicker({ onSelect }: CatalogCardPickerProps) {
     const body = (
         <>
             <Tabs value={tab} onValueChange={(v) => { setTab(v as CatalogTabId); setResults([]); }}>
-                <TabsList className="grid w-full grid-cols-4">
+                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
                     {TABS.map(t => (
                         <TabsTrigger key={t.id} value={t.id} className="text-xs">{t.label}</TabsTrigger>
                     ))}

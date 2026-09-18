@@ -620,7 +620,7 @@ export default function CheckoutPage() {
         </div>
 
         {isLoadingData ? (
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
             <Skeleton className="h-[600px] rounded-xl" />
             <Skeleton className="h-96 rounded-xl" />
           </div>
@@ -630,7 +630,7 @@ export default function CheckoutPage() {
             <Button className="mt-5" onClick={() => router.push("/cart")}>{copy.backToCart}</Button>
           </div>
         ) : (
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
             <section className="space-y-6">
               <div className="rounded-xl border bg-card p-5">
                 <Label className="mb-3 flex items-center gap-2 text-base font-semibold">
@@ -674,7 +674,7 @@ export default function CheckoutPage() {
 
                       {group.items.map(item => (
                           <article key={item.cartItemId || item.offerId || item.card.id} className="group flex gap-3 border-b border-zinc-800 px-3 py-3 last:border-b-0 sm:gap-0 sm:px-0 sm:py-0">
-                            <div className="relative w-24 shrink-0 self-start overflow-hidden rounded-lg bg-zinc-900 aspect-[3/4] sm:flex sm:w-40 sm:items-center sm:justify-center sm:rounded-none sm:bg-gradient-to-br sm:from-zinc-900 sm:to-black sm:p-4">
+                            <div className="relative w-24 shrink-0 self-start overflow-hidden rounded-lg bg-zinc-900 aspect-[3/4] sm:flex sm:w-32 lg:w-40 sm:items-center sm:justify-center sm:rounded-none sm:bg-gradient-to-br sm:from-zinc-900 sm:to-black sm:p-4">
                               <div className="relative h-full w-full overflow-hidden rounded-lg border border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.45)] sm:aspect-[3/4] sm:h-auto">
                                 {item.card.imageUrl ? (
                                   <Image src={optimizeCloudinaryUrl(item.card.imageUrl, 320)} alt={item.card.name} fill sizes="(max-width: 639px) 80px, 128px" className="object-cover" />
@@ -710,7 +710,7 @@ export default function CheckoutPage() {
                               </div>
                             </div>
 
-                            <div className="hidden w-52 flex-col justify-between gap-3 border-l bg-background/30 p-5 sm:flex">
+                            <div className="hidden w-44 flex-col justify-between gap-3 border-l bg-background/30 p-4 sm:flex lg:w-52 lg:p-5">
                               <div>
                                 <p className="text-xs text-muted-foreground">{copy.itemPrice}</p>
                                 <p className="whitespace-nowrap text-2xl font-bold tracking-normal text-orange-400">{formatVND(item.amount)}</p>
@@ -806,7 +806,7 @@ export default function CheckoutPage() {
               </div>
             </section>
 
-            <aside className="lg:sticky lg:top-32 lg:self-start">
+            <aside className="xl:sticky xl:top-32 xl:self-start">
               <div className="rounded-xl border bg-card p-5 shadow-[0_20px_80px_rgba(0,0,0,0.24)]">
                 <div className="mb-5 flex items-center gap-2">
                   <ShieldCheck className="h-5 w-5 text-orange-400" />

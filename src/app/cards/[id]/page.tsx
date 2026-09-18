@@ -1048,7 +1048,8 @@ export default function CardDetailsPage() {
                         </Button>
                     </div>
 
-                    <section className="grid grid-cols-1 gap-8 xl:grid-cols-[minmax(0,920px)_minmax(460px,1fr)] 2xl:grid-cols-[minmax(0,980px)_minmax(520px,1fr)]">
+                    {/* Two columns from lg so a tablet gets the price panel beside the photo instead of the phone drawers. */}
+                    <section className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)] xl:grid-cols-[minmax(0,920px)_minmax(460px,1fr)] 2xl:grid-cols-[minmax(0,980px)_minmax(520px,1fr)]">
                         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[96px_minmax(0,1fr)]">
                             <div className="order-2 flex gap-3 overflow-x-auto lg:order-1 lg:block lg:space-y-3 lg:overflow-visible">
                                 {images.map((image, index) => (
@@ -1067,7 +1068,7 @@ export default function CardDetailsPage() {
                             </div>
 
                             <div className="order-1 lg:order-2">
-                                <div className="relative aspect-square overflow-hidden rounded-xl bg-muted lg:h-[680px] lg:aspect-auto xl:h-[720px]">
+                                <div className="relative aspect-square overflow-hidden rounded-xl bg-muted lg:aspect-[3/4] xl:h-[720px] xl:aspect-auto">
                                     {activeImage ? (
                                         <Image
                                             src={optimizeCloudinaryUrl(activeImage, 1400)}
@@ -1089,10 +1090,10 @@ export default function CardDetailsPage() {
                             </div>
                         </div>
 
-                        <aside className="space-y-3 xl:space-y-4">
+                        <aside className="space-y-3 lg:space-y-4">
                             <div className="overflow-hidden rounded-xl border bg-card shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
-                                <div className="border-b p-3 md:p-5 xl:p-6">
-                                    <div className="mb-3 hidden flex-wrap items-center gap-2 xl:flex">
+                                <div className="border-b p-3 md:p-5 lg:p-6">
+                                    <div className="mb-3 hidden flex-wrap items-center gap-2 lg:flex">
                                         <Badge className="rounded-full bg-orange-500/15 px-3 py-1 text-orange-300 hover:bg-orange-500/15">
                                             {card.category}
                                         </Badge>
@@ -1153,15 +1154,15 @@ export default function CardDetailsPage() {
                                     </div>
                                 </div>
 
-                                <div className="space-y-4 p-3 md:space-y-5 md:p-5 xl:p-6">
-                                    <div className="py-3 xl:hidden">
+                                <div className="space-y-4 p-3 md:space-y-5 md:p-5 lg:p-6">
+                                    <div className="py-3 lg:hidden">
                                         <p className="text-[32px] font-bold leading-none tracking-normal text-orange-400">{formatVND(card.price)}</p>
                                         {card.acceptOffers && (
                                             <p className="mt-1 text-sm text-muted-foreground">{copy.bestOffer}</p>
                                         )}
                                     </div>
 
-                                    <div className="hidden rounded-lg border bg-background/70 p-4 xl:block">
+                                    <div className="hidden rounded-lg border bg-background/70 p-4 lg:block">
                                         <div className="flex items-start justify-between gap-4">
                                             <div>
                                                 <p className="text-sm text-muted-foreground">{copy.buyNow}</p>
@@ -1174,13 +1175,13 @@ export default function CardDetailsPage() {
                                         </div>
                                     </div>
 
-                                    <div className="border-y border-white/10 py-2 text-sm text-muted-foreground xl:hidden">
+                                    <div className="border-y border-white/10 py-2 text-sm text-muted-foreground lg:hidden">
                                         <span className="font-medium text-foreground">{card.condition || copy.ungraded}</span>
                                         {", "}{card.setName || card.publisher || copy.notSpecified}
                                         {", "}{card.quantity || 1} {copy.available}
                                     </div>
 
-                                    <div className="hidden grid-cols-1 gap-2 sm:grid-cols-2 xl:grid">
+                                    <div className="hidden grid-cols-1 gap-2 sm:grid-cols-2 lg:grid">
                                         {listingHighlights.map(({ label, value, icon: Icon }) => (
                                             <div key={label} className="rounded-lg border bg-background/50 p-3">
                                                 <div className="mb-1 flex items-center gap-2 text-xs uppercase text-muted-foreground">
@@ -1192,7 +1193,7 @@ export default function CardDetailsPage() {
                                         ))}
                                     </div>
 
-                                    <div className="hidden grid-cols-3 gap-2 text-center text-xs text-muted-foreground xl:grid">
+                                    <div className="hidden grid-cols-3 gap-2 text-center text-xs text-muted-foreground lg:grid">
                                         <div className="rounded-lg border bg-background/40 px-2 py-3">
                                             <ShieldCheck className="mx-auto mb-1 h-4 w-4 text-emerald-400" />
                                             {copy.protectedCheckout}
@@ -1208,7 +1209,7 @@ export default function CardDetailsPage() {
                                     </div>
 
                                     {isOwner ? (
-                                        <div className="hidden flex-col gap-2 text-xs text-muted-foreground xl:mb-0 xl:flex xl:flex-row xl:items-center xl:justify-between xl:rounded-lg xl:border xl:border-orange-500/30 xl:bg-orange-500/10 xl:p-4 xl:text-sm xl:text-orange-300">
+                                        <div className="hidden flex-col gap-2 text-xs text-muted-foreground lg:mb-0 lg:flex lg:flex-row lg:items-center lg:justify-between lg:rounded-lg lg:border lg:border-orange-500/30 lg:bg-orange-500/10 lg:p-4 lg:text-sm lg:text-orange-300">
                                             <span>{copy.ownListing}</span>
                                             {card.status === "active" && card.listingType === "sale" && (
                                                 <Button
@@ -1278,7 +1279,7 @@ export default function CardDetailsPage() {
                             <button
                                 type="button"
                                 onClick={() => setShippingDrawerOpen(true)}
-                                className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 px-3 py-3 text-left xl:hidden"
+                                className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 px-3 py-3 text-left lg:hidden"
                             >
                                 <span className="flex min-w-0 items-start gap-2.5">
                                     <Truck className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1294,7 +1295,7 @@ export default function CardDetailsPage() {
                                 <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                             </button>
 
-                            <div className="hidden space-y-4 rounded-xl border bg-card p-5 xl:block">
+                            <div className="hidden space-y-4 rounded-xl border bg-card p-5 lg:block">
                                 <h2 className="text-xl font-semibold">{copy.shippingPayments}</h2>
                                 <div className="grid grid-cols-[110px_1fr] gap-x-4 gap-y-4 text-sm">
                                     <span className="font-medium">{copy.shipping}:</span>
@@ -1323,7 +1324,7 @@ export default function CardDetailsPage() {
                     <button
                         type="button"
                         onClick={() => setDetailsDrawerOpen(true)}
-                        className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 px-3 py-3 text-left xl:hidden"
+                        className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 px-3 py-3 text-left lg:hidden"
                     >
                         <span className="flex items-center gap-2 text-sm">
                             <FileText className="h-4 w-4" />
@@ -1333,7 +1334,7 @@ export default function CardDetailsPage() {
                     </button>
 
                     {isOwner && (
-                        <div className="xl:hidden">
+                        <div className="lg:hidden">
                             {card.status === "active" && card.listingType === "sale" && (
                                 <Button
                                     type="button"
@@ -1348,7 +1349,7 @@ export default function CardDetailsPage() {
                         </div>
                     )}
 
-                    <section className="hidden rounded-lg border bg-card xl:block">
+                    <section className="hidden rounded-lg border bg-card lg:block">
                         <div className="border-b px-5 py-3">
                             <span className="rounded-t-md border bg-background px-4 py-3 text-sm font-semibold text-orange-500">{copy.aboutItem}</span>
                         </div>
@@ -1375,7 +1376,7 @@ export default function CardDetailsPage() {
 
                     {isOwner && (
                         <>
-                            <section className="space-y-3 rounded-lg border bg-card p-3 xl:hidden">
+                            <section className="space-y-3 rounded-lg border bg-card p-3 lg:hidden">
                                 <div className="flex items-center justify-between gap-3">
                                     <h2 className="text-lg font-semibold">{copy.offers} ({offers.length})</h2>
                                     <Badge variant="outline">{copy.sellerTools}</Badge>
@@ -1398,7 +1399,7 @@ export default function CardDetailsPage() {
                                 )}
                             </section>
 
-                            <section className="hidden space-y-3 rounded-lg border bg-card p-5 xl:block">
+                            <section className="hidden space-y-3 rounded-lg border bg-card p-5 lg:block">
                                 <div className="flex items-center justify-between gap-3">
                                     <h2 className="text-xl font-semibold">{copy.offers} ({offers.length})</h2>
                                     <Badge variant="outline">{copy.sellerTools}</Badge>
@@ -1450,7 +1451,7 @@ export default function CardDetailsPage() {
             />
 
             <Drawer open={shippingDrawerOpen} onOpenChange={setShippingDrawerOpen}>
-                <DrawerContent className="xl:hidden">
+                <DrawerContent className="lg:hidden">
                     <DrawerHeader>
                         <DrawerTitle>{copy.shippingPayments}</DrawerTitle>
                         <DrawerDescription className="sr-only">{copy.shippingPayments}</DrawerDescription>
@@ -1481,7 +1482,7 @@ export default function CardDetailsPage() {
             </Drawer>
 
             <Drawer open={detailsDrawerOpen} onOpenChange={setDetailsDrawerOpen}>
-                <DrawerContent className="xl:hidden">
+                <DrawerContent className="lg:hidden">
                     <DrawerHeader>
                         <DrawerTitle>{copy.aboutItem}</DrawerTitle>
                         <DrawerDescription className="sr-only">{copy.itemSpecifics}</DrawerDescription>
@@ -1510,7 +1511,7 @@ export default function CardDetailsPage() {
 
             {isOwner && offers.length > 1 && (
                 <Drawer open={offersDrawerOpen} onOpenChange={setOffersDrawerOpen}>
-                    <DrawerContent className="xl:hidden">
+                    <DrawerContent className="lg:hidden">
                         <DrawerHeader>
                             <DrawerTitle>{copy.offers} ({offers.length})</DrawerTitle>
                             <DrawerDescription className="sr-only">{copy.sellerTools}</DrawerDescription>

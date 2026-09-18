@@ -503,7 +503,7 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
         </div>
 
         {/* Body */}
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-0 md:grid md:gap-5 md:p-5 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-0 md:grid md:gap-5 md:p-5 lg:grid-cols-[minmax(0,1fr)_minmax(240px,280px)] lg:items-stretch">
           <div className="flex min-w-0 flex-col">
             {(card.status === 'sold' || card.isBundle) && (
               <div className="mb-2 flex flex-wrap items-center gap-2">

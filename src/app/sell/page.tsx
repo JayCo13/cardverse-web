@@ -83,7 +83,7 @@ const KpiCard = memo(function KpiCard({ label, value, tone }: { label: string; v
   return (
     <div className={`min-w-0 rounded-lg border p-3 ${tone}`}>
       <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-1 truncate text-lg font-bold md:text-xl">{value}</p>
+      <p className="mt-1 break-words text-base font-bold tabular-nums sm:text-lg lg:text-xl">{value}</p>
     </div>
   );
 });

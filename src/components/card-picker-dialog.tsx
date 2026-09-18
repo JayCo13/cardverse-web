@@ -190,7 +190,7 @@ export function CardPickerDialog({ onSelect }: CardPickerDialogProps) {
       onValueChange={(val) => { setActiveTab(val); setSearch(''); }}
       className="flex min-h-0 flex-1 flex-col"
     >
-      <TabsList className="grid grid-cols-4 w-full max-w-[400px]">
+      <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full max-w-[400px]">
         {tabs.map(tab => (
           <TabsTrigger key={tab.id} value={tab.id}>{tab.label}</TabsTrigger>
         ))}
