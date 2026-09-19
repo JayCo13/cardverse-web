@@ -7,6 +7,7 @@ import { resolveListingError } from '@/lib/listing-errors';
 import { isValidListingShippingFee } from '@/lib/shipping-fee';
 import { isProductKind, PRODUCT_CONDITIONS, validProductDetails, flexibleProductsEnabled, productCopy } from '@/lib/product-listing';
 import { getRequestLocale } from '@/lib/request-localization';
+import { isValidOfferPercent, MIN_OFFER_PERCENT } from '@/lib/offer-constraints';
 
 const MIN_MARKETPLACE_PRICE_VND = 1000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -70,8 +71,13 @@ async function handlePOST(request: NextRequest) {
             return NextResponse.json({ error: 'Số lượng phải từ 1 đến 100.' }, { status: 400 });
         }
         const minOfferPercent = Number(body.min_offer_percent ?? 0);
-        if (!Number.isInteger(minOfferPercent) || minOfferPercent < 0 || minOfferPercent > 100) {
-            return NextResponse.json({ error: 'min_offer_percent phải từ 0 đến 100.' }, { status: 400 });
+        const acceptOffers = body.accept_offers === true;
+        if (!isValidOfferPercent(acceptOffers, minOfferPercent)) {
+            return NextResponse.json({
+                error: acceptOffers
+                    ? `min_offer_percent phải từ ${MIN_OFFER_PERCENT} đến 99 khi bật nhận offer.`
+                    : 'min_offer_percent phải từ 0 đến 99.',
+            }, { status: 400 });
         }
 
         const cardData: Record<string, unknown> = {
@@ -95,8 +101,8 @@ async function handlePOST(request: NextRequest) {
             grading_company: optionalString(body.grading_company),
             grade: typeof body.grade === 'number' && Number.isFinite(body.grade) ? body.grade : null,
             finish: optionalString(body.finish),
-            accept_offers: body.accept_offers === true,
-            min_offer_percent: body.accept_offers === true ? minOfferPercent : 0,
+            accept_offers: acceptOffers,
+            min_offer_percent: acceptOffers ? minOfferPercent : 0,
             // What the buyer pays to have this sent. Zero is free shipping and
             // is kept as zero; null means the listing follows the shop's fee
             // table, and anything outside the range becomes null too, because a

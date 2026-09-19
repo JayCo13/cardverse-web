@@ -51,6 +51,7 @@ import { SearchableSetPicker } from '@/components/searchable-set-picker';
 import { SenderAddressForm } from '@/components/sender-address-form';
 import { ShopShippingSetup } from '@/components/shop-shipping-setup';
 import { OFFERABLE_CARRIERS, minShopCarriers } from '@/lib/shipping-carriers';
+import { MAX_OFFER_PERCENT, MIN_OFFER_PERCENT } from '@/lib/offer-constraints';
 
 // Lazy-loaded: the picker dialog (and its catalog deps) only mount when opened,
 // so keep it out of the initial bundle to make the page load lighter.
@@ -163,6 +164,7 @@ type LocaleCopy = {
   acceptOffersDesc: string;
   bundleOfferNote: string;
   minOffer: string;
+  minOfferRequired: string;
   freeShippingLabel: string;
   freeShippingHint: string;
   acceptAllOffers: string;
@@ -183,6 +185,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
         season: 'シーズン / 年', quantity: '数量', grade: 'グレード', gradingCompany: '鑑定会社',
         cardNumber: 'カード番号', language: 'カード言語', price: '販売価格', startingBid: '開始価格',
         auctionEnds: '終了日時', ticketPrice: 'チケット価格', totalTickets: 'チケット総数', description: '説明', images: '画像',
+        minOfferPercent: '最低オファー率',
       },
       titleMin: 'タイトルは5文字以上必要です。',
       chooseCategory: 'カテゴリを選択してください。',
@@ -286,6 +289,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       acceptOffersDesc: '購入者が価格提案を送れるようにします',
       bundleOfferNote: 'オファーはセット全体（ロット単位）に適用され、カード単位ではありません。',
       minOffer: 'この割合未満のオファーは受けない',
+      minOfferRequired: 'オファーの最低割合は5%です。',
       freeShippingLabel: '送料無料',
       freeShippingHint: '配送料は全額あなたの負担になります。商品価格に含めてください。',
       acceptAllOffers: 'すべてのオファーを受ける',
@@ -306,6 +310,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
         season: 'Mùa / Năm', quantity: 'Số lượng', grade: 'Điểm grade', gradingCompany: 'Hãng grade',
         cardNumber: 'Số thẻ', language: 'Ngôn ngữ thẻ', price: 'Giá bán', startingBid: 'Giá khởi điểm',
         auctionEnds: 'Ngày kết thúc', ticketPrice: 'Giá vé', totalTickets: 'Tổng số vé', description: 'Mô tả', images: 'Hình ảnh',
+        minOfferPercent: 'Mức offer tối thiểu',
       },
       titleMin: 'Tiêu đề cần ít nhất 5 ký tự.',
       chooseCategory: 'Vui lòng chọn danh mục.',
@@ -409,6 +414,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       acceptOffersDesc: 'Cho phép người mua gửi đề nghị giá cho thẻ này',
       bundleOfferNote: 'Offer áp dụng cho CẢ LÔ (toàn bộ bundle), không theo từng thẻ.',
       minOffer: 'Không nhận offer dưới',
+      minOfferRequired: 'Mức offer tối thiểu là 5%.',
       freeShippingLabel: 'Miễn phí vận chuyển',
       freeShippingHint: 'Bạn chịu toàn bộ cước. Nhớ tính sẵn vào giá bán.',
       acceptAllOffers: 'Nhận mọi offer',
@@ -428,6 +434,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       season: 'Season / Year', quantity: 'Quantity', grade: 'Grade', gradingCompany: 'Grading company',
       cardNumber: 'Card number', language: 'Card language', price: 'Sale price', startingBid: 'Starting bid',
       auctionEnds: 'End date', ticketPrice: 'Ticket price', totalTickets: 'Total tickets', description: 'Description', images: 'Images',
+      minOfferPercent: 'Minimum offer percentage',
     },
     titleMin: 'Title must be at least 5 characters.',
     chooseCategory: 'Please choose a category.',
@@ -531,6 +538,7 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
     acceptOffersDesc: 'Allow buyers to send price offers for this card',
     bundleOfferNote: 'Offers apply to the WHOLE LOT (entire bundle), not per card.',
     minOffer: 'Do not accept offers below',
+    minOfferRequired: 'The minimum offer percentage is 5%.',
     freeShippingLabel: 'Free shipping',
     freeShippingHint: 'You carry the whole carrier bill. Price it into the item.',
     acceptAllOffers: 'Accept all offers',
@@ -661,7 +669,7 @@ const getFormSchema = (copy: LocaleCopy, nonCard = false) => z.object({
       if (typeof a === 'string') return parseInt(a, 10) || 0;
       return 0;
     },
-    z.number().min(0).max(99).default(0)
+    z.number().min(0).max(MAX_OFFER_PERCENT).default(0)
   ),
   // Free text fallbacks for "Khác" category
   freePublisher: z.string().optional(),
@@ -679,6 +687,10 @@ const getFormSchema = (copy: LocaleCopy, nonCard = false) => z.object({
     if (data.listingType === 'razz') return data.ticketPrice !== undefined && data.totalTickets !== undefined;
     return true;
   }, { message: copy.enterRazz, path: ['ticketPrice'] })
+  .refine(data => !data.acceptOffers || data.minOfferPercent >= MIN_OFFER_PERCENT, {
+    message: copy.minOfferRequired,
+    path: ['minOfferPercent'],
+  })
   // Publisher: bắt buộc theo dropdown ở category thường; ở category "Khác"
   // (free-text) thì thay bằng ô freePublisher. Bundle dùng pool nhiều giá trị
   // (validate riêng), nên bỏ qua hai ràng buộc này.
@@ -2673,7 +2685,12 @@ export default function CreateListingPage() {
                     <FormControl>
                       <Switch
                         checked={field.value}
-                        onCheckedChange={field.onChange}
+                        onCheckedChange={(checked) => {
+                          field.onChange(checked);
+                          if (checked && form.getValues('minOfferPercent') < MIN_OFFER_PERCENT) {
+                            form.setValue('minOfferPercent', MIN_OFFER_PERCENT, { shouldValidate: true });
+                          }
+                        }}
                       />
                     </FormControl>
                   </FormItem>
@@ -2724,16 +2741,16 @@ export default function CreateListingPage() {
                       </div>
                       <FormControl>
                         <Slider
-                          min={0}
-                          max={99}
+                          min={MIN_OFFER_PERCENT}
+                          max={MAX_OFFER_PERCENT}
                           step={5}
-                          defaultValue={[field.value || 0]}
+                          value={[Math.max(MIN_OFFER_PERCENT, field.value || 0)]}
                           onValueChange={(value) => field.onChange(value[0])}
                           className="[&_[role=slider]]:bg-amber-500 [&_[role=slider]]:border-amber-600"
                         />
                       </FormControl>
                       <div className="flex justify-between text-[11px] text-muted-foreground">
-                        <span>{copy.acceptAllOffers}</span>
+                        <span>{MIN_OFFER_PERCENT}%</span>
                         <span>{copy.nearOriginalPrice}</span>
                       </div>
                       {watchedPrice && Number(watchedPrice) > 0 && field.value > 0 && (

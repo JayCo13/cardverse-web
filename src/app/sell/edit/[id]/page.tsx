@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
+import { MAX_OFFER_PERCENT, MIN_OFFER_PERCENT } from '@/lib/offer-constraints';
 import { ProductFields } from '@/components/product-fields';
 import { isNonCard, productCopy, productConditionLabel, type ProductKind, type ProductDetails } from '@/lib/product-listing';
 import Image from "next/image";
@@ -206,7 +207,10 @@ export default function EditListingPage() {
                 setOriginalDescription(nextDescription);
                 setPrice(String(next.price || ""));
                 setAcceptOffers(!!next.accept_offers);
-                setMinOfferPercent(Math.min(99, Math.max(0, next.min_offer_percent || 0)));
+                setMinOfferPercent(Math.min(MAX_OFFER_PERCENT, Math.max(
+                    next.accept_offers ? MIN_OFFER_PERCENT : 0,
+                    next.min_offer_percent || 0,
+                )));
                 setHasOpenOffers(Boolean(payload.hasOpenOffers));
                 setOpenOfferCount(Number(payload.openOfferCount) || 0);
             } catch (loadError) {
@@ -472,7 +476,17 @@ export default function EditListingPage() {
                                             </div>
                                             <div className={`flex items-center justify-between gap-4 rounded-xl border p-4 transition-colors ${acceptOffers ? 'border-orange-500/30 bg-orange-500/5' : 'border-white/10 bg-background/30'}`}>
                                                 <Label htmlFor="listing-offers" className="cursor-pointer text-sm font-medium">{copy.offers}</Label>
-                                                <Switch id="listing-offers" checked={acceptOffers} onCheckedChange={setAcceptOffers} disabled={hasOpenOffers} />
+                                                <Switch
+                                                    id="listing-offers"
+                                                    checked={acceptOffers}
+                                                    onCheckedChange={(checked) => {
+                                                        setAcceptOffers(checked);
+                                                        if (checked && minOfferPercent < MIN_OFFER_PERCENT) {
+                                                            setMinOfferPercent(MIN_OFFER_PERCENT);
+                                                        }
+                                                    }}
+                                                    disabled={hasOpenOffers}
+                                                />
                                             </div>
                                             {acceptOffers && (
                                                 <div className="space-y-3 rounded-xl border border-orange-500/20 bg-orange-500/5 p-4">
@@ -485,8 +499,8 @@ export default function EditListingPage() {
                                                     </div>
                                                     <Slider
                                                         id="listing-min-offer"
-                                                        min={0}
-                                                        max={99}
+                                                        min={MIN_OFFER_PERCENT}
+                                                        max={MAX_OFFER_PERCENT}
                                                         step={5}
                                                         value={[minOfferPercent]}
                                                         onValueChange={value => setMinOfferPercent(value[0])}
@@ -495,7 +509,7 @@ export default function EditListingPage() {
                                                         className="py-1 [&_[role=slider]]:border-amber-600 [&_[role=slider]]:bg-amber-500"
                                                     />
                                                     <div className="flex justify-between gap-4 text-[11px] text-muted-foreground">
-                                                        <span>{copy.acceptAllOffers}</span>
+                                                        <span>{MIN_OFFER_PERCENT}%</span>
                                                         <span className="text-right">{copy.nearOriginalPrice}</span>
                                                     </div>
                                                 </div>
