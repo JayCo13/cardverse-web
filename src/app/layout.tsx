@@ -7,6 +7,7 @@ import { LocalizationProvider } from '@/context/localization-context';
 import { ScrollToTop } from "@/components/scroll-to-top";
 import { SupabaseAuthProvider } from '@/lib/supabase';
 import { AuthModal, AuthModalProvider } from '@/components/auth-modal';
+import { PageAuthGate } from '@/components/page-auth-gate';
 import { TransactionLockProvider } from '@/components/transaction-lock-provider';
 import { CurrencyProvider } from '@/contexts/currency-context';
 import { CardCacheProvider } from '@/contexts/card-cache-context';
@@ -116,7 +117,7 @@ export default function RootLayout({
                           * bottom on short pages, whether the page hands back a
                           * flex column of its own or a bare fragment. */}
                         <div className="flex flex-1 flex-col">
-                          <AuthReady>{children}</AuthReady>
+                          <AuthReady><PageAuthGate>{children}</PageAuthGate></AuthReady>
                         </div>
                         <Footer />
                       </div>

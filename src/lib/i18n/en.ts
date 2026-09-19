@@ -263,6 +263,7 @@ export const en = {
   auth_create_account: 'Create Account',
   auth_check_email: 'Please check your email to verify your account!',
   auth_error_generic: 'An error occurred',
+  auth_callback_failed: 'Unable to complete sign-in. Please try again.',
   auth_invalid_email: 'Invalid email address',
   auth_password_min: 'Password must be at least 6 characters',
   auth_password_min_8: 'Password must be at least 8 characters',

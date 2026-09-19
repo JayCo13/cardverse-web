@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useUser } from "@/lib/supabase";
+import { useAuthModal } from '@/components/auth-modal';
 import { useSubscription } from "@/hooks/useSubscription";
 import { useToast } from "@/hooks/use-toast";
 import { useLocalization } from "@/context/localization-context";
@@ -38,6 +39,7 @@ function PaymentStatusHandler() {
 }
 
 export default function PricingPage() {
+    const { setOpen } = useAuthModal();
     const { user } = useUser();
     const { subscription, isVipPro, isDayPass, hasCredits, creditsRemaining, isLoading: subLoading, justActivated } = useSubscription();
     const { t } = useLocalization();
@@ -69,11 +71,7 @@ export default function PricingPage() {
 
     const handlePurchase = async (packageType: string) => {
         if (!user) {
-            toast({
-                title: t('login_required_title') || "Login Required",
-                description: t('payment_login_desc') || "Please sign in to purchase a package.",
-                duration: 3000,
-            });
+            setOpen(true);
             return;
         }
 

@@ -292,6 +292,7 @@ export const ja = {
   lang_japanese: '🇯🇵 日本語',
   auth_check_email: 'メールを確認してアカウントを認証してください！',
   auth_error_generic: 'エラーが発生しました',
+  auth_callback_failed: 'ログインを完了できませんでした。もう一度お試しください。',
   auth_invalid_email: '無効なメールアドレス',
   auth_password_min: 'パスワードは6文字以上',
   auth_password_min_8: 'パスワードは8文字以上',
