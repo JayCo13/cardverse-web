@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, useCallback, useRef, us
 import { getSupabaseClient } from './client';
 import type { User, Session, AuthError } from '@supabase/supabase-js';
 import type { Tables, InsertTables } from './database.types';
+import { authCallbackUrl } from '@/lib/auth-return';
 
 type Profile = Tables<'profiles'>;
 
@@ -12,12 +13,12 @@ interface AuthContextType {
     profile: Profile | null;
     session: Session | null;
     isLoading: boolean;
-    signInWithGoogle: () => Promise<void>;
-    signInWithFacebook: () => Promise<void>;
+    signInWithGoogle: (returnTo?: string) => Promise<void>;
+    signInWithFacebook: (returnTo?: string) => Promise<void>;
     signInWithEmail: (email: string, password: string) => Promise<{ error: AuthError | null }>;
-    signUpWithEmail: (email: string, password: string, displayName: string, locale?: string) => Promise<{ error: AuthError | null }>;
+    signUpWithEmail: (email: string, password: string, displayName: string, locale?: string, returnTo?: string) => Promise<{ error: AuthError | null }>;
     verifyOtp: (email: string, token: string) => Promise<{ error: AuthError | null; session: Session | null }>;
-    resendOtp: (email: string) => Promise<{ error: AuthError | null }>;
+    resendOtp: (email: string, returnTo?: string) => Promise<{ error: AuthError | null }>;
     signOut: () => Promise<void>;
     refreshProfile: () => Promise<void>;
     resetPasswordForEmail: (email: string) => Promise<{ error: AuthError | null }>;
@@ -306,25 +307,25 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
     }, [stored, applyUser]); // both are created once and never reassigned
 
     // Memoized auth functions to prevent re-renders
-    const signInWithGoogle = useCallback(async () => {
+    const signInWithGoogle = useCallback(async (returnTo?: string) => {
         // Always use current origin + /auth/callback for the redirect
         const { error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
-                redirectTo: `${window.location.origin}/auth/callback`,
+                redirectTo: authCallbackUrl(window.location.origin, returnTo),
             },
         });
-        if (error) console.error('Google sign in error:', error);
+        if (error) throw error;
     }, []);
 
-    const signInWithFacebook = useCallback(async () => {
+    const signInWithFacebook = useCallback(async (returnTo?: string) => {
         const { error } = await supabase.auth.signInWithOAuth({
             provider: 'facebook',
             options: {
-                redirectTo: `${window.location.origin}/auth/callback`,
+                redirectTo: authCallbackUrl(window.location.origin, returnTo),
             },
         });
-        if (error) console.error('Facebook sign in error:', error);
+        if (error) throw error;
     }, []);
 
     const signInWithEmail = useCallback(async (email: string, password: string) => {
@@ -332,7 +333,7 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
         return { error };
     }, []);
 
-    const signUpWithEmail = useCallback(async (email: string, password: string, displayName: string, locale: string = 'en') => {
+    const signUpWithEmail = useCallback(async (email: string, password: string, displayName: string, locale: string = 'en', returnTo?: string) => {
         // Get the current origin for email redirect
         const redirectUrl = typeof window !== 'undefined'
             ? `${window.location.origin}/auth/callback`
@@ -348,7 +349,7 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
                     full_name: displayName,
                     locale: locale, // Pass locale for email templates
                 },
-                emailRedirectTo: redirectUrl,
+                emailRedirectTo: authCallbackUrl(new URL(redirectUrl).origin, returnTo),
             },
         });
 
@@ -373,10 +374,11 @@ export function SupabaseAuthProvider({ children }: AuthProviderProps) {
         return { error, session: data.session };
     }, []);
 
-    const resendOtp = useCallback(async (email: string) => {
+    const resendOtp = useCallback(async (email: string, returnTo?: string) => {
         const { error } = await supabase.auth.resend({
             type: 'signup',
             email,
+            options: { emailRedirectTo: authCallbackUrl(window.location.origin, returnTo) },
         });
         return { error };
     }, []);

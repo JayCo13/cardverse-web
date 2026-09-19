@@ -274,6 +274,7 @@ export const vi = {
   auth_create_account: 'Tạo tài khoản',
   auth_check_email: 'Vui lòng kiểm tra email để xác minh tài khoản!',
   auth_error_generic: 'Đã xảy ra lỗi',
+  auth_callback_failed: 'Không thể hoàn tất đăng nhập. Vui lòng thử lại.',
   auth_invalid_email: 'Địa chỉ email không hợp lệ',
   auth_password_min: 'Mật khẩu phải có ít nhất 6 ký tự',
   auth_password_min_8: 'Mật khẩu phải có ít nhất 8 ký tự',

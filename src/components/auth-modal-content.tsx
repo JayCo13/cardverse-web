@@ -22,7 +22,7 @@ import { isReservedDisplayName } from '@/lib/reserved-names';
 
 export function AuthModalContent() {
   const { t, locale } = useLocalization();
-  const { isOpen, setOpen, activeTab, setActiveTab } = useAuthModal();
+  const { isOpen, setOpen, activeTab, setActiveTab, returnTo, callbackError } = useAuthModal();
   const { signInWithGoogle, signInWithFacebook, signInWithEmail, signUpWithEmail, verifyOtp, resendOtp } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -86,7 +86,7 @@ export function AuthModalContent() {
   const handleGoogleLogin = async () => {
     setError(null);
     try {
-      await signInWithGoogle();
+      await signInWithGoogle(returnTo);
       setOpen(false);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('auth_error_generic'));
@@ -96,7 +96,7 @@ export function AuthModalContent() {
   const handleFacebookLogin = async () => {
     setError(null);
     try {
-      await signInWithFacebook();
+      await signInWithFacebook(returnTo);
       setOpen(false);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('auth_error_generic'));
@@ -107,7 +107,7 @@ export function AuthModalContent() {
     setError(null);
     setSuccessMessage(null);
     try {
-      const { error: authError } = await signUpWithEmail(data.email, data.password, data.username, locale);
+      const { error: authError } = await signUpWithEmail(data.email, data.password, data.username, locale, returnTo);
       if (authError) {
         setError(authError.message);
         return;
@@ -148,7 +148,7 @@ export function AuthModalContent() {
     setIsVerifying(true);
     try {
       const { error: verifyError, session } = await verifyOtp(pendingVerificationEmail, otpCode);
-      if (verifyError) {
+      if (verifyError || !session) {
         setError(t('auth_otp_invalid'));
         setIsVerifying(false);
         return;
@@ -172,7 +172,7 @@ export function AuthModalContent() {
     setError(null);
     setIsResending(true);
     try {
-      const { error: resendError } = await resendOtp(pendingVerificationEmail);
+      const { error: resendError } = await resendOtp(pendingVerificationEmail, returnTo);
       if (resendError) {
         setError(resendError.message);
       } else {
@@ -204,6 +204,7 @@ export function AuthModalContent() {
           <DialogTitle>{t('auth_modal_title')}</DialogTitle>
           <DialogDescription>{t('auth_modal_description')}</DialogDescription>
         </DialogHeader>
+        {callbackError && <p role="alert" className="text-sm text-destructive">{t('auth_callback_failed')}</p>}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'login' | 'signup')} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="login">{t('auth_login_tab')}</TabsTrigger>
