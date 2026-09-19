@@ -4,6 +4,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { DESCRIPTION_MAX, DESCRIPTION_MIN } from '@/lib/listing-description';
 import { isNonCard, PRODUCT_CONDITIONS, validProductDetails, flexibleProductsEnabled, productCopy } from '@/lib/product-listing';
 import { getRequestLocale } from '@/lib/request-localization';
+import { isValidOfferPercent, MIN_OFFER_PERCENT } from '@/lib/offer-constraints';
 
 type ListingRow = {
     product_kind?: string;
@@ -105,8 +106,12 @@ async function handlePATCH(request: NextRequest, context: { params: Promise<{ id
     if (typeof acceptOffers !== 'boolean') {
         return NextResponse.json({ error: 'acceptOffers must be a boolean' }, { status: 400 });
     }
-    if (!Number.isInteger(minOfferPercent) || minOfferPercent < 0 || minOfferPercent > 100) {
-        return NextResponse.json({ error: 'minOfferPercent must be between 0 and 100' }, { status: 400 });
+    if (!isValidOfferPercent(acceptOffers, minOfferPercent)) {
+        return NextResponse.json({
+            error: acceptOffers
+                ? `minOfferPercent must be between ${MIN_OFFER_PERCENT} and 99 when offers are enabled`
+                : 'minOfferPercent must be between 0 and 99',
+        }, { status: 400 });
     }
 
     const supabase = await createServerSupabaseClient();
