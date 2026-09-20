@@ -46,9 +46,20 @@ const quantico = Quantico({
   weight: ['400', '700'],
 });
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://cardversehub.com';
+const SITE_TITLE = 'CardVerseHub – Trading Card Marketplace';
+const SITE_DESCRIPTION =
+  "Vietnam's marketplace for Pokémon, One Piece and Soccer trading cards. Buy, sell, bid and razz with escrow-protected payments and live shipping quotes.";
+// Square logo on black; every share sheet (Messenger, Zalo, Facebook) shows it
+// as a large thumbnail. Without it crawlers picked a random image off the page.
+const OG_IMAGE = '/assets/og-logo.jpg';
+
 export const metadata: Metadata = {
-  title: 'CardVerseHub - The Universe of Trading Cards',
-  description: 'Buy, sell, bid, and razz your favorite trading cards. Discover rare Pokemon, One Piece, and Soccer cards.',
+  // Relative image URLs resolve against this. Netlify has no VERCEL_URL, so
+  // without it Next would emit og:image pointing at localhost:3000.
+  metadataBase: new URL(SITE_URL),
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
   keywords: ['trading cards', 'Pokemon cards', 'One Piece cards', 'Soccer cards', 'buy cards', 'sell cards'],
   authors: [{ name: 'CardVerseHub' }],
   icons: {
@@ -56,9 +67,19 @@ export const metadata: Metadata = {
     apple: '/assets/brow-logo.png',
   },
   openGraph: {
-    title: 'CardVerseHub - The Universe of Trading Cards',
-    description: 'Buy, sell, bid, and razz your favorite trading cards.',
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
     type: 'website',
+    url: SITE_URL,
+    siteName: 'CardVerseHub',
+    locale: 'vi_VN',
+    images: [{ url: OG_IMAGE, width: 1024, height: 1024, alt: 'CardVerseHub logo' }],
+  },
+  twitter: {
+    card: 'summary',
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: [OG_IMAGE],
   },
 };
 
