@@ -49,6 +49,7 @@ const COPY = {
         gcode: 'Mã vận đơn sàn', carrierCode: 'Mã hãng', carrier: 'Đơn vị vận chuyển',
         expected: 'Dự kiến giao', openCarrier: 'Xem trên trang hãng',
         degraded: 'Không kết nối được đơn vị vận chuyển, đang hiển thị trạng thái ghi nhận gần nhất.',
+        lastUpdated: 'Cập nhật gần nhất', justNow: 'vừa xong', minutesAgo: 'phút trước', hoursAgo: 'giờ trước', daysAgo: 'ngày trước',
         waiting: 'Vận đơn đã tạo, chờ hãng tiếp nhận. Khi hãng nhận sẽ có mã riêng của họ.',
     },
     'en-US': {
@@ -58,6 +59,7 @@ const COPY = {
         gcode: 'Platform code', carrierCode: 'Carrier code', carrier: 'Carrier',
         expected: 'Expected', openCarrier: "Open the carrier's page",
         degraded: 'The carrier could not be reached; showing the last status we recorded.',
+        lastUpdated: 'Last updated', justNow: 'just now', minutesAgo: 'minutes ago', hoursAgo: 'hours ago', daysAgo: 'days ago',
         waiting: 'Waybill created, waiting for the carrier to accept it. Their own code appears then.',
     },
     'ja-JP': {
@@ -67,6 +69,7 @@ const COPY = {
         gcode: 'プラットフォーム番号', carrierCode: '業者番号', carrier: '配送業者',
         expected: 'お届け予定', openCarrier: '業者のページを開く',
         degraded: '配送業者に接続できないため、最後に記録した状態を表示しています。',
+        lastUpdated: '最終更新', justNow: 'たった今', minutesAgo: '分前', hoursAgo: '時間前', daysAgo: '日前',
         waiting: '送り状を作成しました。業者が受け付けると業者側の番号が付きます。',
     },
 } as const;
@@ -107,6 +110,18 @@ export function ShipmentTrackingDialog({
 
     const dt = (iso: string | null) =>
         iso ? new Date(iso).toLocaleString(locale === 'vi-VN' ? 'vi-VN' : locale === 'ja-JP' ? 'ja-JP' : 'en-US') : '';
+
+    const relativeTime = (iso: string | null) => {
+        if (!iso) return null;
+        const elapsedMs = Date.now() - new Date(iso).getTime();
+        if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return null;
+        const minutes = Math.floor(elapsedMs / 60_000);
+        if (minutes < 1) return copy.justNow;
+        if (minutes < 60) return `${minutes} ${copy.minutesAgo}`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `${hours} ${copy.hoursAgo}`;
+        return `${Math.floor(hours / 24)} ${copy.daysAgo}`;
+    };
 
     const carrier = getCarrier(data?.carrierName ?? '');
 
@@ -164,9 +179,14 @@ export function ShipmentTrackingDialog({
                                 </dl>
 
                                 {data.degraded && (
-                                    <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs leading-5 text-amber-200">
-                                        {copy.degraded}
-                                    </p>
+                                    <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs leading-5 text-amber-200">
+                                        <p>{copy.degraded}</p>
+                                        {data.events[0]?.at && (
+                                            <p className="text-amber-100/80">
+                                                {copy.lastUpdated}: {relativeTime(data.events[0].at)} ({dt(data.events[0].at)})
+                                            </p>
+                                        )}
+                                    </div>
                                 )}
 
                                 {data.events.length === 0 ? (
