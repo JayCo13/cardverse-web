@@ -381,7 +381,7 @@ export async function goshipFindShipmentByOrderId(orderId: string) {
  */
 export async function goshipShipmentByCode(gcode: string) {
     const result = await call<Array<Record<string, unknown>>>(
-        `/shipments?code=${encodeURIComponent(gcode)}`,
+        `/shipments/search?code=${encodeURIComponent(gcode)}`,
         { timeoutMs: 6_000 },
     );
     if (!result.ok) return result;
@@ -394,6 +394,7 @@ export async function goshipShipmentByCode(gcode: string) {
         carrier_code?: string | null;
         tracking_url?: string | null;
         total_fee?: number;
+        expected?: string;
         expected_delivery_date?: string;
         history?: Array<{ status?: number; status_text?: string; status_desc?: string; message?: string | null; updated_at?: string; updated_time?: number }>;
     }) | null };
