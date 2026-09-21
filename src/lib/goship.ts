@@ -396,10 +396,11 @@ export async function goshipFindShipmentByOrderId(orderId: string) {
 export async function goshipShipmentByCode(gcode: string) {
     const result = await call<Array<Record<string, unknown>>>(
         `/shipments/search?code=${encodeURIComponent(gcode)}`,
-        // GoShip occasionally exceeds the old six-second production timeout.
-        // This is a read, so one transport retry is safe; 2 x 4s remains below
-        // the function's ten-second request budget.
-        { timeoutMs: 4_000, attempts: 2 },
+        // Authentication and the order lookup have already spent part of the
+        // serverless request budget. Keep both GoShip attempts below five
+        // seconds in total so the route still has time to return the last
+        // status stored on the order instead of being killed by the platform.
+        { timeoutMs: 2_250, attempts: 2 },
     );
     if (!result.ok) return result;
     const match = (result.data ?? []).find((row) => row?.id === gcode) ?? null;
