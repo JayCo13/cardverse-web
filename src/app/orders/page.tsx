@@ -575,7 +575,7 @@ export default function OrdersPage() {
       >
         <div className={`h-1 ${order.status === 'completed' ? 'bg-green-500' : order.status === 'disputed' ? 'bg-red-500' : 'bg-orange-500'}`} />
         <CardContent className="p-4">
-          <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex items-start gap-3 md:gap-4">
             {/* Card Image */}
             {order.card?.image_url && (
               <div className="relative w-20 h-28 rounded-lg overflow-hidden flex-shrink-0">
@@ -585,19 +585,19 @@ export default function OrdersPage() {
 
             {/* Info */}
             <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-2">
-                <div>
+              <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between">
+                <div className="min-w-0 w-full">
                   <h3 className="font-semibold line-clamp-1">{order.card?.name || copy.noCard}</h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {copy.orderPrefix}{order.id.substring(0, 8)} • {new Date(order.created_at).toLocaleDateString(locale)}
                   </p>
                 </div>
-                <span className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${statusInfo.bgColor} ${statusInfo.color}`}>
+                <span className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-1 text-xs font-medium ${statusInfo.bgColor} ${statusInfo.color}`}>
                   {statusInfo.icon} {statusLabel}
                 </span>
               </div>
 
-              <div className="flex items-center gap-4 mt-2 text-sm flex-wrap">
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                 <span className="font-semibold text-orange-400">{formatVND(order.amount)}</span>
                 {order.shipping_fee > 0 && (
                   <span className="text-xs text-muted-foreground">
@@ -613,7 +613,7 @@ export default function OrdersPage() {
                     blank for a status we have no name for — printing a raw enum
                     at a buyer is worse than printing nothing. */}
                 {carrierStatusLabel(order.carrier_status, locale) && (
-                  <span className={`text-xs font-medium ${carrierStatusColorClass(order.carrier_status)}`}>
+                  <span className={`basis-full text-xs font-medium sm:basis-auto ${carrierStatusColorClass(order.carrier_status)}`}>
                     {carrierStatusLabel(order.carrier_status, locale)}
                   </span>
                 )}
@@ -630,7 +630,7 @@ export default function OrdersPage() {
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={e => e.stopPropagation()}
-                      className="text-xs font-medium text-orange-400 underline underline-offset-2 hover:text-orange-300"
+                      className="max-w-full truncate text-xs font-medium text-orange-400 underline underline-offset-2 hover:text-orange-300"
                     >
                       {order.shipping_provider?.toUpperCase()}: {order.tracking_number} ↗
                     </a>
