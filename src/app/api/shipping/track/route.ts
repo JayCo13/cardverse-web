@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
             trackingUrl: /=(?:NULL|null|undefined)?(?:&|$)/.test(String(found?.tracking_url ?? ''))
                 ? order.carrier_tracking_url
                 : (found?.tracking_url || order.carrier_tracking_url),
-            expected: found?.expected_delivery_date || null,
+            expected: found?.expected || found?.expected_delivery_date || null,
             // Oldest first: a journey reads forwards.
             events: history
                 .map((h) => ({
