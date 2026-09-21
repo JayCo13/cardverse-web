@@ -86,7 +86,6 @@ test('shipment tracking retries one transport timeout', async () => {
     else process.env.GOSHIP_ENV = previousEnv;
   }
 });
-
 test('shipment tracking leaves enough serverless time to return stored status', () => {
   const source = fs.readFileSync(new URL('../src/lib/goship.ts', import.meta.url), 'utf8');
   const match = source.match(/goshipShipmentByCode[\s\S]*?timeoutMs:\s*([\d_]+),\s*attempts:\s*(\d+)/);
