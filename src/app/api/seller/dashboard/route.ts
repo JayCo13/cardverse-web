@@ -5,12 +5,12 @@ import { NextRequest, NextResponse } from 'next/server';
 
 type DashboardSummary = {
     orders: { total: number; waitingShip: number; shipping: number; completed: number; totalEarnings: number };
-    listings: { active: number; sold: number; draft: number; total: number };
+    listings: { active: number; sold: number; draft: number; hidden: number; total: number };
 };
 
 const EMPTY_SUMMARY: DashboardSummary = {
     orders: { total: 0, waitingShip: 0, shipping: 0, completed: 0, totalEarnings: 0 },
-    listings: { active: 0, sold: 0, draft: 0, total: 0 },
+    listings: { active: 0, sold: 0, draft: 0, hidden: 0, total: 0 },
 };
 
 async function handleGET(request: NextRequest) {
@@ -20,12 +20,17 @@ async function handleGET(request: NextRequest) {
     // Preserve the self-healing behavior of the full orders endpoint before
     // reading its aggregates. The dashboard stays light, but it must not show
     // an overdue status just because it uses a smaller response.
-    await supabase.rpc('complete_delivered_orders' as never);
-    try {
-        await expireUnshippedPaidOrders(createServiceSupabaseClient());
-    } catch (error) {
-        console.error('expireUnshippedPaidOrders failed:', error);
-    }
+    //
+    // The two sweeps touch disjoint orders — delivered ones and paid-but-
+    // unshipped ones — so they run together; this endpoint is on the path of
+    // every /sell load and every listing action, and each serial hop here is a
+    // full round trip the seller waits on.
+    await Promise.all([
+        supabase.rpc('complete_delivered_orders' as never),
+        expireUnshippedPaidOrders(createServiceSupabaseClient()).catch((error) => {
+            console.error('expireUnshippedPaidOrders failed:', error);
+        }),
+    ]);
 
     const [{ data: summaryData, error: summaryError }, { data: recentOrders, error: ordersError }] = await Promise.all([
         supabase.rpc('get_seller_dashboard_summary' as never),

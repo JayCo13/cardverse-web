@@ -51,6 +51,7 @@ export function walletCheckoutError(error: unknown): WalletCheckoutError {
   if (
     message.includes('card_unavailable')
     || message.includes('card_already_ordered')
+    || message.includes('listing_hidden')
   ) {
     return {
       code: 'card_unavailable',

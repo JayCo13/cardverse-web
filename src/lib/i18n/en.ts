@@ -842,6 +842,7 @@ export const en = {
   notification_offer_accepted_message: 'Continue to checkout to complete payment.',
   notification_offer_rejected_title: 'Offer rejected',
   notification_offer_rejected_message: 'You can submit another offer.',
+  notification_offer_rejected_listing_hidden: 'The seller closed this listing, so it is no longer accepting offers.',
   notification_offer_on_hold_title: 'Offer on hold',
   notification_offer_on_hold_message: 'Another buyer is paying for this card. Your offer stays in the queue and comes back if that payment does not arrive.',
   notification_offer_revived_title: 'Your offer is live again',

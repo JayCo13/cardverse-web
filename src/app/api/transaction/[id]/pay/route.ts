@@ -143,13 +143,13 @@ async function handlePOST(
 
     const { data: card, error: cardError } = await supabase
       .from('cards')
-      .select('id, name, status')
+      .select('id, name, status, listing_visibility')
       .eq('id', transaction.card_id)
-      .single<{ id: string; name: string; status: string }>();
+      .single<{ id: string; name: string; status: string; listing_visibility: string }>();
     if (cardError || !card) {
       return NextResponse.json({ error: 'Card not found.', code: 'card_not_found' }, { status: 404 });
     }
-    if (card.status === 'sold') {
+    if (card.status === 'sold' || card.listing_visibility !== 'visible') {
       return NextResponse.json({ error: 'This card was already sold.', code: 'card_unavailable' }, { status: 409 });
     }
 

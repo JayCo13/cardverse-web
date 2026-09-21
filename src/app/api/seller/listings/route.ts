@@ -29,21 +29,23 @@ async function handleGET(request: NextRequest) {
     const limit = Number(request.nextUrl.searchParams.get('limit') || 8);
     const cursorParam = request.nextUrl.searchParams.get('cursor');
     const cursor = decodeCursor(cursorParam);
-    if (!['all', 'active', 'sold', 'draft'].includes(filter) || !Number.isSafeInteger(limit) || limit < 1 || limit > 8 || (cursorParam && !cursor)) {
+    if (!['all', 'active', 'sold', 'draft', 'hidden'].includes(filter) || !Number.isSafeInteger(limit) || limit < 1 || limit > 8 || (cursorParam && !cursor)) {
         return NextResponse.json({ error: 'Invalid listing pagination' }, { status: 400 });
     }
 
     let query = supabase
         .from('cards')
-        .select('id, name, image_url, price, status, listing_type, category, condition, created_at')
+        .select('id, name, image_url, price, status, listing_visibility, listing_type, category, condition, created_at')
         .eq('seller_id', user.id)
         .order('created_at', { ascending: false })
         .order('id', { ascending: false })
         .limit(limit + 1);
 
-    if (filter === 'active') query = query.in('status', ['active', 'in_transaction']);
-    if (filter === 'sold') query = query.eq('status', 'sold');
-    if (filter === 'draft') query = query.or('status.is.null,status.not.in.(active,in_transaction,sold)');
+    if (filter === 'all') query = query.neq('listing_visibility', 'deleted');
+    if (filter === 'active') query = query.eq('listing_visibility', 'visible').in('status', ['active', 'in_transaction']);
+    if (filter === 'sold') query = query.eq('listing_visibility', 'visible').eq('status', 'sold');
+    if (filter === 'draft') query = query.eq('listing_visibility', 'visible').or('status.is.null,status.not.in.(active,in_transaction,sold)');
+    if (filter === 'hidden') query = query.eq('listing_visibility', 'hidden');
     if (cursor) {
         query = query.or(`created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`);
     }

@@ -420,6 +420,9 @@ export interface Database {
                     description: string | null
                     last_sold_price: number | null
                     status: 'active' | 'sold' | 'expired' | 'in_transaction'
+                    listing_visibility: 'visible' | 'hidden' | 'deleted'
+                    hidden_at: string | null
+                    deleted_at: string | null
                     publisher: string | null
                     season: string | null
                     set_name: string | null
@@ -463,6 +466,9 @@ export interface Database {
                     description?: string | null
                     last_sold_price?: number | null
                     status?: 'active' | 'sold' | 'expired' | 'in_transaction'
+                    listing_visibility?: 'visible' | 'hidden' | 'deleted'
+                    hidden_at?: string | null
+                    deleted_at?: string | null
                     publisher?: string | null
                     season?: string | null
                     set_name?: string | null
@@ -506,6 +512,9 @@ export interface Database {
                     description?: string | null
                     last_sold_price?: number | null
                     status?: 'active' | 'sold' | 'expired' | 'in_transaction'
+                    listing_visibility?: 'visible' | 'hidden' | 'deleted'
+                    hidden_at?: string | null
+                    deleted_at?: string | null
                     publisher?: string | null
                     season?: string | null
                     set_name?: string | null
@@ -1943,6 +1952,10 @@ export interface Database {
             perform_marketplace_order_action: { Args: { p_order_id: string; p_action: string; p_actor_id: string; p_idempotency_key: string; p_payload?: Json }; Returns: Json }
             apply_shipping_webhook_event: { Args: { p_ghn_order_code: string; p_status: string }; Returns: Json }
             get_seller_dashboard_summary: { Args: Record<PropertyKey, never>; Returns: Json }
+            manage_own_listing: {
+                Args: { p_listing_id: string; p_action: 'hide' | 'restore' | 'delete' }
+                Returns: Json
+            }
             expire_verified_marketplace_order: { Args: { p_order_id: string; p_reason: string }; Returns: Json }
             set_financial_maintenance: { Args: { p_active: boolean; p_actor: string; p_reason: string; p_cutoff_at?: string | null }; Returns: Json }
             get_financial_cutover_inventory: { Args: Record<PropertyKey, never>; Returns: Json }

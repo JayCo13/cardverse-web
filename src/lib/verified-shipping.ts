@@ -69,7 +69,7 @@ type SellerShippingProfile = {
     parcel_overrides: unknown;
 };
 
-type CardRow = { id: string; seller_id: string; shipping_fee: number | null; parcel_preset: string | null; product_kind: string | null };
+type CardRow = { id: string; seller_id: string; shipping_fee: number | null; parcel_preset: string | null; product_kind: string | null; listing_visibility: string };
 
 export class CheckoutShippingError extends Error {
     constructor(
@@ -102,7 +102,7 @@ async function readQuoteInputs(inputs: ShippingQuoteInput[]) {
             .in('id', [...new Set(inputs.map((input) => input.sellerId))])
             .returns<SellerShippingProfile[]>(),
         cardIds.length
-            ? service.from('cards').select('id, seller_id, shipping_fee, parcel_preset, product_kind').in('id', cardIds).returns<CardRow[]>()
+            ? service.from('cards').select('id, seller_id, shipping_fee, parcel_preset, product_kind, listing_visibility').in('id', cardIds).eq('listing_visibility', 'visible').returns<CardRow[]>()
             : Promise.resolve({ data: [] as CardRow[], error: null }),
     ]);
 
@@ -149,6 +149,9 @@ async function resolveSeller(input: ShippingQuoteInput, context: Awaited<ReturnT
     // nor frees the parcel. Only cards of this seller count — a crafted request
     // naming somebody else's listing must not change what this seller charges.
     const cards = input.cardIds.map((id) => context.cards.get(id)).filter((c): c is CardRow => !!c && c.seller_id === input.sellerId);
+    if (cards.length !== new Set(input.cardIds).size) {
+        throw new CheckoutShippingError('card_unavailable', input.sellerId, sellerName);
+    }
     const overrides = parseParcelOverrides(profile.parcel_overrides);
     const preset = parcelPresetFor(cards, overrides);
     const parcel = parcelFor(preset, Math.max(1, cards.length), overrides);

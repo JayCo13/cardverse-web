@@ -29,6 +29,7 @@ export default async function BuyPage() {
             .from('cards')
             .select('*, profiles:seller_id(display_name, profile_image_url, seller_verified, seller_review_count, shipping_carriers, shipping_fees, reputation_score, reputation_incidents_90d, reputation_incidents_total, completed_transactions)')
             .eq('listing_type', 'sale')
+            .eq('listing_visibility', 'visible')
             .eq('status', 'active');
 
         if (data && !error) {

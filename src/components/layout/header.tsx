@@ -28,7 +28,7 @@ import { useAuthModal } from "@/components/auth-modal"
 import { useToast } from "@/hooks/use-toast"
 import { usePathname, useRouter } from "next/navigation"
 import { useSubscription } from "@/hooks/useSubscription"
-import { getAccountSummary, invalidateAccountSummary, resetAccountSummary } from "@/lib/account-summary"
+import { getAccountSummary, resetAccountSummary } from "@/lib/account-summary"
 
 const VND_ONLY_MARKETPLACE_PATHS = [
   "/buy",
@@ -109,10 +109,10 @@ export function Header() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void refreshBadges();
 
-    const onChanged = () => {
-      invalidateAccountSummary();
-      void refreshBadges({ force: true });
-    };
+    // Forced, not invalidated first: the sell page listens for the same event,
+    // and whichever of the two asks second must join the other's request
+    // rather than cancel it.
+    const onChanged = () => void refreshBadges({ force: true });
     // Coming back to the tab is worth a re-read, but not a forced one: the
     // shared result already collapses a burst of focus events.
     const onFocus = () => void refreshBadges();

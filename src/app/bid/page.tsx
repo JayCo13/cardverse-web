@@ -41,6 +41,7 @@ export default function BidPage() {
         .from('cards')
         .select('*')
         .eq('listing_type', 'auction')
+        .eq('listing_visibility', 'visible')
         .eq('status', 'active');
 
       if (data && !error) {

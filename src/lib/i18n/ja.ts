@@ -840,6 +840,7 @@ export const ja = {
   notification_offer_accepted_message: 'チェックアウトで支払いを完了してください。',
   notification_offer_rejected_title: 'オファー却下',
   notification_offer_rejected_message: '別のオファーを送信できます。',
+  notification_offer_rejected_listing_hidden: '出品者がこの出品を非表示にしたため、オファーの受付は終了しました。',
   notification_offer_on_hold_title: '提案を保留中',
   notification_offer_on_hold_message: '別の購入者がこのカードを決済中です。あなたの提案は順番待ちのまま残り、決済が完了しなければ再び有効になります。',
   notification_offer_revived_title: '提案が再び有効になりました',

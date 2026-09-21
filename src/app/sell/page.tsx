@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckCircle, XCircle, Phone, FileCheck, ChevronRight, ChevronLeft, Sparkles, AlertTriangle, MapPin, Truck, HandCoins } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Upload, Loader2, Package, Plus, Clock, CheckCircle, XCircle, Phone, FileCheck, ChevronRight, ChevronLeft, Sparkles, AlertTriangle, MapPin, Truck, HandCoins, EyeOff, Eye, Pencil, Trash2 } from 'lucide-react';
 import { type PickupAddress } from '@/components/pickup-address-picker';
 import { ShippingQuotePreview } from '@/components/shipping-quote-preview';
 import { ShopShippingSetup } from '@/components/shop-shipping-setup';
@@ -27,7 +27,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
-import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { getCloudinarySignature, uploadImageDirectToCloudinary, type CloudinarySignaturePayload } from '@/lib/cloudinary-direct';
 import { getCloudinaryKycScanUrl, toDisplaySafeUrl, optimizeCloudinaryUrl } from '@/lib/cloudinary-url';
 import { isHeicFile, convertHeicToJpeg } from '@/lib/heic';
@@ -60,6 +60,7 @@ type MyListing = {
   image_url: string | null;
   price: number | null;
   status: string;
+  listing_visibility: 'visible' | 'hidden' | 'deleted';
   listing_type: string;
   category: string | null;
   condition: string | null;
@@ -67,17 +68,19 @@ type MyListing = {
 };
 
 type OrderSummary = { total: number; waitingShip: number; shipping: number; completed: number; totalEarnings: number };
-type ListingSummary = { active: number; sold: number; draft: number; total: number };
-type ListingFilter = 'all' | 'active' | 'sold' | 'draft';
+type ListingSummary = { active: number; sold: number; draft: number; hidden: number; total: number };
+type ListingFilter = 'all' | 'active' | 'sold' | 'draft' | 'hidden';
+type ListingAction = 'hide' | 'restore' | 'delete';
 type ListingPageState = { items: MyListing[]; nextCursor: string | null; loaded: boolean; loading: boolean; error: boolean };
 
 const EMPTY_ORDER_SUMMARY: OrderSummary = { total: 0, waitingShip: 0, shipping: 0, completed: 0, totalEarnings: 0 };
-const EMPTY_LISTING_SUMMARY: ListingSummary = { active: 0, sold: 0, draft: 0, total: 0 };
+const EMPTY_LISTING_SUMMARY: ListingSummary = { active: 0, sold: 0, draft: 0, hidden: 0, total: 0 };
 const emptyListingPages = (): Record<ListingFilter, ListingPageState> => ({
   all: { items: [], nextCursor: null, loaded: false, loading: false, error: false },
   active: { items: [], nextCursor: null, loaded: false, loading: false, error: false },
   sold: { items: [], nextCursor: null, loaded: false, loading: false, error: false },
   draft: { items: [], nextCursor: null, loaded: false, loading: false, error: false },
+  hidden: { items: [], nextCursor: null, loaded: false, loading: false, error: false },
 });
 
 const KpiCard = memo(function KpiCard({ label, value, tone }: { label: string; value: string | number; tone: string }) {
@@ -89,10 +92,22 @@ const KpiCard = memo(function KpiCard({ label, value, tone }: { label: string; v
   );
 });
 
-const ListingRow = memo(function ListingRow({ listing, statusLabel, price, pendingOffers, offerLabel }: { listing: MyListing; statusLabel: string; price: string; pendingOffers: number; offerLabel: string }) {
+const ListingRow = memo(function ListingRow({ listing, statusLabel, price, pendingOffers, offerLabel, editLabel, hideLabel, restoreLabel, deleteLabel, onAction }: {
+  listing: MyListing;
+  statusLabel: string;
+  price: string;
+  pendingOffers: number;
+  offerLabel: string;
+  editLabel: string;
+  hideLabel: string;
+  restoreLabel: string;
+  deleteLabel: string;
+  onAction: (listing: MyListing, action: ListingAction) => void;
+}) {
+  const hidden = listing.listing_visibility === 'hidden';
   return (
-    <div className="flex items-center gap-2 border-b py-2 last:border-b-0">
-      <Link href={`/cards/${listing.id}`} className="flex min-w-0 flex-1 items-center gap-3">
+    <div className="flex flex-wrap items-center gap-2 border-b py-2 last:border-b-0">
+      <Link href={hidden ? `/sell/edit/${listing.id}` : `/cards/${listing.id}`} className="flex min-w-0 flex-1 items-center gap-3">
         <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded bg-muted">
           {listing.image_url ? (
             <Image src={optimizeCloudinaryUrl(listing.image_url, 160)} alt="" fill sizes="56px" className="object-cover" />
@@ -113,6 +128,23 @@ const ListingRow = memo(function ListingRow({ listing, statusLabel, price, pendi
           </Link>
         </Button>
       )}
+      <div className="flex w-full justify-end gap-2 pl-[68px] sm:w-auto sm:pl-0">
+        {hidden ? <>
+          <Button variant="ghost" size="sm" asChild className="h-8 px-2">
+            <Link href={`/sell/edit/${listing.id}`}><Pencil className="mr-1 h-3.5 w-3.5" />{editLabel}</Link>
+          </Button>
+          <Button variant="outline" size="sm" className="h-8 px-2" onClick={() => onAction(listing, 'restore')}>
+            <Eye className="mr-1 h-3.5 w-3.5" />{restoreLabel}
+          </Button>
+          <Button variant="ghost" size="sm" className="h-8 px-2 text-red-400 hover:text-red-300" onClick={() => onAction(listing, 'delete')}>
+            <Trash2 className="mr-1 h-3.5 w-3.5" />{deleteLabel}
+          </Button>
+        </> : listing.status === 'active' ? (
+          <Button variant="ghost" size="sm" className="h-8 px-2 text-muted-foreground" onClick={() => onAction(listing, 'hide')}>
+            <EyeOff className="mr-1 h-3.5 w-3.5" />{hideLabel}
+          </Button>
+        ) : null}
+      </div>
     </div>
   );
 });
@@ -237,8 +269,14 @@ export default function SellPage() {
   const [listingPages, setListingPages] = useState<Record<ListingFilter, ListingPageState>>(emptyListingPages);
   const listingPagesRef = useRef(listingPages);
   const listingRequests = useRef<Partial<Record<ListingFilter, Promise<boolean>>>>({});
+  // Bumped by every local listing change. A listings or dashboard request
+  // that began before the bump carries pre-change rows and counts, and must
+  // not overwrite what applyListingChange() just wrote.
+  const listingEpoch = useRef(0);
   const [pendingOfferCounts, setPendingOfferCounts] = useState<Record<string, number>>({});
   const [pendingOffersTotal, setPendingOffersTotal] = useState(0);
+  const [listingAction, setListingAction] = useState<{ listing: MyListing; action: ListingAction } | null>(null);
+  const [isManagingListing, setIsManagingListing] = useState(false);
   const [isLoadingAddress, setIsLoadingAddress] = useState(true);
   // The one carrier-owned sender address. Null after loading means the seller
   // has not configured one yet; the form then opens for the first setup.
@@ -579,6 +617,7 @@ export default function SellPage() {
     sellerOrdersLastStartedAt.current = now;
     if (!options?.background) setIsLoadingOrders(true);
 
+    const epoch = listingEpoch.current;
     const request = (async () => {
       try {
         const res = await fetch('/api/seller/dashboard', { cache: 'no-store' });
@@ -586,7 +625,11 @@ export default function SellPage() {
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
         setSellerOrders(data.recentOrders || []);
         setOrderSummary(data.summary?.orders || EMPTY_ORDER_SUMMARY);
-        setListingSummary(data.summary?.listings || EMPTY_LISTING_SUMMARY);
+        // Orders are untouched by a listing action; the listing counts are
+        // not, so a response from before one is stale on that half only.
+        if (epoch === listingEpoch.current) {
+          setListingSummary(data.summary?.listings || EMPTY_LISTING_SUMMARY);
+        }
         return true;
       } catch (err) {
         console.error('Failed to fetch seller orders:', err);
@@ -632,6 +675,7 @@ export default function SellPage() {
     listingPagesRef.current = { ...listingPagesRef.current, [filter]: loadingState };
     setListingPages(listingPagesRef.current);
 
+    const epoch = listingEpoch.current;
     const request = (async () => {
       try {
         const params = new URLSearchParams({
@@ -642,6 +686,19 @@ export default function SellPage() {
         const res = await fetch(`/api/seller/listings?${params}`, { cache: 'no-store' });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+        if (epoch !== listingEpoch.current) {
+          // A listing was hidden, restored or deleted while this was in
+          // flight. `current` is a snapshot from before that, so appending to
+          // it would bring the removed row back. Drop the result; a page the
+          // change left unloaded is fetched again from the fresh state.
+          const latest = listingPagesRef.current[filter];
+          listingPagesRef.current = { ...listingPagesRef.current, [filter]: { ...latest, loading: false } };
+          setListingPages(listingPagesRef.current);
+          delete listingRequests.current[filter];
+          if (!latest.loaded) void fetchSellerListings(filter);
+          return true;
+        }
 
         const next: ListingPageState = {
           items: append ? [...current.items, ...(data.items || [])] : (data.items || []),
@@ -659,16 +716,19 @@ export default function SellPage() {
         listingPagesRef.current = { ...listingPagesRef.current, [filter]: failed };
         setListingPages(listingPagesRef.current);
         return false;
-      } finally {
-        delete listingRequests.current[filter];
       }
     })();
 
     listingRequests.current[filter] = request;
+    // Only our own slot: the stale branch above may already have started the
+    // replacement request under this filter.
+    void request.finally(() => {
+      if (listingRequests.current[filter] === request) delete listingRequests.current[filter];
+    });
     return request;
   }, []);
 
-  const activeListingFilter: ListingFilter = desktop ? 'all' : listingTab;
+  const activeListingFilter: ListingFilter = listingTab;
 
   useEffect(() => {
     if (!user || verification?.status !== 'approved') return;
@@ -698,12 +758,118 @@ export default function SellPage() {
     }
   };
 
+  /**
+   * Move one listing between tabs locally after `manage_own_listing` succeeds.
+   *
+   * The RPC only permits three transitions — visible+active → hidden, hidden →
+   * visible+active, hidden → deleted — so the counts can be adjusted here with
+   * the same rules `get_seller_dashboard_summary` counts by. The tab the row
+   * moves into is marked unloaded rather than patched: its order is by
+   * created_at, and the next visit fetches it in the right order anyway.
+   */
+  const applyListingChange = (listing: MyListing, action: ListingAction, moved: boolean) => {
+    listingEpoch.current++;
+    const target: 'visible' | 'hidden' | 'deleted' = action === 'hide' ? 'hidden' : action === 'restore' ? 'visible' : 'deleted';
+    const unloaded: ListingPageState = { items: [], nextCursor: null, loaded: false, loading: false, error: false };
+    const pages = { ...listingPagesRef.current };
+    for (const key of Object.keys(pages) as ListingFilter[]) {
+      const page = pages[key];
+      // Every permitted transition involves an `active` card, so a visible
+      // outcome lands in the active tab and never in sold or draft.
+      const stillBelongs = key === 'all' ? target !== 'deleted'
+        : key === 'hidden' ? target === 'hidden'
+          : key === 'active' ? target === 'visible'
+            : false;
+      if (page.items.some(item => item.id === listing.id)) {
+        pages[key] = stillBelongs
+          ? { ...page, items: page.items.map(item => item.id === listing.id ? { ...item, listing_visibility: target } : item) }
+          : { ...page, items: page.items.filter(item => item.id !== listing.id) };
+      } else if (page.loaded && stillBelongs) {
+        pages[key] = unloaded;
+      }
+    }
+    listingPagesRef.current = pages;
+    setListingPages(pages);
+
+    if (!moved) return;
+    setListingSummary(prev => {
+      const dec = (n: number) => Math.max(0, n - 1);
+      if (action === 'hide') return { ...prev, active: dec(prev.active), hidden: prev.hidden + 1 };
+      if (action === 'restore') return { ...prev, hidden: dec(prev.hidden), active: prev.active + 1 };
+      return { ...prev, hidden: dec(prev.hidden), total: dec(prev.total) };
+    });
+  };
+
+  const manageListing = async () => {
+    if (!listingAction || isManagingListing) return;
+    setIsManagingListing(true);
+    try {
+      const response = await fetch(`/api/marketplace/listings/${listingAction.listing.id}/state`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: listingAction.action }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = payload?.code === 'listing_transaction_locked'
+          ? tx('Listing đang có offer đã chọn, thanh toán hoặc đơn hàng nên chưa thể thay đổi.', 'This listing has a selected offer, payment, or active order and cannot be changed yet.', '選択済みオファー、支払い、または進行中の注文があるため変更できません。')
+          : payload?.code === 'seller_not_approved'
+            ? tx('Tài khoản seller hiện không đủ điều kiện để hiện lại bài.', 'This seller account is not eligible to restore the listing.', '現在この出品を再公開できる販売者状態ではありません。')
+            : tx('Không thể cập nhật listing lúc này.', 'Could not update the listing.', '現在出品を更新できません。');
+        throw new Error(message);
+      }
+
+      const action = listingAction.action;
+      const rejectedCount = Number(payload?.rejectedOfferCount || 0);
+
+      // The RPC has already told us the outcome, so show it now rather than
+      // refetching everything and holding the dialog open meanwhile. This used
+      // to wipe every tab, flip the grid to skeletons, and wait on three
+      // requests (one of which does order maintenance first) before the toast
+      // — two to three seconds of spinner for a one-row change.
+      applyListingChange(listingAction.listing, action, !payload?.replayed);
+      setListingAction(null);
+      toast({
+        title: action === 'hide'
+          ? tx('Đã ẩn listing', 'Listing hidden', '出品を非表示にしました')
+          : action === 'restore'
+            ? tx('Đã hiện lại listing', 'Listing restored', '出品を再公開しました')
+            : tx('Đã xóa listing', 'Listing deleted', '出品を削除しました'),
+        description: action === 'hide' && rejectedCount > 0
+          ? tx(`${rejectedCount} offer đang chờ đã được từ chối.`, `${rejectedCount} pending offer(s) were rejected.`, `保留中のオファー${rejectedCount}件を拒否しました。`)
+          : undefined,
+      });
+
+      // Reconcile in the background. The offer counts moved (hide rejects
+      // pending offers), and the header reacts to the same event, so one
+      // dispatch refreshes both from a single shared request. The dashboard
+      // read is `background` so it does not put the grid back into skeletons.
+      invalidateAccountSummary();
+      window.dispatchEvent(new CustomEvent('cardverse:offers-updated'));
+      // A dashboard read already in flight (a focus refresh, say) predates
+      // the change and would only be joined, not replaced — so queue ours
+      // behind it. Its own listing counts are dropped by the epoch check.
+      const stale = sellerOrdersRequest.current;
+      void (stale ?? Promise.resolve()).then(() => {
+        sellerOrdersLastStartedAt.current = 0; // past the burst throttle
+        return fetchSellerOrders({ background: true });
+      });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: tx('Không thể cập nhật listing', 'Could not update listing', '出品を更新できません'),
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setIsManagingListing(false);
+    }
+  };
+
   useEffect(() => {
     if (!user) return;
-    const refresh = () => {
-      invalidateAccountSummary();
-      void fetchOfferSummary({ force: true });
-    };
+    // Forced, not invalidated first: the header reacts to the same event and
+    // the two reads share one request (see FORCE_SHARE_MS in account-summary).
+    const refresh = () => void fetchOfferSummary({ force: true });
     window.addEventListener('cardverse:offers-updated', refresh);
     return () => window.removeEventListener('cardverse:offers-updated', refresh);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -735,7 +901,7 @@ export default function SellPage() {
    * still decides what is rendered, and re-runs the batch if any part failed.
    */
   const loadDashboard = () =>
-    Promise.all([fetchSellerOrders(), fetchSellerListings(desktop ? 'all' : 'active'), fetchOfferSummary(), fetchPickupAddress()]);
+    Promise.all([fetchSellerOrders(), fetchSellerListings('active'), fetchOfferSummary(), fetchPickupAddress()]);
   const dashboardWarm = useRef<Promise<boolean[]> | null>(null);
 
   useEffect(() => {
@@ -1065,7 +1231,19 @@ export default function SellPage() {
         ) : (
           <>
             <div>{page.items.map(listing => (
-              <ListingRow key={listing.id} listing={listing} statusLabel={listing.status === 'sold' ? copy.sold : statusLabel} price={listing.price ? formatVND(listing.price) : noDataLabel(locale)} pendingOffers={pendingOfferCounts[listing.id] || 0} offerLabel={tx('offer đang chờ', 'pending offers', '件の保留中オファー')} />
+              <ListingRow
+                key={listing.id}
+                listing={listing}
+                statusLabel={listing.listing_visibility === 'hidden' ? tx('Đã ẩn', 'Hidden', '非表示') : listing.status === 'sold' ? copy.sold : statusLabel}
+                price={listing.price ? formatVND(listing.price) : noDataLabel(locale)}
+                pendingOffers={pendingOfferCounts[listing.id] || 0}
+                offerLabel={tx('offer đang chờ', 'pending offers', '件の保留中オファー')}
+                editLabel={tx('Sửa', 'Edit', '編集')}
+                hideLabel={tx('Ẩn', 'Hide', '非表示')}
+                restoreLabel={tx('Hiện lại', 'Restore', '再公開')}
+                deleteLabel={tx('Xóa', 'Delete', '削除')}
+                onAction={(item, action) => setListingAction({ listing: item, action })}
+              />
             ))}</div>
             {page.nextCursor && (
               <button type="button" disabled={page.loading} onClick={() => void fetchSellerListings(key, true)} className="mt-3 w-full text-sm font-medium text-primary disabled:opacity-50">
@@ -1353,26 +1531,40 @@ export default function SellPage() {
                 ) : (
                   <>
                     {!desktop && <Tabs value={listingTab} onValueChange={(value) => setListingTab(value as Exclude<ListingFilter, 'all'>)} className="md:hidden">
-                      <TabsList className="grid h-auto w-full grid-cols-3">
+                      <TabsList className="grid h-auto w-full grid-cols-4">
                         <TabsTrigger value="active" className="min-w-0 flex-1 truncate px-2 text-xs">{copy.active} ({formatCompactCount(listingSummary.active, locale)})</TabsTrigger>
                         <TabsTrigger value="sold" className="min-w-0 flex-1 truncate px-2 text-xs">{copy.sold} ({formatCompactCount(listingSummary.sold, locale)})</TabsTrigger>
                         <TabsTrigger value="draft" className="min-w-0 flex-1 truncate px-2 text-xs">{tx('Nháp', 'Drafts', '下書き')} ({formatCompactCount(listingSummary.draft, locale)})</TabsTrigger>
+                        <TabsTrigger value="hidden" className="min-w-0 flex-1 truncate px-2 text-xs">{tx('Đã ẩn', 'Hidden', '非表示')} ({formatCompactCount(listingSummary.hidden, locale)})</TabsTrigger>
                       </TabsList>
                       {renderListingTab('active', copy.active)}
                       {renderListingTab('sold', copy.sold)}
                       {renderListingTab('draft', tx('Nháp', 'Drafts', '下書き'))}
+                      {renderListingTab('hidden', tx('Đã ẩn', 'Hidden', '非表示'))}
                     </Tabs>}
 
                     {desktop && <>
+                      <Tabs value={listingTab} onValueChange={(value) => setListingTab(value as Exclude<ListingFilter, 'all'>)} className="mb-4 hidden md:block">
+                        <TabsList className="grid h-auto w-full grid-cols-4">
+                          <TabsTrigger value="active">{copy.active} ({formatCompactCount(listingSummary.active, locale)})</TabsTrigger>
+                          <TabsTrigger value="sold">{copy.sold} ({formatCompactCount(listingSummary.sold, locale)})</TabsTrigger>
+                          <TabsTrigger value="draft">{tx('Nháp', 'Drafts', '下書き')} ({formatCompactCount(listingSummary.draft, locale)})</TabsTrigger>
+                          <TabsTrigger value="hidden">{tx('Đã ẩn', 'Hidden', '非表示')} ({formatCompactCount(listingSummary.hidden, locale)})</TabsTrigger>
+                        </TabsList>
+                      </Tabs>
+                      {myListings.length === 0 && (
+                        <p className="hidden py-8 text-center text-sm text-muted-foreground md:block">{copy.noListings}</p>
+                      )}
                       <div className="hidden grid-cols-2 gap-3 sm:grid-cols-3 md:grid md:grid-cols-4">
                         {myListings.map((listing) => {
                           const isSold = listing.status === 'sold';
+                          const isHidden = listing.listing_visibility === 'hidden';
                           return (
                             <div
                               key={listing.id}
                               className="group relative flex flex-col overflow-hidden rounded-xl border bg-card transition-all hover:border-orange-500/40 hover:shadow-md"
                             >
-                              <Link href={`/cards/${listing.id}`} className="absolute inset-0 z-[1]" aria-label={listing.name} />
+                              <Link href={isHidden ? `/sell/edit/${listing.id}` : `/cards/${listing.id}`} className="absolute inset-0 z-[1]" aria-label={listing.name} />
                               <div className="relative aspect-[3/4] w-full overflow-hidden bg-muted">
                                 {listing.image_url ? (
                                   <Image
@@ -1387,8 +1579,8 @@ export default function SellPage() {
                                     <Package className="h-8 w-8 text-muted-foreground/40" />
                                   </div>
                                 )}
-                                <span className={`absolute left-2 top-2 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isSold ? 'bg-muted text-muted-foreground' : 'bg-green-500/90 text-white'}`}>
-                                  {isSold ? copy.sold : copy.active}
+                                <span className={`absolute left-2 top-2 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isSold || isHidden ? 'bg-muted text-muted-foreground' : 'bg-green-500/90 text-white'}`}>
+                                  {isHidden ? tx('Đã ẩn', 'Hidden', '非表示') : isSold ? copy.sold : copy.active}
                                 </span>
                                 {(pendingOfferCounts[listing.id] || 0) > 0 && (
                                   <Link href={`/offers?view=received&cardId=${listing.id}`} className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-md bg-orange-500 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-orange-600" aria-label={`${pendingOfferCounts[listing.id]} ${tx('offer đang chờ', 'pending offers', '件の保留中オファー')}`}>
@@ -1399,13 +1591,30 @@ export default function SellPage() {
                               <div className="flex flex-1 flex-col p-2.5">
                                 <p className="line-clamp-1 text-sm font-medium">{listing.name}</p>
                                 <p className="mt-1 text-sm font-bold text-orange-400">{listing.price ? formatVND(listing.price) : noDataLabel(locale)}</p>
+                                <div className="relative z-10 mt-2 flex flex-wrap gap-1.5">
+                                  {isHidden ? <>
+                                    <Button variant="ghost" size="sm" asChild className="h-8 flex-1 px-2">
+                                      <Link href={`/sell/edit/${listing.id}`}><Pencil className="mr-1 h-3.5 w-3.5" />{tx('Sửa', 'Edit', '編集')}</Link>
+                                    </Button>
+                                    <Button variant="outline" size="sm" className="h-8 flex-1 px-2" onClick={() => setListingAction({ listing, action: 'restore' })}>
+                                      <Eye className="mr-1 h-3.5 w-3.5" />{tx('Hiện', 'Show', '再公開')}
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-red-400 hover:text-red-300" aria-label={tx('Xóa listing', 'Delete listing', '出品を削除')} onClick={() => setListingAction({ listing, action: 'delete' })}>
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </> : listing.status === 'active' ? (
+                                    <Button variant="ghost" size="sm" className="h-8 w-full text-muted-foreground" onClick={() => setListingAction({ listing, action: 'hide' })}>
+                                      <EyeOff className="mr-1 h-3.5 w-3.5" />{tx('Ẩn bài đăng', 'Hide listing', '出品を非表示')}
+                                    </Button>
+                                  ) : null}
+                                </div>
                               </div>
                             </div>
                           );
                         })}
                       </div>
                       {listingPage.nextCursor && (
-                        <Button type="button" variant="outline" className="mx-auto mt-4 flex" disabled={listingPage.loading} onClick={() => void fetchSellerListings('all', true)}>
+                        <Button type="button" variant="outline" className="mx-auto mt-4 flex" disabled={listingPage.loading} onClick={() => void fetchSellerListings(activeListingFilter, true)}>
                           {listingPage.loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                           {listingPage.loading ? tx('Đang tải…', 'Loading…', '読み込み中…') : tx('Xem thêm bài đăng', 'Load more listings', 'さらに表示')}
                         </Button>
@@ -1533,6 +1742,46 @@ export default function SellPage() {
             </div>
           </DrawerContent>
         </Drawer>
+        <AlertDialog open={listingAction !== null} onOpenChange={(open) => { if (!open && !isManagingListing) setListingAction(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {listingAction?.action === 'hide'
+                  ? tx('Ẩn bài đăng này?', 'Hide this listing?', 'この出品を非表示にしますか？')
+                  : listingAction?.action === 'restore'
+                    ? tx('Hiện lại bài đăng?', 'Restore this listing?', 'この出品を再公開しますか？')
+                    : tx('Xóa bài đăng này?', 'Delete this listing?', 'この出品を削除しますか？')}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {listingAction?.action === 'hide'
+                  ? tx(
+                    `${pendingOfferCounts[listingAction.listing.id] || 0} offer đang chờ sẽ bị từ chối. Listing sẽ biến mất khỏi marketplace nhưng bạn vẫn có thể sửa hoặc hiện lại.`,
+                    `${pendingOfferCounts[listingAction.listing.id] || 0} pending offer(s) will be rejected. The listing will leave the marketplace, but you can edit or restore it.`,
+                    `保留中のオファー${pendingOfferCounts[listingAction.listing.id] || 0}件を拒否します。出品はマーケットから非表示になりますが、編集・再公開できます。`,
+                  )
+                  : listingAction?.action === 'restore'
+                    ? tx('Listing sẽ xuất hiện lại trên marketplace và có thể nhận mua/offer mới.', 'The listing will return to the marketplace and accept new purchases and offers.', '出品がマーケットに戻り、新しい購入・オファーを受け付けます。')
+                    : tx('Đây là xóa mềm không thể hoàn tác từ giao diện. Lịch sử offer, chat và đơn hàng vẫn được giữ an toàn.', 'This soft deletion cannot be undone from the UI. Offer, chat, and order history will be preserved.', 'このソフト削除は画面から元に戻せません。オファー、チャット、注文履歴は保持されます。')}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isManagingListing}>{tx('Hủy', 'Cancel', 'キャンセル')}</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={manageListing}
+                disabled={isManagingListing}
+                className={listingAction?.action === 'delete' ? 'bg-red-600 text-white hover:bg-red-700' : ''}
+              >
+                {isManagingListing
+                  ? tx('Đang xử lý…', 'Working…', '処理中…')
+                  : listingAction?.action === 'hide'
+                    ? tx('Ẩn bài đăng', 'Hide listing', '非表示にする')
+                    : listingAction?.action === 'restore'
+                      ? tx('Hiện lại', 'Restore', '再公開')
+                      : tx('Xóa listing', 'Delete listing', '出品を削除')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     );
   }
