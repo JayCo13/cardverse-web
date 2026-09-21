@@ -670,6 +670,7 @@ export default function CardDetailsPage() {
             .from("cards")
             .select("*, profiles:seller_id(display_name, profile_image_url, seller_verified, seller_rating, seller_review_count)")
             .eq("listing_type", "sale")
+            .eq("listing_visibility", "visible")
             .eq("status", "active")
             .neq("id", cardId)
             .limit(24);
@@ -702,6 +703,13 @@ export default function CardDetailsPage() {
                 .single();
 
             if (data && !error) {
+                const visibility = (data as { listing_visibility?: string }).listing_visibility;
+                const viewerId = user?.id || (await supabase.auth.getUser()).data.user?.id;
+                if (visibility === 'deleted' || (visibility !== 'visible'
+                    && (data as { seller_id?: string }).seller_id !== viewerId)) {
+                    router.replace('/buy');
+                    return;
+                }
                 const mapped = mapCard(data);
                 // Sold cards are no longer shown individually — send viewers to the
                 // aggregated sold-cards page (sale price + accepted-offer price).
@@ -743,7 +751,7 @@ export default function CardDetailsPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [cardId, supabase, router]);
+    }, [cardId, supabase, router, user?.id]);
 
     const fetchOffers = useCallback(async () => {
         const { data } = await supabase

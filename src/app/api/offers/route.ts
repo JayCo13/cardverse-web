@@ -35,7 +35,7 @@ const OFFER_COLUMNS = 'id, card_id, buyer_id, price, message, status, transactio
  * market and that they are still entitled to bid on.
  */
 const REOFFERABLE_STATUSES: ReadonlySet<OfferRow['status']> = new Set(['rejected', 'expired']);
-const CARD_COLUMNS = 'id, seller_id, name, image_url, price, status, listing_type, accept_offers, min_offer_percent, is_bundle, bundle_items';
+const CARD_COLUMNS = 'id, seller_id, name, image_url, price, status, listing_visibility, listing_type, accept_offers, min_offer_percent, is_bundle, bundle_items';
 
 /** Read a browser-supplied bundle selection into the shape `@/lib/bundle` matches on. */
 function readSelection(value: unknown): BundleSelection[] | null {
@@ -183,7 +183,7 @@ async function handlePOST(request: NextRequest) {
         return NextResponse.json({ error: 'Bạn không thể tự trả giá bài đăng của mình.' }, { status: 403 });
     }
 
-    if (cardRow.status !== 'active' || cardRow.listing_type !== 'sale' || !cardRow.accept_offers) {
+    if (cardRow.status !== 'active' || cardRow.listing_visibility !== 'visible' || cardRow.listing_type !== 'sale' || !cardRow.accept_offers) {
         return NextResponse.json({ error: 'Listing này hiện không nhận offer.' }, { status: 409 });
     }
 
@@ -318,6 +318,12 @@ async function handlePOST(request: NextRequest) {
                     error: 'Người bán này không nhận offer từ tài khoản có nhiều sự cố gần đây. Bạn vẫn có thể Mua ngay.',
                     code: 'offer_blocked_by_seller',
                 },
+                { status: 409 },
+            );
+        }
+        if (raised.includes('listing_hidden') || raised.includes('card_unavailable')) {
+            return NextResponse.json(
+                { error: 'Listing này không còn hiển thị để nhận offer.', code: 'card_unavailable' },
                 { status: 409 },
             );
         }

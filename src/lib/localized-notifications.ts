@@ -57,6 +57,7 @@ export function localizeSystemNotification(notification: Notification, t: Transl
     resolved_release: 'notification_context_resolved_release',
     completed_auto: 'notification_context_auto',
     completed_confirmed: 'notification_context_confirmed',
+    listing_hidden: 'notification_offer_rejected_listing_hidden',
   };
   if (metadata.event && eventKeys[metadata.event]) message = t(eventKeys[metadata.event]);
   // A shipping notification's news IS the state the parcel reached, so it

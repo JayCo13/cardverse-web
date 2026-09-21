@@ -184,15 +184,16 @@ async function handlePOST(request: NextRequest) {
             .select('*')
             .eq('id', card_id)
             .eq('status', 'active')
+            .eq('listing_visibility', 'visible')
             .eq('listing_type', 'sale')
             .single<MarketplaceCard>();
 
         if (cardError || !card) {
             const { data: existingCard } = await supabase
                 .from('cards')
-                .select('status, listing_type')
+                .select('status, listing_visibility, listing_type')
                 .eq('id', card_id)
-                .maybeSingle<{ status: string; listing_type: string | null }>();
+                .maybeSingle<{ status: string; listing_visibility: string; listing_type: string | null }>();
 
             if (existingCard) {
                 return NextResponse.json(

@@ -841,6 +841,7 @@ export const vi = {
   notification_offer_accepted_message: 'Hãy tiếp tục checkout để hoàn tất thanh toán.',
   notification_offer_rejected_title: 'Offer bị từ chối',
   notification_offer_rejected_message: 'Bạn có thể gửi một offer khác.',
+  notification_offer_rejected_listing_hidden: 'Người bán đã ẩn bài đăng này nên bài không còn nhận offer.',
   notification_offer_on_hold_title: 'Offer đang tạm khoá',
   notification_offer_on_hold_message: 'Một người mua khác đang thanh toán thẻ này. Offer của bạn vẫn trong hàng chờ và sẽ được kích hoạt lại nếu họ không thanh toán.',
   notification_offer_revived_title: 'Offer của bạn đã hoạt động lại',

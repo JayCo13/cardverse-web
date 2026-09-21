@@ -5,6 +5,7 @@ type CartCard = {
   id: string;
   seller_id: string;
   status: string;
+  listing_visibility: string;
   listing_type: string | null;
 };
 
@@ -66,7 +67,7 @@ async function handlePOST(request: NextRequest) {
 
   const { data: card, error: cardError } = await supabase
     .from('cards')
-    .select('id, seller_id, status, listing_type')
+    .select('id, seller_id, status, listing_visibility, listing_type')
     .eq('id', card_id)
     .single<CartCard>();
 
@@ -78,7 +79,7 @@ async function handlePOST(request: NextRequest) {
     return NextResponse.json({ error: 'Bạn không thể thêm bài đăng của chính mình vào giỏ hàng.' }, { status: 400 });
   }
 
-  if (card.status !== 'active' || card.listing_type !== 'sale') {
+  if (card.status !== 'active' || card.listing_visibility !== 'visible' || card.listing_type !== 'sale') {
     return NextResponse.json({ error: 'Thẻ này không còn khả dụng để thêm vào giỏ hàng.', code: 'card_unavailable' }, { status: 409 });
   }
 

@@ -33,7 +33,24 @@ const EMPTY: AccountSummary = {
  *  count never looks stale to someone watching it. */
 const FRESH_FOR_MS = 5_000;
 
+/**
+ * A forced read joins a *forced* request that began this recently instead of
+ * starting its own. One mutation fans out to several listeners — the header
+ * badge and the seller dashboard both react to `cardverse:offers-updated` —
+ * and each of them asks for fresh counts. Without this, the second listener's
+ * invalidation discarded the first one's request mid-flight, and the server
+ * was asked three times for numbers that had changed once.
+ *
+ * Only a request that was itself forced qualifies: a plain read that happened
+ * to start just before the mutation (a focus refresh, say) carries the old
+ * counts, so the first forced call still cancels it and starts over. The
+ * window only has to cover one synchronous dispatch.
+ */
+const FORCE_SHARE_MS = 100;
+
 let inFlight: Promise<AccountSummary | null> | null = null;
+let inFlightStartedAt = 0;
+let inFlightForced = false;
 let cached: { at: number; value: AccountSummary } | null = null;
 
 let accountId: string | null = null;
@@ -61,11 +78,16 @@ export async function getAccountSummary(userId: string, options?: { force?: bool
         resetAccountSummary();
         accountId = userId;
     }
-    if (options?.force) invalidateAccountSummary();
+    if (options?.force) {
+        if (inFlight && inFlightForced && Date.now() - inFlightStartedAt < FORCE_SHARE_MS) return inFlight;
+        invalidateAccountSummary();
+    }
     if (cached && Date.now() - cached.at < FRESH_FOR_MS) return cached.value;
     if (inFlight) return inFlight;
 
     const version = generation;
+    inFlightStartedAt = Date.now();
+    inFlightForced = !!options?.force;
     const pending = request()
         .then(value => {
             if (version !== generation || accountId !== userId) return null;

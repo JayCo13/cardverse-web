@@ -41,6 +41,7 @@ export default function RazzPage() {
         .from('cards')
         .select('*')
         .eq('listing_type', 'razz')
+        .eq('listing_visibility', 'visible')
         .eq('status', 'active');
 
       if (data && !error) {

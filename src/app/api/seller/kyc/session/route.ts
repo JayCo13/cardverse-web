@@ -1,6 +1,5 @@
-import { accountRoute } from '@/lib/account-route';
+import { accountRoute, getAccountRouteContext } from '@/lib/account-route';
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceSupabaseClient } from '@/lib/supabase/service';
 import { getKycProvider } from '@/lib/kyc';
 import type { KycStatus } from '@/lib/kyc';
@@ -46,15 +45,16 @@ const POLL_PROVIDER_BUDGET_MS = 4_000;
  * timeout with room for the platform's own overhead.
  *
  * Every await below is billed against it. Bounding only the provider call is
- * not enough: auth, three database round trips and the provider's own 7s
- * ceiling add up past 10s on a cold start, and the function is then killed
- * mid-flight — which reaches the browser as an HTML 502 that no JSON error
- * handling can read.
+ * not enough: three database round trips and the provider's own 7s ceiling
+ * add up past 10s on a cold start, and the function is then killed mid-flight
+ * — which reaches the browser as an HTML 502 that no JSON error handling can
+ * read.
+ *
+ * Identity is not part of this budget: `accountRoute` has already verified
+ * the caller by the time the handler runs, and asking the auth server again
+ * here was a second full round trip on every /sell load.
  */
-const FUNCTION_BUDGET_MS = 8_500;
-
-/** Reserved out of the budget for the auth round trip. */
-const AUTH_BUDGET_MS = 2_500;
+const FUNCTION_BUDGET_MS = 8_000;
 
 /** Reserved out of the budget for the pre-checks. */
 const PRECHECK_BUDGET_MS = 2_500;
@@ -117,13 +117,8 @@ async function handlePOST(request: NextRequest) {
     const remainingMs = () => FUNCTION_BUDGET_MS - (Date.now() - startedAt);
 
     try {
-        const supabase = await createServerSupabaseClient();
-        const { data: { user }, error: authError } = await withDeadline(
-            supabase.auth.getUser(),
-            AUTH_BUDGET_MS,
-            'auth.getUser'
-        );
-        if (authError || !user) {
+        const { user } = await getAccountRouteContext(request);
+        if (!user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
@@ -311,13 +306,8 @@ async function handleGET(request: NextRequest) {
     const shouldPollProvider = request.nextUrl.searchParams.get('poll') === '1';
 
     try {
-        const supabase = await createServerSupabaseClient();
-        const { data: { user }, error: authError } = await withDeadline(
-            supabase.auth.getUser(),
-            AUTH_BUDGET_MS,
-            'auth.getUser'
-        );
-        if (authError || !user) {
+        const { user } = await getAccountRouteContext(request);
+        if (!user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 

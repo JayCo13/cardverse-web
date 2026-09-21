@@ -46,7 +46,7 @@ const getOwnListing = async (id: string) => {
         .eq('id', id)
         .single();
 
-    if (error || !data) return { error: 'Listing not found', status: 404 } as const;
+    if (error || !data || (data as { listing_visibility?: string }).listing_visibility === 'deleted') return { error: 'Listing not found', status: 404 } as const;
     const listing = data as ListingRow;
     if (listing.seller_id !== user.id) return { error: 'Forbidden', status: 403 } as const;
 
@@ -136,11 +136,11 @@ async function handlePATCH(request: NextRequest, context: { params: Promise<{ id
     }
 
     if (error) {
-        const code = ['unauthorized', 'listing_not_found', 'listing_not_editable', 'open_offers_locked', 'invalid_listing_payload']
+        const code = ['unauthorized', 'listing_not_found', 'listing_not_editable', 'listing_deleted', 'open_offers_locked', 'invalid_listing_payload']
             .find(value => error.message.includes(value));
         const status = code === 'unauthorized' ? 401
             : code === 'listing_not_found' ? 404
-                : code === 'listing_not_editable' || code === 'open_offers_locked' ? 409
+                : code === 'listing_not_editable' || code === 'listing_deleted' || code === 'open_offers_locked' ? 409
                     : 400;
         const message = code === 'listing_not_editable' ? 'Only active sale listings can be edited'
             : code === 'open_offers_locked' ? 'Price and offer settings cannot be changed while an offer is open'

@@ -59,6 +59,7 @@ type CheckoutCard = {
   seller_id: string;
   price: number | null;
   status: string;
+  listing_visibility: string;
   listing_type: string | null;
   is_bundle: boolean | null;
   bundle_items: BundleItem[] | null;
@@ -239,7 +240,7 @@ async function handlePOST(request: NextRequest) {
       }
       const { data: cardRows, error: cardError } = await supabase
         .from('cards')
-        .select('id, name, seller_id, price, status, listing_type, is_bundle, bundle_items, reserved_until')
+        .select('id, name, seller_id, price, status, listing_visibility, listing_type, is_bundle, bundle_items, reserved_until')
         .in('id', cartRows.map(item => item.card_id))
         .returns<CheckoutCard[]>();
       const cartById = new Map(cartRows.map(item => [item.id, item]));
@@ -247,7 +248,7 @@ async function handlePOST(request: NextRequest) {
       for (const cartId of cartIds) {
         const cartItem = cartById.get(cartId)!;
         const card = cardById.get(cartItem.card_id);
-        if (cardError || !card || card.status !== 'active' || card.listing_type !== 'sale') {
+        if (cardError || !card || card.status !== 'active' || card.listing_visibility !== 'visible' || card.listing_type !== 'sale') {
           return NextResponse.json({ error: 'A card in the cart is no longer available.', code: 'card_unavailable' }, { status: 409 });
         }
 
@@ -306,11 +307,11 @@ async function handlePOST(request: NextRequest) {
 
       const { data: card, error: cardError } = await supabase
         .from('cards')
-        .select('id, name, seller_id, price, status, listing_type, is_bundle, bundle_items, reserved_until')
+        .select('id, name, seller_id, price, status, listing_visibility, listing_type, is_bundle, bundle_items, reserved_until')
         .eq('id', offer.card_id)
         .single<CheckoutCard>();
 
-      if (cardError || !card || card.status === 'sold') {
+      if (cardError || !card || card.status === 'sold' || card.listing_visibility !== 'visible') {
         return NextResponse.json({ error: 'This card is no longer available.', code: 'card_unavailable' }, { status: 409 });
       }
       // ── Bundle offer: this payment takes only the cards the offer named ──

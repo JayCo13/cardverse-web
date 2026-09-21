@@ -113,6 +113,7 @@ export default function PublicProfilePage() {
                         .from("cards")
                         .select("id, name, image_url, listing_type, price, last_sold_price, status")
                         .eq("seller_id", userId)
+                        .eq("listing_visibility", "visible")
                         .order("created_at", { ascending: false })
                         .limit(60),
                 ]);
