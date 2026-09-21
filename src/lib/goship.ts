@@ -116,6 +116,8 @@ async function call<T>(
         method?: 'GET' | 'POST';
         body?: unknown;
         timeoutMs?: number;
+        /** Retry only transport failures. Keep this at one for writes. */
+        attempts?: number;
         /**
          * Read the answer from the root of the response instead of `data`.
          *
@@ -130,34 +132,46 @@ async function call<T>(
     const { baseUrl, token: bearer } = environment();
     if (!bearer) return { ok: false, reason: 'not_configured' };
 
-    try {
-        const response = await fetch(`${baseUrl}${path}`, {
-            method: init.method ?? 'GET',
-            headers: {
-                Authorization: `Bearer ${bearer}`,
-                Accept: 'application/json',
-                ...(init.body ? { 'Content-Type': 'application/json' } : {}),
-            },
-            ...(init.body ? { body: JSON.stringify(init.body) } : {}),
-            // Bounded on purpose: these run inside request handlers that
-            // Netlify kills at ten seconds.
-            signal: AbortSignal.timeout(init.timeoutMs ?? 6_000),
-        });
+    const attempts = Math.max(1, Math.floor(init.attempts ?? 1));
+    let transportReason = 'request_failed';
 
-        const payload = (await response.json()) as GoshipEnvelope<T>;
-        if (!response.ok || (payload.code && payload.code >= 400)) {
-            // Validation errors arrive as an object of field -> messages, or a
-            // bare array. Flatten either into something a log can carry.
-            const raw = payload.data ?? payload.message;
-            const detail = typeof raw === 'string'
-                ? raw
-                : JSON.stringify(raw ?? {}).slice(0, 300);
-            return { ok: false, reason: detail || `http_${response.status}` };
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+        try {
+            const response = await fetch(`${baseUrl}${path}`, {
+                method: init.method ?? 'GET',
+                headers: {
+                    Authorization: `Bearer ${bearer}`,
+                    Accept: 'application/json',
+                    ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+                },
+                ...(init.body ? { body: JSON.stringify(init.body) } : {}),
+                // Bounded on purpose: these run inside request handlers that
+                // Netlify kills at ten seconds.
+                signal: AbortSignal.timeout(init.timeoutMs ?? 6_000),
+            });
+
+            const payload = (await response.json()) as GoshipEnvelope<T>;
+            if (!response.ok || (payload.code && payload.code >= 400)) {
+                // Validation errors arrive as an object of field -> messages, or a
+                // bare array. Flatten either into something a log can carry.
+                const raw = payload.data ?? payload.message;
+                const detail = typeof raw === 'string'
+                    ? raw
+                    : JSON.stringify(raw ?? {}).slice(0, 300);
+                return { ok: false, reason: detail || `http_${response.status}` };
+            }
+            return { ok: true, data: (init.root ? payload : payload.data) as T };
+        } catch (error) {
+            const cause = error instanceof Error
+                ? (error as Error & { cause?: { code?: unknown } }).cause?.code
+                : undefined;
+            transportReason = error instanceof Error
+                ? `${error.message}${cause ? ` (${String(cause)})` : ''}`
+                : 'request_failed';
         }
-        return { ok: true, data: (init.root ? payload : payload.data) as T };
-    } catch (error) {
-        return { ok: false, reason: error instanceof Error ? error.message : 'request_failed' };
     }
+
+    return { ok: false, reason: transportReason };
 }
 
 /**
@@ -382,7 +396,10 @@ export async function goshipFindShipmentByOrderId(orderId: string) {
 export async function goshipShipmentByCode(gcode: string) {
     const result = await call<Array<Record<string, unknown>>>(
         `/shipments/search?code=${encodeURIComponent(gcode)}`,
-        { timeoutMs: 6_000 },
+        // GoShip occasionally exceeds the old six-second production timeout.
+        // This is a read, so one transport retry is safe; 2 x 4s remains below
+        // the function's ten-second request budget.
+        { timeoutMs: 4_000, attempts: 2 },
     );
     if (!result.ok) return result;
     const match = (result.data ?? []).find((row) => row?.id === gcode) ?? null;
