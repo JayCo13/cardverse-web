@@ -6,6 +6,7 @@ import { useVisibleCycle } from '@/hooks/use-visible-cycle';
 import type { Card as CardType } from "@/lib/types";
 import { ShippingQuoteLabel } from "@/components/shipping-quote-label";
 import Image from "next/image";
+import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -518,12 +519,14 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
               </div>
             )}
 
+            {/* The title is a real link: the image and the buttons navigate with
+                `router.push`, which a crawler never follows, so without an
+                `<a href>` here no listing page is reachable from the grid. */}
             <h3
-              className={`line-clamp-2 cursor-pointer break-words font-semibold leading-snug tracking-normal hover:text-primary [overflow-wrap:anywhere] md:font-semibold ${listTitleSize}`}
-              onClick={handleDetailClick}
+              className={`line-clamp-2 break-words font-semibold leading-snug tracking-normal [overflow-wrap:anywhere] md:font-semibold ${listTitleSize}`}
               title={card.name}
             >
-              {card.name}
+              <Link href={`/cards/${card.id}`} className="hover:text-primary">{card.name}</Link>
             </h3>
 
             <p className="hidden md:mt-1.5 md:block md:text-sm md:leading-5">
@@ -780,11 +783,8 @@ export const CardItem = React.memo(function CardItem({ card, layout = 'grid', on
       {/* Content section */}
       <div className="p-3 sm:p-4 md:p-5 flex flex-col flex-grow">
         {/* Title */}
-        <h3
-          className="font-bold text-sm sm:text-base md:text-lg lg:text-xl line-clamp-1 mb-1 cursor-pointer hover:text-primary"
-          onClick={handleDetailClick}
-        >
-          {card.name}
+        <h3 className="font-bold text-sm sm:text-base md:text-lg lg:text-xl line-clamp-1 mb-1">
+          <Link href={`/cards/${card.id}`} className="hover:text-primary">{card.name}</Link>
         </h3>
 
         {/* Category & details */}

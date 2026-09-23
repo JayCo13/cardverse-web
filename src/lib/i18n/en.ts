@@ -388,6 +388,7 @@ export const en = {
   page_support_title: 'Support',
   page_support_desc: 'How can we help you?',
   page_help_title: 'Help Center',
+  page_about_title: 'About us',
   page_help_desc: 'Answers to what buyers and sellers ask most.',
   page_contact_title: 'Contact Us',
   page_contact_desc: 'Get in touch with our team.',
@@ -566,15 +567,14 @@ export const en = {
   help_faq_4_q: 'What do I need before I can list a card?',
   help_faq_4_a: 'Verify your identity with a government ID and link a bank account in your own name. Once that clears you can sell immediately. There is no approval queue and no minimum number of past transactions.',
   help_faq_5_q: 'Is my money safe?',
-  help_faq_5_a: 'Yes. What you pay is held by CardVerseHub, not passed straight to the seller. It only reaches the seller once you confirm the card arrived. If the order is cancelled, the money returns to your wallet.',
+  help_faq_5_a: 'Yes. CardVerseHub holds your payment instead of sending it directly to the seller. Funds reach the seller\'s wallet when you confirm receipt, or 72 hours after the carrier confirms delivery if you have not filed a complaint. If the order is cancelled, the money returns to your wallet.',
   help_faq_6_q: 'How do I withdraw what I earned?',
   help_faq_6_a: 'Go to your Wallet, choose Withdraw and enter an amount. We deduct the 10% platform fee and send the rest to your verified bank account. Each withdrawal is processed by hand by our team, so allow a little time.',
   help_faq_7_q: 'What if a seller takes my money and never ships?',
   help_faq_7_a: 'Sellers have 24 hours from your payment to enter a tracking number. Past that the order cancels itself, the money returns to your wallet and the seller loses reputation. You do not have to do anything.',
   help_faq_8_q: 'How does shipping work, and do you ship abroad?',
-  // Carrier names here follow OFFERABLE_COURIERS in shipping-carriers.ts —
-  // update this answer when one is retired or added.
-  help_faq_8_a: 'We currently ship within Vietnam only, through whichever carrier the seller offers: Giao Hàng Nhanh (GHN), Shopee Express (SPX), J&T Express or hand delivery if you are in the seller\'s own province. The fee is calculated from your address and shown before you pay. International orders are not supported yet.',
+  // Keep this answer aligned with checkout carrier selection and current shipping policy.
+  help_faq_8_a: 'We currently ship within Vietnam only. The seller configures supported carriers; available options for your address and their shipping fees are shown before payment. When multiple carriers are available, you choose one at checkout. Hand delivery and international orders are not supported.',
   help_faq_9_q: 'Which cards am I allowed to sell?',
   help_faq_9_a: 'Any genuine trading card: Pokémon, One Piece, Yu-Gi-Oh!, sports and more. Counterfeits, unlicensed reprints and home-made "proxy" cards are banned, and accounts caught selling them are suspended.',
   help_faq_10_q: 'Can I sell a worn or played card?',

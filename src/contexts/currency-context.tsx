@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { getSupabaseClient } from '@/lib/supabase/client';
+import { USD_TO_VND_RATE } from '@/lib/exchange-rate';
 
 // Supported Currencies
 export type AppCurrency = 'USD' | 'JPY' | 'VND';
@@ -11,7 +12,7 @@ export type AppLanguage = 'en-US' | 'vi-VN' | 'ja-JP';
 
 // How many VND in 1 USD. Single source of truth for any USD→VND conversion
 // (e.g. the sell form lets a seller price in USD and stores VND).
-export const USD_TO_VND_RATE = 25450;
+export { USD_TO_VND_RATE };
 
 // Exchange rates (base: USD)
 const EXCHANGE_RATES: Record<AppCurrency, number> = {
@@ -59,7 +60,12 @@ const LANGUAGE_CHOSEN_AT_KEY = 'cardverse_language_at';
 // person's account.
 const LANGUAGE_OWNER_KEY = 'cardverse_language_user';
 
-const DEFAULT_LANGUAGE: AppLanguage = 'en-US';
+/**
+ * Vietnamese unless the browser or the account says otherwise. The audience is
+ * Vietnamese and the HTML is served with `lang="vi"`; starting in English made
+ * crawlers index an English page for Vietnamese queries.
+ */
+const DEFAULT_LANGUAGE: AppLanguage = 'vi-VN';
 
 const isAppLanguage = (value: unknown): value is AppLanguage =>
     value === 'en-US' || value === 'vi-VN' || value === 'ja-JP';
@@ -110,7 +116,7 @@ function parseStamp(value: unknown): number | null {
 
 export function CurrencyProvider({ children }: { children: ReactNode }) {
     const [currency, setCurrencyState] = useState<AppCurrency>('USD');
-    const [language, setLanguageState] = useState<AppLanguage>('en-US');
+    const [language, setLanguageState] = useState<AppLanguage>(DEFAULT_LANGUAGE);
     const [isHydrated, setIsHydrated] = useState(false);
     // Whether the browser had an explicit choice saved before this session.
     const hasLocalLanguage = useRef(false);
@@ -121,7 +127,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     const localOwner = useRef<string | null>(null);
     // Latest choice, readable from the long-lived auth listener without
     // re-subscribing it on every switch.
-    const languageRef = useRef<AppLanguage>('en-US');
+    const languageRef = useRef<AppLanguage>(DEFAULT_LANGUAGE);
     useEffect(() => {
         languageRef.current = language;
     }, [language]);

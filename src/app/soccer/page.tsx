@@ -14,6 +14,7 @@ import { SpinnerGap, SoccerBall, MagnifyingGlass, ArrowsClockwise, ArrowSquareOu
 import { AdBanner } from "@/components/ad-banner";
 import Image from "next/image";
 import { useCurrency } from "@/contexts/currency-context";
+import { CATEGORY_ANSWERS, CategoryAnswerSection } from "@/components/seo/category-answer";
 
 interface EbayItem {
     itemId: string;
@@ -559,6 +560,8 @@ export default function SoccerPage() {
             <div className="max-w-6xl mx-auto px-4 py-6">
                 <AdBanner slot="soccer_list_bottom" format="auto" className="rounded-xl overflow-hidden" />
             </div>
+
+            <CategoryAnswerSection answer={CATEGORY_ANSWERS.soccer} />
 
         </div>
     );

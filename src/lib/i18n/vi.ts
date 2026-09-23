@@ -398,6 +398,7 @@ export const vi = {
   page_support_title: 'Hỗ trợ',
   page_support_desc: 'Chúng tôi có thể giúp gì cho bạn?',
   page_help_title: 'Trung tâm trợ giúp',
+  page_about_title: 'Giới thiệu',
   page_help_desc: 'Câu trả lời cho những gì người mua và người bán hỏi nhiều nhất.',
   page_contact_title: 'Liên hệ',
   page_contact_desc: 'Liên hệ với đội ngũ của chúng tôi.',
@@ -565,15 +566,14 @@ export const vi = {
   help_faq_4_q: 'Cần gì để đăng bán thẻ?',
   help_faq_4_a: 'Bạn cần xác minh danh tính bằng giấy tờ tuỳ thân và liên kết một tài khoản ngân hàng đứng tên bạn. Xác minh xong là bán được ngay, không phải chờ duyệt và không cần đủ số giao dịch nào trước đó.',
   help_faq_5_q: 'Tiền của tôi có an toàn không?',
-  help_faq_5_a: 'Có. Tiền bạn trả được sàn giữ lại chứ không chuyển thẳng cho người bán. Chỉ khi bạn bấm xác nhận đã nhận thẻ thì tiền mới về ví người bán. Nếu đơn bị huỷ, tiền hoàn lại vào ví bạn.',
+  help_faq_5_a: 'Có. Tiền bạn trả được sàn tạm giữ, không chuyển thẳng cho người bán. Tiền được chuyển vào ví người bán khi bạn xác nhận đã nhận thẻ, hoặc sau 72 giờ kể từ lúc đơn vị vận chuyển xác nhận giao thành công nếu bạn không khiếu nại. Nếu đơn bị huỷ, tiền được hoàn lại vào ví bạn.',
   help_faq_6_q: 'Bán xong rút tiền về ngân hàng thế nào?',
   help_faq_6_a: 'Vào trang Ví, chọn Rút tiền và nhập số tiền. Hệ thống trừ 10% phí nền tảng rồi chuyển phần còn lại về tài khoản ngân hàng đã xác minh. Mỗi lệnh rút được đội ngũ CardVerseHub xử lý thủ công nên cần một chút thời gian.',
   help_faq_7_q: 'Người bán nhận tiền rồi mà không gửi hàng thì sao?',
   help_faq_7_a: 'Người bán có 24 giờ kể từ lúc bạn thanh toán để nhập mã vận đơn. Quá hạn, đơn tự động huỷ, tiền hoàn về ví bạn và uy tín người bán bị trừ. Bạn không cần làm gì cả.',
   help_faq_8_q: 'Vận chuyển thế nào, có gửi ra nước ngoài không?',
-  // Carrier names here follow OFFERABLE_COURIERS in shipping-carriers.ts —
-  // update this answer when one is retired or added.
-  help_faq_8_a: 'Hiện tại chúng tôi chỉ giao trong nước Việt Nam, qua đơn vị mà người bán chọn: Giao Hàng Nhanh (GHN), Shopee Express (SPX), J&T Express hoặc người bán tự giao tận tay nếu bạn ở cùng tỉnh. Phí ship tính theo địa chỉ của bạn và hiển thị trước khi thanh toán. Chưa hỗ trợ đơn quốc tế.',
+  // Keep this answer aligned with checkout carrier selection and current shipping policy.
+  help_faq_8_a: 'Hiện tại chúng tôi chỉ giao trong nước Việt Nam. Người bán cấu hình các hãng hỗ trợ; các lựa chọn khả dụng theo địa chỉ của bạn và phí vận chuyển được hiển thị trước khi thanh toán. Khi có nhiều hãng khả dụng, bạn chọn hãng tại bước thanh toán. Chúng tôi chưa hỗ trợ tự giao tận tay hoặc đơn quốc tế.',
   help_faq_9_q: 'Những loại thẻ nào được phép bán?',
   help_faq_9_a: 'Mọi thẻ bài chính hãng: Pokémon, One Piece, Yu-Gi-Oh!, thẻ thể thao và nhiều dòng khác. Nghiêm cấm thẻ giả, thẻ in lại không phép và thẻ "proxy" tự làm. Phát hiện vi phạm, tài khoản sẽ bị khoá.',
   help_faq_10_q: 'Thẻ cũ, sờn góc có bán được không?',

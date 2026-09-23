@@ -80,6 +80,23 @@ before touching the seller flow.
 - Sellers book their own shipments and paste the tracking number back; delivery status comes from 17TRACK (`src/lib/carrier-tracking.ts`), never from a carrier's own webhook. See `docs/money-flow.md`.
 - **Order mail, by milestone** (all Vietnamese, templates in `src/lib/mail.ts`, one `[Mail]` log line each, every sender swallows its own failure so a mail outage never fails the money path): **paid** → buyer receipt + seller "đơn hàng mới" from `/api/marketplace/buy` (wallet), the PayOS webhook, and — since 2026-09-13 — `/api/checkout` (wallet) through `src/lib/order-placed-mail.ts`, which reads the committed order rows rather than trusting the caller's figures (not on the replay path: that request already mailed). **Booked** → buyer gets an `order_shipped` bell and `sendOrderBookedEmail` from `/api/shipping/book` (`notifyBuyerShipmentBooked`, on both the fresh and the recovered booking, bell deduped per `(user, order, type)`); the tracking number may still be null there, and the mail says so. **In transit / delivered** → buyer only, from the GoShip webhook via `src/lib/carrier-notifications.ts`. Nothing mails the seller after the sale.
 
+### SEO / structured data (`src/lib/seo/`)
+`site.ts` is the **single entity record** (name, Vietnamese + English description, legal contact,
+`socialProfiles()` from `NEXT_PUBLIC_{FACEBOOK,ZALO,TIKTOK,YOUTUBE,INSTAGRAM}_URL`); the root
+metadata, the Organization/WebSite JSON-LD, `/about` and `/llms.txt` all read from it — never restate
+those values elsewhere. Every route sets its own title/description/canonical through
+`buildMetadata()` (`metadata.ts`); client pages do it from a thin `layout.tsx` next to them
+(`sell`, `help`, `pricing`, `sold`, `users/[id]`…). `jsonld.tsx` holds the `<JsonLd>` renderer and
+the Product/Offer, FAQPage, BreadcrumbList builders. `src/app/cards/[id]/page.tsx` is a **server**
+component (metadata + JSON-LD + first fetch through `map-card.ts`) wrapping
+`card-detail-client.tsx`; hidden/sold/expired listings render but are `noindex`. `robots.ts` and
+`sitemap.ts` (`force-dynamic`, active+visible cards and verified sellers with a public listing) live in `src/app`.
+The HTML is served as `lang="vi"` and `DEFAULT_LANGUAGE` in `currency-context.tsx` is `vi-VN`.
+Card grids must link to `/cards/[id]` with a real `<Link>` (the title in `card-item.tsx`), not only
+`router.push`, or crawlers cannot reach listings. `AuthReady` (`src/components/auth-ready.tsx`)
+must list a new public route in `PUBLIC_PREFIXES` or its body is withheld from the server HTML.
+Plan and status: `docs/seo-aeo-geo-plan.md`.
+
 ### Pricing data
 eBay sold-listing scraping (`/api/ebay-scrape`, `/api/search-ebay`, `cheerio` + `axios`) feeds market price comparisons. `/api/ebay-deletion` implements eBay's account-deletion notification endpoint (`EBAY_VERIFICATION_TOKEN`).
 
@@ -110,4 +127,4 @@ Removing a `void`, or giving an icon button a text label, silently reintroduces 
 
 **Category badge codes:** compact category badges/chips must display the standardized short code (e.g. "Bóng đá"/"Soccer"/"Football" → `SOC`; Pokémon → `POK`; One Piece → `OP`; Yu-Gi-Oh → `YGO`; Basketball → `NBA`; F1 → `F1`; Other/Khác → `OTH`). The single source of truth is `getCategoryCode()` in `src/lib/category-code.ts` — always import it (used by `card-item.tsx` and the product-detail related-cards rail) rather than re-deriving codes, so they stay consistent. Never render the raw localized category name inside a code-style badge.
 
-**Category badge colors** mirror the navbar's per-category palette: **POK → yellow** (`bg-yellow-400` / dark text), **OP → red** (`bg-red-500`), **SOC → green** (`bg-green-500`), everything else → neutral (`bg-zinc-800`), each with a matching colored glow. The mapping lives in `categoryBadgeClass()` inside `src/app/cards/[id]/page.tsx` (NOT in `src/lib`, because Tailwind only scans `src/{app,components,pages}` for class names — color classes placed in `src/lib` won't be generated). Reuse/extend that mapping when adding category badges elsewhere.
+**Category badge colors** mirror the navbar's per-category palette: **POK → yellow** (`bg-yellow-400` / dark text), **OP → red** (`bg-red-500`), **SOC → green** (`bg-green-500`), everything else → neutral (`bg-zinc-800`), each with a matching colored glow. The mapping lives in `categoryBadgeClass()` inside `src/app/cards/[id]/card-detail-client.tsx` (NOT in `src/lib`, because Tailwind only scans `src/{app,components,pages}` for class names — color classes placed in `src/lib` won't be generated). Reuse/extend that mapping when adding category badges elsewhere.

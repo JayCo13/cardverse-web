@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { buildMetadata } from '@/lib/seo/metadata';
 import type { Card } from '@/lib/types';
 import BuyClient from './buy-client';
 import { mapSaleCard } from './map-sale-card';
@@ -19,7 +20,15 @@ import { mapSaleCard } from './map-sale-card';
  */
 export const dynamic = 'force-dynamic';
 
-export default async function BuyPage() {
+export const metadata = buildMetadata({
+    title: 'Mua thẻ bài Pokémon, One Piece, bóng đá',
+    description: 'Chợ thẻ bài sưu tầm tại Việt Nam: thẻ Pokémon, One Piece và cầu thủ bóng đá từ người bán đã xác minh. Trả giá trực tiếp, thanh toán ký quỹ, phí vận chuyển báo trước khi thanh toán.',
+    path: '/buy',
+});
+
+export default async function BuyPage({ searchParams }: { searchParams: Promise<{ q?: string | string[] }> }) {
+    const query = (await searchParams).q;
+    const initialSearch = (typeof query === 'string' ? query : query?.[0] ?? '').trim().slice(0, 120);
     let initialCards: Card[] = [];
     let initialLoadSucceeded = false;
 
@@ -42,5 +51,5 @@ export default async function BuyPage() {
         console.error('[Buy] Server-side listing fetch failed:', error);
     }
 
-    return <BuyClient initialCards={initialCards} initialLoadSucceeded={initialLoadSucceeded} />;
+    return <BuyClient initialCards={initialCards} initialLoadSucceeded={initialLoadSucceeded} initialSearch={initialSearch} />;
 }

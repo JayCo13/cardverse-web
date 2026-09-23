@@ -539,6 +539,7 @@ export const ja = {
   page_support_title: 'サポート',
   page_support_desc: 'CardVerseHubチームからサポートを受ける',
   page_help_title: 'ヘルプセンター',
+  page_about_title: 'CardVerseHubについて',
   page_help_desc: '購入者と出品者からよくいただく質問と回答。',
   page_contact_title: 'お問い合わせ',
   page_contact_desc: 'サポートチームに連絡する',
@@ -564,15 +565,14 @@ export const ja = {
   help_faq_4_q: '出品するには何が必要ですか？',
   help_faq_4_a: '本人確認書類による身元確認と、ご本人名義の銀行口座の登録が必要です。確認が通ればすぐに出品できます。審査待ちも、過去の取引実績の条件もありません。',
   help_faq_5_q: '支払ったお金は安全ですか？',
-  help_faq_5_a: 'はい。お支払い金額は出品者に直接渡らず、CardVerseHubが預かります。カードの受取をご確認いただいた時点で出品者のウォレットに移ります。注文がキャンセルされた場合はウォレットに返金されます。',
+  help_faq_5_a: 'はい。お支払い金額は出品者に直接渡らず、CardVerseHubが一時的に預かります。受取を確認した時点、または配送業者が配達完了を確認してから72時間が経過し、その間に異議申し立てがない場合に出品者のウォレットへ移ります。注文がキャンセルされた場合はウォレットに返金されます。',
   help_faq_6_q: '売上を銀行口座に出金するには？',
   help_faq_6_a: 'ウォレットページで「出金」を選び、金額を入力します。10%のプラットフォーム手数料を差し引いた額を、確認済みの銀行口座へお送りします。出金は担当者が手作業で処理するため、少しお時間をいただきます。',
   help_faq_7_q: '出品者が入金後に発送しない場合は？',
   help_faq_7_a: '出品者はお支払いから24時間以内に追跡番号を登録する必要があります。過ぎた場合、注文は自動でキャンセルされ、代金はウォレットに返金、出品者の信頼度が下がります。お客様の操作は不要です。',
   help_faq_8_q: '配送について。海外発送はできますか？',
-  // Carrier names here follow OFFERABLE_COURIERS in shipping-carriers.ts —
-  // update this answer when one is retired or added.
-  help_faq_8_a: '現在はベトナム国内配送のみです。販売者が選んだ業者（Giao Hàng Nhanh（GHN）、Shopee Express（SPX）、J&T Express）、または同一省内であれば販売者による手渡しで配送します。送料はご住所から計算され、お支払い前に表示されます。海外発送には未対応です。',
+  // Keep this answer aligned with checkout carrier selection and current shipping policy.
+  help_faq_8_a: '現在はベトナム国内配送のみです。出品者が対応する配送業者を設定し、お届け先で利用できる選択肢と送料がお支払い前に表示されます。複数の業者を利用できる場合は、購入者が決済時に選択します。手渡しと海外発送には対応していません。',
   help_faq_9_q: '出品できるカードの種類は？',
   help_faq_9_a: 'ポケモン、ワンピース、遊戯王、スポーツカードなど、正規のトレーディングカードであれば出品できます。偽造品、無許可の再版、自作の「プロキシ」カードは禁止で、発覚したアカウントは停止されます。',
   help_faq_10_q: '傷みのあるカードでも出品できますか？',

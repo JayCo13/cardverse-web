@@ -66,10 +66,10 @@ export type Filters = {
 
 type SortOption = 'newest' | 'price-asc' | 'price-desc';
 
-export default function BuyClient({ initialCards, initialLoadSucceeded }: { initialCards: Card[]; initialLoadSucceeded: boolean }) {
+export default function BuyClient({ initialCards, initialLoadSucceeded, initialSearch = '' }: { initialCards: Card[]; initialLoadSucceeded: boolean; initialSearch?: string }) {
   const { t, locale } = useLocalization();
   const [filters, setFilters] = useState<Filters>({
-    search: '',
+    search: initialSearch,
     categories: [],
     conditions: [],
     minPrice: '',
@@ -93,6 +93,9 @@ export default function BuyClient({ initialCards, initialLoadSucceeded }: { init
   const [saleCards, setSaleCards] = useState<Card[]>(initialCards);
   const [isLoading, setIsLoading] = useState(!initialLoadSucceeded);
   const debouncedSearch = useDebouncedValue(filters.search);
+  useEffect(() => {
+    setFilters(current => current.search === initialSearch ? current : { ...current, search: initialSearch });
+  }, [initialSearch]);
   const [productFilter, setProductFilter] = useState<ProductKind | 'all'>('all');
   const [checkoutCard, setCheckoutCard] = useState<Card | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);

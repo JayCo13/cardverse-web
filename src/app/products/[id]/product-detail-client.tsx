@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useSupabase, useUser } from "@/lib/supabase";
 import { useAuthModal } from "@/components/auth-modal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,7 +24,7 @@ import { AdBanner } from "@/components/ad-banner";
 import { ShopeeAffiliate } from "@/components/shopee-affiliate";
 import { catalogCollectionCategory, catalogLanguage } from "@/lib/collection-card";
 
-interface ProductCard {
+export interface ProductCard {
     product_id: number;
     title: string;
     image_url: string | null;
@@ -46,17 +46,16 @@ interface PriceHistory {
 
 // Removed generateMockHistory
 
-export default function ProductDetailsPage() {
-    const params = useParams();
+export default function ProductDetailClient({ productId, initialCard }: { productId: number; initialCard: ProductCard }) {
     const router = useRouter();
     const supabase = useSupabase();
     const { user } = useUser();
     const { setOpen: setAuthModalOpen } = useAuthModal();
     const { t, locale } = useLocalization();
 
-    const [card, setCard] = useState<ProductCard | null>(null);
+    const [card, setCard] = useState<ProductCard | null>(initialCard);
     const [priceHistory, setPriceHistory] = useState<PriceHistory[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [isLoading, setIsLoading] = useState(false);
     const [priceChange, setPriceChange] = useState(0);
     const [isAddingToCollection, setIsAddingToCollection] = useState(false);
     const [addedToCollection, setAddedToCollection] = useState(false);
@@ -113,11 +112,10 @@ export default function ProductDetailsPage() {
 
     useEffect(() => {
         const controller = new AbortController();
-        setCard(null);
+        setCard(initialCard);
         setPriceHistory([]);
         setPriceChange(0);
-        setIsLoading(true);
-        const productId = String(params.id || '');
+        setIsLoading(false);
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
         const headers = { apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '' };
         const options = { headers, signal: controller.signal };
@@ -125,7 +123,7 @@ export default function ProductDetailsPage() {
         try {
             const stored = sessionStorage.getItem('viewingProduct');
             const parsed = stored ? JSON.parse(stored) : null;
-            if (parsed && String(parsed.product_id) === productId) {
+            if (!initialCard && parsed && String(parsed.product_id) === String(productId)) {
                 setCard(parsed);
                 setIsLoading(false);
             }
@@ -189,10 +187,10 @@ export default function ProductDetailsPage() {
                 if (!controller.signal.aborted) console.error('Error fetching price history:', error);
             }
         };
-        void fetchCard();
+        if (!initialCard) void fetchCard();
         void fetchHistory();
         return () => controller.abort();
-    }, [params.id]);
+    }, [productId, initialCard]);
     if (isLoading) {
         return (
             <>

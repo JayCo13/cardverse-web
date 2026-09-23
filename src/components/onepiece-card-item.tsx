@@ -11,6 +11,8 @@ import { useCurrency } from "@/contexts/currency-context";
 import { StrawHatIcon } from "@/components/icons/onepiece-icons";
 import { useLocalization } from '@/context/localization-context';
 import { noDataLabel } from '@/lib/no-data-label';
+import Link from 'next/link';
+import { catalogProductPath, isPilotCatalogId } from '@/lib/seo/catalog-path';
 
 export interface OnePieceCard {
     product_id: number;
@@ -45,7 +47,7 @@ export const OnePieceCardItem = React.memo(function OnePieceCardItem({ card }: O
     const router = useRouter();
 
     const handleCardClick = () => {
-        router.push(`/products/${card.product_id}`);
+        router.push(catalogProductPath({ product_id: card.product_id, category_id: 68, name: card.name }));
     };
 
     const handleViewClick = () => {
@@ -100,7 +102,9 @@ export const OnePieceCardItem = React.memo(function OnePieceCardItem({ card }: O
             <div className="p-3 sm:p-4 md:p-5 flex flex-col flex-grow" style={{ fontFamily: "'Quantico', sans-serif" }}>
                 {/* Title */}
                 <h3 className="font-bold text-sm sm:text-base md:text-lg line-clamp-2 mb-1">
-                    {card.name}
+                    {isPilotCatalogId(68, card.product_id)
+                        ? <Link href={catalogProductPath({ product_id: card.product_id, category_id: 68, name: card.name })} onClick={(event) => event.stopPropagation()}>{card.name}</Link>
+                        : card.name}
                 </h3>
 
                 {/* Set name */}

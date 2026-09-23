@@ -123,8 +123,10 @@ export function HeroSection() {
     <div ref={viewport} className="relative z-10 overflow-hidden touch-pan-y">
       <div className="flex items-stretch">
         {slides.map((slide, index) => {
-          // A single <h1> per page: the first slide owns it, the rest are section headings.
-          const Heading = index === 0 ? 'h1' : 'h2';
+          // A single <h1> per page: the first slide owns it. The other slides
+          // repeat the same brand wordmark, which as an <h2> only gave crawlers
+          // a duplicate heading — so there it is plain text.
+          const Heading = index === 0 ? 'h1' : 'p';
           const illustration = announcementIllustration(slide, locale);
           return <div key={slide.id} ref={el => { slideRefs.current[index] = el; }} role="group" aria-roledescription="slide" tabIndex={-1}
             aria-label={`${t('hero_slide')} ${index + 1} / ${slides.length}`} aria-hidden={selected !== index} inert={selected !== index}

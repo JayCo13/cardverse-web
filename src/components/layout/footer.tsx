@@ -124,6 +124,7 @@ export function Footer() {
       key: 'support',
       heading: t('footer_support'),
       items: [
+        <Link key="about" href="/about" className="text-muted-foreground transition-colors hover:text-foreground">{t('page_about_title')}</Link>,
         <Link key="help" href="/help" className="text-muted-foreground transition-colors hover:text-foreground">{t('page_help_title')}</Link>,
         <Link key="contact" href="/contact" className="text-muted-foreground transition-colors hover:text-foreground">{t('page_contact_title')}</Link>,
         <Link key="terms" href="/terms" className="text-muted-foreground transition-colors hover:text-foreground">{t('page_terms_title')}</Link>,

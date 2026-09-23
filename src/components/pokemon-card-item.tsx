@@ -8,6 +8,8 @@ import { useCurrency } from "@/contexts/currency-context";
 import { useLocalization } from '@/context/localization-context';
 import { noDataLabel } from '@/lib/no-data-label';
 import { TrendUp, TrendDown } from "@phosphor-icons/react";
+import Link from 'next/link';
+import { catalogProductPath, isPilotCatalogId } from '@/lib/seo/catalog-path';
 
 interface PokemonCardItemProps {
     card: PokemonCard;
@@ -20,7 +22,7 @@ export const PokemonCardItem = React.memo(function PokemonCardItem({ card }: Pok
 
     const handleCardClick = () => {
         if (card.productId) {
-            router.push(`/products/${card.productId}`);
+            router.push(catalogProductPath({ product_id: card.productId, category_id: card.categoryId, name: card.name }));
         }
     };
 
@@ -85,7 +87,9 @@ export const PokemonCardItem = React.memo(function PokemonCardItem({ card }: Pok
                 <div className="p-3 sm:p-4">
                     {/* Title - fixed height for consistency */}
                     <h3 className="font-semibold text-sm sm:text-base text-white line-clamp-2 h-10 sm:h-12 mb-2 group-hover:text-yellow-400 transition-colors">
-                        {card.name}
+                        {isPilotCatalogId(card.categoryId, card.productId)
+                            ? <Link href={catalogProductPath({ product_id: card.productId, category_id: card.categoryId, name: card.name })} onClick={(event) => event.stopPropagation()}>{card.name}</Link>
+                            : card.name}
                     </h3>
 
                     {/* Price grid - Similar to One Piece layout */}

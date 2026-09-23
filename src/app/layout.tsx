@@ -1,5 +1,9 @@
 import { AccountRestrictionProvider } from '@/components/account-restriction-provider';
 import type { Metadata, Viewport } from 'next';
+import Script from 'next/script';
+import { buildMetadata } from '@/lib/seo/metadata';
+import { LOGO_PATH, SITE_KEYWORDS, SITE_NAME } from '@/lib/seo/site';
+import { JsonLd, organizationJsonLd, websiteJsonLd } from '@/lib/seo/jsonld';
 import { Inter, Orbitron, Quantico } from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster"
@@ -46,42 +50,28 @@ const quantico = Quantico({
   weight: ['400', '700'],
 });
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://cardversehub.com';
-const SITE_TITLE = 'CardVerseHub – Trading Card Marketplace';
-const SITE_DESCRIPTION =
-  "Vietnam's marketplace for Pokémon, One Piece and Soccer trading cards. Buy, sell, bid and razz with escrow-protected payments and live shipping quotes.";
-// Square logo on black; every share sheet (Messenger, Zalo, Facebook) shows it
-// as a large thumbnail. Without it crawlers picked a random image off the page.
-const OG_IMAGE = '/assets/og-logo.jpg';
-
+/**
+ * Site-wide defaults. Every route overrides title/description/canonical through
+ * `buildMetadata` (see `src/lib/seo/`); the values themselves live in
+ * `src/lib/seo/site.ts` so the JSON-LD, `llms.txt` and the about page say the
+ * same thing.
+ */
 export const metadata: Metadata = {
-  // Relative image URLs resolve against this. Netlify has no VERCEL_URL, so
-  // without it Next would emit og:image pointing at localhost:3000.
-  metadataBase: new URL(SITE_URL),
-  title: SITE_TITLE,
-  description: SITE_DESCRIPTION,
-  keywords: ['trading cards', 'Pokemon cards', 'One Piece cards', 'Soccer cards', 'buy cards', 'sell cards'],
-  authors: [{ name: 'CardVerseHub' }],
+  ...buildMetadata({ path: '/' }),
+  keywords: SITE_KEYWORDS,
+  authors: [{ name: SITE_NAME }],
   icons: {
-    icon: '/assets/brow-logo.png',
-    apple: '/assets/brow-logo.png',
+    icon: LOGO_PATH,
+    apple: LOGO_PATH,
   },
-  openGraph: {
-    title: SITE_TITLE,
-    description: SITE_DESCRIPTION,
-    type: 'website',
-    url: SITE_URL,
-    siteName: 'CardVerseHub',
-    locale: 'vi_VN',
-    images: [{ url: OG_IMAGE, width: 1024, height: 1024, alt: 'CardVerseHub logo' }],
-  },
-  twitter: {
-    card: 'summary',
-    title: SITE_TITLE,
-    description: SITE_DESCRIPTION,
-    images: [OG_IMAGE],
-  },
+  // Search Console can also be verified through DNS; the tag is only emitted
+  // when a token is configured.
+  verification: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
+    ? { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }
+    : undefined,
 };
+
+const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -95,8 +85,10 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Vietnamese is the primary audience and the language the HTML is served
+  // in; the client toggle can switch to en/ja after hydration.
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
+    <html lang="vi" className="dark" suppressHydrationWarning>
       <head>
         <script
           async
@@ -105,6 +97,15 @@ export default function RootLayout({
         />
       </head>
       <body className={`${inter.variable} ${orbitron.variable} ${quantico.variable} font-body antialiased`}>
+        <JsonLd data={[organizationJsonLd(), websiteJsonLd()]} />
+        {GA_ID && (
+          <>
+            <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />
+            <Script id="ga4-init" strategy="afterInteractive">
+              {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${GA_ID}');`}
+            </Script>
+          </>
+        )}
         <SupabaseAuthProvider>
 
             <AuthModalProvider>
