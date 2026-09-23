@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, Check, ExternalLink, Loader2, Truck } from 'lucide-react';
+import { AlertCircle, Check, ExternalLink, Loader2, RefreshCw, Truck } from 'lucide-react';
 import { useLocalization } from '@/context/localization-context';
 import { carrierStatusLabel } from '@/lib/carrier-status-labels';
 import { getCarrier } from '@/lib/shipping-carriers';
@@ -48,8 +48,11 @@ const COPY = {
         notBooked: 'Đơn này chưa có vận đơn.',
         gcode: 'Mã vận đơn sàn', carrierCode: 'Mã hãng', carrier: 'Đơn vị vận chuyển',
         expected: 'Dự kiến giao', openCarrier: 'Xem trên trang hãng',
-        degraded: 'Không kết nối được đơn vị vận chuyển, đang hiển thị trạng thái ghi nhận gần nhất.',
-        lastUpdated: 'Cập nhật gần nhất', justNow: 'vừa xong', minutesAgo: 'phút trước', hoursAgo: 'giờ trước', daysAgo: 'ngày trước',
+        degraded: 'Chưa lấy được cập nhật mới từ GoShip.',
+        lastRecorded: 'Đang hiển thị trạng thái CardVerse ghi nhận gần nhất.',
+        noRecordedStatus: 'CardVerse chưa ghi nhận trạng thái nào.',
+        lastUpdated: 'CardVerse ghi nhận lúc', retry: 'Thử cập nhật',
+        justNow: 'vừa xong', minutesAgo: 'phút trước', hoursAgo: 'giờ trước', daysAgo: 'ngày trước',
         waiting: 'Vận đơn đã tạo, chờ hãng tiếp nhận. Khi hãng nhận sẽ có mã riêng của họ.',
     },
     'en-US': {
@@ -58,8 +61,11 @@ const COPY = {
         notBooked: 'No waybill for this order yet.',
         gcode: 'Platform code', carrierCode: 'Carrier code', carrier: 'Carrier',
         expected: 'Expected', openCarrier: "Open the carrier's page",
-        degraded: 'The carrier could not be reached; showing the last status we recorded.',
-        lastUpdated: 'Last updated', justNow: 'just now', minutesAgo: 'minutes ago', hoursAgo: 'hours ago', daysAgo: 'days ago',
+        degraded: 'Could not get a new update from GoShip.',
+        lastRecorded: 'Showing the latest status recorded by CardVerse.',
+        noRecordedStatus: 'CardVerse has no recorded status yet.',
+        lastUpdated: 'CardVerse recorded this at', retry: 'Try updating',
+        justNow: 'just now', minutesAgo: 'minutes ago', hoursAgo: 'hours ago', daysAgo: 'days ago',
         waiting: 'Waybill created, waiting for the carrier to accept it. Their own code appears then.',
     },
     'ja-JP': {
@@ -68,8 +74,11 @@ const COPY = {
         notBooked: 'この注文にはまだ送り状がありません。',
         gcode: 'プラットフォーム番号', carrierCode: '業者番号', carrier: '配送業者',
         expected: 'お届け予定', openCarrier: '業者のページを開く',
-        degraded: '配送業者に接続できないため、最後に記録した状態を表示しています。',
-        lastUpdated: '最終更新', justNow: 'たった今', minutesAgo: '分前', hoursAgo: '時間前', daysAgo: '日前',
+        degraded: 'GoShipから最新情報を取得できませんでした。',
+        lastRecorded: 'CardVerseに記録された最新の状態を表示しています。',
+        noRecordedStatus: 'CardVerseにはまだ状態の記録がありません。',
+        lastUpdated: 'CardVerseの記録日時', retry: '更新を再試行',
+        justNow: 'たった今', minutesAgo: '分前', hoursAgo: '時間前', daysAgo: '日前',
         waiting: '送り状を作成しました。業者が受け付けると業者側の番号が付きます。',
     },
 } as const;
@@ -142,9 +151,14 @@ export function ShipmentTrackingDialog({
                 )}
 
                 {!busy && error && (
-                    <p className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}
-                    </p>
+                    <div className="space-y-3">
+                        <p className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}
+                        </p>
+                        <Button variant="outline" className="w-full" onClick={() => void load()}>
+                            <RefreshCw className="mr-2 h-4 w-4" />{copy.retry}
+                        </Button>
+                    </div>
                 )}
 
                 {!busy && !error && data && (
@@ -181,11 +195,15 @@ export function ShipmentTrackingDialog({
                                 {data.degraded && (
                                     <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs leading-5 text-amber-200">
                                         <p>{copy.degraded}</p>
+                                        <p>{data.events.length > 0 ? copy.lastRecorded : copy.noRecordedStatus}</p>
                                         {data.events[0]?.at && (
                                             <p className="text-amber-100/80">
                                                 {copy.lastUpdated}: {relativeTime(data.events[0].at)} ({dt(data.events[0].at)})
                                             </p>
                                         )}
+                                        <Button variant="outline" size="sm" className="mt-2" onClick={() => void load()}>
+                                            <RefreshCw className="mr-2 h-4 w-4" />{copy.retry}
+                                        </Button>
                                     </div>
                                 )}
 

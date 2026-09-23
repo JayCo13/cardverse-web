@@ -128,12 +128,13 @@ async function call<T>(
          */
         root?: boolean;
     } = {},
-): Promise<{ ok: true; data: T } | { ok: false; reason: string }> {
+): Promise<{ ok: true; data: T } | { ok: false; reason: string; errorType: 'configuration' | 'http' | 'timeout' | 'transport'; attempts: number }> {
     const { baseUrl, token: bearer } = environment();
-    if (!bearer) return { ok: false, reason: 'not_configured' };
+    if (!bearer) return { ok: false, reason: 'not_configured', errorType: 'configuration', attempts: 0 };
 
     const attempts = Math.max(1, Math.floor(init.attempts ?? 1));
     let transportReason = 'request_failed';
+    let transportType: 'timeout' | 'transport' = 'transport';
 
     for (let attempt = 0; attempt < attempts; attempt += 1) {
         try {
@@ -158,10 +159,14 @@ async function call<T>(
                 const detail = typeof raw === 'string'
                     ? raw
                     : JSON.stringify(raw ?? {}).slice(0, 300);
-                return { ok: false, reason: detail || `http_${response.status}` };
+                return { ok: false, reason: detail || `http_${response.status}`, errorType: 'http', attempts: attempt + 1 };
             }
             return { ok: true, data: (init.root ? payload : payload.data) as T };
         } catch (error) {
+            const errorName = error && typeof error === 'object' && 'name' in error
+                ? String(error.name)
+                : '';
+            transportType = errorName === 'TimeoutError' ? 'timeout' : 'transport';
             const cause = error instanceof Error
                 ? (error as Error & { cause?: { code?: unknown } }).cause?.code
                 : undefined;
@@ -171,7 +176,7 @@ async function call<T>(
         }
     }
 
-    return { ok: false, reason: transportReason };
+    return { ok: false, reason: transportReason, errorType: transportType, attempts };
 }
 
 /**
