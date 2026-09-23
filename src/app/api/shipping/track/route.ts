@@ -53,12 +53,24 @@ export async function GET(request: NextRequest) {
         });
     }
 
+    const lookupStartedAt = Date.now();
     const shipment = await goshipShipmentByCode(order.goship_code);
+    const lookupMs = Date.now() - lookupStartedAt;
     if (!shipment.ok) {
         // The order still knows its own last status, so answer with that rather
-        // than an error page: "we cannot reach the carrier right now" is worse
-        // than "here is what we last heard, at this time".
-        console.error('[Track] GoShip lookup failed:', shipment.reason);
+        // than an error page. The request timing out does not establish that
+        // the carrier is offline; the stored status may simply be older.
+        const diagnostic = {
+            errorType: shipment.errorType,
+            attempts: shipment.attempts,
+            lookupMs,
+            reason: shipment.reason,
+        };
+        if (shipment.errorType === 'timeout' && order.carrier_status) {
+            console.warn('[Track] GoShip lookup timed out; showing stored status:', diagnostic);
+        } else {
+            console.error('[Track] GoShip lookup failed:', diagnostic);
+        }
         return NextResponse.json({
             data: {
                 gcode: order.goship_code,
@@ -77,6 +89,10 @@ export async function GET(request: NextRequest) {
                 trackingUrl: order.carrier_tracking_url,
             },
         });
+    }
+
+    if (lookupMs >= 1_500) {
+        console.info('[Track] GoShip lookup slow:', { lookupMs });
     }
 
     const found = shipment.data;

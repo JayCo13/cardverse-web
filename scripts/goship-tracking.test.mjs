@@ -86,6 +86,32 @@ test('shipment tracking retries one transport timeout', async () => {
     else process.env.GOSHIP_ENV = previousEnv;
   }
 });
+test('shipment tracking identifies exhausted timeouts without hiding the stored-status fallback', async () => {
+  const previousToken = process.env.GOSHIP_API;
+  const previousEnv = process.env.GOSHIP_ENV;
+  process.env.GOSHIP_API = 'test-token';
+  delete process.env.GOSHIP_ENV;
+
+  let attempts = 0;
+  const goship = loadGoship(async () => {
+    attempts += 1;
+    throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+  });
+
+  try {
+    const result = await goship.goshipShipmentByCode('GS6Z3Q1748');
+    assert.equal(attempts, 2);
+    assert.equal(result.ok, false);
+    assert.equal(result.errorType, 'timeout');
+    assert.equal(result.attempts, 2);
+  } finally {
+    if (previousToken === undefined) delete process.env.GOSHIP_API;
+    else process.env.GOSHIP_API = previousToken;
+    if (previousEnv === undefined) delete process.env.GOSHIP_ENV;
+    else process.env.GOSHIP_ENV = previousEnv;
+  }
+});
+
 test('shipment tracking leaves enough serverless time to return stored status', () => {
   const source = fs.readFileSync(new URL('../src/lib/goship.ts', import.meta.url), 'utf8');
   const match = source.match(/goshipShipmentByCode[\s\S]*?timeoutMs:\s*([\d_]+),\s*attempts:\s*(\d+)/);
