@@ -24,6 +24,7 @@ import { Switch } from '@/components/ui/switch';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { USD_TO_VND_RATE } from '@/contexts/currency-context';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { getCloudinarySignature, uploadImageDirectToCloudinary } from '@/lib/cloudinary-direct';
@@ -82,6 +83,8 @@ type LocaleCopy = {
   chooseLanguage: string;
   created: string;
   createdDesc: string;
+  createAnother: string;
+  viewCreated: string;
   createErrorTitle: string;
   createErrorDesc: string;
   shippingConfigTitle: string;
@@ -207,6 +210,8 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       chooseLanguage: 'カード言語を選択してください（EN/JP）。',
       created: '出品が完了しました',
       createdDesc: 'カードがマーケットに掲載されました。',
+      createAnother: '次のカードを出品',
+      viewCreated: '出品した商品を見る',
       createErrorTitle: 'エラー',
       createErrorDesc: '出品の作成中に問題が発生しました。',
       shippingConfigTitle: '配送設定が未完了です',
@@ -332,6 +337,8 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
       chooseLanguage: 'Vui lòng chọn ngôn ngữ thẻ (EN/JP).',
       created: 'Đăng bán thành công!',
       createdDesc: 'Thẻ của bạn đã được đăng trên chợ.',
+      createAnother: 'Tạo thẻ tiếp',
+      viewCreated: 'Xem bài vừa đăng',
       createErrorTitle: 'Lỗi',
       createErrorDesc: 'Có lỗi khi tạo bài đăng.',
       shippingConfigTitle: 'Chưa thiết lập vận chuyển',
@@ -456,6 +463,8 @@ const getLocaleCopy = (locale: string): LocaleCopy => {
     chooseLanguage: 'Please choose the card language (EN/JP).',
     created: 'Listing created',
     createdDesc: 'Your card has been listed on the marketplace.',
+    createAnother: 'Create another card',
+    viewCreated: 'View new listing',
     createErrorTitle: 'Error',
     createErrorDesc: 'There was a problem creating your listing.',
     shippingConfigTitle: 'Shipping is not set up',
@@ -740,6 +749,7 @@ export default function CreateListingPage() {
     uploadedUrls?: string[];
   } | null>(null);
   const listingCreatedRef = useRef(false);
+  const [createdCardId, setCreatedCardId] = useState<string | null>(null);
   const isSubmitting = submitStage !== 'idle';
   const [isCheckingSellerAccess, setIsCheckingSellerAccess] = useState(true);
   const [hasSellerAccess, setHasSellerAccess] = useState(false);
@@ -1549,15 +1559,13 @@ export default function CreateListingPage() {
         }
         throw new Error(data.error || 'Failed to create listing');
       }
-
-      toast({
-        title: copy.created,
-        description: copy.createdDesc,
-      });
+      if (typeof data.cardId !== 'string' || !data.cardId) {
+        throw new Error('Listing response is missing cardId');
+      }
 
       listingAttemptRef.current = null;
       listingCreatedRef.current = true;
-      router.push('/buy');
+      setCreatedCardId(data.cardId);
 
     } catch (error: unknown) {
       console.error("Error creating listing: ", error);
@@ -1595,9 +1603,8 @@ export default function CreateListingPage() {
     try {
       await form.handleSubmit(onSubmit, handleInvalidSubmit)(event);
     } finally {
-      // Once the server confirms creation, stay locked until navigation
-      // unmounts this page. Unlocking during a slow route transition would
-      // allow the same completed form to start a brand-new submission key.
+      // Keep the completed form locked behind the confirmation screen. A new
+      // listing starts from a fresh page load with a new submission key.
       if (!listingCreatedRef.current) {
         submitLockRef.current = false;
         setSubmitStage('idle');
@@ -1632,6 +1639,28 @@ export default function CreateListingPage() {
           <ShieldAlert className="h-16 w-16 text-primary mb-4" />
           <h2 className="text-2xl font-semibold mb-2">{copy.kycNeeded}</h2>
           <p className="text-muted-foreground">{copy.kycNeededDesc}</p>
+        </div>
+      );
+    }
+
+    if (createdCardId) {
+      return (
+        <div className="flex flex-col items-center gap-5 py-10 text-center sm:py-16">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10">
+            <CheckCircle className="h-9 w-9 text-green-500" aria-hidden="true" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-semibold">{copy.created}</h2>
+            <p className="text-muted-foreground">{copy.createdDesc}</p>
+          </div>
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+            <Button type="button" size="lg" onClick={() => window.location.reload()}>
+              {copy.createAnother}
+            </Button>
+            <Button asChild type="button" size="lg" variant="outline">
+              <Link href={`/cards/${createdCardId}`}>{copy.viewCreated}</Link>
+            </Button>
+          </div>
         </div>
       );
     }
@@ -2841,10 +2870,12 @@ export default function CreateListingPage() {
       <main className="flex-1 container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
           <Card>
-            <CardHeader>
-              <CardTitle className="text-3xl" style={{ fontFamily: "'Orbitron', sans-serif" }}>{flexibleProductsEnabled ? pc.title : t('create_listing_title')}</CardTitle>
-              <CardDescription>{flexibleProductsEnabled ? pc.choose : t('create_listing_description')}</CardDescription>
-            </CardHeader>
+            {!createdCardId && (
+              <CardHeader>
+                <CardTitle className="text-3xl" style={{ fontFamily: "'Orbitron', sans-serif" }}>{flexibleProductsEnabled ? pc.title : t('create_listing_title')}</CardTitle>
+                <CardDescription>{flexibleProductsEnabled ? pc.choose : t('create_listing_description')}</CardDescription>
+              </CardHeader>
+            )}
             <CardContent>
               {renderContent()}
             </CardContent>
