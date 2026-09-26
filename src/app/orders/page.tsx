@@ -23,6 +23,7 @@ import { SHIPPING_CARRIERS, getTrackingUrl, getCarrier, sellerSuppliesTracking }
 import { carrierStatusColorClass, carrierStatusLabel } from '@/lib/carrier-status-labels';
 import { ORDER_STATUS_CONFIG, orderStatusLabel } from '@/lib/order-status';
 import { ShipmentTrackingDialog } from '@/components/shipment-tracking-dialog';
+import { SellerInspectionCountdown } from '@/components/seller-inspection-countdown';
 import Link from 'next/link';
 import { PackingVideoField } from '@/components/packing-video-field';
 import Image from 'next/image';
@@ -346,6 +347,7 @@ export default function OrdersPage() {
   const [allOrderCount, setAllOrderCount] = useState(0);
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const orderRequest = useRef<AbortController | null>(null);
+  const backgroundRefreshRef = useRef(false);
   const viewKey = JSON.stringify(activeViewState);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -379,12 +381,20 @@ export default function OrdersPage() {
   // `role` is null on the very first load of an undecided tab: the server then
   // chooses the side and names it in the response, which is what settles the
   // tab. Every later call passes the tab explicitly.
-  const fetchOrders = useCallback(async (role: OrderTab | null) => {
+  const fetchOrders = useCallback(async (role: OrderTab | null, background = false) => {
+    // Several overdue cards can share a page and reach their deadlines at the
+    // same time. One list request refreshes all of them.
+    if (background && backgroundRefreshRef.current) return;
+    if (background) backgroundRefreshRef.current = true;
     orderRequest.current?.abort();
     const controller = new AbortController();
     orderRequest.current = controller;
-    setIsLoading(true);
-    setLoadError('');
+    // Countdown refreshes must leave the cards mounted. Otherwise an overdue
+    // card remounts after each response and immediately starts another fetch.
+    if (!background) {
+      setIsLoading(true);
+      setLoadError('');
+    }
     const settle = (tab: OrderTab) => {
       loadedKeyRef.current = `${user?.id ?? ''}:${tab}:${viewKey}`;
       if (!role) setActiveTab(tab);
@@ -404,13 +414,14 @@ export default function OrdersPage() {
     } catch (err: unknown) {
       if (controller.signal.aborted) return;
       console.error('Failed to fetch orders:', err);
-      setLoadError(err instanceof Error ? err.message : copy.loadError);
+      if (!background) setLoadError(err instanceof Error ? err.message : copy.loadError);
       // A failed resolve must not leave the tab undecided, or the page keeps a
       // skeleton with no tab selected and no way to retry. Fall back to
       // purchases so the retry button has something to act on.
       if (!role) settle('buyer');
     } finally {
-      if (!controller.signal.aborted) setIsLoading(false);
+      if (background) backgroundRefreshRef.current = false;
+      if (!controller.signal.aborted && !background) setIsLoading(false);
     }
   }, [copy.loadError, user?.id, viewKey]);
 
@@ -708,6 +719,17 @@ export default function OrdersPage() {
                   </div>
                 );
               }}</LiveClock>}
+
+              {!isBuyer && (
+                <SellerInspectionCountdown
+                  status={order.status}
+                  carrierStatus={order.carrier_status}
+                  ghnStatus={order.ghn_status}
+                  autoCompleteAt={order.auto_complete_at}
+                  locale={locale}
+                  onDeadline={() => void fetchOrders('seller', true)}
+                />
+              )}
 
               {/* GHN Tracking Stepper */}
               {(order.status === 'shipping' || order.status === 'delivered') && renderTrackingStepper(order)}

@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { LiveClock } from '@/components/live-clock';
 import { OrderShippingDesk } from '@/components/order-shipping-desk';
 import { ShipmentTrackingDialog } from '@/components/shipment-tracking-dialog';
+import { SellerInspectionCountdown } from '@/components/seller-inspection-countdown';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -59,14 +60,17 @@ export default function OrderDetailsPage() {
   const [error, setError] = useState('');
 
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     try {
       const res = await fetch(`/api/marketplace/orders/${id}`, { cache: 'no-store' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Not found');
       setOrder(data.order); setRole(data.viewerRole); setError('');
     } catch (e: any) {
-      setError(e.message);
+      // A transient refresh failure must not remove the countdown and stop
+      // the next poll while settlement is still pending.
+      if (silent) console.error('Failed to refresh order:', e);
+      else setError(e.message);
     } finally {
       setLoading(false);
     }
@@ -422,6 +426,17 @@ export default function OrderDetailsPage() {
               {order.ship_deadline && <div className="flex justify-between"><span className="text-muted-foreground">{tx('Hạn giao', 'Ship deadline', '発送期限')}</span><span>{dt(order.ship_deadline)}</span></div>}
               <div className="flex justify-between"><span className="text-muted-foreground">{tx('Cập nhật', 'Updated', '更新')}</span><span>{dt(order.updated_at)}</span></div>
             </div>
+
+            {!isBuyer && (
+              <SellerInspectionCountdown
+                status={order.status}
+                carrierStatus={order.carrier_status}
+                ghnStatus={order.ghn_status}
+                autoCompleteAt={order.auto_complete_at}
+                locale={locale}
+                onDeadline={() => void load(true)}
+              />
+            )}
 
             {/* Buyer reminder during the final two days of the inspection window. */}
             {isBuyer && (order.status === 'shipping' || order.status === 'delivered') && confirmReminderAt != null && (
